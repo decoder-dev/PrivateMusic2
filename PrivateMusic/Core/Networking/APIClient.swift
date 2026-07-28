@@ -16,6 +16,7 @@ actor APIClient {
             configuration.waitsForConnectivity = true
             configuration.httpCookieStorage = nil
             configuration.httpShouldSetCookies = false
+            configuration.urlCache = nil
             self.session = URLSession(configuration: configuration)
         }
 
@@ -41,6 +42,7 @@ actor APIClient {
             "application/x-www-form-urlencoded; charset=utf-8",
             forHTTPHeaderField: "Content-Type"
         )
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = form
             .sorted { $0.key < $1.key }
             .map { key, value in
@@ -49,39 +51,62 @@ actor APIClient {
             .joined(separator: "&")
             .data(using: .utf8)
 
-        do {
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                throw APIError.invalidResponse
-            }
-            guard (200..<300).contains(http.statusCode) else {
-                throw APIError.server(
-                    code: http.statusCode,
-                    message: "Сервер вернул HTTP \(http.statusCode)."
-                )
-            }
-
-            if let envelope = try? decoder.decode(VKErrorEnvelope.self, from: data),
-               let error = envelope.error {
-                if error.errorCode == 5 {
-                    throw APIError.unauthorized
-                }
-                throw APIError.server(
-                    code: error.errorCode,
-                    message: error.errorMsg
-                )
-            }
-
+        for attempt in 0..<3 {
             do {
-                return try decoder.decode(Response.self, from: data)
+                let (data, response) = try await session.data(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    throw APIError.invalidResponse
+                }
+                if (http.statusCode == 429 || http.statusCode >= 500),
+                   attempt < 2 {
+                    await retryDelay(attempt: attempt)
+                    continue
+                }
+                guard (200..<300).contains(http.statusCode) else {
+                    throw APIError.server(
+                        code: http.statusCode,
+                        message: "Сервер вернул HTTP \(http.statusCode)."
+                    )
+                }
+
+                if let envelope = try? decoder.decode(
+                    VKErrorEnvelope.self,
+                    from: data
+                ), let error = envelope.error {
+                    if error.errorCode == 5 {
+                        throw APIError.unauthorized
+                    }
+                    if [6, 10].contains(error.errorCode), attempt < 2 {
+                        await retryDelay(attempt: attempt)
+                        continue
+                    }
+                    throw APIError.server(
+                        code: error.errorCode,
+                        message: error.errorMsg
+                    )
+                }
+
+                do {
+                    return try decoder.decode(Response.self, from: data)
+                } catch {
+                    throw APIError.decoding(error.localizedDescription)
+                }
+            } catch let error as APIError {
+                throw error
             } catch {
-                throw APIError.decoding(error.localizedDescription)
+                if attempt < 2 {
+                    await retryDelay(attempt: attempt)
+                    continue
+                }
+                throw APIError.transport(error.localizedDescription)
             }
-        } catch let error as APIError {
-            throw error
-        } catch {
-            throw APIError.transport(error.localizedDescription)
         }
+        throw APIError.invalidResponse
+    }
+
+    private func retryDelay(attempt: Int) async {
+        let delay = UInt64(attempt + 1) * 350_000_000
+        try? await Task.sleep(nanoseconds: delay)
     }
 }
 

@@ -63,7 +63,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
             try container.decodeIfPresent(Int.self, forKey: .duration) ?? 0
         )
         let stream = try container.decodeIfPresent(String.self, forKey: .url)
-        streamURL = stream.flatMap { $0.isEmpty ? nil : URL(string: $0) }
+        streamURL = stream.flatMap(URL.secureRemoteURL)
         accessKey = try container.decodeIfPresent(String.self, forKey: .accessKey)
 
         if let album = try? container.nestedContainer(
@@ -76,7 +76,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
             let raw = try thumb.decodeIfPresent(String.self, forKey: .photo600)
                 ?? thumb.decodeIfPresent(String.self, forKey: .photo300)
                 ?? thumb.decodeIfPresent(String.self, forKey: .photo270)
-            artworkURL = raw.flatMap { $0.isEmpty ? nil : URL(string: $0) }
+            artworkURL = raw.flatMap(URL.secureRemoteURL)
         } else {
             artworkURL = nil
         }
@@ -91,5 +91,17 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         try container.encode(Int(duration), forKey: .duration)
         try container.encodeIfPresent(streamURL?.absoluteString, forKey: .url)
         try container.encodeIfPresent(accessKey, forKey: .accessKey)
+    }
+}
+
+extension URL {
+    static func secureRemoteURL(_ rawValue: String) -> URL? {
+        guard !rawValue.isEmpty,
+              let url = URL(string: rawValue),
+              url.scheme?.lowercased() == "https",
+              url.host != nil else {
+            return nil
+        }
+        return url
     }
 }
