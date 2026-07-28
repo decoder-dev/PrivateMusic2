@@ -17,7 +17,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 
     var accent: Color {
-        self == .dark ? .white : .black
+        Color(red: 0.04, green: 0.50, blue: 1.0)
     }
 
     var secondaryAccent: Color {
@@ -25,7 +25,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 
     var colorScheme: ColorScheme { self == .dark ? .dark : .light }
-    var buttonForeground: Color { self == .dark ? .black : .white }
+    var buttonForeground: Color { .white }
     var surface: Color {
         self == .dark ? Color(white: 0.075) : Color(white: 0.955)
     }
