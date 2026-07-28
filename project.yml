@@ -20,13 +20,7 @@ targets:
     sources:
       - path: PrivateMusic
         excludes:
-          - Resources/Assets.xcassets
           - Resources/Info.plist
-          - Resources/PrivacyInfo.xcprivacy
-      - path: PrivateMusic/Resources/Assets.xcassets
-        buildPhase: resources
-      - path: PrivateMusic/Resources/PrivacyInfo.xcprivacy
-        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: NO
