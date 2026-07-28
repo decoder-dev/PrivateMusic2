@@ -38,8 +38,14 @@ struct PlayerView: View {
                     .padding()
                 }
             }
+            .frame(
+                width: proxy.size.width,
+                height: proxy.size.height
+            )
+            .clipped()
         }
         .preferredColorScheme(.dark)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .ignoresSafeArea(edges: .bottom)
         .sheet(isPresented: $showingQueue) {
             QueueView()
@@ -108,8 +114,10 @@ struct PlayerView: View {
         size: CGSize
     ) -> some View {
         let compact = size.height < 730
+        let horizontalPadding: CGFloat = compact ? 22 : 26
+        let contentWidth = max(size.width - horizontalPadding * 2, 0)
         let artworkSize = min(
-            size.width - (compact ? 42 : 50),
+            contentWidth,
             size.height * (compact ? 0.39 : 0.43)
         )
 
@@ -185,7 +193,12 @@ struct PlayerView: View {
             secondaryControls
             Spacer(minLength: compact ? 18 : 30)
         }
-        .padding(.horizontal, compact ? 22 : 26)
+        .frame(
+            width: contentWidth,
+            height: size.height,
+            alignment: .top
+        )
+        .padding(.horizontal, horizontalPadding)
         .foregroundStyle(.white)
         .contentShape(Rectangle())
         .simultaneousGesture(dismissGesture)
