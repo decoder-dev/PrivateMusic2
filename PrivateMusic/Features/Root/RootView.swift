@@ -12,13 +12,6 @@ struct RootView: View {
                 ConnectView()
             } else {
                 MainTabView()
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        if player.currentTrack != nil {
-                            MiniPlayerView()
-                                .padding(.horizontal, 12)
-                                .padding(.bottom, 4)
-                        }
-                    }
                     .sheet(isPresented: $player.isPlayerPresented) {
                         PlayerView()
                     }

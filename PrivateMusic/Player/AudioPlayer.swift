@@ -17,6 +17,7 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var queue: [Track] = []
     @Published private(set) var currentIndex: Int?
     @Published private(set) var isPlaying = false
+    @Published private(set) var isBuffering = false
     @Published private(set) var elapsedTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var shuffleEnabled: Bool
@@ -35,6 +36,7 @@ final class AudioPlayer: ObservableObject {
     private var remoteCommandTokens: [Any] = []
     private var sleepTask: Task<Void, Never>?
     private var streamUserAgent: String?
+    private var itemStatusObservation: NSKeyValueObservation?
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -187,11 +189,14 @@ final class AudioPlayer: ObservableObject {
     func stop() {
         player.pause()
         player.replaceCurrentItem(with: nil)
+        itemStatusObservation?.invalidate()
+        itemStatusObservation = nil
         queue = []
         currentIndex = nil
         elapsedTime = 0
         duration = 0
         isPlaying = false
+        isBuffering = false
         nowPlaying.clear()
         try? AVAudioSession.sharedInstance().setActive(
             false,
@@ -220,6 +225,29 @@ final class AudioPlayer: ObservableObject {
             options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
         )
         let item = AVPlayerItem(asset: asset)
+        itemStatusObservation?.invalidate()
+        itemStatusObservation = item.observe(
+            \.status,
+            options: [.initial, .new]
+        ) { [weak self] item, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                switch item.status {
+                case .readyToPlay:
+                    self.isBuffering = false
+                case .failed:
+                    self.isPlaying = false
+                    self.isBuffering = false
+                    self.errorMessage = item.error?.localizedDescription
+                        ?? "VK не вернул рабочий аудиопоток."
+                    self.publishPlaybackState()
+                case .unknown:
+                    self.isBuffering = true
+                @unknown default:
+                    self.isBuffering = false
+                }
+            }
+        }
         if let tap = equalizer.makeTap() {
             let parameters = AVMutableAudioMixInputParameters()
             parameters.audioTapProcessor = tap
@@ -234,6 +262,7 @@ final class AudioPlayer: ObservableObject {
         activateAudioSession()
         player.play()
         isPlaying = true
+        isBuffering = true
         nowPlaying.update(track: track, elapsedTime: 0, rate: 1)
     }
 
@@ -314,6 +343,9 @@ final class AudioPlayer: ObservableObject {
                    seconds.isFinite {
                     self.duration = seconds
                 }
+                self.isBuffering = self.isPlaying
+                    && self.player.timeControlStatus
+                        == .waitingToPlayAtSpecifiedRate
                 self.publishPlaybackState()
             }
         }
