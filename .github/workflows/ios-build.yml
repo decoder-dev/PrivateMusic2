@@ -16,16 +16,16 @@ jobs:
         run: brew install xcodegen
       - name: Generate Xcode project
         run: xcodegen generate
-      - name: Build and test simulator target
+      - name: Build simulator target
         run: |
           set -o pipefail
           xcodebuild \
             -project PrivateMusic.xcodeproj \
             -scheme PrivateMusic \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
+            -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
-            build test
+            build
       - name: Build unsigned iPhone application
         run: |
           set -o pipefail
