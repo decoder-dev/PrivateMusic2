@@ -22,8 +22,9 @@ original binary.
 - No embedded `client_secret`.
 - Phone/password/OTP fields stay inside a non-persistent VK `WKWebView`.
 - Web navigation is restricted to HTTPS pages owned by `vk.ru` or `vk.com`.
-- VK cookies are exchanged directly with `login.vk.ru`, never persisted, and
-  explicitly removed after success or cancellation.
+- VK cookies are exchanged directly with `login.vk.ru`. The temporary WebKit
+  store is wiped after success or cancellation; the minimum refresh session is
+  retained only in the device-only Keychain so short-lived tokens can renew.
 - Session token uses `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
 - API requests use an ephemeral `URLSession` with cookies disabled.
 - Only HTTPS endpoints are configured.
