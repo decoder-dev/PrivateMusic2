@@ -14,6 +14,22 @@ struct SettingsView: View {
             Section("Оформление") {
                 themePicker
 
+                Picker("Масштаб текста", selection: $settings.textScale) {
+                    ForEach(AppTextScale.allCases) { scale in
+                        Text("\(scale.title) · \(scale.subtitle)")
+                            .tag(scale)
+                    }
+                }
+
+                HStack {
+                    Text("Пример")
+                        .font(.headline)
+                    Spacer()
+                    Text(settings.textScale.subtitle)
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+
                 Toggle(
                     "Liquid Glass",
                     isOn: $settings.liquidGlassEnabled
