@@ -23,32 +23,19 @@ final class SessionStore: ObservableObject {
         session?.accessToken
     }
 
-    func connect(accessToken: String) throws {
+    func connect(accessToken: String, profile: UserProfile) throws {
         let cleaned = accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard cleaned.count >= 16 else {
             throw APIError.unauthorized
         }
         let value = Session(
             accessToken: cleaned,
-            userID: nil,
+            userID: profile.id,
             expiresAt: nil
         )
         try keychain.save(value, account: sessionAccount)
         session = value
-    }
-
-    func enterDemoMode() {
-        session = Session(
-            accessToken: "demo-session-not-for-network",
-            userID: 1,
-            expiresAt: nil
-        )
-        profile = UserProfile(
-            id: 1,
-            firstName: "Private",
-            lastName: "Listener",
-            photoURL: nil
-        )
+        self.profile = profile
     }
 
     func setProfile(_ profile: UserProfile) {
@@ -65,4 +52,3 @@ final class SessionStore: ObservableObject {
         profile = nil
     }
 }
-

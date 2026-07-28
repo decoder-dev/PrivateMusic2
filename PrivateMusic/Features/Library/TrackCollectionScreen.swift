@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct TrackCollectionScreen: View {
+    @EnvironmentObject private var sessionStore: SessionStore
     let title: String
     let emptyMessage: String
     @ObservedObject var model: TrackCollectionViewModel
@@ -26,6 +27,22 @@ struct TrackCollectionScreen: View {
                     ForEach(model.tracks) { track in
                         TrackRow(track: track, queue: model.tracks)
                             .listRowBackground(Color.clear)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    guard let token = sessionStore.accessToken
+                                    else {
+                                        return
+                                    }
+                                    Task {
+                                        await model.remove(
+                                            track,
+                                            accessToken: token
+                                        )
+                                    }
+                                } label: {
+                                    Label("Удалить", systemImage: "trash")
+                                }
+                            }
                     }
                 }
                 .listStyle(.plain)
