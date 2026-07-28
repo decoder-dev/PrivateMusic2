@@ -35,6 +35,9 @@ for relative in required:
         fail(f"missing {relative}")
 
 all_source = "\n".join(path.read_text(encoding="utf-8") for path in swift_files)
+audio_player_source = (
+    SOURCE / "Player" / "AudioPlayer.swift"
+).read_text(encoding="utf-8")
 for forbidden in (
     "client_secret",
     "hHbZxrka2uZ6jB1inYsH",
@@ -57,6 +60,14 @@ for required_symbol in (
 ):
     if required_symbol not in all_source:
         fail(f"missing security/player symbol: {required_symbol}")
+
+if "options: [.allowAirPlay, .allowBluetoothA2DP]" in audio_player_source:
+    fail("playback audio session must not use incompatible route options")
+configure_audio_session = audio_player_source.split(
+    "private func configureAudioSession()", 1
+)[1].split("private func activateAudioSession()", 1)[0]
+if "setActive(true)" in configure_audio_session:
+    fail("audio session must be activated only when playback starts")
 
 for contents in (SOURCE / "Resources" / "Assets.xcassets").rglob("Contents.json"):
     try:
