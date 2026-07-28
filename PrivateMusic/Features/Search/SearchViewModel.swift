@@ -9,6 +9,20 @@ final class SearchViewModel: ObservableObject {
 
     private var searchTask: Task<Void, Never>?
 
+    var artists: [String] {
+        var seen = Set<String>()
+        return tracks.compactMap { track in
+            let name = track.artist.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            let key = name.lowercased()
+            guard !name.isEmpty, seen.insert(key).inserted else {
+                return nil
+            }
+            return name
+        }
+    }
+
     func schedule(
         service: any MusicService,
         accessToken: String

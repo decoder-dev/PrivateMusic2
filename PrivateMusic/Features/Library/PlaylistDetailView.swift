@@ -26,8 +26,21 @@ struct PlaylistDetailView: View {
                 List(model.tracks) { track in
                     TrackRow(track: track, queue: model.tracks)
                         .listRowBackground(Color.clear)
+                        .swipeActions(edge: .trailing) {
+                            if playlist.ownerID
+                                == sessionStore.session?.userID {
+                                Button(role: .destructive) {
+                                    Task {
+                                        await remove(track)
+                                    }
+                                } label: {
+                                    Label("Убрать", systemImage: "minus")
+                                }
+                            }
+                        }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
         .background(ThemeBackground())
@@ -35,6 +48,16 @@ struct PlaylistDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .refreshable { await load(force: true) }
+    }
+
+    private func remove(_ track: Track) async {
+        guard let token = sessionStore.accessToken else { return }
+        await model.remove(
+            track,
+            playlist: playlist,
+            service: environment.musicService,
+            accessToken: token
+        )
     }
 
     private func load(force: Bool = false) async {
@@ -70,6 +93,25 @@ private final class PlaylistDetailViewModel: ObservableObject {
                 offset: 0,
                 count: 100
             ).items
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func remove(
+        _ track: Track,
+        playlist: Playlist,
+        service: any MusicService,
+        accessToken: String
+    ) async {
+        do {
+            try await service.remove(
+                track,
+                from: playlist,
+                accessToken: accessToken
+            )
+            tracks.removeAll { $0.id == track.id }
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription

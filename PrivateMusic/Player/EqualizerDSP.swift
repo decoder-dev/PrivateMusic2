@@ -18,6 +18,7 @@ final class EqualizerDSP: @unchecked Sendable {
     private var enabled = false
     private var gains = [Double](repeating: 0, count: 5)
     private var coefficients = [Coefficients]()
+    private var preamp: Float = 1
     private var states = [Float]()
     private var sampleRate = 44_100.0
     private var channelCount = 2
@@ -116,7 +117,7 @@ final class EqualizerDSP: @unchecked Sendable {
                 var sampleIndex = localChannel
 
                 for _ in 0..<frameCount {
-                    var value = samples[sampleIndex]
+                    var value = samples[sampleIndex] * preamp
                     for band in coefficients.indices {
                         let stateIndex = (channel * coefficients.count + band)
                             * 4
@@ -144,6 +145,8 @@ final class EqualizerDSP: @unchecked Sendable {
     }
 
     private func rebuildCoefficients() {
+        let headroom = max(gains.max() ?? 0, 0)
+        preamp = Float(pow(10, -headroom / 20))
         coefficients = zip(Self.frequencies, gains).map {
             peakingCoefficients(
                 frequency: $0.0,
