@@ -1,6 +1,7 @@
 import SwiftUI
 
 enum AppTheme: String, CaseIterable, Identifiable {
+    case pearl
     case midnight
     case aurora
     case sunset
@@ -10,6 +11,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .pearl: "Системная"
         case .midnight: "Полночь"
         case .aurora: "Аврора"
         case .sunset: "Закат"
@@ -19,6 +21,11 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     var colors: [Color] {
         switch self {
+        case .pearl:
+            [
+                Color(uiColor: .systemBackground),
+                Color(uiColor: .secondarySystemBackground)
+            ]
         case .midnight:
             [Color(red: 0.025, green: 0.035, blue: 0.09), .indigo]
         case .aurora:
@@ -32,6 +39,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     var accent: Color {
         switch self {
+        case .pearl: .blue
         case .midnight: Color(red: 0.18, green: 0.56, blue: 1)
         case .aurora: .mint
         case .sunset: .orange
@@ -41,6 +49,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     var secondaryAccent: Color {
         switch self {
+        case .pearl: .cyan
         case .midnight: .purple
         case .aurora: .cyan
         case .sunset: .pink
@@ -133,12 +142,24 @@ final class AppSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        theme = AppTheme(
-            rawValue: defaults.string(forKey: Keys.theme) ?? ""
-        ) ?? .midnight
-        appearance = AppearanceMode(
-            rawValue: defaults.string(forKey: Keys.appearance) ?? ""
-        ) ?? .dark
+        let settingsVersion = defaults.integer(forKey: Keys.version)
+        if settingsVersion < 2 {
+            theme = .pearl
+            appearance = .light
+            defaults.set(AppTheme.pearl.rawValue, forKey: Keys.theme)
+            defaults.set(
+                AppearanceMode.light.rawValue,
+                forKey: Keys.appearance
+            )
+            defaults.set(2, forKey: Keys.version)
+        } else {
+            theme = AppTheme(
+                rawValue: defaults.string(forKey: Keys.theme) ?? ""
+            ) ?? .pearl
+            appearance = AppearanceMode(
+                rawValue: defaults.string(forKey: Keys.appearance) ?? ""
+            ) ?? .system
+        }
         liquidGlassEnabled = defaults.object(
             forKey: Keys.liquidGlass
         ) as? Bool ?? true
@@ -168,7 +189,14 @@ final class AppSettings: ObservableObject {
         equalizerPreset = .custom
     }
 
+    func resetAppearance() {
+        theme = .pearl
+        appearance = .light
+        liquidGlassEnabled = true
+    }
+
     private enum Keys {
+        static let version = "settings.schema.version"
         static let theme = "appearance.theme"
         static let appearance = "appearance.mode"
         static let liquidGlass = "appearance.liquidGlass"

@@ -38,7 +38,7 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                     .interactive(interactive),
                 in: shape
             )
-        } else {
+        } else if settings.liquidGlassEnabled {
             content
                 .background(.ultraThinMaterial, in: shape)
                 .overlay {
@@ -46,6 +46,16 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                         settings.theme.accent.opacity(0.16),
                         lineWidth: 0.8
                     )
+                }
+        } else {
+            content
+                .background(
+                    settings.theme.colors.last?.opacity(0.94)
+                        ?? Color(uiColor: .secondarySystemBackground),
+                    in: shape
+                )
+                .overlay {
+                    shape.stroke(.primary.opacity(0.08), lineWidth: 0.7)
                 }
         }
     }
