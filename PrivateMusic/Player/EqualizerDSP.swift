@@ -44,18 +44,18 @@ final class EqualizerDSP: @unchecked Sendable {
             unprepare: equalizerTapUnprepare,
             process: equalizerTapProcess
         )
-        var unmanagedTap: Unmanaged<MTAudioProcessingTap>?
+        var tap: MTAudioProcessingTap?
         let status = MTAudioProcessingTapCreate(
             kCFAllocatorDefault,
             &callbacks,
             kMTAudioProcessingTapCreationFlag_PostEffects,
-            &unmanagedTap
+            &tap
         )
-        guard status == noErr, let unmanagedTap else {
+        guard status == noErr, let tap else {
             retained.release()
             return nil
         }
-        return unmanagedTap.takeRetainedValue()
+        return tap
     }
 
     fileprivate func prepare(
