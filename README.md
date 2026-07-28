@@ -1,4 +1,4 @@
-# Private Music 2.6
+# Private Music 2.7
 
 Clean SwiftUI sources for a private music player inspired by the inspected IPA.
 The project is independent from the patched `Private Music [1.1].ipa`.
@@ -32,6 +32,7 @@ The project is independent from the patched `Private Music [1.1].ipa`.
 - unit test for VK track decoding;
 - unsigned cloud build workflow.
 - responsive home, full player and mini-player layouts.
+- premium interaction system with local gestures, haptics and Reduce Motion;
 
 ## VK web login
 
@@ -78,10 +79,10 @@ needed for simulator builds, but is required to install the app on an iPhone.
 
 The included GitHub Actions workflow runs on a macOS runner, compiles the iOS
 Simulator target, builds the arm64 iPhone target and packages
-`PrivateMusic-2.6.0-unsigned.ipa`. Push the contents of this directory to a GitHub
+`PrivateMusic-2.7.0-unsigned.ipa`. Push the contents of this directory to a GitHub
 repository and run the `Build unsigned IPA` workflow.
 
-Download the `PrivateMusic-2.6.0-unsigned` workflow artifact when the job
+Download the `PrivateMusic-2.7.0-unsigned` workflow artifact when the job
 finishes. The IPA still requires signing before installation on an iPhone.
 
 ## Local structural validation
@@ -101,5 +102,7 @@ python scripts/validate_project.py
 - A real-device test is required for background audio and system Now Playing.
 
 See [FEATURE_PARITY.md](FEATURE_PARITY.md) for a comparison with the legacy IPA.
+See [PREMIUM_UI_PROMPT.md](PREMIUM_UI_PROMPT.md) for the executed design and
+gesture specification.
 
 Developer: **decoder-dev**.

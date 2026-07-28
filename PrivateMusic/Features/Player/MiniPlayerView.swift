@@ -2,12 +2,15 @@ import SwiftUI
 
 struct MiniPlayerView: View {
     @EnvironmentObject private var player: AudioPlayer
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var dragOffset: CGSize = .zero
 
     var body: some View {
         if let track = player.currentTrack {
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
                     Button {
+                        Haptics.open()
                         player.isPlayerPresented = true
                     } label: {
                         HStack(spacing: 12) {
@@ -66,7 +69,33 @@ struct MiniPlayerView: View {
                 in: RoundedRectangle(cornerRadius: 18),
                 interactive: true
             )
+            .offset(
+                x: reduceMotion ? 0 : dragOffset.width * 0.12,
+                y: reduceMotion ? 0 : min(dragOffset.height * 0.08, 0)
+            )
+            .gesture(miniPlayerGesture)
         }
+    }
+
+    private var miniPlayerGesture: some Gesture {
+        DragGesture(minimumDistance: 18)
+            .updating($dragOffset) { value, state, _ in
+                state = value.translation
+            }
+            .onEnded { value in
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                if abs(vertical) > abs(horizontal), vertical < -42 {
+                    Haptics.open()
+                    player.isPlayerPresented = true
+                } else if horizontal < -58 {
+                    Haptics.trackChange()
+                    player.next()
+                } else if horizontal > 58 {
+                    Haptics.trackChange()
+                    player.previous()
+                }
+            }
     }
 
     private var progress: CGFloat {
