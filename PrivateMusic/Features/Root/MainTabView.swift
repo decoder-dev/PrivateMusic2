@@ -12,10 +12,10 @@ struct MainTabView: View {
             }
 
             NavigationStack {
-                MixView()
+                CatalogView()
             }
             .tabItem {
-                Label("Микс", systemImage: "sparkles")
+                Label("Главная", systemImage: "sparkles")
             }
 
             NavigationStack {

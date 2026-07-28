@@ -4,6 +4,8 @@ struct PlaylistLibraryView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @StateObject private var model = PlaylistLibraryViewModel()
+    @State private var showingEditor = false
+    @State private var editingPlaylist: Playlist?
 
     var body: some View {
         Group {
@@ -43,12 +45,59 @@ struct PlaylistLibraryView: View {
                         }
                     }
                     .listRowBackground(Color.clear)
+                    .swipeActions(edge: .trailing) {
+                        if playlist.ownerID
+                            == sessionStore.session?.userID {
+                            Button(role: .destructive) {
+                                Task {
+                                    await delete(playlist)
+                                }
+                            } label: {
+                                Label("Удалить", systemImage: "trash")
+                            }
+                            Button {
+                                editingPlaylist = playlist
+                                showingEditor = true
+                            } label: {
+                                Label(
+                                    "Изменить",
+                                    systemImage: "pencil"
+                                )
+                            }
+                            .tint(.orange)
+                        }
+                    }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
         .task { await load() }
         .refreshable { await load(force: true) }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    editingPlaylist = nil
+                    showingEditor = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .sheet(isPresented: $showingEditor) {
+            PlaylistEditorView(playlist: editingPlaylist) {
+                Task { await load(force: true) }
+            }
+        }
+    }
+
+    private func delete(_ playlist: Playlist) async {
+        guard let token = sessionStore.accessToken else { return }
+        await model.delete(
+            playlist,
+            service: environment.musicService,
+            accessToken: token
+        )
     }
 
     private func load(force: Bool = false) async {
@@ -81,6 +130,23 @@ private final class PlaylistLibraryViewModel: ObservableObject {
                 offset: 0,
                 count: 100
             ).items
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func delete(
+        _ playlist: Playlist,
+        service: any MusicService,
+        accessToken: String
+    ) async {
+        do {
+            try await service.deletePlaylist(
+                playlist,
+                accessToken: accessToken
+            )
+            playlists.removeAll { $0.id == playlist.id }
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription

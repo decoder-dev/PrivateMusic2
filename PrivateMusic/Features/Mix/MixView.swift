@@ -29,6 +29,7 @@ struct MixView: View {
                     }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
         .background(ThemeBackground())
