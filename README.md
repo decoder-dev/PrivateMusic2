@@ -79,10 +79,10 @@ needed for simulator builds, but is required to install the app on an iPhone.
 
 The included GitHub Actions workflow runs on a macOS runner, compiles the iOS
 Simulator target, builds the arm64 iPhone target and packages
-`PrivateMusic-2.8.1-unsigned.ipa`. Push the contents of this directory to a GitHub
+`PrivateMusic-2.9.0-unsigned.ipa`. Push the contents of this directory to a GitHub
 repository and run the `Build unsigned IPA` workflow.
 
-Download the `PrivateMusic-2.8.1-unsigned` workflow artifact when the job
+Download the `PrivateMusic-2.9.0-unsigned` workflow artifact when the job
 finishes. The IPA still requires signing before installation on an iPhone.
 
 ## Local structural validation

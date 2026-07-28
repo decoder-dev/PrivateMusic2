@@ -4,7 +4,10 @@ struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var player: AudioPlayer
 
-    private let frequencies = ["60", "230", "910", "4K", "14K"]
+    private let frequencies = [
+        "31", "62", "125", "250", "500",
+        "1K", "2K", "4K", "8K", "16K"
+    ]
 
     var body: some View {
         Form {
@@ -46,6 +49,25 @@ struct SettingsView: View {
                         Text(preset.title).tag(preset)
                     }
                 }
+
+                VStack(spacing: 5) {
+                    HStack {
+                        Text("Предусилитель")
+                        Spacer()
+                        Text(
+                            settings.equalizerPreamp,
+                            format: .number.precision(.fractionLength(1))
+                        )
+                        Text("дБ")
+                    }
+                    .font(.subheadline.monospacedDigit())
+                    Slider(
+                        value: $settings.equalizerPreamp,
+                        in: -12...6,
+                        step: 0.5
+                    )
+                }
+                .disabled(!settings.equalizerEnabled)
 
                 ForEach(frequencies.indices, id: \.self) { index in
                     VStack(spacing: 5) {
