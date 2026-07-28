@@ -9,6 +9,9 @@ original binary.
 - `Core` owns configuration, HTTPS transport and Keychain access.
 - `Models` contains immutable `Sendable` domain values.
 - `Services` isolates VK-specific response formats behind `MusicService`.
+- `LRCLyricsService` provides a cookie-free lyrics fallback.
+- `VKAudioURLResolver` restores protected stream URLs locally for the
+  authenticated account identifier.
 - `Session` owns the current access token and profile.
 - `Player` owns `AVPlayer`, background audio, Now Playing and remote commands.
 - `Features` contains SwiftUI screens and view models.

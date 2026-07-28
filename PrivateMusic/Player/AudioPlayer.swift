@@ -34,6 +34,7 @@ final class AudioPlayer: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var remoteCommandTokens: [Any] = []
     private var sleepTask: Task<Void, Never>?
+    private var streamUserAgent: String?
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -44,9 +45,11 @@ final class AudioPlayer: ObservableObject {
 
     init(
         settings: AppSettings,
+        userAgent: String? = nil,
         defaults: UserDefaults = .standard
     ) {
         self.defaults = defaults
+        self.streamUserAgent = userAgent
         shuffleEnabled = defaults.bool(forKey: "player.shuffle")
         repeatMode = RepeatMode(
             rawValue: defaults.string(forKey: "player.repeat") ?? ""
@@ -61,6 +64,13 @@ final class AudioPlayer: ObservableObject {
                 self?.equalizer.update(enabled: enabled, gains: gains)
             }
             .store(in: &cancellables)
+    }
+
+    func configureNetwork(userAgent: String?) {
+        let cleaned = userAgent?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        streamUserAgent = cleaned?.isEmpty == false ? cleaned : nil
     }
 
     func play(_ track: Track, in tracks: [Track]) {
@@ -198,7 +208,18 @@ final class AudioPlayer: ObservableObject {
             return
         }
 
-        let item = AVPlayerItem(url: url)
+        var headers = [
+            "Referer": "https://vk.com/",
+            "Origin": "https://vk.com"
+        ]
+        if let streamUserAgent {
+            headers["User-Agent"] = streamUserAgent
+        }
+        let asset = AVURLAsset(
+            url: url,
+            options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
+        )
+        let item = AVPlayerItem(asset: asset)
         if let tap = equalizer.makeTap() {
             let parameters = AVMutableAudioMixInputParameters()
             parameters.audioTapProcessor = tap

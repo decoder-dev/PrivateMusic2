@@ -11,13 +11,19 @@ struct PlayerView: View {
     @State private var shareFileURL: URL?
     @State private var isPreparingShare = false
     private let shareService = TrackShareService()
+    let showsCloseButton: Bool
+
+    init(showsCloseButton: Bool = true) {
+        self.showsCloseButton = showsCloseButton
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 LinearGradient(
                     colors: [
-                        settings.theme.secondaryAccent.opacity(0.46),
+                        settings.theme.colors.last
+                            ?? Color(uiColor: .secondarySystemBackground),
                         settings.theme.colors[0]
                     ],
                     startPoint: .top,
@@ -57,7 +63,6 @@ struct PlayerView: View {
                                     systemImage: "quote.bubble"
                                 )
                             }
-                            .disabled(track.lyricsID == nil)
                             Button {
                                 showingPlaylists = true
                             } label: {
@@ -155,12 +160,22 @@ struct PlayerView: View {
                         Spacer()
                     }
                     .padding(.horizontal, 26)
+                } else {
+                    EmptyStateView(
+                        title: "Плеер",
+                        systemImage: "play.circle",
+                        description: "Выберите трек в медиатеке, "
+                            + "рекомендациях или поиске."
+                    )
+                    .padding()
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Закрыть") {
-                        dismiss()
+                if showsCloseButton {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Закрыть") {
+                            dismiss()
+                        }
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {

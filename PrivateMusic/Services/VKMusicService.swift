@@ -3,10 +3,17 @@ import Foundation
 struct VKMusicService: MusicService {
     private let client: APIClient
     private let apiVersion: String
+    private let context: VKMusicContext
+    private let lyricsService = LRCLyricsService()
 
-    init(client: APIClient, apiVersion: String) {
+    init(
+        client: APIClient,
+        apiVersion: String,
+        initialUserID: Int? = nil
+    ) {
         self.client = client
         self.apiVersion = apiVersion
+        self.context = VKMusicContext(userID: initialUserID)
     }
 
     func configure(userAgent: String?) async {
@@ -24,6 +31,7 @@ struct VKMusicService: MusicService {
         guard let profile = envelope.response.first else {
             throw APIError.invalidResponse
         }
+        await context.setUserID(profile.id)
         return profile
     }
 
@@ -40,18 +48,45 @@ struct VKMusicService: MusicService {
             ]) { _, new in new },
             responseType: VKResponse<VKItems<Track>>.self
         )
-        return page(envelope.response, offset: offset, requested: count)
+        let userID = await context.userID
+        let resolved = VKItems(
+            count: envelope.response.count,
+            items: envelope.response.items.map {
+                $0.resolvingStreamURL(userID: userID)
+            }
+        )
+        return page(resolved, offset: offset, requested: count)
     }
 
     func recommendations(accessToken: String) async throws -> [Track] {
-        let envelope: VKResponse<VKItems<Track>> = try await client.post(
-            path: "/method/audio.getRecommendations",
-            form: common(accessToken).merging([
-                "count": "100"
-            ]) { _, new in new },
-            responseType: VKResponse<VKItems<Track>>.self
+        do {
+            let envelope: VKResponse<VKItems<Track>> = try await client.post(
+                path: "/method/audio.getRecommendations",
+                form: common(accessToken).merging([
+                    "count": "100",
+                    "shuffle": "1"
+                ]) { _, new in new },
+                responseType: VKResponse<VKItems<Track>>.self
+            )
+            let userID = await context.userID
+            let tracks = envelope.response.items.map {
+                $0.resolvingStreamURL(userID: userID)
+            }
+            if !tracks.isEmpty {
+                return tracks
+            }
+        } catch let error as APIError {
+            if error == .unauthorized {
+                throw error
+            }
+        }
+
+        let fallback = try await library(
+            accessToken: accessToken,
+            offset: 0,
+            count: 100
         )
-        return envelope.response.items
+        return fallback.items.shuffled()
     }
 
     func search(
@@ -71,7 +106,14 @@ struct VKMusicService: MusicService {
             ]) { _, new in new },
             responseType: VKResponse<VKItems<Track>>.self
         )
-        return page(envelope.response, offset: offset, requested: count)
+        let userID = await context.userID
+        let resolved = VKItems(
+            count: envelope.response.count,
+            items: envelope.response.items.map {
+                $0.resolvingStreamURL(userID: userID)
+            }
+        )
+        return page(resolved, offset: offset, requested: count)
     }
 
     func playlists(
@@ -110,7 +152,14 @@ struct VKMusicService: MusicService {
             form: common(accessToken).merging(parameters) { _, new in new },
             responseType: VKResponse<VKItems<Track>>.self
         )
-        return page(envelope.response, offset: offset, requested: count)
+        let userID = await context.userID
+        let resolved = VKItems(
+            count: envelope.response.count,
+            items: envelope.response.items.map {
+                $0.resolvingStreamURL(userID: userID)
+            }
+        )
+        return page(resolved, offset: offset, requested: count)
     }
 
     func addToLibrary(
@@ -149,25 +198,27 @@ struct VKMusicService: MusicService {
         for track: Track,
         accessToken: String
     ) async throws -> Lyrics {
-        guard let lyricsID = track.lyricsID else {
-            throw APIError.server(
-                code: 404,
-                message: "Для этого трека текст не опубликован."
-            )
+        if let lyricsID = track.lyricsID {
+            do {
+                let envelope: VKResponse<VKLyrics> = try await client.post(
+                    path: "/method/audio.getLyrics",
+                    form: common(accessToken).merging([
+                        "lyrics_id": String(lyricsID)
+                    ]) { _, new in new },
+                    responseType: VKResponse<VKLyrics>.self
+                )
+                let text = envelope.response.text
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty {
+                    return Lyrics(text: text, source: "VK")
+                }
+            } catch let error as APIError where error == .unauthorized {
+                throw error
+            } catch {
+                // LRCLIB below is the fallback for missing private VK lyrics.
+            }
         }
-        let envelope: VKResponse<VKLyrics> = try await client.post(
-            path: "/method/audio.getLyrics",
-            form: common(accessToken).merging([
-                "lyrics_id": String(lyricsID)
-            ]) { _, new in new },
-            responseType: VKResponse<VKLyrics>.self
-        )
-        let text = envelope.response.text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else {
-            throw APIError.invalidResponse
-        }
-        return Lyrics(text: text, source: "VK")
+        return try await lyricsService.lyrics(for: track)
     }
 
     func createPlaylist(
@@ -294,4 +345,16 @@ private struct VKResponse<Value: Decodable & Sendable>: Decodable, Sendable {
 private struct VKItems<Item: Decodable & Sendable>: Decodable, Sendable {
     let count: Int?
     let items: [Item]
+}
+
+private actor VKMusicContext {
+    private(set) var userID: Int?
+
+    init(userID: Int?) {
+        self.userID = userID
+    }
+
+    func setUserID(_ value: Int) {
+        userID = value
+    }
 }

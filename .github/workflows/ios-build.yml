@@ -52,23 +52,23 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-2.3.0-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-2.4.0-unsigned.ipa"
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-2.3.0-unsigned.ipa" \
-            --title "Private Music 2.3.0" \
+            "$PWD/artifacts/PrivateMusic-2.4.0-unsigned.ipa" \
+            --title "Private Music 2.4.0" \
             --notes-file - <<'EOF'
-          Private Music 2.3.0
+          Private Music 2.4.0
 
-          - вход в VK по номеру телефона через защищённую веб-страницу;
-          - пароль, SMS-код и cookies не сохраняются приложением;
-          - токен проверяется и хранится в iOS Keychain;
-          - ручной импорт VKpyMusic оставлен как резерв;
-          - темы, Liquid Glass, эквалайзер и фоновое воспроизведение.
+          - исправлена загрузка рекомендаций и добавлен fallback на медиатеку;
+          - добавлен отдельный экран плеера и восстановлены URL аудиопотоков;
+          - тексты ищутся в VK и резервно через LRCLIB;
+          - новая светлая системная тема и рабочее отключение стекла;
+          - исправлено применение настроек оформления и сетевых параметров.
 
           IPA не подписан. Перед установкой его необходимо подписать своим
           сертификатом через ESign, Scarlet, AltStore или другой инструмент.
@@ -76,7 +76,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-2.3.0-unsigned
-          path: artifacts/PrivateMusic-2.3.0-unsigned.ipa
+          name: PrivateMusic-2.4.0-unsigned
+          path: artifacts/PrivateMusic-2.4.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

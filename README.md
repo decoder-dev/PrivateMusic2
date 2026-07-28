@@ -1,4 +1,4 @@
-# Private Music 2.3
+# Private Music 2.4
 
 Clean SwiftUI sources for a private music player inspired by the inspected IPA.
 The project is independent from the patched `Private Music [1.1].ipa`.
@@ -19,10 +19,12 @@ The project is independent from the patched `Private Music [1.1].ipa`.
 - ephemeral cookie-free networking;
 - no-tracking Privacy Manifest;
 - VK API adapter for profile, tracks, recommendations, search and playlists;
+- resilient recommendations with a shuffled-library fallback;
+- VK protected audio URL restoration and authenticated stream headers;
 - adding tracks from search and removing tracks from the library;
 - playlist creation, editing, deletion and track management;
-- artist screens, VK lyrics and direct-file sharing;
-- four themes, appearance modes and native iOS 26 Liquid Glass;
+- artist screens, VK/LRCLIB lyrics and direct-file sharing;
+- five themes, appearance modes and native iOS 26 Liquid Glass;
 - five-band real-time DSP equalizer based on an AVPlayer audio tap;
 - Telegram group and VPN buttons;
 - unit test for VK track decoding;
@@ -71,10 +73,10 @@ needed for simulator builds, but is required to install the app on an iPhone.
 
 The included GitHub Actions workflow runs on a macOS runner, compiles the iOS
 Simulator target, builds the arm64 iPhone target and packages
-`PrivateMusic-2.3.0-unsigned.ipa`. Push the contents of this directory to a GitHub
+`PrivateMusic-2.4.0-unsigned.ipa`. Push the contents of this directory to a GitHub
 repository and run the `Build unsigned IPA` workflow.
 
-Download the `PrivateMusic-2.3.0-unsigned` workflow artifact when the job
+Download the `PrivateMusic-2.4.0-unsigned` workflow artifact when the job
 finishes. The IPA still requires signing before installation on an iPhone.
 
 ## Local structural validation
@@ -90,7 +92,7 @@ python scripts/validate_project.py
 - Web login uses an unofficial VK web-token exchange and may require re-login.
 - Private VK music methods may reject ordinary official tokens.
 - Playlist cover upload and following public playlists are not wired yet.
-- VK lyrics require `lyrics_id`; file sharing requires a direct non-HLS stream.
+- File sharing requires a direct non-HLS stream.
 - A real-device test is required for background audio and system Now Playing.
 
 See [FEATURE_PARITY.md](FEATURE_PARITY.md) for a comparison with the legacy IPA.
