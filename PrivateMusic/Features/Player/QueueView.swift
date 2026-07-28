@@ -17,10 +17,10 @@ struct QueueView: View {
                     List {
                         ForEach(
                             Array(player.queue.enumerated()),
-                            id: \.element.id
+                            id: \.offset
                         ) { index, track in
                             Button {
-                                player.play(track, in: player.queue)
+                                player.jump(to: index)
                                 dismiss()
                             } label: {
                                 HStack(spacing: 12) {

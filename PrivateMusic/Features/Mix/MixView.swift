@@ -187,11 +187,13 @@ struct MixView: View {
             RoundedRectangle(cornerRadius: 24)
                 .fill(.primary.opacity(0.08))
                 .frame(height: 230)
-            HStack(spacing: 14) {
-                ForEach(0..<3, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(.primary.opacity(0.08))
-                        .frame(width: 166, height: 205)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(.primary.opacity(0.08))
+                            .frame(width: 166, height: 205)
+                    }
                 }
             }
         }

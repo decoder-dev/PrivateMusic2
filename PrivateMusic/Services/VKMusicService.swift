@@ -63,22 +63,61 @@ struct VKMusicService: MusicService {
     }
 
     func recommendations(accessToken: String) async throws -> [Track] {
-        let userID = await context.userID
-        var parameters = [
-            "count": "100",
-            "shuffle": "1"
-        ]
-        if let userID {
-            parameters["user_id"] = String(userID)
+        do {
+            let userID = await context.userID
+            var parameters = [
+                "count": "100",
+                "shuffle": "1"
+            ]
+            if let userID {
+                parameters["user_id"] = String(userID)
+            }
+            let envelope: VKResponse<VKItems<Track>> = try await client.post(
+                path: "/method/audio.getRecommendations",
+                form: common(accessToken).merging(parameters) { _, new in new },
+                responseType: VKResponse<VKItems<Track>>.self
+            )
+            let tracks = envelope.response.items.map {
+                $0.resolvingStreamURL(userID: userID)
+            }
+            if !tracks.isEmpty {
+                return tracks
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as APIError where error == .unauthorized {
+            throw error
         }
-        let envelope: VKResponse<VKItems<Track>> = try await client.post(
-            path: "/method/audio.getRecommendations",
-            form: common(accessToken).merging(parameters) { _, new in new },
-            responseType: VKResponse<VKItems<Track>>.self
+
+        // Some valid VK sessions do not expose getRecommendations, while the
+        // personal stream endpoint remains available for the same account.
+        return try await mixTracks(.common, accessToken: accessToken)
+    }
+
+    func refreshedTrack(
+        _ track: Track,
+        accessToken: String
+    ) async throws -> Track {
+        var audioID = track.id
+        if let accessKey = track.accessKey, !accessKey.isEmpty {
+            audioID += "_\(accessKey)"
+        }
+        let envelope: VKResponse<[Track]> = try await client.post(
+            path: "/method/audio.getById",
+            form: common(accessToken).merging([
+                "audios": audioID
+            ]) { _, new in new },
+            responseType: VKResponse<[Track]>.self
         )
-        return envelope.response.items.map {
-            $0.resolvingStreamURL(userID: userID)
+        let userID = await context.userID
+        guard let first = envelope.response.first else {
+            throw APIError.invalidResponse
         }
+        let refreshed = first.resolvingStreamURL(userID: userID)
+        guard refreshed.streamURL != nil else {
+            throw APIError.invalidResponse
+        }
+        return refreshed
     }
 
     func mixes(accessToken: String) async throws -> [MusicMix] {
@@ -271,6 +310,8 @@ struct VKMusicService: MusicService {
                 if !text.isEmpty {
                     return Lyrics(text: text, source: "VK")
                 }
+            } catch is CancellationError {
+                throw CancellationError()
             } catch let error as APIError where error == .unauthorized {
                 throw error
             } catch {
