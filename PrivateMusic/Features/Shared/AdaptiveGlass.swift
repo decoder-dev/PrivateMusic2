@@ -6,20 +6,9 @@ struct ThemeBackground: View {
     var body: some View {
         LinearGradient(
             colors: settings.theme.colors,
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
+            startPoint: .top,
+            endPoint: .bottom
         )
-        .overlay {
-            RadialGradient(
-                colors: [
-                    settings.theme.accent.opacity(0.22),
-                    .clear
-                ],
-                center: .topTrailing,
-                startRadius: 0,
-                endRadius: 420
-            )
-        }
         .ignoresSafeArea()
     }
 }
@@ -34,7 +23,7 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
         if #available(iOS 26.0, *), settings.liquidGlassEnabled {
             content.glassEffect(
                 .regular
-                    .tint(settings.theme.accent.opacity(0.13))
+                    .tint(.primary.opacity(0.06))
                     .interactive(interactive),
                 in: shape
             )
@@ -43,15 +32,14 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                 .background(.ultraThinMaterial, in: shape)
                 .overlay {
                     shape.stroke(
-                        settings.theme.accent.opacity(0.16),
+                        Color.primary.opacity(0.11),
                         lineWidth: 0.8
                     )
                 }
         } else {
             content
                 .background(
-                    settings.theme.colors.last?.opacity(0.94)
-                        ?? Color(uiColor: .secondarySystemBackground),
+                    settings.theme.surface,
                     in: shape
                 )
                 .overlay {

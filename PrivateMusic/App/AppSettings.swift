@@ -1,60 +1,33 @@
 import SwiftUI
 
 enum AppTheme: String, CaseIterable, Identifiable {
-    case pearl
-    case midnight
-    case aurora
-    case sunset
-    case graphite
+    case dark
+    case light
 
     var id: String { rawValue }
 
     var title: String {
-        switch self {
-        case .pearl: "Системная"
-        case .midnight: "Полночь"
-        case .aurora: "Аврора"
-        case .sunset: "Закат"
-        case .graphite: "Графит"
-        }
+        self == .dark ? "Тёмная" : "Светлая"
     }
 
     var colors: [Color] {
-        switch self {
-        case .pearl:
-            [
-                Color(uiColor: .systemBackground),
-                Color(uiColor: .secondarySystemBackground)
-            ]
-        case .midnight:
-            [Color(red: 0.025, green: 0.035, blue: 0.09), .indigo]
-        case .aurora:
-            [Color(red: 0.015, green: 0.11, blue: 0.13), .mint]
-        case .sunset:
-            [Color(red: 0.13, green: 0.035, blue: 0.09), .orange]
-        case .graphite:
-            [Color(red: 0.055, green: 0.06, blue: 0.07), .gray]
-        }
+        self == .dark
+            ? [Color.black, Color(white: 0.055)]
+            : [Color.white, Color(white: 0.965)]
     }
 
     var accent: Color {
-        switch self {
-        case .pearl: .blue
-        case .midnight: Color(red: 0.18, green: 0.56, blue: 1)
-        case .aurora: .mint
-        case .sunset: .orange
-        case .graphite: Color(white: 0.82)
-        }
+        self == .dark ? .white : .black
     }
 
     var secondaryAccent: Color {
-        switch self {
-        case .pearl: .cyan
-        case .midnight: .purple
-        case .aurora: .cyan
-        case .sunset: .pink
-        case .graphite: Color(white: 0.46)
-        }
+        self == .dark ? Color(white: 0.32) : Color(white: 0.78)
+    }
+
+    var colorScheme: ColorScheme { self == .dark ? .dark : .light }
+    var buttonForeground: Color { self == .dark ? .black : .white }
+    var surface: Color {
+        self == .dark ? Color(white: 0.075) : Color(white: 0.955)
     }
 }
 
@@ -143,19 +116,16 @@ final class AppSettings: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         let settingsVersion = defaults.integer(forKey: Keys.version)
-        if settingsVersion < 2 {
-            theme = .pearl
-            appearance = .light
-            defaults.set(AppTheme.pearl.rawValue, forKey: Keys.theme)
-            defaults.set(
-                AppearanceMode.light.rawValue,
-                forKey: Keys.appearance
-            )
-            defaults.set(2, forKey: Keys.version)
+        if settingsVersion < 3 {
+            theme = .dark
+            appearance = .dark
+            defaults.set(AppTheme.dark.rawValue, forKey: Keys.theme)
+            defaults.set(AppearanceMode.dark.rawValue, forKey: Keys.appearance)
+            defaults.set(3, forKey: Keys.version)
         } else {
             theme = AppTheme(
                 rawValue: defaults.string(forKey: Keys.theme) ?? ""
-            ) ?? .pearl
+            ) ?? .dark
             appearance = AppearanceMode(
                 rawValue: defaults.string(forKey: Keys.appearance) ?? ""
             ) ?? .system
@@ -190,8 +160,8 @@ final class AppSettings: ObservableObject {
     }
 
     func resetAppearance() {
-        theme = .pearl
-        appearance = .light
+        theme = .dark
+        appearance = .dark
         liquidGlassEnabled = true
     }
 
