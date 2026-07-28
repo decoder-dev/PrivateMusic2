@@ -21,6 +21,7 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var shuffleEnabled: Bool
     @Published private(set) var repeatMode: RepeatMode
+    @Published private(set) var sleepTimerEndDate: Date?
     @Published var isPlayerPresented = false
     @Published var errorMessage: String?
 
@@ -32,6 +33,7 @@ final class AudioPlayer: ObservableObject {
     private let defaults: UserDefaults
     private var cancellables = Set<AnyCancellable>()
     private var remoteCommandTokens: [Any] = []
+    private var sleepTask: Task<Void, Never>?
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -98,6 +100,28 @@ final class AudioPlayer: ObservableObject {
         case .one: repeatMode = .off
         }
         defaults.set(repeatMode.rawValue, forKey: "player.repeat")
+    }
+
+    func scheduleSleepTimer(minutes: Int) {
+        sleepTask?.cancel()
+        let seconds = max(minutes, 1) * 60
+        sleepTimerEndDate = Date().addingTimeInterval(
+            TimeInterval(seconds)
+        )
+        sleepTask = Task { [weak self] in
+            try? await Task.sleep(
+                for: .seconds(seconds)
+            )
+            guard !Task.isCancelled else { return }
+            self?.pause()
+            self?.sleepTimerEndDate = nil
+        }
+    }
+
+    func cancelSleepTimer() {
+        sleepTask?.cancel()
+        sleepTask = nil
+        sleepTimerEndDate = nil
     }
 
     func playPause() {
