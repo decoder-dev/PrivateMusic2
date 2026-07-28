@@ -29,6 +29,15 @@ struct TrackRow: View {
                 Text(track.duration.formattedDuration)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+
+                Image(systemName: "play.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(
+                        Color(uiColor: .tertiarySystemFill),
+                        in: Circle()
+                    )
             }
             .contentShape(Rectangle())
         }

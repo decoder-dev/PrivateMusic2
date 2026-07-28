@@ -32,134 +32,94 @@ struct PlayerView: View {
                 .ignoresSafeArea()
 
                 if let track = player.currentTrack {
-                    VStack(spacing: 28) {
-                        Spacer()
-                        AsyncArtwork(url: track.artworkURL, size: 310)
-                            .shadow(color: .black.opacity(0.45), radius: 30, y: 18)
+                    ScrollView {
+                        VStack(spacing: 24) {
+                            AsyncArtwork(url: track.artworkURL, size: 280)
+                                .shadow(
+                                    color: .black.opacity(0.18),
+                                    radius: 24,
+                                    y: 12
+                                )
 
-                        VStack(spacing: 7) {
-                            Text(track.title)
-                                .font(.title2.bold())
-                                .lineLimit(2)
-                                .multilineTextAlignment(.center)
-                            Text(track.artist)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        HStack(spacing: 14) {
-                            Button {
-                                showingArtist = true
-                            } label: {
-                                Label(
-                                    "Исполнитель",
-                                    systemImage: "person.wave.2"
-                                )
-                            }
-                            Button {
-                                showingLyrics = true
-                            } label: {
-                                Label(
-                                    "Текст",
-                                    systemImage: "quote.bubble"
-                                )
-                            }
-                            Button {
-                                showingPlaylists = true
-                            } label: {
-                                Image(
-                                    systemName:
-                                        "rectangle.stack.badge.plus"
-                                )
-                                .accessibilityLabel(
-                                    "Добавить в плейлист"
-                                )
-                            }
-                            Button {
-                                Task { await prepareShare(track) }
-                            } label: {
-                                if isPreparingShare {
-                                    ProgressView()
-                                } else {
-                                    Image(systemName: "square.and.arrow.up")
+                            VStack(spacing: 7) {
+                                Text(track.title)
+                                    .font(.title2.bold())
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.center)
+                                Text(track.artist)
+                                    .foregroundStyle(.secondary)
+                                if player.isBuffering {
+                                    Label(
+                                        "Буферизация",
+                                        systemImage: "waveform"
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                                 }
                             }
-                            .disabled(isPreparingShare)
-                        }
-                        .font(.subheadline)
-                        .buttonStyle(.bordered)
 
-                        VStack(spacing: 8) {
-                            Slider(
-                                value: Binding(
-                                    get: { player.elapsedTime },
-                                    set: { player.seek(to: $0) }
-                                ),
-                                in: 0...max(player.duration, 1)
-                            )
-                            HStack {
-                                Text(player.elapsedTime.formattedDuration)
-                                Spacer()
-                                Text(player.duration.formattedDuration)
+                            HStack(spacing: 18) {
+                                playerAction(
+                                    "person.wave.2",
+                                    label: "Исполнитель"
+                                ) {
+                                    showingArtist = true
+                                }
+                                playerAction(
+                                    "quote.bubble",
+                                    label: "Текст"
+                                ) {
+                                    showingLyrics = true
+                                }
+                                playerAction(
+                                    "rectangle.stack.badge.plus",
+                                    label: "Добавить в плейлист"
+                                ) {
+                                    showingPlaylists = true
+                                }
+                                Button {
+                                    Task { await prepareShare(track) }
+                                } label: {
+                                    if isPreparingShare {
+                                        ProgressView()
+                                            .frame(width: 42, height: 42)
+                                    } else {
+                                        Image(systemName: "square.and.arrow.up")
+                                            .frame(width: 42, height: 42)
+                                            .background(
+                                                .thinMaterial,
+                                                in: Circle()
+                                            )
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isPreparingShare)
+                                .accessibilityLabel("Поделиться")
                             }
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                        }
 
-                        HStack(spacing: 27) {
-                            Button {
-                                player.toggleShuffle()
-                            } label: {
-                                Image(systemName: "shuffle")
-                                    .foregroundStyle(
-                                        player.shuffleEnabled
-                                            ? settings.theme.accent
-                                            : Color.primary
-                                    )
-                            }
-                            Button {
-                                player.previous()
-                            } label: {
-                                Image(systemName: "backward.fill")
-                            }
-                            Button {
-                                player.playPause()
-                            } label: {
-                                Image(
-                                    systemName: player.isPlaying
-                                        ? "pause.circle.fill"
-                                        : "play.circle.fill"
+                            VStack(spacing: 8) {
+                                Slider(
+                                    value: Binding(
+                                        get: { player.elapsedTime },
+                                        set: { player.seek(to: $0) }
+                                    ),
+                                    in: 0...max(player.duration, 1)
                                 )
-                                .font(.system(size: 72))
+                                HStack {
+                                    Text(player.elapsedTime.formattedDuration)
+                                    Spacer()
+                                    Text(player.duration.formattedDuration)
+                                }
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
                             }
-                            Button {
-                                player.next()
-                            } label: {
-                                Image(systemName: "forward.fill")
-                            }
-                            Button {
-                                player.cycleRepeatMode()
-                            } label: {
-                                Image(
-                                    systemName: player.repeatMode.systemImage
-                                )
-                                .foregroundStyle(
-                                    player.repeatMode == .off
-                                        ? Color.primary
-                                        : settings.theme.accent
-                                )
-                            }
-                        }
-                        .font(.title)
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 14)
-                        .adaptiveGlass(
-                            in: Capsule(),
-                            interactive: true
-                        )
 
-                        Spacer()
+                            playbackControls
+                        }
+                        .padding(.horizontal, 26)
+                        .padding(.top, 20)
+                        .padding(.bottom, 36)
                     }
-                    .padding(.horizontal, 26)
                 } else {
                     EmptyStateView(
                         title: "Плеер",
@@ -222,6 +182,69 @@ struct PlayerView: View {
                 TrackShareSheet(fileURL: shareFileURL)
             }
         }
+    }
+
+    private var playbackControls: some View {
+        HStack(spacing: 24) {
+            Button {
+                player.toggleShuffle()
+            } label: {
+                Image(systemName: "shuffle")
+                    .foregroundStyle(
+                        player.shuffleEnabled
+                            ? settings.theme.accent
+                            : Color.primary
+                    )
+            }
+            Button {
+                player.previous()
+            } label: {
+                Image(systemName: "backward.fill")
+            }
+            Button {
+                player.playPause()
+            } label: {
+                Image(
+                    systemName: player.isPlaying
+                        ? "pause.circle.fill"
+                        : "play.circle.fill"
+                )
+                .font(.system(size: 68))
+            }
+            Button {
+                player.next()
+            } label: {
+                Image(systemName: "forward.fill")
+            }
+            Button {
+                player.cycleRepeatMode()
+            } label: {
+                Image(systemName: player.repeatMode.systemImage)
+                    .foregroundStyle(
+                        player.repeatMode == .off
+                            ? Color.primary
+                            : settings.theme.accent
+                    )
+            }
+        }
+        .font(.title2)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .adaptiveGlass(in: Capsule(), interactive: true)
+    }
+
+    private func playerAction(
+        _ image: String,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: image)
+                .frame(width: 42, height: 42)
+                .background(.thinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     private func prepareShare(_ track: Track) async {

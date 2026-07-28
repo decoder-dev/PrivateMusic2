@@ -11,63 +11,68 @@ struct VKWebLoginView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                VKWebView(webView: model.webView)
+            VStack(spacing: 0) {
+                securityBanner
 
-                if model.isLoading {
-                    ProgressView()
-                        .padding(16)
-                        .adaptiveGlass(in: Circle())
-                }
-            }
-            .navigationTitle(model.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 8) {
-                    Button {
-                        Task { await completeLogin() }
-                    } label: {
-                        HStack {
-                            if isCompleting {
-                                ProgressView()
-                                    .tint(.white)
-                            } else {
-                                Image(systemName: "checkmark.shield.fill")
-                            }
-                            Text(
-                                isCompleting
-                                    ? "Проверяем сессию…"
-                                    : "Я вошёл — продолжить"
-                            )
+                ZStack {
+                    VKWebView(webView: model.webView)
+
+                    if model.isLoading {
+                        Color(uiColor: .systemBackground)
+                            .opacity(0.82)
+                        VStack(spacing: 12) {
+                            ProgressView()
+                            Text("Открываем защищённую страницу VK…")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
-                        .frame(maxWidth: .infinity)
+                    } else if let loadError = model.loadError {
+                        VStack(spacing: 14) {
+                            Image(systemName: "wifi.exclamationmark")
+                                .font(.system(size: 42))
+                                .foregroundStyle(.secondary)
+                            Text("Страница не загрузилась")
+                                .font(.headline)
+                            Text(loadError)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                            Button("Повторить") {
+                                model.reload()
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .padding(24)
                     }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(isCompleting || model.isLoading)
-
-                    Text(
-                        "Телефон, пароль и код вводятся только на странице VK."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 }
-                .padding()
-                .background(.ultraThinMaterial)
+
+                browserBar
             }
+            .background(Color(uiColor: .systemBackground))
+            .navigationTitle("Вход в VK")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") {
+                    Button {
                         Task {
                             await model.clearWebData()
                             dismiss()
                         }
+                    } label: {
+                        Image(systemName: "xmark")
                     }
+                    .accessibilityLabel("Закрыть")
                 }
             }
         }
+        .presentationDetents([.large])
         .interactiveDismissDisabled(isCompleting)
+        .onChange(of: model.sessionRevision) { _ in
+            guard model.sessionRevision > 0, !isCompleting else { return }
+            Task { await completeLogin(automatic: true) }
+        }
         .alert(
-            "Не удалось войти",
+            "Не удалось завершить вход",
             isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
@@ -79,8 +84,99 @@ struct VKWebLoginView: View {
         }
     }
 
+    private var securityBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "lock.shield.fill")
+                .font(.title3)
+                .foregroundStyle(.green)
+                .frame(width: 34, height: 34)
+                .background(.green.opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(
+                    isCompleting
+                        ? "Подтверждаем вход…"
+                        : "Официальная страница VK"
+                )
+                .font(.subheadline.weight(.semibold))
+                Text(
+                    isCompleting
+                        ? "Обычно это занимает несколько секунд"
+                        : "Private Music не получает пароль и код из SMS"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if isCompleting {
+                ProgressView()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(uiColor: .secondarySystemBackground))
+    }
+
+    private var browserBar: some View {
+        HStack(spacing: 8) {
+            browserButton("chevron.backward", label: "Назад") {
+                model.goBack()
+            }
+            .disabled(!model.canGoBack || isCompleting)
+
+            browserButton("arrow.clockwise", label: "Обновить") {
+                model.reload()
+            }
+            .disabled(isCompleting)
+
+            HStack(spacing: 5) {
+                Image(systemName: "lock.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.green)
+                Text(model.displayHost)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+
+            Button {
+                Task { await completeLogin(automatic: false) }
+            } label: {
+                if isCompleting {
+                    ProgressView()
+                        .frame(width: 32, height: 32)
+                } else {
+                    Image(systemName: "arrow.right")
+                        .font(.headline)
+                        .frame(width: 32, height: 32)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isCompleting || model.isLoading)
+            .accessibilityLabel("Завершить вход")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.bar)
+    }
+
+    private func browserButton(
+        _ image: String,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: image)
+                .frame(width: 32, height: 32)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
     @MainActor
-    private func completeLogin() async {
+    private func completeLogin(automatic: Bool) async {
+        guard !isCompleting else { return }
         isCompleting = true
         defer { isCompleting = false }
         do {
@@ -89,7 +185,9 @@ struct VKWebLoginView: View {
             await model.clearWebData()
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            if !automatic {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -107,10 +205,14 @@ private struct VKWebView: UIViewRepresentable {
 @MainActor
 private final class VKWebLoginModel: NSObject, ObservableObject {
     @Published private(set) var isLoading = true
-    @Published private(set) var title = "Вход через VK"
+    @Published private(set) var loadError: String?
+    @Published private(set) var canGoBack = false
+    @Published private(set) var displayHost = "vk.ru"
+    @Published private(set) var sessionRevision = 0
 
     let webView: WKWebView
     private let authService = VKWebAuthService()
+    private var lastSessionFingerprint: String?
 
     override init() {
         let configuration = WKWebViewConfiguration()
@@ -121,27 +223,26 @@ private final class VKWebLoginModel: NSObject, ObservableObject {
         webView.allowsBackForwardNavigationGestures = true
         super.init()
         webView.navigationDelegate = self
+        webView.uiDelegate = self
+        loadLoginPage()
+    }
 
-        if let url = URL(string: "https://vk.ru/") {
-            webView.load(
-                URLRequest(
-                    url: url,
-                    cachePolicy: .reloadIgnoringLocalCacheData,
-                    timeoutInterval: 30
-                )
-            )
+    func goBack() {
+        guard webView.canGoBack else { return }
+        webView.goBack()
+    }
+
+    func reload() {
+        loadError = nil
+        if webView.url == nil {
+            loadLoginPage()
+        } else {
+            webView.reload()
         }
     }
 
     func exchangeSession() async throws -> VKWebAuthResult {
-        let cookies = await allCookies()
-        let vkCookies = cookies
-            .filter { cookie in
-                let domain = cookie.domain.lowercased()
-                return domain == "vk.ru"
-                    || domain.hasSuffix(".vk.ru")
-            }
-            .sorted { $0.name < $1.name }
+        let vkCookies = await sessionCookies()
         guard !vkCookies.isEmpty else {
             throw VKWebAuthError.noSession
         }
@@ -183,6 +284,56 @@ private final class VKWebLoginModel: NSObject, ObservableObject {
         }
     }
 
+    private func loadLoginPage() {
+        guard let url = URL(string: "https://vk.ru/login") else { return }
+        webView.load(
+            URLRequest(
+                url: url,
+                cachePolicy: .reloadIgnoringLocalCacheData,
+                timeoutInterval: 30
+            )
+        )
+    }
+
+    private func setLoadError(_ error: Error) {
+        if let urlError = error as? URLError,
+           urlError.code == .cancelled {
+            return
+        }
+        isLoading = false
+        loadError = error.localizedDescription
+    }
+
+    private func inspectSession() async {
+        let cookies = await sessionCookies()
+        let likelySessionNames = [
+            "remixsid",
+            "remixsid6",
+            "remixnsid"
+        ]
+        let authenticated = cookies.contains {
+            likelySessionNames.contains($0.name.lowercased())
+                && !$0.value.isEmpty
+        }
+        guard authenticated else { return }
+        let fingerprint = cookies
+            .map { "\($0.name)=\($0.value)" }
+            .joined(separator: ";")
+        guard fingerprint != lastSessionFingerprint else { return }
+        lastSessionFingerprint = fingerprint
+        sessionRevision += 1
+    }
+
+    private func sessionCookies() async -> [HTTPCookie] {
+        await allCookies()
+            .filter { cookie in
+                let domain = cookie.domain.lowercased()
+                return domain == "vk.ru"
+                    || domain.hasSuffix(".vk.ru")
+            }
+            .sorted { $0.name < $1.name }
+    }
+
     private func allCookies() async -> [HTTPCookie] {
         await withCheckedContinuation { continuation in
             webView.configuration.websiteDataStore.httpCookieStore
@@ -201,6 +352,13 @@ private final class VKWebLoginModel: NSObject, ObservableObject {
         }
         return userAgent
     }
+
+    private static func isAllowedVKHost(_ host: String) -> Bool {
+        host == "vk.ru"
+            || host.hasSuffix(".vk.ru")
+            || host == "vk.com"
+            || host.hasSuffix(".vk.com")
+    }
 }
 
 extension VKWebLoginModel: WKNavigationDelegate {
@@ -209,6 +367,7 @@ extension VKWebLoginModel: WKNavigationDelegate {
         didStartProvisionalNavigation navigation: WKNavigation?
     ) {
         isLoading = true
+        loadError = nil
     }
 
     func webView(
@@ -216,9 +375,9 @@ extension VKWebLoginModel: WKNavigationDelegate {
         didFinish navigation: WKNavigation?
     ) {
         isLoading = false
-        title = webView.title?.isEmpty == false
-            ? webView.title ?? "Вход через VK"
-            : "Вход через VK"
+        canGoBack = webView.canGoBack
+        displayHost = webView.url?.host ?? "vk.ru"
+        Task { await inspectSession() }
     }
 
     func webView(
@@ -226,7 +385,7 @@ extension VKWebLoginModel: WKNavigationDelegate {
         didFail navigation: WKNavigation?,
         withError error: Error
     ) {
-        isLoading = false
+        setLoadError(error)
     }
 
     func webView(
@@ -234,7 +393,7 @@ extension VKWebLoginModel: WKNavigationDelegate {
         didFailProvisionalNavigation navigation: WKNavigation?,
         withError error: Error
     ) {
-        isLoading = false
+        setLoadError(error)
     }
 
     func webView(
@@ -251,11 +410,21 @@ extension VKWebLoginModel: WKNavigationDelegate {
         }
         decisionHandler(.allow)
     }
+}
 
-    private static func isAllowedVKHost(_ host: String) -> Bool {
-        host == "vk.ru"
-            || host.hasSuffix(".vk.ru")
-            || host == "vk.com"
-            || host.hasSuffix(".vk.com")
+extension VKWebLoginModel: WKUIDelegate {
+    func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        if navigationAction.targetFrame == nil,
+           let url = navigationAction.request.url,
+           let host = url.host?.lowercased(),
+           Self.isAllowedVKHost(host) {
+            webView.load(navigationAction.request)
+        }
+        return nil
     }
 }
