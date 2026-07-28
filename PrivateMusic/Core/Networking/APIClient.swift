@@ -107,6 +107,10 @@ actor APIClient {
                 }
             } catch let error as APIError {
                 throw error
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as URLError where error.code == .cancelled {
+                throw CancellationError()
             } catch {
                 if attempt < 2 {
                     await retryDelay(attempt: attempt)

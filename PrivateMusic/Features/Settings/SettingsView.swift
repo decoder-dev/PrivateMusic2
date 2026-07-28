@@ -9,12 +9,6 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Оформление") {
-                Picker("Режим", selection: $settings.appearance) {
-                    ForEach(AppearanceMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-
                 themePicker
 
                 Toggle(
@@ -139,6 +133,8 @@ struct SettingsView: View {
                     Button {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             settings.theme = theme
+                            settings.appearance =
+                                theme == .dark ? .dark : .light
                         }
                     } label: {
                         VStack(spacing: 7) {
@@ -155,7 +151,9 @@ struct SettingsView: View {
                                     if settings.theme == theme {
                                         Image(systemName: "checkmark")
                                             .font(.headline)
-                                            .foregroundStyle(.white)
+                                            .foregroundStyle(
+                                                theme.buttonForeground
+                                            )
                                     }
                                 }
                             Text(theme.title)

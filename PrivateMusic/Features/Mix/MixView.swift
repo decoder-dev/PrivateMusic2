@@ -51,10 +51,13 @@ struct MixView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            tracks = try await environment.musicService.recommendations(
+            tracks = try await environment.musicService.mixTracks(
+                .common,
                 accessToken: token
             )
             errorMessage = nil
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
