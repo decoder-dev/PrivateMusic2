@@ -32,7 +32,6 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: PrivateMusic/Resources/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2
-        PRODUCT_NAME: Private Music
     scheme:
       testTargets:
         - PrivateMusicTests

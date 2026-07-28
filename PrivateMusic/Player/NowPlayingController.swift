@@ -11,7 +11,7 @@ final class NowPlayingController {
         elapsedTime: TimeInterval,
         rate: Float
     ) {
-        var info: [String: Any] = [
+        let info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyArtist: track.artist,
             MPMediaItemPropertyPlaybackDuration: track.duration,

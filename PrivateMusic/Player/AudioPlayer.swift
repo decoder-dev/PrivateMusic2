@@ -171,12 +171,15 @@ final class AudioPlayer: ObservableObject {
         ) { [weak self] time in
             Task { @MainActor in
                 guard let self else { return }
-                elapsedTime = max(0, time.seconds.isFinite ? time.seconds : 0)
-                if let seconds = player.currentItem?.duration.seconds,
+                self.elapsedTime = max(
+                    0,
+                    time.seconds.isFinite ? time.seconds : 0
+                )
+                if let seconds = self.player.currentItem?.duration.seconds,
                    seconds.isFinite {
-                    duration = seconds
+                    self.duration = seconds
                 }
-                publishPlaybackState()
+                self.publishPlaybackState()
             }
         }
 
