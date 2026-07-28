@@ -4,6 +4,7 @@ struct ProfileView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @Environment(\.openURL) private var openURL
+    @State private var showingLogoutConfirmation = false
 
     var body: some View {
         ScrollView {
@@ -21,7 +22,7 @@ struct ProfileView: View {
                 linksCard
 
                 Button(role: .destructive) {
-                    sessionStore.logout()
+                    showingLogoutConfirmation = true
                 } label: {
                     Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -46,6 +47,18 @@ struct ProfileView: View {
         }
         .background(ThemeBackground())
         .navigationTitle("Профиль")
+        .confirmationDialog(
+            "Выйти из Private Music?",
+            isPresented: $showingLogoutConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Выйти", role: .destructive) {
+                sessionStore.logout()
+            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Для повторного подключения потребуется вход в VK.")
+        }
     }
 
     private var version: String {

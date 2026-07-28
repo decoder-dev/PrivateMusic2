@@ -264,18 +264,20 @@ struct CatalogView: View {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(.primary.opacity(0.11))
                         .frame(width: section == 0 ? 130 : 190, height: 22)
-                    HStack(spacing: 14) {
-                        ForEach(0..<3, id: \.self) { _ in
-                            VStack(alignment: .leading, spacing: 9) {
-                                RoundedRectangle(cornerRadius: 18)
-                                    .fill(.primary.opacity(0.09))
-                                    .frame(width: 146, height: 146)
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(.primary.opacity(0.09))
-                                    .frame(width: 112, height: 12)
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(.primary.opacity(0.06))
-                                    .frame(width: 78, height: 10)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 14) {
+                            ForEach(0..<3, id: \.self) { _ in
+                                VStack(alignment: .leading, spacing: 9) {
+                                    RoundedRectangle(cornerRadius: 18)
+                                        .fill(.primary.opacity(0.09))
+                                        .frame(width: 146, height: 146)
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(.primary.opacity(0.09))
+                                        .frame(width: 112, height: 12)
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(.primary.opacity(0.06))
+                                        .frame(width: 78, height: 10)
+                                }
                             }
                         }
                     }

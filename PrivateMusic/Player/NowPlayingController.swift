@@ -20,17 +20,21 @@ final class NowPlayingController {
         elapsedTime: TimeInterval,
         rate: Float
     ) {
-        let info: [String: Any] = [
+        var info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyArtist: track.artist,
             MPMediaItemPropertyPlaybackDuration: track.duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsedTime,
             MPNowPlayingInfoPropertyPlaybackRate: rate,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1,
             MPNowPlayingInfoPropertyMediaType:
                 MPNowPlayingInfoMediaType.audio.rawValue,
             MPNowPlayingInfoPropertyExternalContentIdentifier: track.id,
             MPNowPlayingInfoPropertyServiceIdentifier: "Private Music"
         ]
+        if let albumTitle = track.albumTitle, !albumTitle.isEmpty {
+            info[MPMediaItemPropertyAlbumTitle] = albumTitle
+        }
 
         center.nowPlayingInfo = info
         center.playbackState = rate > 0 ? .playing : .paused

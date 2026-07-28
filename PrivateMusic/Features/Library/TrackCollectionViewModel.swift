@@ -61,6 +61,8 @@ final class TrackCollectionViewModel: ObservableObject {
             )
             tracks.removeAll { $0.id == track.id }
             errorMessage = nil
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -40,7 +40,17 @@ final class AudioPlayer: ObservableObject {
     private var itemStatusObservation: NSKeyValueObservation?
     private var defaultContinuationProvider: (() async throws -> [Track])?
     private var activeContinuationProvider: (() async throws -> [Track])?
+    private var streamRefreshProvider: ((Track) async throws -> Track)?
+    private var continuationTask: Task<Void, Never>?
+    private var streamRefreshTask: Task<Void, Never>?
     private var lastPersistedSecond = -1
+    private var playbackGeneration = 0
+    private var continuationGeneration = 0
+    private var streamRefreshGeneration = 0
+    private var requiresStreamRefresh = false
+    private var didAttemptStreamRefresh = false
+    private var audioSessionConfigured = false
+    private var restoredTrackIDs = Set<String>()
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -63,7 +73,7 @@ final class AudioPlayer: ObservableObject {
             rawValue: defaults.string(forKey: "player.repeat") ?? ""
         ) ?? .off
         player.automaticallyWaitsToMinimizeStalling = true
-        configureAudioSession()
+        _ = configureAudioSession()
         configureRemoteCommands()
         observePlayer()
         settings.$equalizerEnabled
@@ -89,6 +99,12 @@ final class AudioPlayer: ObservableObject {
         activeContinuationProvider = provider
     }
 
+    func configureStreamRefresh(
+        _ provider: @escaping (Track) async throws -> Track
+    ) {
+        streamRefreshProvider = provider
+    }
+
     func configureNetwork(userAgent: String?) {
         let cleaned = userAgent?.trimmingCharacters(
             in: .whitespacesAndNewlines
@@ -101,14 +117,23 @@ final class AudioPlayer: ObservableObject {
         in tracks: [Track],
         continuation: (() async throws -> [Track])? = nil
     ) {
+        cancelContinuation()
+        cancelStreamRefresh()
+        requiresStreamRefresh = false
+        didAttemptStreamRefresh = false
+        restoredTrackIDs.removeAll()
         activeContinuationProvider =
             continuation ?? defaultContinuationProvider
+        let prepared = normalizedQueue(selected: track, tracks: tracks)
         if shuffleEnabled {
-            queue = [track] + tracks.filter { $0 != track }.shuffled()
+            queue = [track]
+                + prepared.filter { $0.id != track.id }.shuffled()
             currentIndex = 0
         } else {
-            queue = tracks
-            currentIndex = tracks.firstIndex(of: track) ?? 0
+            queue = prepared
+            currentIndex = prepared.firstIndex {
+                $0.id == track.id
+            } ?? 0
         }
         persistPlayback()
         loadCurrentAndPlay()
@@ -122,6 +147,17 @@ final class AudioPlayer: ObservableObject {
         queue.removeAll { $0.id == track.id }
         queue.insert(track, at: min(currentIndex + 1, queue.count))
         persistPlayback()
+    }
+
+    func jump(to index: Int) {
+        guard queue.indices.contains(index) else { return }
+        cancelContinuation()
+        cancelStreamRefresh()
+        requiresStreamRefresh = false
+        didAttemptStreamRefresh = false
+        currentIndex = index
+        persistPlayback()
+        loadCurrentAndPlay()
     }
 
     func toggleShuffle() {
@@ -171,11 +207,18 @@ final class AudioPlayer: ObservableObject {
     }
 
     func resume() {
+        if requiresStreamRefresh {
+            refreshCurrentStream(autoplay: true)
+            return
+        }
         guard player.currentItem != nil else {
             loadCurrentAndPlay()
             return
         }
-        activateAudioSession()
+        if duration > 0, elapsedTime >= duration - 0.25 {
+            seek(to: 0)
+        }
+        guard activateAudioSession() else { return }
         player.play()
         isPlaying = true
         publishPlaybackState()
@@ -191,9 +234,23 @@ final class AudioPlayer: ObservableObject {
         guard let currentIndex, !queue.isEmpty else { return }
         let nextIndex = queue.index(after: currentIndex)
         if nextIndex >= queue.endIndex, repeatMode == .off {
-            Task { await continueQueueIfPossible() }
+            guard continuationTask == nil else { return }
+            continuationGeneration += 1
+            let generation = continuationGeneration
+            continuationTask = Task { [weak self] in
+                await self?.continueQueueIfPossible()
+                guard let self,
+                      generation == self.continuationGeneration else {
+                    return
+                }
+                self.continuationTask = nil
+            }
             return
         }
+        cancelContinuation()
+        cancelStreamRefresh()
+        requiresStreamRefresh = false
+        didAttemptStreamRefresh = false
         self.currentIndex = nextIndex < queue.endIndex ? nextIndex : 0
         persistPlayback()
         loadCurrentAndPlay()
@@ -205,20 +262,36 @@ final class AudioPlayer: ObservableObject {
             return
         }
         guard let currentIndex, !queue.isEmpty else { return }
-        self.currentIndex = currentIndex > 0 ? currentIndex - 1 : queue.count - 1
+        cancelContinuation()
+        cancelStreamRefresh()
+        requiresStreamRefresh = false
+        didAttemptStreamRefresh = false
+        if currentIndex > 0 {
+            self.currentIndex = currentIndex - 1
+        } else {
+            self.currentIndex = repeatMode == .all ? queue.count - 1 : 0
+        }
         persistPlayback()
         loadCurrentAndPlay()
     }
 
     func seek(to seconds: TimeInterval) {
-        let target = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
+        let upperBound = duration > 0 ? duration : seconds
+        let targetSeconds = min(max(0, seconds), upperBound)
+        let target = CMTime(
+            seconds: targetSeconds,
+            preferredTimescale: 600
+        )
         player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
-        elapsedTime = seconds
+        elapsedTime = targetSeconds
         persistPlayback()
         publishPlaybackState()
     }
 
     func stop() {
+        playbackGeneration += 1
+        cancelContinuation()
+        cancelStreamRefresh()
         player.pause()
         player.replaceCurrentItem(with: nil)
         itemStatusObservation?.invalidate()
@@ -229,6 +302,9 @@ final class AudioPlayer: ObservableObject {
         duration = 0
         isPlaying = false
         isBuffering = false
+        requiresStreamRefresh = false
+        didAttemptStreamRefresh = false
+        restoredTrackIDs.removeAll()
         nowPlaying.clear()
         defaults.removeObject(forKey: PlaybackSnapshot.key)
         try? AVAudioSession.sharedInstance().setActive(
@@ -238,6 +314,13 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func loadCurrentAndPlay() {
+        if let track = currentTrack,
+           restoredTrackIDs.contains(track.id) {
+            requiresStreamRefresh = true
+            didAttemptStreamRefresh = false
+            refreshCurrentStream(autoplay: true)
+            return
+        }
         loadCurrent(autoplay: true, startAt: 0)
     }
 
@@ -252,7 +335,10 @@ final class AudioPlayer: ObservableObject {
             nowPlaying.update(track: track, elapsedTime: 0, rate: 0)
             return
         }
+        errorMessage = nil
 
+        playbackGeneration += 1
+        let generation = playbackGeneration
         var headers = [
             "Referer": "https://vk.com/",
             "Origin": "https://vk.com"
@@ -271,7 +357,11 @@ final class AudioPlayer: ObservableObject {
             options: [.initial, .new]
         ) { [weak self] item, _ in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self,
+                      generation == self.playbackGeneration,
+                      self.player.currentItem === item else {
+                    return
+                }
                 switch item.status {
                 case .readyToPlay:
                     self.isBuffering = false
@@ -281,10 +371,7 @@ final class AudioPlayer: ObservableObject {
                 case .failed:
                     self.isPlaying = false
                     self.isBuffering = false
-                    self.errorMessage = item.error?.localizedDescription
-                        ?? "VK не вернул рабочий аудиопоток."
-                    Haptics.error()
-                    self.publishPlaybackState()
+                    self.handleItemFailure(item.error)
                 case .unknown:
                     self.isBuffering = true
                 @unknown default:
@@ -303,8 +390,8 @@ final class AudioPlayer: ObservableObject {
         player.replaceCurrentItem(with: item)
         elapsedTime = position
         duration = track.duration
-        if autoplay {
-            activateAudioSession()
+        let shouldAutoplay = autoplay && activateAudioSession()
+        if shouldAutoplay {
             player.play()
             isPlaying = true
             isBuffering = true
@@ -316,12 +403,13 @@ final class AudioPlayer: ObservableObject {
         nowPlaying.update(
             track: track,
             elapsedTime: position,
-            rate: autoplay ? 1 : 0
+            rate: shouldAutoplay ? 1 : 0
         )
         persistPlayback()
     }
 
-    private func configureAudioSession() {
+    @discardableResult
+    private func configureAudioSession() -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(
@@ -329,16 +417,28 @@ final class AudioPlayer: ObservableObject {
                 mode: .default,
                 options: []
             )
+            audioSessionConfigured = true
+            return true
         } catch {
-            errorMessage = "Не удалось настроить фоновое аудио: \(error.localizedDescription)"
+            audioSessionConfigured = false
+            return false
         }
     }
 
-    private func activateAudioSession() {
+    private func activateAudioSession() -> Bool {
+        guard audioSessionConfigured || configureAudioSession() else {
+            errorMessage =
+                "Не удалось подготовить фоновое воспроизведение."
+            return false
+        }
         do {
             try AVAudioSession.sharedInstance().setActive(true, options: [])
+            return true
         } catch {
-            errorMessage = "Не удалось включить звук: \(error.localizedDescription)"
+            errorMessage =
+                "Не удалось включить звук. Закройте другое аудиоприложение "
+                + "и повторите попытку."
+            return false
         }
     }
 
@@ -417,8 +517,15 @@ final class AudioPlayer: ObservableObject {
             forName: .AVPlayerItemDidPlayToEndTime,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.advanceAfterCompletion() }
+        ) { [weak self] notification in
+            Task { @MainActor in
+                guard let self,
+                      let finishedItem = notification.object as? AVPlayerItem,
+                      finishedItem === self.player.currentItem else {
+                    return
+                }
+                self.advanceAfterCompletion()
+            }
         })
         notificationObservers.append(center.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime,
@@ -429,9 +536,14 @@ final class AudioPlayer: ObservableObject {
                 AVPlayerItemFailedToPlayToEndTimeErrorKey
             ] as? Error
             Task { @MainActor in
-                self?.isPlaying = false
-                self?.errorMessage = error?.localizedDescription
-                    ?? "Не удалось воспроизвести аудиопоток."
+                guard let self,
+                      let failedItem = notification.object as? AVPlayerItem,
+                      failedItem === self.player.currentItem else {
+                    return
+                }
+                self.isPlaying = false
+                self.isBuffering = false
+                self.handleItemFailure(error)
             }
         })
         notificationObservers.append(center.addObserver(
@@ -441,6 +553,15 @@ final class AudioPlayer: ObservableObject {
         ) { [weak self] notification in
             Task { @MainActor in
                 self?.handleInterruption(notification)
+            }
+        })
+        notificationObservers.append(center.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleRouteChange(notification)
             }
         })
     }
@@ -471,6 +592,17 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
+    private func handleRouteChange(_ notification: Notification) {
+        guard let rawReason = notification.userInfo?[
+            AVAudioSessionRouteChangeReasonKey
+        ] as? UInt,
+              AVAudioSession.RouteChangeReason(rawValue: rawReason)
+                == .oldDeviceUnavailable else {
+            return
+        }
+        pause()
+    }
+
     private func advanceAfterCompletion() {
         if repeatMode == .one {
             seek(to: 0)
@@ -487,20 +619,99 @@ final class AudioPlayer: ObservableObject {
         )
     }
 
+    private func handleItemFailure(_ error: Error?) {
+        publishPlaybackState()
+        if !didAttemptStreamRefresh, streamRefreshProvider != nil {
+            refreshCurrentStream(autoplay: true)
+            return
+        }
+        let urlError = error as? URLError
+        errorMessage = urlError?.code == .cancelled
+            ? "Аудиопоток был прерван. Повторите воспроизведение."
+            : "Не удалось воспроизвести этот трек. "
+                + "Проверьте подключение и попробуйте ещё раз."
+        Haptics.error()
+    }
+
+    private func refreshCurrentStream(autoplay: Bool) {
+        guard streamRefreshTask == nil,
+              let provider = streamRefreshProvider,
+              let index = currentIndex,
+              queue.indices.contains(index) else {
+            return
+        }
+        let track = queue[index]
+        let position = elapsedTime
+        didAttemptStreamRefresh = true
+        isBuffering = true
+        streamRefreshGeneration += 1
+        let generation = streamRefreshGeneration
+        streamRefreshTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let refreshed = try await provider(track)
+                guard !Task.isCancelled,
+                      generation == self.streamRefreshGeneration,
+                      self.currentIndex == index,
+                      self.currentTrack?.id == track.id else {
+                    return
+                }
+                self.queue[index] = refreshed
+                self.restoredTrackIDs.remove(track.id)
+                self.requiresStreamRefresh = false
+                self.streamRefreshTask = nil
+                self.loadCurrent(
+                    autoplay: autoplay,
+                    startAt: position
+                )
+            } catch is CancellationError {
+                guard generation == self.streamRefreshGeneration else {
+                    return
+                }
+                self.streamRefreshTask = nil
+                self.isBuffering = false
+            } catch {
+                guard generation == self.streamRefreshGeneration else {
+                    return
+                }
+                self.streamRefreshTask = nil
+                self.isBuffering = false
+                self.isPlaying = false
+                self.errorMessage =
+                    "Не удалось обновить ссылку на аудиопоток. "
+                    + "Проверьте сессию VK и подключение."
+                self.publishPlaybackState()
+            }
+        }
+    }
+
+    private func cancelContinuation() {
+        continuationGeneration += 1
+        continuationTask?.cancel()
+        continuationTask = nil
+    }
+
+    private func cancelStreamRefresh() {
+        streamRefreshGeneration += 1
+        streamRefreshTask?.cancel()
+        streamRefreshTask = nil
+    }
+
     private func continueQueueIfPossible() async {
         guard let continuationProvider = activeContinuationProvider else {
             pause()
-            seek(to: 0)
             return
         }
         do {
             let existing = Set(queue.map(\.id))
+            var discovered = Set<String>()
             let additions = try await continuationProvider().filter {
                 !existing.contains($0.id)
+                    && discovered.insert($0.id).inserted
             }
+            guard !Task.isCancelled else { return }
             guard !additions.isEmpty else {
                 pause()
-                seek(to: 0)
                 return
             }
             queue.append(contentsOf: additions)
@@ -516,6 +727,24 @@ final class AudioPlayer: ObservableObject {
             errorMessage = "Не удалось продолжить очередь: "
                 + error.localizedDescription
         }
+    }
+
+    private func normalizedQueue(
+        selected track: Track,
+        tracks: [Track]
+    ) -> [Track] {
+        var seen = Set<String>()
+        var result: [Track] = []
+        for item in tracks {
+            let resolved = item.id == track.id ? track : item
+            if seen.insert(resolved.id).inserted {
+                result.append(resolved)
+            }
+        }
+        if seen.insert(track.id).inserted {
+            result.insert(track, at: 0)
+        }
+        return result
     }
 
     private func persistPlayback() {
@@ -539,10 +768,18 @@ final class AudioPlayer: ObservableObject {
             return
         }
         queue = snapshot.queue
+        restoredTrackIDs = Set(snapshot.queue.map(\.id))
         currentIndex = snapshot.currentIndex
         elapsedTime = max(snapshot.elapsedTime, 0)
         duration = currentTrack?.duration ?? 0
-        loadCurrent(autoplay: false, startAt: elapsedTime)
+        requiresStreamRefresh = true
+        if let track = currentTrack {
+            nowPlaying.update(
+                track: track,
+                elapsedTime: elapsedTime,
+                rate: 0
+            )
+        }
     }
 }
 

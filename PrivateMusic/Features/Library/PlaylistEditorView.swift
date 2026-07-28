@@ -99,6 +99,8 @@ struct PlaylistEditorView: View {
             }
             onSaved()
             dismiss()
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -57,6 +57,7 @@ struct ArtistView: View {
             isLoading = false
             return
         }
+        defer { isLoading = false }
         do {
             let page = try await environment.musicService.search(
                 query: artist,
@@ -68,9 +69,10 @@ struct ArtistView: View {
                 $0.artist.localizedCaseInsensitiveContains(artist)
             }
             errorMessage = nil
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
-        isLoading = false
     }
 }

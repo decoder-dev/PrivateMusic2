@@ -2,32 +2,32 @@ import SwiftUI
 
 struct MainTabView: View {
     private enum Tab: Hashable {
+        case home
         case library
-        case mix
         case search
         case profile
     }
 
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var player: AudioPlayer
-    @State private var selectedTab: Tab = .library
+    @State private var selectedTab: Tab = .home
 
     var body: some View {
         TabView(selection: $selectedTab) {
+            NavigationStack {
+                CatalogView()
+            }
+            .tag(Tab.home)
+            .tabItem {
+                Label("Главная", systemImage: "house.fill")
+            }
+
             NavigationStack {
                 LibraryView()
             }
             .tag(Tab.library)
             .tabItem {
-                Label("Моя музыка", systemImage: "music.note.list")
-            }
-
-            NavigationStack {
-                MixView()
-            }
-            .tag(Tab.mix)
-            .tabItem {
-                Label("Микс", systemImage: "sparkles")
+                Label("Медиатека", systemImage: "music.note.list")
             }
 
             NavigationStack {
@@ -46,11 +46,10 @@ struct MainTabView: View {
                 Label("Профиль", systemImage: "person.crop.circle")
             }
         }
-        .overlay(alignment: .bottom) {
+        .safeAreaInset(edge: .bottom, spacing: 6) {
             if player.currentTrack != nil {
                 MiniPlayerView()
                     .padding(.horizontal, 12)
-                    .padding(.bottom, 54)
             }
         }
         .toolbarBackground(.visible, for: .tabBar)

@@ -122,6 +122,7 @@ struct LyricsView: View {
             isLoading = false
             return
         }
+        defer { isLoading = false }
         do {
             lyrics = try await environment.musicService.lyrics(
                 for: track,
@@ -132,6 +133,5 @@ struct LyricsView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
-        isLoading = false
     }
 }

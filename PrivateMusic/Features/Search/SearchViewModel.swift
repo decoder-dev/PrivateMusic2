@@ -9,6 +9,7 @@ final class SearchViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private var searchTask: Task<Void, Never>?
+    private var searchRevision = 0
     private let defaults: UserDefaults
     private let historyKey = "search.recent.queries.v1"
 
@@ -36,10 +37,13 @@ final class SearchViewModel: ObservableObject {
         accessToken: String
     ) {
         searchTask?.cancel()
+        searchRevision += 1
+        let revision = searchRevision
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalized.count >= 2 else {
             tracks = []
             errorMessage = nil
+            isLoading = false
             return
         }
 
@@ -48,6 +52,7 @@ final class SearchViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
             await search(
                 normalized,
+                revision: revision,
                 service: service,
                 accessToken: accessToken
             )
@@ -56,18 +61,28 @@ final class SearchViewModel: ObservableObject {
 
     private func search(
         _ query: String,
+        revision: Int,
         service: any MusicService,
         accessToken: String
     ) async {
+        guard revision == searchRevision else { return }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if revision == searchRevision {
+                isLoading = false
+            }
+        }
         do {
-            tracks = try await service.search(
+            let results = try await service.search(
                 query: query,
                 accessToken: accessToken,
                 offset: 0,
                 count: 100
             ).items
+            guard revision == searchRevision, !Task.isCancelled else {
+                return
+            }
+            tracks = results
             if !tracks.isEmpty {
                 record(query)
             }
@@ -75,6 +90,9 @@ final class SearchViewModel: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
+            guard revision == searchRevision, !Task.isCancelled else {
+                return
+            }
             errorMessage = error.localizedDescription
         }
     }
@@ -113,6 +131,8 @@ final class SearchViewModel: ObservableObject {
                 accessToken: accessToken
             )
             errorMessage = nil
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

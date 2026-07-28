@@ -16,6 +16,7 @@ struct PlayerView: View {
     @State private var shareFileURL: URL?
     @State private var isPreparingShare = false
     @State private var isInLibrary = false
+    @State private var isAddingToLibrary = false
     private let shareService = TrackShareService()
 
     var body: some View {
@@ -77,6 +78,10 @@ struct PlayerView: View {
             if let shareFileURL {
                 TrackShareSheet(fileURL: shareFileURL)
             }
+        }
+        .onChange(of: player.currentTrack?.id) { _ in
+            isInLibrary = false
+            isAddingToLibrary = false
         }
     }
 
@@ -212,6 +217,7 @@ struct PlayerView: View {
                     systemImage: isInLibrary ? "heart.fill" : "heart"
                 )
             }
+            .disabled(isInLibrary || isAddingToLibrary)
             Button { showingArtist = true } label: {
                 Label("Исполнитель", systemImage: "person.wave.2")
             }
@@ -394,15 +400,23 @@ struct PlayerView: View {
     }
 
     private func addToLibrary(_ track: Track) {
-        guard let token = sessionStore.accessToken else { return }
+        guard !isAddingToLibrary,
+              let token = sessionStore.accessToken else {
+            return
+        }
+        isAddingToLibrary = true
         Task {
+            defer { isAddingToLibrary = false }
             do {
                 try await environment.musicService.addToLibrary(
                     track,
                     accessToken: token
                 )
+                guard player.currentTrack?.id == track.id else { return }
                 isInLibrary = true
                 Haptics.selection()
+            } catch is CancellationError {
+                return
             } catch {
                 player.errorMessage = "Не удалось добавить трек: "
                     + error.localizedDescription
