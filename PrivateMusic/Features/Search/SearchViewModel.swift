@@ -43,7 +43,24 @@ final class SearchViewModel: ObservableObject {
             tracks = try await service.search(
                 query: query,
                 accessToken: accessToken,
-                offset: 0
+                offset: 0,
+                count: 100
+            ).items
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func add(
+        _ track: Track,
+        service: any MusicService,
+        accessToken: String
+    ) async {
+        do {
+            try await service.addToLibrary(
+                track,
+                accessToken: accessToken
             )
             errorMessage = nil
         } catch {
@@ -51,4 +68,3 @@ final class SearchViewModel: ObservableObject {
         }
     }
 }
-
