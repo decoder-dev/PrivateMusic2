@@ -74,12 +74,12 @@ actor TrackShareService {
             return sourceExtension
         }
         switch response.mimeType?.lowercased() {
-        case "audio/mpeg": "mp3"
-        case "audio/mp4", "audio/x-m4a": "m4a"
-        case "audio/aac": "aac"
-        case "audio/wav", "audio/x-wav": "wav"
-        case "audio/flac": "flac"
-        default: "m4a"
+        case "audio/mpeg": return "mp3"
+        case "audio/mp4", "audio/x-m4a": return "m4a"
+        case "audio/aac": return "aac"
+        case "audio/wav", "audio/x-wav": return "wav"
+        case "audio/flac": return "flac"
+        default: return "m4a"
         }
     }
 
