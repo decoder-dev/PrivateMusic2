@@ -23,13 +23,26 @@ final class SessionStore: ObservableObject {
         session?.accessToken
     }
 
-    func connect(accessToken: String, profile: UserProfile) throws {
+    var userAgent: String? {
+        session?.userAgent
+    }
+
+    func connect(
+        accessToken: String,
+        userAgent: String?,
+        profile: UserProfile
+    ) throws {
         let cleaned = accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard cleaned.count >= 16 else {
             throw APIError.unauthorized
         }
+        let cleanedUserAgent = userAgent?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let value = Session(
             accessToken: cleaned,
+            userAgent: cleanedUserAgent?.isEmpty == false
+                ? cleanedUserAgent
+                : nil,
             userID: profile.id,
             expiresAt: nil
         )

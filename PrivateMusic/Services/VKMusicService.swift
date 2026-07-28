@@ -9,6 +9,10 @@ struct VKMusicService: MusicService {
         self.apiVersion = apiVersion
     }
 
+    func configure(userAgent: String?) async {
+        await client.setUserAgent(userAgent)
+    }
+
     func profile(accessToken: String) async throws -> UserProfile {
         let envelope: VKResponse<[UserProfile]> = try await client.post(
             path: "/method/users.get",

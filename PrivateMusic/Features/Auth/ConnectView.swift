@@ -5,6 +5,7 @@ struct ConnectView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var settings: AppSettings
     @State private var token = ""
+    @State private var userAgent = ""
     @State private var isConnecting = false
     @State private var errorMessage: String?
 
@@ -43,6 +44,17 @@ struct ConnectView: View {
                                 in: RoundedRectangle(cornerRadius: 14)
                             )
 
+                        TextField(
+                            "User-Agent из VKpyMusic",
+                            text: $userAgent
+                        )
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .padding()
+                        .adaptiveGlass(
+                            in: RoundedRectangle(cornerRadius: 14)
+                        )
+
                         Button {
                             Task { await connect() }
                         } label: {
@@ -62,14 +74,19 @@ struct ConnectView: View {
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(PrimaryButtonStyle())
-                        .disabled(isConnecting || token.count < 16)
+                        .disabled(
+                            isConnecting
+                                || token.count < 16
+                                || userAgent.count < 12
+                        )
                     }
                     .padding(.horizontal, 24)
 
                     Text(
-                        "Токен проверяется запросом к VK и хранится только "
-                        + "в системном Keychain. Пароль и коды подтверждения "
-                        + "Private Music не запрашивает."
+                        "Вставьте token_for_audio и user_agent, полученные "
+                        + "локальным помощником VKpyMusic. Оба значения "
+                        + "проверяются и хранятся только в Keychain. Пароль "
+                        + "и код подтверждения в приложение не передаются."
                     )
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -94,21 +111,29 @@ struct ConnectView: View {
     @MainActor
     private func connect() async {
         let cleaned = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard cleaned.count >= 16 else {
+        let cleanedUserAgent = userAgent.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard cleaned.count >= 16, cleanedUserAgent.count >= 12 else {
             errorMessage = APIError.unauthorized.localizedDescription
             return
         }
         isConnecting = true
         defer { isConnecting = false }
         do {
+            await environment.musicService.configure(
+                userAgent: cleanedUserAgent
+            )
             let profile = try await environment.musicService.profile(
                 accessToken: cleaned
             )
             try sessionStore.connect(
                 accessToken: cleaned,
+                userAgent: cleanedUserAgent,
                 profile: profile
             )
             token = ""
+            userAgent = ""
         } catch {
             errorMessage = error.localizedDescription
         }

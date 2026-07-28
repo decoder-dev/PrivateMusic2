@@ -5,3 +5,6 @@ build/
 *.xcodeproj/xcuserdata/
 Config/Secrets.xcconfig
 job-*.log
+.vkpymusic-venv/
+config_vk.ini
+logs/

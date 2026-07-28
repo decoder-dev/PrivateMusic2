@@ -57,6 +57,7 @@ for required_symbol in (
     "MTAudioProcessingTapCreate",
     "glassEffect",
     "decoder-dev",
+    "userAgent",
 ):
     if required_symbol not in all_source:
         fail(f"missing security/player symbol: {required_symbol}")
@@ -68,6 +69,20 @@ configure_audio_session = audio_player_source.split(
 )[1].split("private func activateAudioSession()", 1)[0]
 if "setActive(true)" in configure_audio_session:
     fail("audio session must be activated only when playback starts")
+
+helper_path = ROOT / "scripts" / "vkpymusic_login.py"
+helper_source = helper_path.read_text(encoding="utf-8")
+for required_helper_text in (
+    "getpass.getpass",
+    "logging.NullHandler",
+    "TokenReceiver",
+    "token_for_audio",
+    "receiver.client.user_agent",
+):
+    if required_helper_text not in helper_source:
+        fail(f"VKpyMusic helper is missing: {required_helper_text}")
+if "save_to_config" in helper_source:
+    fail("VKpyMusic helper must not persist credentials or session files")
 
 for contents in (SOURCE / "Resources" / "Assets.xcassets").rglob("Contents.json"):
     try:
