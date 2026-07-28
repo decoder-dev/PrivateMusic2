@@ -120,10 +120,10 @@ struct VKMusicService: MusicService {
         if let accessKey = track.accessKey {
             parameters["access_key"] = accessKey
         }
-        let _: VKResponse<Int> = try await client.post(
+        let _: VKResponse<VKIgnored> = try await client.post(
             path: "/method/audio.add",
             form: common(accessToken).merging(parameters) { _, new in new },
-            responseType: VKResponse<Int>.self
+            responseType: VKResponse<VKIgnored>.self
         )
     }
 
@@ -131,13 +131,120 @@ struct VKMusicService: MusicService {
         _ track: Track,
         accessToken: String
     ) async throws {
-        let _: VKResponse<Int> = try await client.post(
+        let _: VKResponse<VKIgnored> = try await client.post(
             path: "/method/audio.delete",
             form: common(accessToken).merging([
                 "audio_id": String(track.trackID),
                 "owner_id": String(track.ownerID)
             ]) { _, new in new },
-            responseType: VKResponse<Int>.self
+            responseType: VKResponse<VKIgnored>.self
+        )
+    }
+
+    func lyrics(
+        for track: Track,
+        accessToken: String
+    ) async throws -> Lyrics {
+        guard let lyricsID = track.lyricsID else {
+            throw APIError.server(
+                code: 404,
+                message: "Для этого трека текст не опубликован."
+            )
+        }
+        let envelope: VKResponse<VKLyrics> = try await client.post(
+            path: "/method/audio.getLyrics",
+            form: common(accessToken).merging([
+                "lyrics_id": String(lyricsID)
+            ]) { _, new in new },
+            responseType: VKResponse<VKLyrics>.self
+        )
+        let text = envelope.response.text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            throw APIError.invalidResponse
+        }
+        return Lyrics(text: text, source: "VK")
+    }
+
+    func createPlaylist(
+        title: String,
+        description: String,
+        ownerID: Int,
+        accessToken: String
+    ) async throws -> Playlist {
+        let envelope: VKResponse<Playlist> = try await client.post(
+            path: "/method/audio.createPlaylist",
+            form: common(accessToken).merging([
+                "owner_id": String(ownerID),
+                "title": title,
+                "description": description
+            ]) { _, new in new },
+            responseType: VKResponse<Playlist>.self
+        )
+        return envelope.response
+    }
+
+    func editPlaylist(
+        _ playlist: Playlist,
+        title: String,
+        description: String,
+        accessToken: String
+    ) async throws {
+        let _: VKResponse<VKIgnored> = try await client.post(
+            path: "/method/audio.editPlaylist",
+            form: common(accessToken).merging([
+                "owner_id": String(playlist.ownerID),
+                "playlist_id": String(playlist.id),
+                "title": title,
+                "description": description
+            ]) { _, new in new },
+            responseType: VKResponse<VKIgnored>.self
+        )
+    }
+
+    func deletePlaylist(
+        _ playlist: Playlist,
+        accessToken: String
+    ) async throws {
+        let _: VKResponse<VKIgnored> = try await client.post(
+            path: "/method/audio.deletePlaylist",
+            form: common(accessToken).merging([
+                "owner_id": String(playlist.ownerID),
+                "playlist_id": String(playlist.id)
+            ]) { _, new in new },
+            responseType: VKResponse<VKIgnored>.self
+        )
+    }
+
+    func add(
+        _ track: Track,
+        to playlist: Playlist,
+        accessToken: String
+    ) async throws {
+        let _: VKResponse<VKIgnored> = try await client.post(
+            path: "/method/audio.addToPlaylist",
+            form: common(accessToken).merging([
+                "owner_id": String(playlist.ownerID),
+                "playlist_id": String(playlist.id),
+                "audio_ids": track.id
+            ]) { _, new in new },
+            responseType: VKResponse<VKIgnored>.self
+        )
+    }
+
+    func remove(
+        _ track: Track,
+        from playlist: Playlist,
+        accessToken: String
+    ) async throws {
+        let _: VKResponse<VKIgnored> = try await client.post(
+            path: "/method/audio.removeFromPlaylist",
+            form: common(accessToken).merging([
+                "owner_id": String(playlist.ownerID),
+                "playlist_id": String(playlist.id),
+                "audio_ids": track.id
+            ]) { _, new in new },
+            responseType: VKResponse<VKIgnored>.self
         )
     }
 
@@ -166,6 +273,14 @@ struct VKMusicService: MusicService {
             nextOffset: hasNext ? consumed : nil
         )
     }
+}
+
+private struct VKLyrics: Decodable, Sendable {
+    let text: String
+}
+
+private struct VKIgnored: Decodable, Sendable {
+    init(from decoder: Decoder) throws {}
 }
 
 private struct VKResponse<Value: Decodable & Sendable>: Decodable, Sendable {

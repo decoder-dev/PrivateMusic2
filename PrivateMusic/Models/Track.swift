@@ -9,6 +9,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
     let streamURL: URL?
     let artworkURL: URL?
     let accessKey: String?
+    let lyricsID: Int?
 
     var id: String { "\(ownerID)_\(trackID)" }
 
@@ -20,7 +21,8 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         duration: TimeInterval,
         streamURL: URL?,
         artworkURL: URL?,
-        accessKey: String? = nil
+        accessKey: String? = nil,
+        lyricsID: Int? = nil
     ) {
         self.trackID = trackID
         self.ownerID = ownerID
@@ -30,6 +32,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         self.streamURL = streamURL
         self.artworkURL = artworkURL
         self.accessKey = accessKey
+        self.lyricsID = lyricsID
     }
 
     enum CodingKeys: String, CodingKey {
@@ -41,6 +44,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         case url
         case album
         case accessKey = "access_key"
+        case lyricsID = "lyrics_id"
     }
 
     enum AlbumKeys: String, CodingKey {
@@ -65,6 +69,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         let stream = try container.decodeIfPresent(String.self, forKey: .url)
         streamURL = stream.flatMap(URL.secureRemoteURL)
         accessKey = try container.decodeIfPresent(String.self, forKey: .accessKey)
+        lyricsID = try container.decodeIfPresent(Int.self, forKey: .lyricsID)
 
         if let album = try? container.nestedContainer(
             keyedBy: AlbumKeys.self,
@@ -91,6 +96,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         try container.encode(Int(duration), forKey: .duration)
         try container.encodeIfPresent(streamURL?.absoluteString, forKey: .url)
         try container.encodeIfPresent(accessKey, forKey: .accessKey)
+        try container.encodeIfPresent(lyricsID, forKey: .lyricsID)
     }
 }
 

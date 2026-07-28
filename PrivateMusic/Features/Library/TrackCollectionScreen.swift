@@ -46,6 +46,7 @@ struct TrackCollectionScreen: View {
                     }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
         .background(ThemeBackground())
