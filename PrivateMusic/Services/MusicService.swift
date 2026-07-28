@@ -1,6 +1,7 @@
 import Foundation
 
 protocol MusicService: Sendable {
+    func configure(userAgent: String?) async
     func profile(accessToken: String) async throws -> UserProfile
     func library(
         accessToken: String,

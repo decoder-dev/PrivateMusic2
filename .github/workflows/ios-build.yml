@@ -49,11 +49,11 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-2.1.1-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-2.2.0-unsigned.ipa"
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-2.1.1-unsigned
-          path: artifacts/PrivateMusic-2.1.1-unsigned.ipa
+          name: PrivateMusic-2.2.0-unsigned
+          path: artifacts/PrivateMusic-2.2.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
