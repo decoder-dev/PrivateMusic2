@@ -5,20 +5,24 @@ struct RootView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
+    @State private var isRefreshingSession = false
+    @State private var refreshError: String?
 
     var body: some View {
         Group {
             if sessionStore.session == nil {
                 ConnectView()
+            } else if sessionStore.session?.needsRefresh == true {
+                sessionRecoveryView
             } else {
                 MainTabView()
                     .sheet(isPresented: $player.isPlayerPresented) {
                         PlayerView()
                     }
-                    .task {
-                        await loadProfile()
-                    }
             }
+        }
+        .task(id: sessionStore.session?.accessToken) {
+            await maintainSession()
         }
         .tint(settings.theme.accent)
         .background(ThemeBackground())
@@ -47,6 +51,96 @@ struct RootView: View {
         }
     }
 
+    private var sessionRecoveryView: some View {
+        VStack(spacing: 18) {
+            if isRefreshingSession || refreshError == nil {
+                ProgressView()
+                    .controlSize(.large)
+                Text("Обновляем сессию VK…")
+                    .font(.headline)
+                Text("Повторный ввод номера обычно не требуется.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                Image(systemName: "person.crop.circle.badge.exclamationmark")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.orange)
+                Text("Не удалось обновить сессию")
+                    .font(.title3.bold())
+                Text(refreshError ?? "Проверьте подключение к интернету.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 340)
+                Button("Повторить") {
+                    Task { await refreshWebSession() }
+                }
+                .buttonStyle(.borderedProminent)
+                Button("Войти заново", role: .destructive) {
+                    sessionStore.logout()
+                }
+            }
+        }
+        .padding(30)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(ThemeBackground())
+    }
+
+    private func maintainSession() async {
+        guard let session = sessionStore.session else { return }
+        if session.needsRefresh {
+            await refreshWebSession()
+            return
+        }
+        await loadProfile()
+
+        guard let expiresAt = session.expiresAt,
+              session.canRefresh else {
+            return
+        }
+        let delay = max(
+            expiresAt.timeIntervalSinceNow - 90,
+            1
+        )
+        try? await Task.sleep(for: .seconds(delay))
+        guard !Task.isCancelled else { return }
+        await refreshWebSession()
+    }
+
+    @MainActor
+    private func refreshWebSession() async {
+        guard let session = sessionStore.session,
+              let cookie = session.refreshCookie,
+              let webUserAgent = session.webUserAgent else {
+            refreshError = "Эта сессия создана старой версией приложения. "
+                + "Войдите заново один раз — следующие обновления будут "
+                + "проходить автоматически."
+            return
+        }
+
+        isRefreshingSession = true
+        refreshError = nil
+        defer { isRefreshingSession = false }
+        do {
+            let result = try await environment.webAuthService.exchange(
+                cookieHeader: cookie,
+                webUserAgent: webUserAgent
+            )
+            await environment.musicService.configure(
+                userAgent: result.apiUserAgent
+            )
+            environment.player.configureNetwork(
+                userAgent: result.apiUserAgent
+            )
+            let profile = try await environment.musicService.profile(
+                accessToken: result.accessToken
+            )
+            try sessionStore.updateWebSession(result, profile: profile)
+        } catch {
+            refreshError = error.localizedDescription
+        }
+    }
+
     private func loadProfile() async {
         guard sessionStore.profile == nil,
               let token = sessionStore.accessToken else {
@@ -60,7 +154,11 @@ struct RootView: View {
         } catch {
             if let apiError = error as? APIError,
                apiError == .unauthorized {
-                sessionStore.logout()
+                if sessionStore.session?.canRefresh == true {
+                    await refreshWebSession()
+                } else {
+                    sessionStore.logout()
+                }
             } else {
                 sessionStore.errorMessage = error.localizedDescription
             }

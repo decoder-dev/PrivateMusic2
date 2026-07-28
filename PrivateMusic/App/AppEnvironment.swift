@@ -7,6 +7,7 @@ final class AppEnvironment: ObservableObject {
     let sessionStore: SessionStore
     let player: AudioPlayer
     let musicService: any MusicService
+    let webAuthService: VKWebAuthService
 
     init(
         configuration: AppConfiguration = .current,
@@ -19,6 +20,7 @@ final class AppEnvironment: ObservableObject {
             settings: settings,
             userAgent: sessionStore.userAgent
         )
+        self.webAuthService = VKWebAuthService()
 
         let client = APIClient(
             baseURL: configuration.vkAPIBaseURL,

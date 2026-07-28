@@ -58,7 +58,7 @@ struct ConnectView: View {
 
             VStack(spacing: 5) {
                 Text("Private Music")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .font(.system(size: 34, weight: .bold))
                 Text("Вся ваша музыка VK в одном плеере")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -130,7 +130,8 @@ struct ConnectView: View {
                 .foregroundStyle(.green)
             Text(
                 "Private Music не читает поля формы входа, не сохраняет "
-                    + "cookies и не отправляет данные авторизации на свой сервер."
+                    + "пароль и не отправляет данные авторизации на свой сервер. "
+                    + "Сессия хранится только в системном Keychain."
             )
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -237,10 +238,8 @@ struct ConnectView: View {
             let profile = try await environment.musicService.profile(
                 accessToken: result.accessToken
             )
-            try sessionStore.connect(
-                accessToken: result.accessToken,
-                userAgent: result.apiUserAgent,
-                expiresAt: result.expiresAt,
+            try sessionStore.updateWebSession(
+                result,
                 profile: profile
             )
         } catch {

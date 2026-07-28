@@ -53,11 +53,11 @@ struct MainTabView: View {
                 Label("Профиль", systemImage: "person.crop.circle")
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .overlay(alignment: .bottom) {
             if player.currentTrack != nil, selectedTab != .player {
                 MiniPlayerView()
                     .padding(.horizontal, 12)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, 54)
             }
         }
         .toolbarBackground(.visible, for: .tabBar)

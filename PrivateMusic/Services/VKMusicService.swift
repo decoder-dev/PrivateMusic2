@@ -40,15 +40,19 @@ struct VKMusicService: MusicService {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Track> {
+        let userID = await context.userID
+        var parameters = [
+            "count": String(count),
+            "offset": String(offset)
+        ]
+        if let userID {
+            parameters["owner_id"] = String(userID)
+        }
         let envelope: VKResponse<VKItems<Track>> = try await client.post(
             path: "/method/audio.get",
-            form: common(accessToken).merging([
-                "count": String(count),
-                "offset": String(offset)
-            ]) { _, new in new },
+            form: common(accessToken).merging(parameters) { _, new in new },
             responseType: VKResponse<VKItems<Track>>.self
         )
-        let userID = await context.userID
         let resolved = VKItems(
             count: envelope.response.count,
             items: envelope.response.items.map {
@@ -60,15 +64,19 @@ struct VKMusicService: MusicService {
 
     func recommendations(accessToken: String) async throws -> [Track] {
         do {
+            let userID = await context.userID
+            var parameters = [
+                "count": "100",
+                "shuffle": "1"
+            ]
+            if let userID {
+                parameters["user_id"] = String(userID)
+            }
             let envelope: VKResponse<VKItems<Track>> = try await client.post(
                 path: "/method/audio.getRecommendations",
-                form: common(accessToken).merging([
-                    "count": "100",
-                    "shuffle": "1"
-                ]) { _, new in new },
+                form: common(accessToken).merging(parameters) { _, new in new },
                 responseType: VKResponse<VKItems<Track>>.self
             )
-            let userID = await context.userID
             let tracks = envelope.response.items.map {
                 $0.resolvingStreamURL(userID: userID)
             }
@@ -121,12 +129,17 @@ struct VKMusicService: MusicService {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Playlist> {
+        let userID = await context.userID
+        var parameters = [
+            "count": String(count),
+            "offset": String(offset)
+        ]
+        if let userID {
+            parameters["owner_id"] = String(userID)
+        }
         let envelope: VKResponse<VKItems<Playlist>> = try await client.post(
             path: "/method/audio.getPlaylists",
-            form: common(accessToken).merging([
-                "count": String(count),
-                "offset": String(offset)
-            ]) { _, new in new },
+            form: common(accessToken).merging(parameters) { _, new in new },
             responseType: VKResponse<VKItems<Playlist>>.self
         )
         return page(envelope.response, offset: offset, requested: count)

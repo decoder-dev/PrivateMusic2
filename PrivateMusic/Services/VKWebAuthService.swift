@@ -5,6 +5,8 @@ struct VKWebAuthResult: Sendable {
     let userID: Int?
     let expiresAt: Date?
     let apiUserAgent: String
+    let refreshCookie: String
+    let webUserAgent: String
 }
 
 enum VKWebAuthError: LocalizedError {
@@ -118,7 +120,9 @@ struct VKWebAuthService: Sendable {
             accessToken: cleanedToken,
             userID: payload.userID,
             expiresAt: expiresAt,
-            apiUserAgent: apiUserAgent
+            apiUserAgent: apiUserAgent,
+            refreshCookie: cleanedCookies,
+            webUserAgent: webUserAgent
         )
     }
 }

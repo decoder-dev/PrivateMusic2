@@ -13,7 +13,9 @@ final class SessionStore: ObservableObject {
         self.keychain = keychain
         do {
             let saved = try keychain.load(Session.self, account: sessionAccount)
-            session = saved?.isExpired == false ? saved : nil
+            session = saved?.isExpired == false || saved?.canRefresh == true
+                ? saved
+                : nil
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -31,6 +33,8 @@ final class SessionStore: ObservableObject {
         accessToken: String,
         userAgent: String?,
         expiresAt: Date? = nil,
+        refreshCookie: String? = nil,
+        webUserAgent: String? = nil,
         profile: UserProfile
     ) throws {
         let cleaned = accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -45,11 +49,27 @@ final class SessionStore: ObservableObject {
                 ? cleanedUserAgent
                 : nil,
             userID: profile.id,
-            expiresAt: expiresAt
+            expiresAt: expiresAt,
+            refreshCookie: refreshCookie,
+            webUserAgent: webUserAgent
         )
         try keychain.save(value, account: sessionAccount)
         session = value
         self.profile = profile
+    }
+
+    func updateWebSession(
+        _ result: VKWebAuthResult,
+        profile: UserProfile
+    ) throws {
+        try connect(
+            accessToken: result.accessToken,
+            userAgent: result.apiUserAgent,
+            expiresAt: result.expiresAt,
+            refreshCookie: result.refreshCookie,
+            webUserAgent: result.webUserAgent,
+            profile: profile
+        )
     }
 
     func setProfile(_ profile: UserProfile) {
