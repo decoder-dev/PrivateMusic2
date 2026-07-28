@@ -33,4 +33,34 @@ protocol MusicService: Sendable {
         _ track: Track,
         accessToken: String
     ) async throws
+    func lyrics(
+        for track: Track,
+        accessToken: String
+    ) async throws -> Lyrics
+    func createPlaylist(
+        title: String,
+        description: String,
+        ownerID: Int,
+        accessToken: String
+    ) async throws -> Playlist
+    func editPlaylist(
+        _ playlist: Playlist,
+        title: String,
+        description: String,
+        accessToken: String
+    ) async throws
+    func deletePlaylist(
+        _ playlist: Playlist,
+        accessToken: String
+    ) async throws
+    func add(
+        _ track: Track,
+        to playlist: Playlist,
+        accessToken: String
+    ) async throws
+    func remove(
+        _ track: Track,
+        from playlist: Playlist,
+        accessToken: String
+    ) async throws
 }

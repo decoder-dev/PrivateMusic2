@@ -1,10 +1,16 @@
 import SwiftUI
 
 struct SearchView: View {
+    private enum Scope: String, CaseIterable {
+        case tracks = "Треки"
+        case artists = "Исполнители"
+    }
+
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var settings: AppSettings
     @StateObject private var model = SearchViewModel()
+    @State private var scope: Scope = .tracks
 
     var body: some View {
         Group {
@@ -29,32 +35,50 @@ struct SearchView: View {
                     description: "По запросу «\(model.query)» нет результатов."
                 )
             } else {
-                List(model.tracks) { track in
-                    TrackRow(track: track, queue: model.tracks)
-                        .listRowBackground(Color.clear)
-                        .swipeActions(edge: .trailing) {
-                            Button {
-                                guard let token = sessionStore.accessToken
-                                else {
-                                    return
+                VStack(spacing: 0) {
+                    Picker("Тип поиска", selection: $scope) {
+                        ForEach(Scope.allCases, id: \.self) {
+                            Text($0.rawValue).tag($0)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+
+                    if scope == .tracks {
+                        List(model.tracks) { track in
+                            TrackRow(track: track, queue: model.tracks)
+                                .listRowBackground(Color.clear)
+                                .swipeActions(edge: .trailing) {
+                                    Button {
+                                        add(track)
+                                    } label: {
+                                        Label(
+                                            "В медиатеку",
+                                            systemImage: "plus"
+                                        )
+                                    }
+                                    .tint(settings.theme.accent)
                                 }
-                                Task {
-                                    await model.add(
-                                        track,
-                                        service: environment.musicService,
-                                        accessToken: token
-                                    )
-                                }
+                        }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                    } else {
+                        List(model.artists, id: \.self) { artist in
+                            NavigationLink {
+                                ArtistView(artist: artist)
                             } label: {
                                 Label(
-                                    "В медиатеку",
-                                    systemImage: "plus"
+                                    artist,
+                                    systemImage: "person.wave.2"
                                 )
                             }
-                            .tint(settings.theme.accent)
+                            .listRowBackground(Color.clear)
                         }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
                 }
-                .listStyle(.plain)
+                }
             }
         }
         .background(ThemeBackground())
@@ -63,6 +87,17 @@ struct SearchView: View {
         .onChange(of: model.query) { _ in
             guard let token = sessionStore.accessToken else { return }
             model.schedule(
+                service: environment.musicService,
+                accessToken: token
+            )
+        }
+    }
+
+    private func add(_ track: Track) {
+        guard let token = sessionStore.accessToken else { return }
+        Task {
+            await model.add(
+                track,
                 service: environment.musicService,
                 accessToken: token
             )
