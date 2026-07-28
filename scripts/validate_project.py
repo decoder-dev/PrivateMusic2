@@ -137,7 +137,8 @@ project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
 for required_setting in (
     'iOS: "16.0"',
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2",
-    "path: PrivateMusic/Resources/Info.plist",
+    "GENERATE_INFOPLIST_FILE: NO",
+    "INFOPLIST_FILE: PrivateMusic/Resources/Info.plist",
 ):
     if required_setting not in project_yml:
         fail(f"missing project setting: {required_setting}")

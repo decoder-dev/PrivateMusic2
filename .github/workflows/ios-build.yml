@@ -9,13 +9,13 @@ jobs:
   build:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Validate source package
+        run: python3 scripts/validate_project.py
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate Xcode project
         run: xcodegen generate
-      - name: Validate source package
-        run: python3 scripts/validate_project.py
       - name: Build and test simulator target
         run: |
           set -o pipefail
@@ -49,7 +49,7 @@ jobs:
             "$APP_PATH" \
             "$PWD/artifacts/PrivateMusic-2.0-unsigned.ipa"
       - name: Upload unsigned IPA
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: PrivateMusic-2.0-unsigned
           path: artifacts/PrivateMusic-2.0-unsigned.ipa

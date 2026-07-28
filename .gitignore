@@ -4,4 +4,4 @@ build/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 Config/Secrets.xcconfig
-
+job-*.log
