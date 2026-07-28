@@ -12,211 +12,35 @@ struct PlayerView: View {
     @State private var showingLyrics = false
     @State private var showingArtist = false
     @State private var showingPlaylists = false
+    @State private var showingSettings = false
     @State private var shareFileURL: URL?
     @State private var isPreparingShare = false
     @State private var isInLibrary = false
-    @State private var showingSettings = false
     private let shareService = TrackShareService()
-    let showsCloseButton: Bool
-
-    init(showsCloseButton: Bool = true) {
-        self.showsCloseButton = showsCloseButton
-    }
 
     var body: some View {
-        NavigationStack {
+        GeometryReader { proxy in
             ZStack {
-                if let artworkURL = player.currentTrack?.artworkURL {
-                    AsyncImage(url: artworkURL) { phase in
-                        if case let .success(image) = phase {
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .blur(radius: 70)
-                                .saturation(1.15)
-                                .opacity(settings.theme == .dark ? 0.34 : 0.2)
-                        }
-                    }
-                    .ignoresSafeArea()
-                }
-                LinearGradient(
-                    colors: [
-                        settings.theme.colors.last
-                            ?? Color(uiColor: .secondarySystemBackground),
-                        settings.theme.colors[0]
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .opacity(settings.theme == .dark ? 0.82 : 0.88)
-                .ignoresSafeArea()
+                artworkBackground
 
                 if let track = player.currentTrack {
-                    ScrollView {
-                        VStack(spacing: 24) {
-                            AsyncArtwork(url: track.artworkURL, size: 280)
-                                .shadow(
-                                    color: .black.opacity(0.18),
-                                    radius: 24,
-                                    y: 12
-                                )
-                                .offset(
-                                    x: reduceMotion
-                                        ? 0
-                                        : artworkDrag.width * 0.22,
-                                    y: reduceMotion
-                                        ? 0
-                                        : artworkDrag.height * 0.12
-                                )
-                                .rotationEffect(
-                                    .degrees(
-                                        reduceMotion
-                                            ? 0
-                                            : artworkDrag.width / 45
-                                    )
-                                )
-                                .gesture(artworkGesture)
-                                .accessibilityHint(
-                                    "Смахните в стороны для смены трека, "
-                                        + "вверх для очереди"
-                                )
-
-                            VStack(spacing: 7) {
-                                Text(track.title)
-                                    .font(.title2.bold())
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.center)
-                                Text(track.artist)
-                                    .foregroundStyle(.secondary)
-                                if let album = track.albumTitle,
-                                   !album.isEmpty {
-                                    Text(album)
-                                        .font(.caption)
-                                        .foregroundStyle(.tertiary)
-                                        .lineLimit(1)
-                                }
-                                if player.isBuffering {
-                                    Label(
-                                        "Буферизация",
-                                        systemImage: "waveform"
-                                    )
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                }
-                            }
-
-                            HStack(spacing: 10) {
-                                playerAction(
-                                    isInLibrary ? "heart.fill" : "heart",
-                                    label: "В медиатеку"
-                                ) {
-                                    addToLibrary(track)
-                                }
-                                playerAction(
-                                    "person.wave.2",
-                                    label: "Исполнитель"
-                                ) {
-                                    showingArtist = true
-                                }
-                                playerAction(
-                                    "quote.bubble",
-                                    label: "Текст"
-                                ) {
-                                    showingLyrics = true
-                                }
-                                playerAction(
-                                    "rectangle.stack.badge.plus",
-                                    label: "Добавить в плейлист"
-                                ) {
-                                    showingPlaylists = true
-                                }
-                                Button {
-                                    Task { await prepareShare(track) }
-                                } label: {
-                                    if isPreparingShare {
-                                        ProgressView()
-                                            .frame(width: 42, height: 42)
-                                    } else {
-                                        Image(systemName: "square.and.arrow.up")
-                                            .frame(width: 42, height: 42)
-                                            .background(
-                                                .thinMaterial,
-                                                in: Circle()
-                                            )
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(isPreparingShare)
-                                .accessibilityLabel("Поделиться")
-                            }
-
-                            VStack(spacing: 8) {
-                                Slider(
-                                    value: Binding(
-                                        get: { player.elapsedTime },
-                                        set: { player.seek(to: $0) }
-                                    ),
-                                    in: 0...max(player.duration, 1)
-                                )
-                                HStack {
-                                    Text(player.elapsedTime.formattedDuration)
-                                    Spacer()
-                                    Text(player.duration.formattedDuration)
-                                }
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                            }
-
-                            playbackControls
-                        }
-                        .padding(.horizontal, 26)
-                        .padding(.top, 20)
-                        .padding(.bottom, 36)
-                    }
+                    playerContent(
+                        track,
+                        size: proxy.size
+                    )
                 } else {
                     EmptyStateView(
                         title: "Плеер",
                         systemImage: "play.circle",
-                        description: "Выберите трек в медиатеке, "
-                            + "рекомендациях или поиске."
+                        description: "Выберите трек в медиатеке или миксе."
                     )
+                    .foregroundStyle(.white)
                     .padding()
                 }
             }
-            .toolbar {
-                if showsCloseButton {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("Закрыть") {
-                            dismiss()
-                        }
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button {
-                            showingQueue = true
-                        } label: {
-                            Label("Очередь", systemImage: "list.bullet")
-                        }
-                        Toggle(
-                            "Эквалайзер",
-                            isOn: $settings.equalizerEnabled
-                        )
-                        Button {
-                            showingSettings = true
-                        } label: {
-                            Label(
-                                "Настройки звука",
-                                systemImage: "slider.horizontal.3"
-                            )
-                        }
-                        Text("Качество: автоматически VK")
-                    } label: {
-                        Image(systemName: "ellipsis")
-                    }
-                }
-            }
         }
+        .preferredColorScheme(.dark)
+        .ignoresSafeArea(edges: .bottom)
         .sheet(isPresented: $showingQueue) {
             QueueView()
         }
@@ -241,11 +65,7 @@ struct PlayerView: View {
         .sheet(
             isPresented: Binding(
                 get: { shareFileURL != nil },
-                set: {
-                    if !$0 {
-                        shareFileURL = nil
-                    }
-                }
+                set: { if !$0 { shareFileURL = nil } }
             )
         ) {
             if let shareFileURL {
@@ -254,58 +74,263 @@ struct PlayerView: View {
         }
     }
 
-    private var playbackControls: some View {
-        HStack(spacing: 24) {
-            Button {
-                Haptics.selection()
-                player.toggleShuffle()
-            } label: {
-                Image(systemName: "shuffle")
-                    .foregroundStyle(
-                        player.shuffleEnabled
-                            ? settings.theme.accent
-                            : Color.primary
-                    )
+    private var artworkBackground: some View {
+        ZStack {
+            Color.black
+            if let artworkURL = player.currentTrack?.artworkURL {
+                AsyncImage(url: artworkURL) { phase in
+                    if case let .success(image) = phase {
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .scaleEffect(1.35)
+                            .blur(radius: 72)
+                            .saturation(1.25)
+                    }
+                }
             }
+            Color.black.opacity(0.48)
+            LinearGradient(
+                colors: [
+                    .black.opacity(0.12),
+                    .black.opacity(0.5),
+                    .black.opacity(0.88)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .ignoresSafeArea()
+    }
+
+    private func playerContent(
+        _ track: Track,
+        size: CGSize
+    ) -> some View {
+        let compact = size.height < 730
+        let artworkSize = min(
+            size.width - (compact ? 42 : 50),
+            size.height * (compact ? 0.39 : 0.43)
+        )
+
+        return VStack(spacing: 0) {
+            Capsule()
+                .fill(.white.opacity(0.45))
+                .frame(width: 46, height: 5)
+                .padding(.top, compact ? 8 : 14)
+                .accessibilityLabel("Смахните вниз, чтобы закрыть")
+
+            Spacer(minLength: compact ? 14 : 32)
+
+            AsyncArtwork(url: track.artworkURL, size: artworkSize)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .shadow(color: .black.opacity(0.34), radius: 28, y: 16)
+                .offset(
+                    x: reduceMotion ? 0 : artworkDrag.width * 0.16,
+                    y: reduceMotion ? 0 : artworkDrag.height * 0.08
+                )
+                .rotationEffect(
+                    .degrees(reduceMotion ? 0 : artworkDrag.width / 65)
+                )
+                .gesture(artworkGesture)
+                .accessibilityHint(
+                    "Свайп в стороны меняет трек, вверх открывает очередь, "
+                        + "вниз закрывает плеер"
+                )
+
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(track.title)
+                        .font(.title2.weight(.heavy))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(track.artist)
+                        .font(.title3)
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(1)
+                    if let album = track.albumTitle, !album.isEmpty {
+                        Text(album)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.38))
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 10)
+                actionMenu(track)
+            }
+            .padding(.top, compact ? 18 : 28)
+
+            VStack(spacing: 8) {
+                Slider(
+                    value: Binding(
+                        get: { player.elapsedTime },
+                        set: { player.seek(to: $0) }
+                    ),
+                    in: 0...max(player.duration, 1)
+                )
+                .tint(.white)
+                HStack {
+                    Text(player.elapsedTime.formattedDuration)
+                    Spacer()
+                    Text("-\(remainingTime.formattedDuration)")
+                }
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.white.opacity(0.58))
+            }
+            .padding(.top, compact ? 20 : 32)
+
+            Spacer(minLength: compact ? 16 : 28)
+            primaryControls
+            Spacer(minLength: compact ? 18 : 34)
+            secondaryControls
+            Spacer(minLength: compact ? 18 : 30)
+        }
+        .padding(.horizontal, compact ? 22 : 26)
+        .foregroundStyle(.white)
+        .contentShape(Rectangle())
+        .simultaneousGesture(dismissGesture)
+    }
+
+    private func actionMenu(_ track: Track) -> some View {
+        Menu {
+            Button { addToLibrary(track) } label: {
+                Label(
+                    isInLibrary ? "Добавлено в медиатеку" : "В медиатеку",
+                    systemImage: isInLibrary ? "heart.fill" : "heart"
+                )
+            }
+            Button { showingArtist = true } label: {
+                Label("Исполнитель", systemImage: "person.wave.2")
+            }
+            Button { showingPlaylists = true } label: {
+                Label(
+                    "Добавить в плейлист",
+                    systemImage: "rectangle.stack.badge.plus"
+                )
+            }
+            Button {
+                Task { await prepareShare(track) }
+            } label: {
+                Label("Поделиться", systemImage: "square.and.arrow.up")
+            }
+            .disabled(isPreparingShare)
+            Divider()
+            Toggle("Эквалайзер", isOn: $settings.equalizerEnabled)
+            Button { showingSettings = true } label: {
+                Label(
+                    "Настройки звука",
+                    systemImage: "slider.horizontal.3"
+                )
+            }
+            Text("Качество: автоматически VK")
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(.white.opacity(0.92))
+                    .frame(width: 42, height: 42)
+                if isPreparingShare {
+                    ProgressView().tint(.black)
+                } else {
+                    Image(systemName: "ellipsis")
+                        .font(.headline)
+                        .foregroundStyle(.black)
+                }
+            }
+        }
+        .accessibilityLabel("Действия с треком")
+    }
+
+    private var primaryControls: some View {
+        HStack {
             Button {
                 Haptics.trackChange()
                 player.previous()
             } label: {
                 Image(systemName: "backward.fill")
+                    .font(.system(size: 42, weight: .semibold))
+                    .frame(width: 82, height: 74)
             }
+            Spacer()
             Button {
                 Haptics.selection()
                 player.playPause()
             } label: {
-                Image(
-                    systemName: player.isPlaying
-                        ? "pause.circle.fill"
-                        : "play.circle.fill"
-                )
-                .font(.system(size: 68))
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 62, weight: .bold))
+                    .frame(width: 92, height: 82)
             }
+            Spacer()
             Button {
                 Haptics.trackChange()
                 player.next()
             } label: {
                 Image(systemName: "forward.fill")
-            }
-            Button {
-                Haptics.selection()
-                player.cycleRepeatMode()
-            } label: {
-                Image(systemName: player.repeatMode.systemImage)
-                    .foregroundStyle(
-                        player.repeatMode == .off
-                            ? Color.primary
-                            : settings.theme.accent
-                    )
+                    .font(.system(size: 42, weight: .semibold))
+                    .frame(width: 82, height: 74)
             }
         }
-        .font(.title2)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .adaptiveGlass(in: Capsule(), interactive: true)
+        .buttonStyle(PlayerControlStyle())
+    }
+
+    private var secondaryControls: some View {
+        HStack {
+            secondaryButton(
+                "shuffle",
+                active: player.shuffleEnabled,
+                label: "Перемешать"
+            ) {
+                Haptics.selection()
+                player.toggleShuffle()
+            }
+            Spacer()
+            secondaryButton(
+                "quote.bubble",
+                active: false,
+                label: "Текст"
+            ) {
+                showingLyrics = true
+            }
+            Spacer()
+            secondaryButton(
+                "list.bullet",
+                active: false,
+                label: "Очередь"
+            ) {
+                showingQueue = true
+            }
+            Spacer()
+            secondaryButton(
+                player.repeatMode.systemImage,
+                active: player.repeatMode != .off,
+                label: "Повтор"
+            ) {
+                Haptics.selection()
+                player.cycleRepeatMode()
+            }
+        }
+        .padding(.horizontal, 14)
+    }
+
+    private func secondaryButton(
+        _ image: String,
+        active: Bool,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: image)
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(
+                    active ? Color.white : Color.white.opacity(0.58)
+                )
+                .frame(width: 44, height: 44)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
+    private var remainingTime: TimeInterval {
+        max(player.duration - player.elapsedTime, 0)
     }
 
     private var artworkGesture: some Gesture {
@@ -324,27 +349,24 @@ struct PlayerView: View {
                         Haptics.trackChange()
                         player.previous()
                     }
-                } else if vertical < -62 {
-                    Haptics.open()
+                } else if vertical < -60 {
                     showingQueue = true
-                } else if vertical > 78, showsCloseButton {
+                } else if vertical > 72 {
                     dismiss()
                 }
             }
     }
 
-    private func playerAction(
-        _ image: String,
-        label: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: image)
-                .frame(width: 42, height: 42)
-                .background(.thinMaterial, in: Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
+    private var dismissGesture: some Gesture {
+        DragGesture(minimumDistance: 28)
+            .onEnded { value in
+                guard value.translation.height > 110,
+                      abs(value.translation.width)
+                        < value.translation.height else {
+                    return
+                }
+                dismiss()
+            }
     }
 
     private func prepareShare(_ track: Track) async {
@@ -373,5 +395,22 @@ struct PlayerView: View {
                     + error.localizedDescription
             }
         }
+    }
+}
+
+private struct PlayerControlStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.white)
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .animation(
+                reduceMotion
+                    ? nil
+                    : .spring(response: 0.2, dampingFraction: 0.7),
+                value: configuration.isPressed
+            )
     }
 }
