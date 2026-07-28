@@ -1,0 +1,148 @@
+import Foundation
+
+struct VKWebAuthResult: Sendable {
+    let accessToken: String
+    let userID: Int?
+    let expiresAt: Date?
+    let apiUserAgent: String
+}
+
+enum VKWebAuthError: LocalizedError {
+    case noSession
+    case rejected(String)
+    case invalidResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .noSession:
+            return "Сначала завершите вход по номеру телефона на странице VK."
+        case let .rejected(message):
+            return message.isEmpty
+                ? "VK не подтвердил веб-сессию."
+                : message
+        case .invalidResponse:
+            return "VK вернул некорректный ответ авторизации."
+        }
+    }
+}
+
+struct VKWebAuthService: Sendable {
+    // VK's public web client identifier used by the vk.ru web session itself.
+    private let webClientID = "6287487"
+    private let tokenURL = URL(string: "https://login.vk.ru/?act=web_token")!
+
+    // Audio API responses depend on the mobile-compatible API user agent.
+    private let apiUserAgent =
+        "KateMobileAndroid/56 lite-460 (Android 4.4.2; SDK 19; x86; "
+        + "unknown Android SDK built for x86; ru)"
+
+    func exchange(
+        cookieHeader: String,
+        webUserAgent: String
+    ) async throws -> VKWebAuthResult {
+        let cleanedCookies = cookieHeader.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !cleanedCookies.isEmpty else {
+            throw VKWebAuthError.noSession
+        }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        configuration.timeoutIntervalForRequest = 30
+        let session = URLSession(configuration: configuration)
+
+        var request = URLRequest(
+            url: tokenURL,
+            cachePolicy: .reloadIgnoringLocalCacheData,
+            timeoutInterval: 30
+        )
+        request.httpMethod = "POST"
+        request.setValue(
+            "application/x-www-form-urlencoded; charset=utf-8",
+            forHTTPHeaderField: "Content-Type"
+        )
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("https://vk.ru", forHTTPHeaderField: "Origin")
+        request.setValue("https://vk.ru/", forHTTPHeaderField: "Referer")
+        request.setValue(
+            cleanedCookies,
+            forHTTPHeaderField: "Cookie"
+        )
+        request.setValue(
+            webUserAgent.trimmingCharacters(in: .whitespacesAndNewlines),
+            forHTTPHeaderField: "User-Agent"
+        )
+        request.httpBody = "version=1&app_id=\(webClientID)"
+            .data(using: .utf8)
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
+            throw VKWebAuthError.invalidResponse
+        }
+
+        let envelope: WebTokenEnvelope
+        do {
+            envelope = try JSONDecoder().decode(
+                WebTokenEnvelope.self,
+                from: data
+            )
+        } catch {
+            throw VKWebAuthError.invalidResponse
+        }
+
+        guard envelope.type == "okay", let payload = envelope.data else {
+            throw VKWebAuthError.rejected(envelope.errorInfo ?? "")
+        }
+        let cleanedToken = payload.accessToken.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard cleanedToken.count >= 16 else {
+            throw VKWebAuthError.invalidResponse
+        }
+
+        let expiresAt = payload.expires.flatMap { raw -> Date? in
+            guard raw > 0 else { return nil }
+            // Current web_token returns Unix seconds. Keep duration-form
+            // compatibility in case VK changes the response shape.
+            if raw > 1_000_000_000 {
+                return Date(timeIntervalSince1970: TimeInterval(raw))
+            }
+            return Date().addingTimeInterval(TimeInterval(raw))
+        }
+
+        return VKWebAuthResult(
+            accessToken: cleanedToken,
+            userID: payload.userID,
+            expiresAt: expiresAt,
+            apiUserAgent: apiUserAgent
+        )
+    }
+}
+
+private struct WebTokenEnvelope: Decodable {
+    let type: String
+    let data: WebTokenPayload?
+    let errorInfo: String?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case data
+        case errorInfo = "error_info"
+    }
+}
+
+private struct WebTokenPayload: Decodable {
+    let accessToken: String
+    let userID: Int?
+    let expires: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case userID = "user_id"
+        case expires
+    }
+}
