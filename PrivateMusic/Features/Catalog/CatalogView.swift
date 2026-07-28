@@ -5,6 +5,7 @@ struct CatalogView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var history: ListeningHistoryStore
     @State private var recommendations: [Track] = []
     @State private var mixes: [MusicMix] = []
     @State private var playlists: [Playlist] = []
@@ -17,8 +18,11 @@ struct CatalogView: View {
             LazyVStack(alignment: .leading, spacing: 30) {
                 welcomeHeader
 
+                if !history.entries.isEmpty {
+                    recentlyPlayedSection
+                }
                 if isLoading && contentIsEmpty {
-                    loadingView
+                    catalogSkeleton
                 } else {
                     if !mixes.isEmpty { mixesSection }
                     if !recommendations.isEmpty {
@@ -168,9 +172,45 @@ struct CatalogView: View {
         }
     }
 
+    private var recentlyPlayedSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            PremiumSectionHeader(
+                "Недавно слушали",
+                subtitle: "История сохраняется только на этом устройстве"
+            )
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 14) {
+                    ForEach(history.entries.prefix(12)) { entry in
+                        Button {
+                            let tracks = history.entries.map(\.track)
+                            player.play(entry.track, in: tracks)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 9) {
+                                AsyncArtwork(
+                                    url: entry.track.artworkURL,
+                                    size: 132
+                                )
+                                Text(entry.track.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(entry.track.artist)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 132, alignment: .leading)
+                        }
+                        .buttonStyle(PremiumPressStyle())
+                    }
+                }
+            }
+        }
+    }
+
     private var trackListSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            PremiumSectionHeader("Продолжить слушать")
+            PremiumSectionHeader("Ещё для вас")
             VStack(spacing: 0) {
                 ForEach(Array(recommendations.prefix(20).enumerated()), id: \.element.id) {
                     index, track in
@@ -217,18 +257,33 @@ struct CatalogView: View {
         }
     }
 
-    private var loadingView: some View {
-        VStack(spacing: 18) {
-            ProgressView().controlSize(.large)
-            Text("Загружаем вашу музыку")
-                .font(.headline)
-            Text("Получаем рекомендации и миксы напрямую из VK")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+    private var catalogSkeleton: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            ForEach(0..<2, id: \.self) { section in
+                VStack(alignment: .leading, spacing: 14) {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(.primary.opacity(0.11))
+                        .frame(width: section == 0 ? 130 : 190, height: 22)
+                    HStack(spacing: 14) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            VStack(alignment: .leading, spacing: 9) {
+                                RoundedRectangle(cornerRadius: 18)
+                                    .fill(.primary.opacity(0.09))
+                                    .frame(width: 146, height: 146)
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(.primary.opacity(0.09))
+                                    .frame(width: 112, height: 12)
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(.primary.opacity(0.06))
+                                    .frame(width: 78, height: 10)
+                            }
+                        }
+                    }
+                }
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 72)
+        .redacted(reason: .placeholder)
+        .accessibilityLabel("Загружаем рекомендации и миксы")
     }
 
     private var unavailableView: some View {
@@ -275,7 +330,12 @@ struct CatalogView: View {
                     accessToken: token
                 )
                 guard let first = tracks.first else { return }
-                player.play(first, in: tracks)
+                player.play(first, in: tracks) {
+                    try await environment.musicService.mixTracks(
+                        mix,
+                        accessToken: token
+                    )
+                }
                 errorMessage = nil
             } catch is CancellationError {
                 return
