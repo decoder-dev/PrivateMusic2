@@ -16,7 +16,7 @@ struct RootView: View {
                 sessionRecoveryView
             } else {
                 MainTabView()
-                    .sheet(isPresented: $player.isPlayerPresented) {
+                    .fullScreenCover(isPresented: $player.isPlayerPresented) {
                         PlayerView()
                     }
             }
