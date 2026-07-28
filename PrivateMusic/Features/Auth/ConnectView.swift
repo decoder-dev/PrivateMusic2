@@ -3,13 +3,14 @@ import SwiftUI
 struct ConnectView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
+    @EnvironmentObject private var settings: AppSettings
     @State private var token = ""
     @State private var isConnecting = false
     @State private var errorMessage: String?
 
     var body: some View {
         ZStack {
-            Brand.background.ignoresSafeArea()
+            ThemeBackground()
 
             ScrollView {
                 VStack(spacing: 28) {
@@ -20,7 +21,10 @@ struct ConnectView: View {
                         .scaledToFit()
                         .frame(width: 132, height: 132)
                         .clipShape(RoundedRectangle(cornerRadius: 30))
-                        .shadow(color: Brand.accent.opacity(0.35), radius: 28)
+                        .shadow(
+                            color: settings.theme.accent.opacity(0.35),
+                            radius: 28
+                        )
 
                     VStack(spacing: 8) {
                         Text("Private Music")
@@ -35,8 +39,9 @@ struct ConnectView: View {
                             .autocorrectionDisabled()
                             .textContentType(.password)
                             .padding()
-                            .background(Brand.surface)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .adaptiveGlass(
+                                in: RoundedRectangle(cornerRadius: 14)
+                            )
 
                         Button {
                             Task { await connect() }

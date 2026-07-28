@@ -1,5 +1,16 @@
 import AVFoundation
+import Combine
 import MediaPlayer
+
+enum RepeatMode: String, CaseIterable {
+    case off
+    case all
+    case one
+
+    var systemImage: String {
+        self == .one ? "repeat.1" : "repeat"
+    }
+}
 
 @MainActor
 final class AudioPlayer: ObservableObject {
@@ -8,13 +19,18 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var elapsedTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
+    @Published private(set) var shuffleEnabled: Bool
+    @Published private(set) var repeatMode: RepeatMode
     @Published var isPlayerPresented = false
     @Published var errorMessage: String?
 
     private let player = AVPlayer()
     private let nowPlaying = NowPlayingController()
+    private let equalizer = EqualizerDSP()
     private var timeObserver: Any?
     private var notificationObservers: [NSObjectProtocol] = []
+    private let defaults: UserDefaults
+    private var cancellables = Set<AnyCancellable>()
     private var remoteCommandTokens: [Any] = []
 
     var currentTrack: Track? {
@@ -24,17 +40,64 @@ final class AudioPlayer: ObservableObject {
         return queue[currentIndex]
     }
 
-    init() {
+    init(
+        settings: AppSettings,
+        defaults: UserDefaults = .standard
+    ) {
+        self.defaults = defaults
+        shuffleEnabled = defaults.bool(forKey: "player.shuffle")
+        repeatMode = RepeatMode(
+            rawValue: defaults.string(forKey: "player.repeat") ?? ""
+        ) ?? .off
         player.automaticallyWaitsToMinimizeStalling = true
         configureAudioSession()
         configureRemoteCommands()
         observePlayer()
+        settings.$equalizerEnabled
+            .combineLatest(settings.$equalizerGains)
+            .sink { [weak self] enabled, gains in
+                self?.equalizer.update(enabled: enabled, gains: gains)
+            }
+            .store(in: &cancellables)
     }
 
     func play(_ track: Track, in tracks: [Track]) {
-        queue = tracks
-        currentIndex = tracks.firstIndex(of: track) ?? 0
+        if shuffleEnabled {
+            queue = [track] + tracks.filter { $0 != track }.shuffled()
+            currentIndex = 0
+        } else {
+            queue = tracks
+            currentIndex = tracks.firstIndex(of: track) ?? 0
+        }
         loadCurrentAndPlay()
+    }
+
+    func playNext(_ track: Track) {
+        guard let currentIndex else {
+            play(track, in: [track])
+            return
+        }
+        queue.removeAll { $0.id == track.id }
+        queue.insert(track, at: min(currentIndex + 1, queue.count))
+    }
+
+    func toggleShuffle() {
+        shuffleEnabled.toggle()
+        defaults.set(shuffleEnabled, forKey: "player.shuffle")
+        guard let currentTrack else { return }
+        let remaining = queue.filter { $0.id != currentTrack.id }
+        queue = [currentTrack]
+            + (shuffleEnabled ? remaining.shuffled() : remaining)
+        currentIndex = 0
+    }
+
+    func cycleRepeatMode() {
+        switch repeatMode {
+        case .off: repeatMode = .all
+        case .all: repeatMode = .one
+        case .one: repeatMode = .off
+        }
+        defaults.set(repeatMode.rawValue, forKey: "player.repeat")
     }
 
     func playPause() {
@@ -61,6 +124,11 @@ final class AudioPlayer: ObservableObject {
     func next() {
         guard let currentIndex, !queue.isEmpty else { return }
         let nextIndex = queue.index(after: currentIndex)
+        if nextIndex >= queue.endIndex, repeatMode == .off {
+            pause()
+            seek(to: 0)
+            return
+        }
         self.currentIndex = nextIndex < queue.endIndex ? nextIndex : 0
         loadCurrentAndPlay()
     }
@@ -103,6 +171,13 @@ final class AudioPlayer: ObservableObject {
         }
 
         let item = AVPlayerItem(url: url)
+        if let tap = equalizer.makeTap() {
+            let parameters = AVMutableAudioMixInputParameters()
+            parameters.audioTapProcessor = tap
+            let mix = AVMutableAudioMix()
+            mix.inputParameters = [parameters]
+            item.audioMix = mix
+        }
         item.preferredForwardBufferDuration = 8
         player.replaceCurrentItem(with: item)
         elapsedTime = 0
@@ -201,7 +276,7 @@ final class AudioPlayer: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.next() }
+            Task { @MainActor in self?.advanceAfterCompletion() }
         })
         notificationObservers.append(center.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime,
@@ -251,6 +326,15 @@ final class AudioPlayer: ObservableObject {
             }
         @unknown default:
             break
+        }
+    }
+
+    private func advanceAfterCompletion() {
+        if repeatMode == .one {
+            seek(to: 0)
+            resume()
+        } else {
+            next()
         }
     }
 

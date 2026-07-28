@@ -32,6 +32,16 @@ struct TrackRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                player.playNext(track)
+            } label: {
+                Label(
+                    "Играть следующим",
+                    systemImage: "text.line.first.and.arrowtriangle.forward"
+                )
+            }
+        }
     }
 }
 

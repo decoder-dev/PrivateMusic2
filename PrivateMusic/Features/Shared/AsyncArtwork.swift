@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AsyncArtwork: View {
+    @EnvironmentObject private var settings: AppSettings
     let url: URL?
     var size: CGFloat
 
@@ -14,7 +15,10 @@ struct AsyncArtwork: View {
             default:
                 ZStack {
                     LinearGradient(
-                        colors: [Brand.accent.opacity(0.55), Brand.violet],
+                        colors: [
+                            settings.theme.accent.opacity(0.55),
+                            settings.theme.secondaryAccent
+                        ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -28,4 +32,3 @@ struct AsyncArtwork: View {
         .clipShape(RoundedRectangle(cornerRadius: size * 0.2))
     }
 }
-

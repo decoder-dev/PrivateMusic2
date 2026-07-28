@@ -3,6 +3,7 @@ import SwiftUI
 struct SearchView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
+    @EnvironmentObject private var settings: AppSettings
     @StateObject private var model = SearchViewModel()
 
     var body: some View {
@@ -50,13 +51,13 @@ struct SearchView: View {
                                     systemImage: "plus"
                                 )
                             }
-                            .tint(Brand.accent)
+                            .tint(settings.theme.accent)
                         }
                 }
                 .listStyle(.plain)
             }
         }
-        .background(Brand.background)
+        .background(ThemeBackground())
         .navigationTitle("Поиск")
         .searchable(text: $model.query, prompt: "Треки и исполнители")
         .onChange(of: model.query) { _ in

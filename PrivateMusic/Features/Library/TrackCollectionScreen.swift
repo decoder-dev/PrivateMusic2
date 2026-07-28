@@ -48,6 +48,6 @@ struct TrackCollectionScreen: View {
                 .listStyle(.plain)
             }
         }
-        .background(Brand.background)
+        .background(ThemeBackground())
     }
 }

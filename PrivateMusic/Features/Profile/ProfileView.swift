@@ -9,6 +9,18 @@ struct ProfileView: View {
         ScrollView {
             VStack(spacing: 22) {
                 profileCard
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    Label("Настройки", systemImage: "gearshape.fill")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .adaptiveGlass(
+                            in: RoundedRectangle(cornerRadius: 18),
+                            interactive: true
+                        )
+                }
+                .buttonStyle(.plain)
                 linksCard
 
                 Button(role: .destructive) {
@@ -17,8 +29,10 @@ struct ProfileView: View {
                     Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
-                        .background(Brand.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                        .adaptiveGlass(
+                            in: RoundedRectangle(cornerRadius: 18),
+                            interactive: true
+                        )
                 }
 
                 VStack(spacing: 8) {
@@ -28,12 +42,15 @@ struct ProfileView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                     Text("Private Music 2.0")
                         .foregroundStyle(.secondary)
+                    Text("decoder-dev")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                 }
                 .padding(.top, 28)
             }
             .padding()
         }
-        .background(Brand.background)
+        .background(ThemeBackground())
         .navigationTitle("Профиль")
     }
 
@@ -49,8 +66,7 @@ struct ProfileView: View {
             Spacer()
         }
         .padding()
-        .background(Brand.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .adaptiveGlass(in: RoundedRectangle(cornerRadius: 22))
     }
 
     private var linksCard: some View {
@@ -70,8 +86,7 @@ struct ProfileView: View {
             )
         }
         .padding(.horizontal)
-        .background(Brand.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .adaptiveGlass(in: RoundedRectangle(cornerRadius: 22))
     }
 
     private func linkButton(
@@ -103,4 +118,3 @@ struct ProfileView: View {
         .buttonStyle(.plain)
     }
 }
-

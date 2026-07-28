@@ -8,10 +8,9 @@ struct PrivateMusicApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(environment)
+                .environmentObject(environment.settings)
                 .environmentObject(environment.sessionStore)
                 .environmentObject(environment.player)
-                .preferredColorScheme(.dark)
         }
     }
 }
-

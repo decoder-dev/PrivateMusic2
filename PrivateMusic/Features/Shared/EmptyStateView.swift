@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct EmptyStateView: View {
+    @EnvironmentObject private var settings: AppSettings
     let title: String
     let systemImage: String
     let description: String
@@ -9,7 +10,7 @@ struct EmptyStateView: View {
         VStack(spacing: 14) {
             Image(systemName: systemImage)
                 .font(.system(size: 46, weight: .medium))
-                .foregroundStyle(Brand.accent)
+                .foregroundStyle(settings.theme.accent)
             Text(title)
                 .font(.title3.bold())
             Text(description)
@@ -22,4 +23,3 @@ struct EmptyStateView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
-
