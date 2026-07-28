@@ -5,7 +5,6 @@ struct MainTabView: View {
         case home
         case library
         case search
-        case player
         case profile
     }
 
@@ -39,12 +38,6 @@ struct MainTabView: View {
                 Label("Поиск", systemImage: "magnifyingglass")
             }
 
-            PlayerView(showsCloseButton: false)
-                .tag(Tab.player)
-                .tabItem {
-                    Label("Плеер", systemImage: "play.circle.fill")
-                }
-
             NavigationStack {
                 ProfileView()
             }
@@ -54,7 +47,7 @@ struct MainTabView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if player.currentTrack != nil, selectedTab != .player {
+            if player.currentTrack != nil {
                 MiniPlayerView()
                     .padding(.horizontal, 12)
                     .padding(.bottom, 54)
