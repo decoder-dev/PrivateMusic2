@@ -24,6 +24,11 @@ struct RootView: View {
         .task(id: sessionStore.session?.accessToken) {
             await maintainSession()
         }
+        .onChange(of: sessionStore.session == nil) { isLoggedOut in
+            if isLoggedOut {
+                player.stop()
+            }
+        }
         .tint(settings.theme.accent)
         .background(ThemeBackground())
         .preferredColorScheme(settings.theme.colorScheme)

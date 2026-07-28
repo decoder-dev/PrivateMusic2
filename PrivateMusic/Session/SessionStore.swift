@@ -56,6 +56,7 @@ final class SessionStore: ObservableObject {
         try keychain.save(value, account: sessionAccount)
         session = value
         self.profile = profile
+        errorMessage = nil
     }
 
     func updateWebSession(
@@ -74,15 +75,18 @@ final class SessionStore: ObservableObject {
 
     func setProfile(_ profile: UserProfile) {
         self.profile = profile
+        errorMessage = nil
     }
 
     func logout() {
+        var deletionError: String?
         do {
             try keychain.delete(account: sessionAccount)
         } catch {
-            errorMessage = error.localizedDescription
+            deletionError = error.localizedDescription
         }
         session = nil
         profile = nil
+        errorMessage = deletionError
     }
 }

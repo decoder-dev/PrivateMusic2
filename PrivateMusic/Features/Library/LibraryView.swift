@@ -151,11 +151,13 @@ struct LibraryView: View {
     }
 
     private var playlistSkeleton: some View {
-        HStack(spacing: 14) {
-            ForEach(0..<3, id: \.self) { _ in
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(.primary.opacity(0.08))
-                    .frame(width: 156, height: 190)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 14) {
+                ForEach(0..<3, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(.primary.opacity(0.08))
+                        .frame(width: 156, height: 190)
+                }
             }
         }
         .redacted(reason: .placeholder)

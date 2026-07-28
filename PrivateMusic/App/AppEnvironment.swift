@@ -39,5 +39,14 @@ final class AppEnvironment: ObservableObject {
             guard let token = sessionStore.accessToken else { return [] }
             return try await service.recommendations(accessToken: token)
         }
+        player.configureStreamRefresh { [service, sessionStore] track in
+            guard let token = sessionStore.accessToken else {
+                throw APIError.unauthorized
+            }
+            return try await service.refreshedTrack(
+                track,
+                accessToken: token
+            )
+        }
     }
 }
