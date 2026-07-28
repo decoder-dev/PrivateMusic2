@@ -1,31 +1,46 @@
 import SwiftUI
 
 struct MainTabView: View {
-    @EnvironmentObject private var settings: AppSettings
-    var body: some View {
-        TabView {
-            NavigationStack {
-                LibraryView()
-            }
-            .tabItem {
-                Label("Моя музыка", systemImage: "music.note.list")
-            }
+    private enum Tab: Hashable {
+        case home
+        case library
+        case search
+        case player
+        case profile
+    }
 
+    @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var player: AudioPlayer
+    @State private var selectedTab: Tab = .home
+
+    var body: some View {
+        TabView(selection: $selectedTab) {
             NavigationStack {
                 CatalogView()
             }
+            .tag(Tab.home)
             .tabItem {
-                Label("Главная", systemImage: "sparkles")
+                Label("Главная", systemImage: "house.fill")
+            }
+
+            NavigationStack {
+                LibraryView()
+            }
+            .tag(Tab.library)
+            .tabItem {
+                Label("Медиатека", systemImage: "music.note.list")
             }
 
             NavigationStack {
                 SearchView()
             }
+            .tag(Tab.search)
             .tabItem {
                 Label("Поиск", systemImage: "magnifyingglass")
             }
 
             PlayerView(showsCloseButton: false)
+                .tag(Tab.player)
                 .tabItem {
                     Label("Плеер", systemImage: "play.circle.fill")
                 }
@@ -33,8 +48,16 @@ struct MainTabView: View {
             NavigationStack {
                 ProfileView()
             }
+            .tag(Tab.profile)
             .tabItem {
                 Label("Профиль", systemImage: "person.crop.circle")
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if player.currentTrack != nil, selectedTab != .player {
+                MiniPlayerView()
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 4)
             }
         }
         .toolbarBackground(.visible, for: .tabBar)

@@ -16,105 +16,17 @@ struct ConnectView: View {
             ThemeBackground()
 
             ScrollView {
-                VStack(spacing: 28) {
-                    Spacer(minLength: 48)
-
-                    Image("AppIconPreview")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 132, height: 132)
-                        .clipShape(RoundedRectangle(cornerRadius: 30))
-                        .shadow(
-                            color: settings.theme.accent.opacity(0.35),
-                            radius: 28
-                        )
-
-                    VStack(spacing: 8) {
-                        Text("Private Music")
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
-                        Text("Музыка без лишнего шума")
-                            .foregroundStyle(.secondary)
-                    }
-
-                    VStack(spacing: 14) {
-                        Button {
-                            isWebLoginPresented = true
-                        } label: {
-                            HStack {
-                                if isConnecting {
-                                    ProgressView()
-                                        .tint(.white)
-                                } else {
-                                    Image(systemName: "phone.fill")
-                                }
-                                Text(
-                                    isConnecting
-                                        ? "Проверяем сессию…"
-                                        : "Войти по номеру телефона"
-                                )
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .disabled(isConnecting)
-
-                        DisclosureGroup(
-                            "Импортировать готовую сессию",
-                            isExpanded: $showsManualImport
-                        ) {
-                            VStack(spacing: 12) {
-                                SecureField("VK access token", text: $token)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
-                                    .textContentType(.password)
-                                    .padding()
-                                    .adaptiveGlass(
-                                        in: RoundedRectangle(cornerRadius: 14)
-                                    )
-
-                                TextField(
-                                    "User-Agent из VKpyMusic",
-                                    text: $userAgent
-                                )
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .padding()
-                                .adaptiveGlass(
-                                    in: RoundedRectangle(cornerRadius: 14)
-                                )
-
-                                Button {
-                                    Task { await connectImportedSession() }
-                                } label: {
-                                    Label(
-                                        "Подключить готовую сессию",
-                                        systemImage: "key.fill"
-                                    )
-                                    .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(
-                                    isConnecting
-                                        || token.count < 16
-                                        || userAgent.count < 12
-                                )
-                            }
-                            .padding(.top, 14)
-                        }
-                    }
-                    .padding(.horizontal, 24)
-
-                    Text(
-                        "Авторизация открывается на защищённой странице VK. "
-                        + "Private Music не видит и не сохраняет пароль, "
-                        + "код подтверждения или cookies. После проверки "
-                        + "в Keychain сохраняется только временный токен."
-                    )
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 30)
+                VStack(spacing: 24) {
+                    Spacer(minLength: 28)
+                    brandHeader
+                    loginCard
+                    privacyNote
+                    manualImport
+                    Spacer(minLength: 24)
                 }
+                .frame(maxWidth: 520)
+                .padding(.horizontal, 20)
+                .frame(maxWidth: .infinity)
             }
         }
         .alert(
@@ -133,6 +45,148 @@ struct ConnectView: View {
                 Task { await connectWebSession(result) }
             }
         }
+    }
+
+    private var brandHeader: some View {
+        VStack(spacing: 14) {
+            Image("AppIconPreview")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 92, height: 92)
+                .clipShape(RoundedRectangle(cornerRadius: 22))
+                .shadow(color: .black.opacity(0.12), radius: 20, y: 10)
+
+            VStack(spacing: 5) {
+                Text("Private Music")
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                Text("Вся ваша музыка VK в одном плеере")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+    }
+
+    private var loginCard: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Подключите VK")
+                    .font(.title3.bold())
+                Text(
+                    "Вход откроется на странице VK и обычно занимает "
+                        + "меньше минуты."
+                )
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                benefit("phone.fill", "Вход по номеру телефона")
+                benefit("lock.shield.fill", "Пароль остаётся на стороне VK")
+                benefit("key.fill", "Токен хранится в защищённом Keychain")
+            }
+
+            Button {
+                isWebLoginPresented = true
+            } label: {
+                HStack {
+                    if isConnecting {
+                        ProgressView().tint(.white)
+                    } else {
+                        Image(systemName: "person.crop.circle.badge.checkmark")
+                    }
+                    Text(
+                        isConnecting
+                            ? "Подключаем аккаунт…"
+                            : "Продолжить с VK"
+                    )
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(isConnecting)
+        }
+        .padding(20)
+        .adaptiveGlass(
+            in: RoundedRectangle(cornerRadius: 24),
+            interactive: true
+        )
+    }
+
+    private func benefit(_ icon: String, _ title: String) -> some View {
+        Label {
+            Text(title)
+                .font(.subheadline)
+        } icon: {
+            Image(systemName: icon)
+                .foregroundStyle(settings.theme.accent)
+                .frame(width: 22)
+        }
+    }
+
+    private var privacyNote: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "checkmark.shield")
+                .foregroundStyle(.green)
+            Text(
+                "Private Music не читает поля формы входа, не сохраняет "
+                    + "cookies и не отправляет данные авторизации на свой сервер."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 8)
+    }
+
+    private var manualImport: some View {
+        DisclosureGroup(
+            "Есть готовая сессия?",
+            isExpanded: $showsManualImport
+        ) {
+            VStack(spacing: 12) {
+                SecureField("VK access token", text: $token)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .textContentType(.password)
+                    .padding()
+                    .background(
+                        Color(uiColor: .tertiarySystemFill),
+                        in: RoundedRectangle(cornerRadius: 14)
+                    )
+
+                TextField("User-Agent из VKpyMusic", text: $userAgent)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding()
+                    .background(
+                        Color(uiColor: .tertiarySystemFill),
+                        in: RoundedRectangle(cornerRadius: 14)
+                    )
+
+                Button {
+                    Task { await connectImportedSession() }
+                } label: {
+                    Label(
+                        "Импортировать",
+                        systemImage: "square.and.arrow.down"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(
+                    isConnecting
+                        || token.count < 16
+                        || userAgent.count < 12
+                )
+            }
+            .padding(.top, 14)
+        }
+        .font(.subheadline)
+        .padding(16)
+        .background(
+            Color(uiColor: .secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: 18)
+        )
     }
 
     @MainActor
