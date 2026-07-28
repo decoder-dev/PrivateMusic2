@@ -45,6 +45,8 @@ final class TrackCollectionViewModel: ObservableObject {
                 )
             }
             errorMessage = nil
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

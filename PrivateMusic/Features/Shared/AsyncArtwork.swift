@@ -16,7 +16,7 @@ struct AsyncArtwork: View {
                 ZStack {
                     LinearGradient(
                         colors: [
-                            settings.theme.accent.opacity(0.55),
+                            settings.theme.secondaryAccent,
                             settings.theme.secondaryAccent
                         ],
                         startPoint: .topLeading,
@@ -24,7 +24,7 @@ struct AsyncArtwork: View {
                     )
                     Image(systemName: "music.note")
                         .font(.system(size: size * 0.34, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(settings.theme.accent)
                 }
             }
         }

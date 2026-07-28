@@ -31,7 +31,7 @@ struct PrimaryButtonStyle: ButtonStyle {
             .font(.headline)
             .padding(.vertical, 15)
             .padding(.horizontal, 18)
-            .foregroundStyle(.white)
+            .foregroundStyle(settings.theme.buttonForeground)
             .background(settings.theme.accent)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .scaleEffect(configuration.isPressed ? 0.98 : 1)

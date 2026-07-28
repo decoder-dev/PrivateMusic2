@@ -63,38 +63,84 @@ struct VKMusicService: MusicService {
     }
 
     func recommendations(accessToken: String) async throws -> [Track] {
+        let userID = await context.userID
+        var parameters = [
+            "count": "100",
+            "shuffle": "1"
+        ]
+        if let userID {
+            parameters["user_id"] = String(userID)
+        }
+        let envelope: VKResponse<VKItems<Track>> = try await client.post(
+            path: "/method/audio.getRecommendations",
+            form: common(accessToken).merging(parameters) { _, new in new },
+            responseType: VKResponse<VKItems<Track>>.self
+        )
+        return envelope.response.items.map {
+            $0.resolvingStreamURL(userID: userID)
+        }
+    }
+
+    func mixes(accessToken: String) async throws -> [MusicMix] {
+        var discovered: [MusicMix] = []
         do {
-            let userID = await context.userID
-            var parameters = [
-                "count": "100",
-                "shuffle": "1"
-            ]
-            if let userID {
-                parameters["user_id"] = String(userID)
-            }
-            let envelope: VKResponse<VKItems<Track>> = try await client.post(
-                path: "/method/audio.getRecommendations",
-                form: common(accessToken).merging(parameters) { _, new in new },
-                responseType: VKResponse<VKItems<Track>>.self
+            let envelope: VKResponse<JSONValue> = try await client.post(
+                path: "/method/catalog.getAudio",
+                form: common(accessToken).merging([
+                    "need_blocks": "1"
+                ]) { _, new in new },
+                responseType: VKResponse<JSONValue>.self
             )
-            let tracks = envelope.response.items.map {
-                $0.resolvingStreamURL(userID: userID)
-            }
-            if !tracks.isEmpty {
-                return tracks
-            }
-        } catch let error as APIError {
-            if error == .unauthorized {
-                throw error
+            discovered = envelope.response.musicMixes
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Some VK sessions only expose stream mixes through the section.
+        }
+
+        if discovered.isEmpty {
+            do {
+                let envelope: VKResponse<JSONValue> = try await client.post(
+                    path: "/method/catalog.getSection",
+                    form: common(accessToken).merging([
+                        "section_id": "audio_stream_mixes",
+                        "need_blocks": "1",
+                        "count": "30"
+                    ]) { _, new in new },
+                    responseType: VKResponse<JSONValue>.self
+                )
+                discovered = envelope.response.musicMixes
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // The common mix is still a real VK stream endpoint.
             }
         }
 
-        let fallback = try await library(
-            accessToken: accessToken,
-            offset: 0,
-            count: 100
+        if !discovered.contains(where: { $0.id == MusicMix.common.id }) {
+            discovered.insert(.common, at: 0)
+        }
+        return discovered
+    }
+
+    func mixTracks(
+        _ mix: MusicMix,
+        accessToken: String
+    ) async throws -> [Track] {
+        let envelope: VKResponse<JSONValue> = try await client.post(
+            path: "/method/audio.getStreamMixAudios",
+            form: common(accessToken).merging([
+                "mix_id": mix.id,
+                "count": "100"
+            ]) { _, new in new },
+            responseType: VKResponse<JSONValue>.self
         )
-        return fallback.items.shuffled()
+        let userID = await context.userID
+        let tracks = envelope.response.tracks.map {
+            $0.resolvingStreamURL(userID: userID)
+        }
+        guard !tracks.isEmpty else { throw APIError.invalidResponse }
+        return tracks
     }
 
     func search(

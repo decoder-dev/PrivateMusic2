@@ -26,7 +26,7 @@ struct RootView: View {
         }
         .tint(settings.theme.accent)
         .background(ThemeBackground())
-        .preferredColorScheme(settings.appearance.colorScheme)
+        .preferredColorScheme(settings.theme.colorScheme)
         .alert(
             "Ошибка воспроизведения",
             isPresented: Binding(
@@ -136,6 +136,8 @@ struct RootView: View {
                 accessToken: result.accessToken
             )
             try sessionStore.updateWebSession(result, profile: profile)
+        } catch is CancellationError {
+            return
         } catch {
             refreshError = error.localizedDescription
         }
@@ -151,6 +153,8 @@ struct RootView: View {
                 accessToken: token
             )
             sessionStore.setProfile(profile)
+        } catch is CancellationError {
+            return
         } catch {
             if let apiError = error as? APIError,
                apiError == .unauthorized {

@@ -61,6 +61,8 @@ final class SearchViewModel: ObservableObject {
                 count: 100
             ).items
             errorMessage = nil
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

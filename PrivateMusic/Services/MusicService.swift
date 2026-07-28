@@ -9,6 +9,11 @@ protocol MusicService: Sendable {
         count: Int
     ) async throws -> MusicPage<Track>
     func recommendations(accessToken: String) async throws -> [Track]
+    func mixes(accessToken: String) async throws -> [MusicMix]
+    func mixTracks(
+        _ mix: MusicMix,
+        accessToken: String
+    ) async throws -> [Track]
     func search(
         query: String,
         accessToken: String,
