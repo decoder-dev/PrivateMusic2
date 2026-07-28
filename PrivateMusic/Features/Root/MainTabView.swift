@@ -25,6 +25,11 @@ struct MainTabView: View {
                 Label("Поиск", systemImage: "magnifyingglass")
             }
 
+            PlayerView(showsCloseButton: false)
+                .tabItem {
+                    Label("Плеер", systemImage: "play.circle.fill")
+                }
+
             NavigationStack {
                 ProfileView()
             }
