@@ -66,10 +66,10 @@ struct CatalogView: View {
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
         switch hour {
-        case 5..<12: "Доброе утро"
-        case 12..<18: "Добрый день"
-        case 18..<23: "Добрый вечер"
-        default: "Доброй ночи"
+        case 5..<12: return "Доброе утро"
+        case 12..<18: return "Добрый день"
+        case 18..<23: return "Добрый вечер"
+        default: return "Доброй ночи"
         }
     }
 
