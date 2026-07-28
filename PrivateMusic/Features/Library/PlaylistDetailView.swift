@@ -30,7 +30,7 @@ struct PlaylistDetailView: View {
                 .listStyle(.plain)
             }
         }
-        .background(Brand.background)
+        .background(ThemeBackground())
         .navigationTitle(playlist.title)
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }

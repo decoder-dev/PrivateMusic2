@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @EnvironmentObject private var settings: AppSettings
     var body: some View {
         TabView {
             NavigationStack {
@@ -32,7 +33,9 @@ struct MainTabView: View {
             }
         }
         .toolbarBackground(.visible, for: .tabBar)
-        .toolbarBackground(Brand.surface.opacity(0.96), for: .tabBar)
+        .toolbarBackground(
+            settings.theme.colors[0].opacity(0.82),
+            for: .tabBar
+        )
     }
 }
-
