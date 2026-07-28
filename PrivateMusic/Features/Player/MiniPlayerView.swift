@@ -42,13 +42,10 @@ struct MiniPlayerView: View {
                 }
             }
             .padding(10)
-            .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18)
-                    .stroke(.white.opacity(0.08))
-            }
+            .adaptiveGlass(
+                in: RoundedRectangle(cornerRadius: 18),
+                interactive: true
+            )
         }
     }
 }
-
