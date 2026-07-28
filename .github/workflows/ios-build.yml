@@ -30,7 +30,16 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build 2>&1 | tee simulator-build.log
+      - name: Report compiler errors
+        if: failure()
+        run: |
+          {
+            echo '```text'
+            grep -E '(^| )(error|warning):' simulator-build.log \
+              | tail -100 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Build unsigned iPhone application
         run: |
           set -o pipefail
