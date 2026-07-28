@@ -4,6 +4,7 @@ struct RootView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var settings: AppSettings
 
     var body: some View {
         Group {
@@ -26,8 +27,9 @@ struct RootView: View {
                     }
             }
         }
-        .tint(Brand.accent)
-        .background(Brand.background.ignoresSafeArea())
+        .tint(settings.theme.accent)
+        .background(ThemeBackground())
+        .preferredColorScheme(settings.appearance.colorScheme)
         .alert(
             "Ошибка воспроизведения",
             isPresented: Binding(

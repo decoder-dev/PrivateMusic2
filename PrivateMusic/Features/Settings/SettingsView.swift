@@ -1,0 +1,145 @@
+import SwiftUI
+
+struct SettingsView: View {
+    @EnvironmentObject private var settings: AppSettings
+
+    private let frequencies = ["60", "230", "910", "4K", "14K"]
+
+    var body: some View {
+        Form {
+            Section("Оформление") {
+                Picker("Режим", selection: $settings.appearance) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+
+                themePicker
+
+                Toggle(
+                    "Liquid Glass",
+                    isOn: $settings.liquidGlassEnabled
+                )
+                Text(
+                    "На iOS 26 используется системное интерактивное стекло. "
+                    + "На iOS 16–25 — совместимый material-эффект."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
+            Section("Эквалайзер") {
+                Toggle(
+                    "Обработка звука",
+                    isOn: $settings.equalizerEnabled
+                )
+
+                Picker(
+                    "Профиль",
+                    selection: Binding(
+                        get: { settings.equalizerPreset },
+                        set: { settings.selectPreset($0) }
+                    )
+                ) {
+                    ForEach(EqualizerPreset.allCases) { preset in
+                        Text(preset.title).tag(preset)
+                    }
+                }
+
+                ForEach(frequencies.indices, id: \.self) { index in
+                    VStack(spacing: 5) {
+                        HStack {
+                            Text("\(frequencies[index]) Гц")
+                            Spacer()
+                            Text(
+                                settings.equalizerGains[index],
+                                format: .number.precision(
+                                    .fractionLength(1)
+                                )
+                            )
+                            Text("дБ")
+                        }
+                        .font(.subheadline.monospacedDigit())
+
+                        Slider(
+                            value: Binding(
+                                get: {
+                                    settings.equalizerGains[index]
+                                },
+                                set: {
+                                    settings.setGain($0, at: index)
+                                }
+                            ),
+                            in: -12...12,
+                            step: 0.5
+                        )
+                    }
+                    .disabled(!settings.equalizerEnabled)
+                }
+            }
+
+            Section("О приложении") {
+                LabeledContent("Приложение", value: "Private Music")
+                LabeledContent("Версия", value: version)
+                LabeledContent("Разработчик", value: "decoder-dev")
+                LabeledContent(
+                    "Аналитика",
+                    value: "Отключена"
+                )
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(ThemeBackground())
+        .navigationTitle("Настройки")
+    }
+
+    private var themePicker: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Тема")
+            HStack(spacing: 12) {
+                ForEach(AppTheme.allCases) { theme in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            settings.theme = theme
+                        }
+                    } label: {
+                        VStack(spacing: 7) {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: theme.colors,
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 44, height: 44)
+                                .overlay {
+                                    if settings.theme == theme {
+                                        Image(systemName: "checkmark")
+                                            .font(.headline)
+                                            .foregroundStyle(.white)
+                                    }
+                                }
+                            Text(theme.title)
+                                .font(.caption2)
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(theme.title)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var version: String {
+        let short = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "—"
+        let build = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleVersion"
+        ) as? String ?? "—"
+        return "\(short) (\(build))"
+    }
+}
