@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var player: AudioPlayer
 
     private let frequencies = ["60", "230", "910", "4K", "14K"]
 
@@ -75,6 +76,32 @@ struct SettingsView: View {
                         )
                     }
                     .disabled(!settings.equalizerEnabled)
+                }
+            }
+
+            Section("Таймер сна") {
+                if let endDate = player.sleepTimerEndDate {
+                    LabeledContent(
+                        "Остановка",
+                        value: endDate.formatted(
+                            date: .omitted,
+                            time: .shortened
+                        )
+                    )
+                    Button("Отключить таймер", role: .destructive) {
+                        player.cancelSleepTimer()
+                    }
+                } else {
+                    Menu("Остановить воспроизведение через…") {
+                        ForEach([15, 30, 45, 60, 90], id: \.self) {
+                            minutes in
+                            Button("\(minutes) мин") {
+                                player.scheduleSleepTimer(
+                                    minutes: minutes
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

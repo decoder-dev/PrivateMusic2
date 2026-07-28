@@ -38,6 +38,8 @@ all_source = "\n".join(path.read_text(encoding="utf-8") for path in swift_files)
 for forbidden in (
     "client_secret",
     "hHbZxrka2uZ6jB1inYsH",
+    "x-vk-android-client",
+    "VKAndroidApp/",
     "window.webkit.messageHandlers",
     "XMLHttpRequest.prototype.send",
 ):
@@ -49,6 +51,9 @@ for required_symbol in (
     "MPRemoteCommandCenter",
     "kSecAttrAccessibleWhenUnlockedThisDeviceOnly",
     "URLSessionConfiguration.ephemeral",
+    "MTAudioProcessingTapCreate",
+    "glassEffect",
+    "decoder-dev",
 ):
     if required_symbol not in all_source:
         fail(f"missing security/player symbol: {required_symbol}")
