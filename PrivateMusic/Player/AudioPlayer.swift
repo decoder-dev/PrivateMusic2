@@ -1,0 +1,198 @@
+import AVFoundation
+import MediaPlayer
+
+@MainActor
+final class AudioPlayer: ObservableObject {
+    @Published private(set) var queue: [Track] = []
+    @Published private(set) var currentIndex: Int?
+    @Published private(set) var isPlaying = false
+    @Published private(set) var elapsedTime: TimeInterval = 0
+    @Published private(set) var duration: TimeInterval = 0
+    @Published var isPlayerPresented = false
+    @Published var errorMessage: String?
+
+    private let player = AVPlayer()
+    private let nowPlaying = NowPlayingController()
+    private var timeObserver: Any?
+    private var endObserver: NSObjectProtocol?
+    private var remoteCommandTokens: [Any] = []
+
+    var currentTrack: Track? {
+        guard let currentIndex, queue.indices.contains(currentIndex) else {
+            return nil
+        }
+        return queue[currentIndex]
+    }
+
+    init() {
+        configureAudioSession()
+        configureRemoteCommands()
+        observePlayer()
+    }
+
+    func play(_ track: Track, in tracks: [Track]) {
+        queue = tracks
+        currentIndex = tracks.firstIndex(of: track) ?? 0
+        loadCurrentAndPlay()
+    }
+
+    func playPause() {
+        isPlaying ? pause() : resume()
+    }
+
+    func resume() {
+        guard player.currentItem != nil else {
+            loadCurrentAndPlay()
+            return
+        }
+        player.play()
+        isPlaying = true
+        publishPlaybackState()
+    }
+
+    func pause() {
+        player.pause()
+        isPlaying = false
+        publishPlaybackState()
+    }
+
+    func next() {
+        guard let currentIndex, !queue.isEmpty else { return }
+        let nextIndex = queue.index(after: currentIndex)
+        self.currentIndex = nextIndex < queue.endIndex ? nextIndex : 0
+        loadCurrentAndPlay()
+    }
+
+    func previous() {
+        if elapsedTime > 4 {
+            seek(to: 0)
+            return
+        }
+        guard let currentIndex, !queue.isEmpty else { return }
+        self.currentIndex = currentIndex > 0 ? currentIndex - 1 : queue.count - 1
+        loadCurrentAndPlay()
+    }
+
+    func seek(to seconds: TimeInterval) {
+        let target = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
+        player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+        elapsedTime = seconds
+        publishPlaybackState()
+    }
+
+    func stop() {
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        queue = []
+        currentIndex = nil
+        elapsedTime = 0
+        duration = 0
+        isPlaying = false
+        nowPlaying.clear()
+    }
+
+    private func loadCurrentAndPlay() {
+        guard let track = currentTrack else { return }
+        guard let url = track.streamURL else {
+            errorMessage = "Для этого трека отсутствует доступный аудиопоток."
+            isPlaying = false
+            nowPlaying.update(track: track, elapsedTime: 0, rate: 0)
+            return
+        }
+
+        let item = AVPlayerItem(url: url)
+        player.replaceCurrentItem(with: item)
+        elapsedTime = 0
+        duration = track.duration
+        player.play()
+        isPlaying = true
+        nowPlaying.update(track: track, elapsedTime: 0, rate: 1)
+    }
+
+    private func configureAudioSession() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(
+                .playback,
+                mode: .default,
+                options: [.allowAirPlay, .allowBluetoothA2DP]
+            )
+            try session.setActive(true)
+        } catch {
+            errorMessage = "Не удалось настроить фоновое аудио: \(error.localizedDescription)"
+        }
+    }
+
+    private func configureRemoteCommands() {
+        let center = MPRemoteCommandCenter.shared()
+        center.playCommand.isEnabled = true
+        center.pauseCommand.isEnabled = true
+        center.togglePlayPauseCommand.isEnabled = true
+        center.nextTrackCommand.isEnabled = true
+        center.previousTrackCommand.isEnabled = true
+        center.changePlaybackPositionCommand.isEnabled = true
+
+        remoteCommandTokens = [
+            center.playCommand.addTarget { [weak self] _ in
+                Task { @MainActor in self?.resume() }
+                return .success
+            },
+            center.pauseCommand.addTarget { [weak self] _ in
+                Task { @MainActor in self?.pause() }
+                return .success
+            },
+            center.togglePlayPauseCommand.addTarget { [weak self] _ in
+                Task { @MainActor in self?.playPause() }
+                return .success
+            },
+            center.nextTrackCommand.addTarget { [weak self] _ in
+                Task { @MainActor in self?.next() }
+                return .success
+            },
+            center.previousTrackCommand.addTarget { [weak self] _ in
+                Task { @MainActor in self?.previous() }
+                return .success
+            },
+            center.changePlaybackPositionCommand.addTarget { [weak self] event in
+                guard let event = event as? MPChangePlaybackPositionCommandEvent
+                else {
+                    return .commandFailed
+                }
+                Task { @MainActor in self?.seek(to: event.positionTime) }
+                return .success
+            }
+        ]
+    }
+
+    private func observePlayer() {
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] time in
+            Task { @MainActor in
+                guard let self else { return }
+                elapsedTime = max(0, time.seconds.isFinite ? time.seconds : 0)
+                if let seconds = player.currentItem?.duration.seconds,
+                   seconds.isFinite {
+                    duration = seconds
+                }
+                publishPlaybackState()
+            }
+        }
+
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.next() }
+        }
+    }
+
+    private func publishPlaybackState() {
+        nowPlaying.updatePlayback(
+            elapsedTime: elapsedTime,
+            rate: isPlaying ? 1 : 0
+        )
+    }
+}

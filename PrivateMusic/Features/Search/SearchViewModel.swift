@@ -1,0 +1,54 @@
+import Foundation
+
+@MainActor
+final class SearchViewModel: ObservableObject {
+    @Published var query = ""
+    @Published private(set) var tracks: [Track] = []
+    @Published private(set) var isLoading = false
+    @Published var errorMessage: String?
+
+    private var searchTask: Task<Void, Never>?
+
+    func schedule(
+        service: any MusicService,
+        accessToken: String
+    ) {
+        searchTask?.cancel()
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.count >= 2 else {
+            tracks = []
+            errorMessage = nil
+            return
+        }
+
+        searchTask = Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            await search(
+                normalized,
+                service: service,
+                accessToken: accessToken
+            )
+        }
+    }
+
+    private func search(
+        _ query: String,
+        service: any MusicService,
+        accessToken: String
+    ) async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            tracks = try await service.search(
+                query: query,
+                accessToken: accessToken,
+                offset: 0
+            )
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
