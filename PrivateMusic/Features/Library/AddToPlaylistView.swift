@@ -82,6 +82,7 @@ struct AddToPlaylistView: View {
             isLoading = false
             return
         }
+        defer { isLoading = false }
         do {
             let page = try await environment.musicService.playlists(
                 accessToken: token,
@@ -89,10 +90,11 @@ struct AddToPlaylistView: View {
                 count: 100
             )
             playlists = page.items.filter { $0.ownerID == userID }
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
-        isLoading = false
     }
 
     private func add(to playlist: Playlist) async {
@@ -106,6 +108,8 @@ struct AddToPlaylistView: View {
                 accessToken: token
             )
             dismiss()
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

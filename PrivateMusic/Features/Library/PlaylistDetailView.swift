@@ -94,6 +94,8 @@ private final class PlaylistDetailViewModel: ObservableObject {
                 count: 100
             ).items
             errorMessage = nil
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -113,6 +115,8 @@ private final class PlaylistDetailViewModel: ObservableObject {
             )
             tracks.removeAll { $0.id == track.id }
             errorMessage = nil
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -50,7 +50,10 @@ struct LRCLyricsService: Sendable {
         guard let match = candidates.min(by: {
             abs($0.duration - track.duration)
                 < abs($1.duration - track.duration)
-        }) else {
+        }),
+              track.duration <= 0
+                || abs(match.duration - track.duration)
+                    <= max(12, track.duration * 0.08) else {
             throw APIError.server(
                 code: 404,
                 message: "Текст для этого трека не найден."
