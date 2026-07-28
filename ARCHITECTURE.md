@@ -17,6 +17,10 @@ original binary.
 
 - No password, OTP or CAPTCHA interception.
 - No embedded `client_secret`.
+- Phone/password/OTP fields stay inside a non-persistent VK `WKWebView`.
+- Web navigation is restricted to HTTPS pages owned by `vk.ru` or `vk.com`.
+- VK cookies are exchanged directly with `login.vk.ru`, never persisted, and
+  explicitly removed after success or cancellation.
 - Session token uses `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
 - API requests use an ephemeral `URLSession` with cookies disabled.
 - Only HTTPS endpoints are configured.
@@ -27,7 +31,8 @@ original binary.
 ## Known integration boundary
 
 The old IPA uses private VK music methods and credentials belonging to another
-client. This project intentionally does not copy those credentials. Direct
-`audio.*` calls work only for tokens/accounts that VK permits to use them.
-Official VK ID integration should be added with the official VK SDK after
-registering a new iOS application and bundle ID.
+client. This project intentionally does not copy its secret. The embedded login
+uses VK's own public web-client identifier and web-token endpoint, while the
+fallback accepts a user-owned VKpyMusic session. Direct `audio.*` calls work
+only for tokens/accounts that VK permits to use them. An App Store release
+should use official VK ID after registering an iOS application and bundle ID.

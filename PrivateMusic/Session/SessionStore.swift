@@ -30,6 +30,7 @@ final class SessionStore: ObservableObject {
     func connect(
         accessToken: String,
         userAgent: String?,
+        expiresAt: Date? = nil,
         profile: UserProfile
     ) throws {
         let cleaned = accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -44,7 +45,7 @@ final class SessionStore: ObservableObject {
                 ? cleanedUserAgent
                 : nil,
             userID: profile.id,
-            expiresAt: nil
+            expiresAt: expiresAt
         )
         try keychain.save(value, account: sessionAccount)
         session = value
