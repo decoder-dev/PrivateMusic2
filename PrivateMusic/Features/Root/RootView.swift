@@ -27,6 +27,7 @@ struct RootView: View {
         .tint(settings.theme.accent)
         .background(ThemeBackground())
         .preferredColorScheme(settings.theme.colorScheme)
+        .appTextScale(settings.textScale)
         .alert(
             "Ошибка воспроизведения",
             isPresented: Binding(
