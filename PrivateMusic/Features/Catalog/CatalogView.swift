@@ -85,7 +85,6 @@ struct CatalogView: View {
                     ForEach(recommendations.prefix(12)) { track in
                         Button {
                             player.play(track, in: recommendations)
-                            player.isPlayerPresented = true
                         } label: {
                             VStack(alignment: .leading, spacing: 8) {
                                 ZStack(alignment: .bottomTrailing) {

@@ -1,4 +1,4 @@
-# Private Music 2.5
+# Private Music 2.6
 
 Clean SwiftUI sources for a private music player inspired by the inspected IPA.
 The project is independent from the patched `Private Music [1.1].ipa`.
@@ -16,6 +16,7 @@ The project is independent from the patched `Private Music [1.1].ipa`.
 - Keychain session storage;
 - embedded VK web login by phone number;
 - automatic web-session detection with a restricted in-app browser;
+- automatic token renewal from a device-only Keychain refresh session;
 - VKpyMusic token and matching User-Agent import;
 - ephemeral cookie-free networking;
 - no-tracking Privacy Manifest;
@@ -37,8 +38,10 @@ The project is independent from the patched `Private Music [1.1].ipa`.
 Tap `Войти по номеру телефона` and complete authorization on the VK page.
 The login page runs in a non-persistent `WKWebView` restricted to VK domains.
 Private Music exchanges the authenticated web session directly with
-`login.vk.ru`, validates the resulting token through `users.get`, saves only
-that token in the iOS Keychain and clears all web cookies and website data.
+`login.vk.ru`, validates the resulting token through `users.get`, stores the
+token and refresh session in the device-only iOS Keychain, then clears the
+temporary WebKit cookie store and website data. The refresh session is used to
+renew an expired token without asking for the phone number again.
 
 The web token endpoint and private `audio.*` methods are unofficial integration
 points. VK may change or block them, and an expired token requires signing in
@@ -75,10 +78,10 @@ needed for simulator builds, but is required to install the app on an iPhone.
 
 The included GitHub Actions workflow runs on a macOS runner, compiles the iOS
 Simulator target, builds the arm64 iPhone target and packages
-`PrivateMusic-2.5.0-unsigned.ipa`. Push the contents of this directory to a GitHub
+`PrivateMusic-2.6.0-unsigned.ipa`. Push the contents of this directory to a GitHub
 repository and run the `Build unsigned IPA` workflow.
 
-Download the `PrivateMusic-2.5.0-unsigned` workflow artifact when the job
+Download the `PrivateMusic-2.6.0-unsigned` workflow artifact when the job
 finishes. The IPA still requires signing before installation on an iPhone.
 
 ## Local structural validation
