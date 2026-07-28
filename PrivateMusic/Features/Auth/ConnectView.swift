@@ -107,10 +107,7 @@ struct ConnectView: View {
             .disabled(isConnecting)
         }
         .padding(20)
-        .adaptiveGlass(
-            in: RoundedRectangle(cornerRadius: 24),
-            interactive: true
-        )
+        .premiumCard(interactive: true)
     }
 
     private func benefit(_ icon: String, _ title: String) -> some View {
