@@ -183,6 +183,10 @@ final class AudioPlayer: ObservableObject {
         duration = 0
         isPlaying = false
         nowPlaying.clear()
+        try? AVAudioSession.sharedInstance().setActive(
+            false,
+            options: .notifyOthersOnDeactivation
+        )
     }
 
     private func loadCurrentAndPlay() {
@@ -218,9 +222,8 @@ final class AudioPlayer: ObservableObject {
             try session.setCategory(
                 .playback,
                 mode: .default,
-                options: [.allowAirPlay, .allowBluetoothA2DP]
+                options: []
             )
-            try session.setActive(true)
         } catch {
             errorMessage = "Не удалось настроить фоновое аудио: \(error.localizedDescription)"
         }
@@ -228,7 +231,7 @@ final class AudioPlayer: ObservableObject {
 
     private func activateAudioSession() {
         do {
-            try AVAudioSession.sharedInstance().setActive(true)
+            try AVAudioSession.sharedInstance().setActive(true, options: [])
         } catch {
             errorMessage = "Не удалось включить звук: \(error.localizedDescription)"
         }
