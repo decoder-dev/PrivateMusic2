@@ -2,13 +2,18 @@ import SwiftUI
 
 struct PlayerView: View {
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var settings: AppSettings
     @Environment(\.dismiss) private var dismiss
+    @State private var showingQueue = false
 
     var body: some View {
         NavigationStack {
             ZStack {
                 LinearGradient(
-                    colors: [Brand.violet.opacity(0.42), Brand.background],
+                    colors: [
+                        settings.theme.secondaryAccent.opacity(0.46),
+                        settings.theme.colors[0]
+                    ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -46,7 +51,17 @@ struct PlayerView: View {
                             .foregroundStyle(.secondary)
                         }
 
-                        HStack(spacing: 48) {
+                        HStack(spacing: 27) {
+                            Button {
+                                player.toggleShuffle()
+                            } label: {
+                                Image(systemName: "shuffle")
+                                    .foregroundStyle(
+                                        player.shuffleEnabled
+                                            ? settings.theme.accent
+                                            : Color.primary
+                                    )
+                            }
                             Button {
                                 player.previous()
                             } label: {
@@ -67,8 +82,26 @@ struct PlayerView: View {
                             } label: {
                                 Image(systemName: "forward.fill")
                             }
+                            Button {
+                                player.cycleRepeatMode()
+                            } label: {
+                                Image(
+                                    systemName: player.repeatMode.systemImage
+                                )
+                                .foregroundStyle(
+                                    player.repeatMode == .off
+                                        ? Color.primary
+                                        : settings.theme.accent
+                                )
+                            }
                         }
                         .font(.title)
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 14)
+                        .adaptiveGlass(
+                            in: Capsule(),
+                            interactive: true
+                        )
 
                         Spacer()
                     }
@@ -81,7 +114,20 @@ struct PlayerView: View {
                         dismiss()
                     }
                 }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showingQueue = true
+                    } label: {
+                        Image(
+                            systemName:
+                                "text.line.first.and.arrowtriangle.forward"
+                        )
+                    }
+                }
             }
+        }
+        .sheet(isPresented: $showingQueue) {
+            QueueView()
         }
     }
 }
