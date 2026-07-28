@@ -25,16 +25,28 @@ struct KeychainStore: Sendable {
     func save<Value: Codable>(_ value: Value, account: String) throws {
         let data = try JSONEncoder().encode(value)
         let query = baseQuery(account: account)
-        SecItemDelete(query as CFDictionary)
-
-        var attributes = query
-        attributes[kSecValueData as String] = data
-        attributes[kSecAttrAccessible as String] =
+        let values: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String:
             kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        ]
 
-        let status = SecItemAdd(attributes as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw KeychainError.unexpectedStatus(status)
+        let updateStatus = SecItemUpdate(
+            query as CFDictionary,
+            values as CFDictionary
+        )
+        if updateStatus == errSecSuccess {
+            return
+        }
+        guard updateStatus == errSecItemNotFound else {
+            throw KeychainError.unexpectedStatus(updateStatus)
+        }
+
+        var newItem = query
+        values.forEach { newItem[$0.key] = $0.value }
+        let addStatus = SecItemAdd(newItem as CFDictionary, nil)
+        guard addStatus == errSecSuccess else {
+            throw KeychainError.unexpectedStatus(addStatus)
         }
     }
 
@@ -75,4 +87,3 @@ struct KeychainStore: Sendable {
         ]
     }
 }
-

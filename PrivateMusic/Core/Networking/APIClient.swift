@@ -73,7 +73,7 @@ actor APIClient {
                 }
                 if (http.statusCode == 429 || http.statusCode >= 500),
                    attempt < 2 {
-                    await retryDelay(attempt: attempt)
+                    try await retryDelay(attempt: attempt)
                     continue
                 }
                 guard (200..<300).contains(http.statusCode) else {
@@ -91,7 +91,7 @@ actor APIClient {
                         throw APIError.unauthorized
                     }
                     if [6, 10].contains(error.errorCode), attempt < 2 {
-                        await retryDelay(attempt: attempt)
+                        try await retryDelay(attempt: attempt)
                         continue
                     }
                     throw APIError.server(
@@ -113,7 +113,7 @@ actor APIClient {
                 throw CancellationError()
             } catch {
                 if attempt < 2 {
-                    await retryDelay(attempt: attempt)
+                    try await retryDelay(attempt: attempt)
                     continue
                 }
                 throw APIError.transport(error.localizedDescription)
@@ -122,9 +122,9 @@ actor APIClient {
         throw APIError.invalidResponse
     }
 
-    private func retryDelay(attempt: Int) async {
+    private func retryDelay(attempt: Int) async throws {
         let delay = UInt64(attempt + 1) * 350_000_000
-        try? await Task.sleep(nanoseconds: delay)
+        try await Task.sleep(nanoseconds: delay)
     }
 }
 
