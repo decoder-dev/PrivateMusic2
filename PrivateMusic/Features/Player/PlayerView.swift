@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct PlayerView: View {
+    @EnvironmentObject private var environment: AppEnvironment
+    @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.dismiss) private var dismiss
@@ -12,6 +14,8 @@ struct PlayerView: View {
     @State private var showingPlaylists = false
     @State private var shareFileURL: URL?
     @State private var isPreparingShare = false
+    @State private var isInLibrary = false
+    @State private var showingSettings = false
     private let shareService = TrackShareService()
     let showsCloseButton: Bool
 
@@ -22,6 +26,19 @@ struct PlayerView: View {
     var body: some View {
         NavigationStack {
             ZStack {
+                if let artworkURL = player.currentTrack?.artworkURL {
+                    AsyncImage(url: artworkURL) { phase in
+                        if case let .success(image) = phase {
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .blur(radius: 70)
+                                .saturation(1.15)
+                                .opacity(settings.theme == .dark ? 0.34 : 0.2)
+                        }
+                    }
+                    .ignoresSafeArea()
+                }
                 LinearGradient(
                     colors: [
                         settings.theme.colors.last
@@ -31,6 +48,7 @@ struct PlayerView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
+                .opacity(settings.theme == .dark ? 0.82 : 0.88)
                 .ignoresSafeArea()
 
                 if let track = player.currentTrack {
@@ -70,6 +88,13 @@ struct PlayerView: View {
                                     .multilineTextAlignment(.center)
                                 Text(track.artist)
                                     .foregroundStyle(.secondary)
+                                if let album = track.albumTitle,
+                                   !album.isEmpty {
+                                    Text(album)
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(1)
+                                }
                                 if player.isBuffering {
                                     Label(
                                         "Буферизация",
@@ -80,7 +105,13 @@ struct PlayerView: View {
                                 }
                             }
 
-                            HStack(spacing: 18) {
+                            HStack(spacing: 10) {
+                                playerAction(
+                                    isInLibrary ? "heart.fill" : "heart",
+                                    label: "В медиатеку"
+                                ) {
+                                    addToLibrary(track)
+                                }
                                 playerAction(
                                     "person.wave.2",
                                     label: "Исполнитель"
@@ -161,13 +192,27 @@ struct PlayerView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showingQueue = true
-                    } label: {
-                        Image(
-                            systemName:
-                                "text.line.first.and.arrowtriangle.forward"
+                    Menu {
+                        Button {
+                            showingQueue = true
+                        } label: {
+                            Label("Очередь", systemImage: "list.bullet")
+                        }
+                        Toggle(
+                            "Эквалайзер",
+                            isOn: $settings.equalizerEnabled
                         )
+                        Button {
+                            showingSettings = true
+                        } label: {
+                            Label(
+                                "Настройки звука",
+                                systemImage: "slider.horizontal.3"
+                            )
+                        }
+                        Text("Качество: автоматически VK")
+                    } label: {
+                        Image(systemName: "ellipsis")
                     }
                 }
             }
@@ -189,6 +234,9 @@ struct PlayerView: View {
             if let track = player.currentTrack {
                 AddToPlaylistView(track: track)
             }
+        }
+        .sheet(isPresented: $showingSettings) {
+            NavigationStack { SettingsView() }
         }
         .sheet(
             isPresented: Binding(
@@ -307,6 +355,23 @@ struct PlayerView: View {
         } catch {
             player.errorMessage = "Не удалось подготовить файл: "
                 + error.localizedDescription
+        }
+    }
+
+    private func addToLibrary(_ track: Track) {
+        guard let token = sessionStore.accessToken else { return }
+        Task {
+            do {
+                try await environment.musicService.addToLibrary(
+                    track,
+                    accessToken: token
+                )
+                isInLibrary = true
+                Haptics.selection()
+            } catch {
+                player.errorMessage = "Не удалось добавить трек: "
+                    + error.localizedDescription
+            }
         }
     }
 }

@@ -59,7 +59,8 @@ struct LRCLyricsService: Sendable {
 
         let plain = match.plainLyrics?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let synced = match.syncedLyrics.map(Self.stripTimestamps)?
+        let syncedLines = match.syncedLyrics.map(Self.parseSynced) ?? []
+        let synced = syncedLines.map(\.text).joined(separator: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let text = [plain, synced]
             .compactMap({ $0 })
@@ -69,20 +70,37 @@ struct LRCLyricsService: Sendable {
                 message: "Текст для этого трека не найден."
             )
         }
-        return Lyrics(text: text, source: "LRCLIB")
+        return Lyrics(
+            text: text,
+            source: "LRCLIB",
+            lines: syncedLines
+        )
     }
 
-    private static func stripTimestamps(_ value: String) -> String {
-        value
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { line in
-                line.replacingOccurrences(
-                    of: #"^\[[0-9:.]+\]\s*"#,
-                    with: "",
-                    options: .regularExpression
-                )
+    private static func parseSynced(_ value: String) -> [LyricLine] {
+        value.split(separator: "\n").compactMap { rawLine in
+            let line = String(rawLine)
+            guard line.first == "[",
+                  let closing = line.firstIndex(of: "]") else {
+                return nil
             }
-            .joined(separator: "\n")
+            let stamp = line[line.index(after: line.startIndex)..<closing]
+            let parts = stamp.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2,
+                  let minutes = Double(parts[0]),
+                  let seconds = Double(parts[1]) else {
+                return nil
+            }
+            let textStart = line.index(after: closing)
+            let text = line[textStart...]
+                .trimmingCharacters(in: .whitespaces)
+            guard !text.isEmpty else { return nil }
+            return LyricLine(
+                time: minutes * 60 + seconds,
+                text: text
+            )
+        }
+        .sorted { $0.time < $1.time }
     }
 }
 
