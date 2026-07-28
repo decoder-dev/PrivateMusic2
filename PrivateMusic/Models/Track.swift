@@ -98,6 +98,23 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(accessKey, forKey: .accessKey)
         try container.encodeIfPresent(lyricsID, forKey: .lyricsID)
     }
+
+    func resolvingStreamURL(userID: Int?) -> Track {
+        Track(
+            trackID: trackID,
+            ownerID: ownerID,
+            title: title,
+            artist: artist,
+            duration: duration,
+            streamURL: VKAudioURLResolver.resolve(
+                streamURL,
+                userID: userID
+            ),
+            artworkURL: artworkURL,
+            accessKey: accessKey,
+            lyricsID: lyricsID
+        )
+    }
 }
 
 extension URL {

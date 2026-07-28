@@ -79,21 +79,29 @@ struct CatalogView: View {
         }
         isLoading = true
         defer { isLoading = false }
+        var failures: [String] = []
+
         do {
-            async let tracks = environment.musicService.recommendations(
+            recommendations = try await environment.musicService.recommendations(
                 accessToken: token
             )
-            async let playlistPage = environment.musicService.playlists(
+        } catch {
+            failures.append(error.localizedDescription)
+        }
+
+        do {
+            let playlistPage = try await environment.musicService.playlists(
                 accessToken: token,
                 offset: 0,
                 count: 30
             )
-            let loaded = try await (tracks, playlistPage)
-            recommendations = loaded.0
-            playlists = loaded.1.items
-            errorMessage = nil
+            playlists = playlistPage.items
         } catch {
-            errorMessage = error.localizedDescription
+            failures.append(error.localizedDescription)
         }
+
+        errorMessage = recommendations.isEmpty && playlists.isEmpty
+            ? failures.first ?? "VK не вернул данные каталога."
+            : nil
     }
 }

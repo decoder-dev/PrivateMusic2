@@ -27,6 +27,12 @@ struct SettingsView: View {
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+
+                Button("Сбросить оформление") {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        settings.resetAppearance()
+                    }
+                }
             }
 
             Section("Эквалайзер") {
@@ -123,7 +129,12 @@ struct SettingsView: View {
     private var themePicker: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Тема")
-            HStack(spacing: 12) {
+            LazyVGrid(
+                columns: [
+                    GridItem(.adaptive(minimum: 72), spacing: 12)
+                ],
+                spacing: 12
+            ) {
                 ForEach(AppTheme.allCases) { theme in
                     Button {
                         withAnimation(.easeInOut(duration: 0.25)) {

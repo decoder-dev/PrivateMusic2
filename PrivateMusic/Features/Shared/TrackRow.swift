@@ -9,6 +9,7 @@ struct TrackRow: View {
     var body: some View {
         Button {
             player.play(track, in: queue)
+            player.isPlayerPresented = true
         } label: {
             HStack(spacing: 12) {
                 AsyncArtwork(url: track.artworkURL, size: 52)
