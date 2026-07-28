@@ -17,7 +17,10 @@ final class AppEnvironment: ObservableObject {
         self.sessionStore = SessionStore(keychain: keychain)
         self.player = AudioPlayer(settings: settings)
 
-        let client = APIClient(baseURL: configuration.vkAPIBaseURL)
+        let client = APIClient(
+            baseURL: configuration.vkAPIBaseURL,
+            userAgent: sessionStore.userAgent
+        )
         self.musicService = VKMusicService(
             client: client,
             apiVersion: configuration.apiVersion
