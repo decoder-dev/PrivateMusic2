@@ -240,6 +240,7 @@ final class AudioPlayer: ObservableObject {
                     self.isBuffering = false
                     self.errorMessage = item.error?.localizedDescription
                         ?? "VK не вернул рабочий аудиопоток."
+                    Haptics.error()
                     self.publishPlaybackState()
                 case .unknown:
                     self.isBuffering = true

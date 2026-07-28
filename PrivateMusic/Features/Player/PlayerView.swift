@@ -4,6 +4,8 @@ struct PlayerView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var artworkDrag: CGSize = .zero
     @State private var showingQueue = false
     @State private var showingLyrics = false
     @State private var showingArtist = false
@@ -39,6 +41,26 @@ struct PlayerView: View {
                                     color: .black.opacity(0.18),
                                     radius: 24,
                                     y: 12
+                                )
+                                .offset(
+                                    x: reduceMotion
+                                        ? 0
+                                        : artworkDrag.width * 0.22,
+                                    y: reduceMotion
+                                        ? 0
+                                        : artworkDrag.height * 0.12
+                                )
+                                .rotationEffect(
+                                    .degrees(
+                                        reduceMotion
+                                            ? 0
+                                            : artworkDrag.width / 45
+                                    )
+                                )
+                                .gesture(artworkGesture)
+                                .accessibilityHint(
+                                    "Смахните в стороны для смены трека, "
+                                        + "вверх для очереди"
                                 )
 
                             VStack(spacing: 7) {
@@ -187,6 +209,7 @@ struct PlayerView: View {
     private var playbackControls: some View {
         HStack(spacing: 24) {
             Button {
+                Haptics.selection()
                 player.toggleShuffle()
             } label: {
                 Image(systemName: "shuffle")
@@ -197,11 +220,13 @@ struct PlayerView: View {
                     )
             }
             Button {
+                Haptics.trackChange()
                 player.previous()
             } label: {
                 Image(systemName: "backward.fill")
             }
             Button {
+                Haptics.selection()
                 player.playPause()
             } label: {
                 Image(
@@ -212,11 +237,13 @@ struct PlayerView: View {
                 .font(.system(size: 68))
             }
             Button {
+                Haptics.trackChange()
                 player.next()
             } label: {
                 Image(systemName: "forward.fill")
             }
             Button {
+                Haptics.selection()
                 player.cycleRepeatMode()
             } label: {
                 Image(systemName: player.repeatMode.systemImage)
@@ -231,6 +258,31 @@ struct PlayerView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .adaptiveGlass(in: Capsule(), interactive: true)
+    }
+
+    private var artworkGesture: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .updating($artworkDrag) { value, state, _ in
+                state = value.translation
+            }
+            .onEnded { value in
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                if abs(horizontal) > abs(vertical) {
+                    if horizontal < -58 {
+                        Haptics.trackChange()
+                        player.next()
+                    } else if horizontal > 58 {
+                        Haptics.trackChange()
+                        player.previous()
+                    }
+                } else if vertical < -62 {
+                    Haptics.open()
+                    showingQueue = true
+                } else if vertical > 78, showsCloseButton {
+                    dismiss()
+                }
+            }
     }
 
     private func playerAction(

@@ -15,10 +15,7 @@ struct ProfileView: View {
                     Label("Настройки", systemImage: "gearshape.fill")
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
-                        .adaptiveGlass(
-                            in: RoundedRectangle(cornerRadius: 18),
-                            interactive: true
-                        )
+                        .premiumCard(interactive: true)
                 }
                 .buttonStyle(.plain)
                 linksCard
@@ -29,10 +26,7 @@ struct ProfileView: View {
                     Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
-                        .adaptiveGlass(
-                            in: RoundedRectangle(cornerRadius: 18),
-                            interactive: true
-                        )
+                        .premiumCard(interactive: true)
                 }
 
                 VStack(spacing: 8) {
@@ -72,7 +66,7 @@ struct ProfileView: View {
             Spacer()
         }
         .padding()
-        .adaptiveGlass(in: RoundedRectangle(cornerRadius: 22))
+        .premiumCard()
     }
 
     private var linksCard: some View {
@@ -92,7 +86,7 @@ struct ProfileView: View {
             )
         }
         .padding(.horizontal)
-        .adaptiveGlass(in: RoundedRectangle(cornerRadius: 22))
+        .premiumCard()
     }
 
     private func linkButton(

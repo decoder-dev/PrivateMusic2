@@ -3,11 +3,13 @@ import Foundation
 
 struct TrackRow: View {
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var settings: AppSettings
     let track: Track
     let queue: [Track]
 
     var body: some View {
         Button {
+            Haptics.selection()
             player.play(track, in: queue)
         } label: {
             HStack(spacing: 12) {
@@ -16,6 +18,11 @@ struct TrackRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(track.title)
                         .font(.headline)
+                        .foregroundStyle(
+                            isCurrent
+                                ? settings.theme.accent
+                                : Color.primary
+                        )
                         .lineLimit(1)
                     Text(track.artist)
                         .font(.subheadline)
@@ -29,9 +36,17 @@ struct TrackRow: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
 
-                Image(systemName: "play.fill")
+                Image(
+                    systemName: isCurrent && player.isPlaying
+                        ? "waveform"
+                        : "play.fill"
+                )
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(
+                        isCurrent
+                            ? settings.theme.accent
+                            : Color.secondary
+                    )
                     .frame(width: 22, height: 22)
                     .background(
                         Color(uiColor: .tertiarySystemFill),
@@ -40,7 +55,7 @@ struct TrackRow: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PremiumPressStyle())
         .contextMenu {
             Button {
                 player.playNext(track)
@@ -50,7 +65,18 @@ struct TrackRow: View {
                     systemImage: "text.line.first.and.arrowtriangle.forward"
                 )
             }
+            Button {
+                Haptics.open()
+                player.play(track, in: queue)
+                player.isPlayerPresented = true
+            } label: {
+                Label("Открыть плеер", systemImage: "play.circle")
+            }
         }
+    }
+
+    private var isCurrent: Bool {
+        player.currentTrack?.id == track.id
     }
 }
 

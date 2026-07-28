@@ -148,7 +148,7 @@ struct CatalogView: View {
                     }
                 }
             }
-            .adaptiveGlass(in: RoundedRectangle(cornerRadius: 22))
+            .premiumCard()
         }
     }
 
@@ -214,7 +214,7 @@ struct CatalogView: View {
             Spacer()
         }
         .padding(20)
-        .adaptiveGlass(in: RoundedRectangle(cornerRadius: 22))
+        .premiumCard()
     }
 
     private var unavailableCard: some View {
