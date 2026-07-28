@@ -5,6 +5,7 @@ final class AppEnvironment: ObservableObject {
     let configuration: AppConfiguration
     let settings: AppSettings
     let sessionStore: SessionStore
+    let historyStore: ListeningHistoryStore
     let player: AudioPlayer
     let musicService: any MusicService
     let webAuthService: VKWebAuthService
@@ -16,8 +17,10 @@ final class AppEnvironment: ObservableObject {
         self.configuration = configuration
         self.settings = AppSettings()
         self.sessionStore = SessionStore(keychain: keychain)
+        self.historyStore = ListeningHistoryStore()
         self.player = AudioPlayer(
             settings: settings,
+            historyStore: historyStore,
             userAgent: sessionStore.userAgent
         )
         self.webAuthService = VKWebAuthService()
@@ -26,10 +29,15 @@ final class AppEnvironment: ObservableObject {
             baseURL: configuration.vkAPIBaseURL,
             userAgent: sessionStore.userAgent
         )
-        self.musicService = VKMusicService(
+        let service = VKMusicService(
             client: client,
             apiVersion: configuration.apiVersion,
             initialUserID: sessionStore.session?.userID
         )
+        self.musicService = service
+        player.configureContinuation { [service, sessionStore] in
+            guard let token = sessionStore.accessToken else { return [] }
+            return try await service.recommendations(accessToken: token)
+        }
     }
 }

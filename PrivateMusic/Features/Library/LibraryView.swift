@@ -19,6 +19,7 @@ struct LibraryView: View {
             Picker("Раздел медиатеки", selection: $selection) {
                 Text("Треки").tag(0)
                 Text("Плейлисты").tag(1)
+                Text("История").tag(2)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
@@ -30,8 +31,10 @@ struct LibraryView: View {
                     emptyMessage: "В медиатеке пока нет треков.",
                     model: model
                 )
-            } else {
+            } else if selection == 1 {
                 PlaylistLibraryView()
+            } else {
+                ListeningHistoryView()
             }
         }
         .navigationTitle("Моя музыка")

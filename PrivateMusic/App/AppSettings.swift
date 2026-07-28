@@ -78,12 +78,12 @@ enum EqualizerPreset: String, CaseIterable, Identifiable {
 
     var gains: [Double] {
         switch self {
-        case .flat: [0, 0, 0, 0, 0]
-        case .bass: [6, 4, 1, 0, -1]
-        case .vocal: [-2, -1, 3, 4, 2]
-        case .electronic: [5, 2, -1, 2, 5]
-        case .rock: [4, 2, -1, 3, 4]
-        case .custom: [0, 0, 0, 0, 0]
+        case .flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        case .bass: [6, 6, 5, 3, 1, 0, 0, 0, -1, -1]
+        case .vocal: [-2, -2, -1, 0, 2, 4, 4, 3, 1, 0]
+        case .electronic: [5, 4, 2, 0, -1, 0, 2, 3, 5, 5]
+        case .rock: [4, 3, 2, 0, -1, 1, 3, 4, 4, 3]
+        case .custom: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }
     }
 }
@@ -109,6 +109,9 @@ final class AppSettings: ObservableObject {
     }
     @Published var equalizerGains: [Double] {
         didSet { defaults.set(equalizerGains, forKey: Keys.gains) }
+    }
+    @Published var equalizerPreamp: Double {
+        didSet { defaults.set(equalizerPreamp, forKey: Keys.preamp) }
     }
 
     private let defaults: UserDefaults
@@ -140,11 +143,12 @@ final class AppSettings: ObservableObject {
             rawValue: defaults.string(forKey: Keys.preset) ?? ""
         ) ?? .flat
         let savedGains = defaults.array(forKey: Keys.gains) as? [Double]
-        if let savedGains, savedGains.count == 5 {
+        if let savedGains, savedGains.count == 10 {
             equalizerGains = savedGains
         } else {
             equalizerGains = EqualizerPreset.flat.gains
         }
+        equalizerPreamp = defaults.object(forKey: Keys.preamp) as? Double ?? 0
     }
 
     func selectPreset(_ preset: EqualizerPreset) {
@@ -173,5 +177,6 @@ final class AppSettings: ObservableObject {
         static let equalizer = "audio.equalizer.enabled"
         static let preset = "audio.equalizer.preset"
         static let gains = "audio.equalizer.gains"
+        static let preamp = "audio.equalizer.preamp"
     }
 }

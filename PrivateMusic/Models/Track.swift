@@ -5,6 +5,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
     let ownerID: Int
     let title: String
     let artist: String
+    let albumTitle: String?
     let duration: TimeInterval
     let streamURL: URL?
     let artworkURL: URL?
@@ -18,6 +19,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         ownerID: Int,
         title: String,
         artist: String,
+        albumTitle: String? = nil,
         duration: TimeInterval,
         streamURL: URL?,
         artworkURL: URL?,
@@ -28,6 +30,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         self.ownerID = ownerID
         self.title = title
         self.artist = artist
+        self.albumTitle = albumTitle
         self.duration = duration
         self.streamURL = streamURL
         self.artworkURL = artworkURL
@@ -40,6 +43,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         case ownerID = "owner_id"
         case title
         case artist
+        case albumTitle = "album_title"
         case duration
         case url
         case album
@@ -49,6 +53,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
 
     enum AlbumKeys: String, CodingKey {
         case thumb
+        case title
     }
 
     enum ThumbKeys: String, CodingKey {
@@ -63,6 +68,13 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         ownerID = try container.decode(Int.self, forKey: .ownerID)
         title = try container.decode(String.self, forKey: .title)
         artist = try container.decode(String.self, forKey: .artist)
+        albumTitle = try container.decodeIfPresent(
+            String.self,
+            forKey: .albumTitle
+        ) ?? (try? container.nestedContainer(
+            keyedBy: AlbumKeys.self,
+            forKey: .album
+        ).decodeIfPresent(String.self, forKey: .title)) ?? nil
         duration = TimeInterval(
             try container.decodeIfPresent(Int.self, forKey: .duration) ?? 0
         )
@@ -93,6 +105,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         try container.encode(ownerID, forKey: .ownerID)
         try container.encode(title, forKey: .title)
         try container.encode(artist, forKey: .artist)
+        try container.encodeIfPresent(albumTitle, forKey: .albumTitle)
         try container.encode(Int(duration), forKey: .duration)
         try container.encodeIfPresent(streamURL?.absoluteString, forKey: .url)
         try container.encodeIfPresent(accessKey, forKey: .accessKey)
@@ -105,6 +118,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
             ownerID: ownerID,
             title: title,
             artist: artist,
+            albumTitle: albumTitle,
             duration: duration,
             streamURL: VKAudioURLResolver.resolve(
                 streamURL,

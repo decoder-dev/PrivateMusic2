@@ -69,21 +69,26 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-2.8.1-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-2.9.0-unsigned.ipa"
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-2.8.1-unsigned.ipa" \
-            --title "Private Music 2.8.1" \
+            "$PWD/artifacts/PrivateMusic-2.9.0-unsigned.ipa" \
+            --title "Private Music 2.9.0" \
             --notes-file - <<'EOF'
-          Private Music 2.8.1
+          Private Music 2.9.0
 
-          - вкладка «Плеер» удалена из нижней навигации;
-          - плеер открывается нажатием на компактный mini-player;
-          - четыре основные вкладки: Главная, Медиатека, Поиск, Профиль.
+          - сохранение очереди и позиции между запусками;
+          - локальная история прослушиваний с поиском и очисткой;
+          - синхронные тексты с автопрокруткой и переходом к строке;
+          - бесконечное продолжение очереди рекомендациями и VK-миксами;
+          - стабильный главный экран со скелетонами;
+          - история поисковых запросов;
+          - 10-полосный эквалайзер с предусилителем;
+          - обновлённый плеер с фоном из обложки и быстрыми действиями.
 
           IPA не подписан. Перед установкой его необходимо подписать своим
           сертификатом через ESign, Scarlet, AltStore или другой инструмент.
@@ -91,7 +96,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-2.8.1-unsigned
-          path: artifacts/PrivateMusic-2.8.1-unsigned.ipa
+          name: PrivateMusic-2.9.0-unsigned
+          path: artifacts/PrivateMusic-2.9.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

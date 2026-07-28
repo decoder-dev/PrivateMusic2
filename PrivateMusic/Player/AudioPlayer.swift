@@ -29,6 +29,7 @@ final class AudioPlayer: ObservableObject {
     private let player = AVPlayer()
     private let nowPlaying = NowPlayingController()
     private let equalizer = EqualizerDSP()
+    private let historyStore: ListeningHistoryStore
     private var timeObserver: Any?
     private var notificationObservers: [NSObjectProtocol] = []
     private let defaults: UserDefaults
@@ -37,6 +38,9 @@ final class AudioPlayer: ObservableObject {
     private var sleepTask: Task<Void, Never>?
     private var streamUserAgent: String?
     private var itemStatusObservation: NSKeyValueObservation?
+    private var defaultContinuationProvider: (() async throws -> [Track])?
+    private var activeContinuationProvider: (() async throws -> [Track])?
+    private var lastPersistedSecond = -1
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -47,10 +51,12 @@ final class AudioPlayer: ObservableObject {
 
     init(
         settings: AppSettings,
+        historyStore: ListeningHistoryStore,
         userAgent: String? = nil,
         defaults: UserDefaults = .standard
     ) {
         self.defaults = defaults
+        self.historyStore = historyStore
         self.streamUserAgent = userAgent
         shuffleEnabled = defaults.bool(forKey: "player.shuffle")
         repeatMode = RepeatMode(
@@ -61,11 +67,26 @@ final class AudioPlayer: ObservableObject {
         configureRemoteCommands()
         observePlayer()
         settings.$equalizerEnabled
-            .combineLatest(settings.$equalizerGains)
-            .sink { [weak self] enabled, gains in
-                self?.equalizer.update(enabled: enabled, gains: gains)
+            .combineLatest(
+                settings.$equalizerGains,
+                settings.$equalizerPreamp
+            )
+            .sink { [weak self] enabled, gains, preamp in
+                self?.equalizer.update(
+                    enabled: enabled,
+                    gains: gains,
+                    preamp: preamp
+                )
             }
             .store(in: &cancellables)
+        restorePlayback()
+    }
+
+    func configureContinuation(
+        _ provider: @escaping () async throws -> [Track]
+    ) {
+        defaultContinuationProvider = provider
+        activeContinuationProvider = provider
     }
 
     func configureNetwork(userAgent: String?) {
@@ -75,7 +96,13 @@ final class AudioPlayer: ObservableObject {
         streamUserAgent = cleaned?.isEmpty == false ? cleaned : nil
     }
 
-    func play(_ track: Track, in tracks: [Track]) {
+    func play(
+        _ track: Track,
+        in tracks: [Track],
+        continuation: (() async throws -> [Track])? = nil
+    ) {
+        activeContinuationProvider =
+            continuation ?? defaultContinuationProvider
         if shuffleEnabled {
             queue = [track] + tracks.filter { $0 != track }.shuffled()
             currentIndex = 0
@@ -83,6 +110,7 @@ final class AudioPlayer: ObservableObject {
             queue = tracks
             currentIndex = tracks.firstIndex(of: track) ?? 0
         }
+        persistPlayback()
         loadCurrentAndPlay()
     }
 
@@ -93,6 +121,7 @@ final class AudioPlayer: ObservableObject {
         }
         queue.removeAll { $0.id == track.id }
         queue.insert(track, at: min(currentIndex + 1, queue.count))
+        persistPlayback()
     }
 
     func toggleShuffle() {
@@ -103,6 +132,7 @@ final class AudioPlayer: ObservableObject {
         queue = [currentTrack]
             + (shuffleEnabled ? remaining.shuffled() : remaining)
         currentIndex = 0
+        persistPlayback()
     }
 
     func cycleRepeatMode() {
@@ -161,11 +191,11 @@ final class AudioPlayer: ObservableObject {
         guard let currentIndex, !queue.isEmpty else { return }
         let nextIndex = queue.index(after: currentIndex)
         if nextIndex >= queue.endIndex, repeatMode == .off {
-            pause()
-            seek(to: 0)
+            Task { await continueQueueIfPossible() }
             return
         }
         self.currentIndex = nextIndex < queue.endIndex ? nextIndex : 0
+        persistPlayback()
         loadCurrentAndPlay()
     }
 
@@ -176,6 +206,7 @@ final class AudioPlayer: ObservableObject {
         }
         guard let currentIndex, !queue.isEmpty else { return }
         self.currentIndex = currentIndex > 0 ? currentIndex - 1 : queue.count - 1
+        persistPlayback()
         loadCurrentAndPlay()
     }
 
@@ -183,6 +214,7 @@ final class AudioPlayer: ObservableObject {
         let target = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
         player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
         elapsedTime = seconds
+        persistPlayback()
         publishPlaybackState()
     }
 
@@ -198,6 +230,7 @@ final class AudioPlayer: ObservableObject {
         isPlaying = false
         isBuffering = false
         nowPlaying.clear()
+        defaults.removeObject(forKey: PlaybackSnapshot.key)
         try? AVAudioSession.sharedInstance().setActive(
             false,
             options: .notifyOthersOnDeactivation
@@ -205,6 +238,13 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func loadCurrentAndPlay() {
+        loadCurrent(autoplay: true, startAt: 0)
+    }
+
+    private func loadCurrent(
+        autoplay: Bool,
+        startAt position: TimeInterval
+    ) {
         guard let track = currentTrack else { return }
         guard let url = track.streamURL else {
             errorMessage = "Для этого трека отсутствует доступный аудиопоток."
@@ -235,6 +275,9 @@ final class AudioPlayer: ObservableObject {
                 switch item.status {
                 case .readyToPlay:
                     self.isBuffering = false
+                    if position > 0 {
+                        self.seek(to: min(position, self.duration))
+                    }
                 case .failed:
                     self.isPlaying = false
                     self.isBuffering = false
@@ -258,13 +301,24 @@ final class AudioPlayer: ObservableObject {
         }
         item.preferredForwardBufferDuration = 8
         player.replaceCurrentItem(with: item)
-        elapsedTime = 0
+        elapsedTime = position
         duration = track.duration
-        activateAudioSession()
-        player.play()
-        isPlaying = true
-        isBuffering = true
-        nowPlaying.update(track: track, elapsedTime: 0, rate: 1)
+        if autoplay {
+            activateAudioSession()
+            player.play()
+            isPlaying = true
+            isBuffering = true
+            historyStore.record(track)
+        } else {
+            isPlaying = false
+            isBuffering = false
+        }
+        nowPlaying.update(
+            track: track,
+            elapsedTime: position,
+            rate: autoplay ? 1 : 0
+        )
+        persistPlayback()
     }
 
     private func configureAudioSession() {
@@ -348,6 +402,13 @@ final class AudioPlayer: ObservableObject {
                     && self.player.timeControlStatus
                         == .waitingToPlayAtSpecifiedRate
                 self.publishPlaybackState()
+                let wholeSecond = Int(self.elapsedTime)
+                if wholeSecond > 0,
+                   wholeSecond % 5 == 0,
+                   wholeSecond != self.lastPersistedSecond {
+                    self.lastPersistedSecond = wholeSecond
+                    self.persistPlayback()
+                }
             }
         }
 
@@ -425,4 +486,70 @@ final class AudioPlayer: ObservableObject {
             rate: isPlaying ? 1 : 0
         )
     }
+
+    private func continueQueueIfPossible() async {
+        guard let continuationProvider = activeContinuationProvider else {
+            pause()
+            seek(to: 0)
+            return
+        }
+        do {
+            let existing = Set(queue.map(\.id))
+            let additions = try await continuationProvider().filter {
+                !existing.contains($0.id)
+            }
+            guard !additions.isEmpty else {
+                pause()
+                seek(to: 0)
+                return
+            }
+            queue.append(contentsOf: additions)
+            if let currentIndex {
+                self.currentIndex = currentIndex + 1
+            }
+            persistPlayback()
+            loadCurrentAndPlay()
+        } catch is CancellationError {
+            return
+        } catch {
+            pause()
+            errorMessage = "Не удалось продолжить очередь: "
+                + error.localizedDescription
+        }
+    }
+
+    private func persistPlayback() {
+        guard !queue.isEmpty, let currentIndex else { return }
+        let snapshot = PlaybackSnapshot(
+            queue: queue,
+            currentIndex: currentIndex,
+            elapsedTime: elapsedTime
+        )
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        defaults.set(data, forKey: PlaybackSnapshot.key)
+    }
+
+    private func restorePlayback() {
+        guard let data = defaults.data(forKey: PlaybackSnapshot.key),
+              let snapshot = try? JSONDecoder().decode(
+                PlaybackSnapshot.self,
+                from: data
+              ),
+              snapshot.queue.indices.contains(snapshot.currentIndex) else {
+            return
+        }
+        queue = snapshot.queue
+        currentIndex = snapshot.currentIndex
+        elapsedTime = max(snapshot.elapsedTime, 0)
+        duration = currentTrack?.duration ?? 0
+        loadCurrent(autoplay: false, startAt: elapsedTime)
+    }
+}
+
+private struct PlaybackSnapshot: Codable {
+    static let key = "player.playback.snapshot.v1"
+
+    let queue: [Track]
+    let currentIndex: Int
+    let elapsedTime: TimeInterval
 }

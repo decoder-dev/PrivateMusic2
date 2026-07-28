@@ -4,7 +4,9 @@ import AVFoundation
 import MediaToolbox
 
 final class EqualizerDSP: @unchecked Sendable {
-    static let frequencies: [Double] = [60, 230, 910, 4_000, 14_000]
+    static let frequencies: [Double] = [
+        31, 62, 125, 250, 500, 1_000, 2_000, 4_000, 8_000, 16_000
+    ]
 
     private struct Coefficients {
         let b0: Float
@@ -16,7 +18,8 @@ final class EqualizerDSP: @unchecked Sendable {
 
     private let lock = NSLock()
     private var enabled = false
-    private var gains = [Double](repeating: 0, count: 5)
+    private var gains = [Double](repeating: 0, count: 10)
+    private var preampDB = 0.0
     private var coefficients = [Coefficients]()
     private var preamp: Float = 1
     private var states = [Float]()
@@ -24,12 +27,13 @@ final class EqualizerDSP: @unchecked Sendable {
     private var channelCount = 2
     private var supportsProcessing = false
 
-    func update(enabled: Bool, gains: [Double]) {
+    func update(enabled: Bool, gains: [Double], preamp: Double) {
         lock.lock()
         self.enabled = enabled
         if gains.count == Self.frequencies.count {
             self.gains = gains
         }
+        preampDB = min(max(preamp, -12), 6)
         rebuildCoefficients()
         lock.unlock()
     }
@@ -146,7 +150,7 @@ final class EqualizerDSP: @unchecked Sendable {
 
     private func rebuildCoefficients() {
         let headroom = max(gains.max() ?? 0, 0)
-        preamp = Float(pow(10, -headroom / 20))
+        preamp = Float(pow(10, (preampDB - headroom) / 20))
         coefficients = zip(Self.frequencies, gains).map {
             peakingCoefficients(
                 frequency: $0.0,
