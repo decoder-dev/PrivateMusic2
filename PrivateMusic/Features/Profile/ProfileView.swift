@@ -40,7 +40,7 @@ struct ProfileView: View {
                         .resizable()
                         .frame(width: 60, height: 60)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
-                    Text("Private Music 2.0")
+                    Text("Private Music \(version)")
                         .foregroundStyle(.secondary)
                     Text("decoder-dev")
                         .font(.caption)
@@ -52,6 +52,12 @@ struct ProfileView: View {
         }
         .background(ThemeBackground())
         .navigationTitle("Профиль")
+    }
+
+    private var version: String {
+        Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "—"
     }
 
     private var profileCard: some View {
