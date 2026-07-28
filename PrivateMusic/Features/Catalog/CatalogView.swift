@@ -135,16 +135,16 @@ struct CatalogView: View {
 
             VStack(spacing: 0) {
                 ForEach(
-                    Array(recommendations.prefix(30).enumerated()),
-                    id: \.element.id
-                ) { entry in
+                    Array(0..<min(recommendations.count, 30)),
+                    id: \.self
+                ) { index in
                     TrackRow(
-                        track: entry.element,
+                        track: recommendations[index],
                         queue: recommendations
                     )
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                    if entry.offset < min(recommendations.count, 30) - 1 {
+                    if index < min(recommendations.count, 30) - 1 {
                         Divider().padding(.leading, 76)
                     }
                 }
