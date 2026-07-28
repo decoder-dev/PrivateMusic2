@@ -86,6 +86,14 @@ if privacy.get("NSPrivacyTrackingDomains") != []:
     fail("privacy manifest must not declare tracking domains")
 if privacy.get("NSPrivacyCollectedDataTypes") != []:
     fail("privacy manifest must not declare collected analytics data")
+if privacy.get("NSPrivacyAccessedAPITypes") != [
+    {
+        "NSPrivacyAccessedAPIType":
+            "NSPrivacyAccessedAPICategoryUserDefaults",
+        "NSPrivacyAccessedAPITypeReasons": ["CA92.1"],
+    }
+]:
+    fail("privacy manifest must declare UserDefaults reason CA92.1")
 
 for path, expected_size in (
     (
