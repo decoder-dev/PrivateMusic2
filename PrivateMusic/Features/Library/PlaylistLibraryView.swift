@@ -111,7 +111,7 @@ struct PlaylistLibraryView: View {
 }
 
 @MainActor
-private final class PlaylistLibraryViewModel: ObservableObject {
+final class PlaylistLibraryViewModel: ObservableObject {
     @Published private(set) var playlists: [Playlist] = []
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?

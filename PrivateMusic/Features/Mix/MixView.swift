@@ -3,63 +3,273 @@ import SwiftUI
 struct MixView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
+    @EnvironmentObject private var player: AudioPlayer
+    @State private var mixes: [MusicMix] = []
     @State private var tracks: [Track] = []
-    @State private var isLoading = false
+    @State private var isLoading = true
+    @State private var loadingMixID: String?
     @State private var errorMessage: String?
 
     var body: some View {
-        Group {
-            if isLoading && tracks.isEmpty {
-                ProgressView("Готовим персональный микс…")
-            } else if let errorMessage, tracks.isEmpty {
-                EmptyStateView(
-                    title: "Не удалось запустить микс",
-                    systemImage: "sparkles",
-                    description: errorMessage
-                )
-            } else {
-                List {
-                    Section {
-                        ForEach(tracks) { track in
-                            TrackRow(track: track, queue: tracks)
-                                .listRowBackground(Color.clear)
-                        }
-                    } header: {
-                        Label("Для вас", systemImage: "sparkles")
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 28) {
+                if isLoading && tracks.isEmpty {
+                    skeleton
+                } else {
+                    hero
+                    if mixes.count > 1 { mixShelf }
+                    if !tracks.isEmpty {
+                        recommendationShelf
+                        algorithmSection
+                    }
+                    if let errorMessage {
+                        retry(errorMessage)
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 120)
         }
         .background(ThemeBackground())
         .navigationTitle("Микс")
-        .task {
-            await load()
+        .task { await load() }
+        .refreshable { await load(force: true) }
+    }
+
+    private var hero: some View {
+        Button { start(.common) } label: {
+            ZStack(alignment: .bottomLeading) {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.08, green: 0.42, blue: 1),
+                        Color(red: 0.48, green: 0.12, blue: 0.92)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                VStack(alignment: .leading, spacing: 8) {
+                    Spacer()
+                    Text("Слушать VK Микс")
+                        .font(.title2.weight(.heavy))
+                    Text("Бесконечный персональный поток")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.78))
+                }
+                .padding(22)
+                Image(systemName: "play.fill")
+                    .font(.title2.bold())
+                    .foregroundStyle(.indigo)
+                    .frame(width: 58, height: 58)
+                    .background(.white, in: Circle())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity,
+                           alignment: .topTrailing)
+                    .padding(18)
+                if loadingMixID == MusicMix.common.id {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.black.opacity(0.22))
+                }
+            }
+            .foregroundStyle(.white)
+            .frame(height: 230)
+            .clipShape(RoundedRectangle(cornerRadius: 24))
         }
-        .refreshable {
-            await load(force: true)
+        .buttonStyle(PremiumPressStyle())
+        .disabled(loadingMixID != nil)
+    }
+
+    private var mixShelf: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Ваши VK Миксы")
+                .font(.title2.weight(.bold))
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 14) {
+                    ForEach(mixes.filter { $0.id != MusicMix.common.id }) { mix in
+                        Button { start(mix) } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ZStack {
+                                    if let artwork = mix.artworkURL {
+                                        AsyncArtwork(url: artwork, size: 166)
+                                    } else {
+                                        LinearGradient(
+                                            colors: [.purple, .blue],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                        Image(systemName: "waveform")
+                                            .font(.system(size: 44, weight: .bold))
+                                            .foregroundStyle(.white.opacity(0.9))
+                                    }
+                                }
+                                .frame(width: 166, height: 166)
+                                .clipShape(RoundedRectangle(cornerRadius: 20))
+                                Text(mix.title)
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(mix.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 166, alignment: .leading)
+                        }
+                        .buttonStyle(PremiumPressStyle())
+                    }
+                }
+            }
+        }
+    }
+
+    private var recommendationShelf: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Для вас")
+                .font(.title2.weight(.bold))
+            Text("Подобрано по вашим прослушиваниям VK")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 14) {
+                    ForEach(tracks.prefix(12)) { track in
+                        Button {
+                            play(track, queue: tracks)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ZStack(alignment: .bottomTrailing) {
+                                    AsyncArtwork(
+                                        url: track.artworkURL,
+                                        size: 166
+                                    )
+                                    Image(systemName: "play.fill")
+                                        .foregroundStyle(.black)
+                                        .frame(width: 42, height: 42)
+                                        .background(.white, in: Circle())
+                                        .padding(8)
+                                }
+                                Text(track.title)
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(track.artist)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 166, alignment: .leading)
+                        }
+                        .buttonStyle(PremiumPressStyle())
+                    }
+                }
+            }
+        }
+    }
+
+    private var algorithmSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Продолжить поток")
+                .font(.title2.weight(.bold))
+            VStack(spacing: 0) {
+                ForEach(Array(tracks.dropFirst(12).prefix(12).enumerated()),
+                        id: \.element.id) { index, track in
+                    TrackRow(track: track, queue: tracks)
+                        .padding(.vertical, 7)
+                    if index < min(max(tracks.count - 12, 0), 12) - 1 {
+                        Divider().padding(.leading, 64)
+                    }
+                }
+            }
+        }
+    }
+
+    private var skeleton: some View {
+        VStack(alignment: .leading, spacing: 26) {
+            RoundedRectangle(cornerRadius: 24)
+                .fill(.primary.opacity(0.08))
+                .frame(height: 230)
+            HStack(spacing: 14) {
+                ForEach(0..<3, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(.primary.opacity(0.08))
+                        .frame(width: 166, height: 205)
+                }
+            }
+        }
+        .redacted(reason: .placeholder)
+    }
+
+    private func retry(_ message: String) -> some View {
+        Button {
+            Task { await load(force: true) }
+        } label: {
+            Label(message, systemImage: "arrow.clockwise")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func start(_ mix: MusicMix) {
+        guard let token = sessionStore.accessToken else { return }
+        loadingMixID = mix.id
+        Task {
+            defer { loadingMixID = nil }
+            do {
+                let queue = try await environment.musicService.mixTracks(
+                    mix,
+                    accessToken: token
+                )
+                guard let first = queue.first else { return }
+                play(first, queue: queue, mix: mix)
+            } catch is CancellationError {
+                return
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func play(
+        _ track: Track,
+        queue: [Track],
+        mix: MusicMix = .common
+    ) {
+        guard let token = sessionStore.accessToken else { return }
+        player.play(track, in: queue) {
+            try await environment.musicService.mixTracks(
+                mix,
+                accessToken: token
+            )
         }
     }
 
     private func load(force: Bool = false) async {
         guard let token = sessionStore.accessToken,
-              !isLoading,
               force || tracks.isEmpty else {
+            isLoading = false
             return
         }
         isLoading = true
         defer { isLoading = false }
+        var failures: [String] = []
+        do {
+            mixes = try await environment.musicService.mixes(
+                accessToken: token
+            )
+        } catch is CancellationError {
+            return
+        } catch {
+            failures.append(error.localizedDescription)
+        }
         do {
             tracks = try await environment.musicService.mixTracks(
                 .common,
                 accessToken: token
             )
-            errorMessage = nil
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = error.localizedDescription
+            failures.append(error.localizedDescription)
         }
+        errorMessage = failures.first
     }
 }
