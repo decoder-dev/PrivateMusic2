@@ -1,4 +1,4 @@
-# Private Music 2.2
+# Private Music 2.3
 
 Clean SwiftUI sources for a private music player inspired by the inspected IPA.
 The project is independent from the patched `Private Music [1.1].ipa`.
@@ -14,6 +14,7 @@ The project is independent from the patched `Private Music [1.1].ipa`.
 - play, pause, toggle, next, previous and seek remote commands;
 - artwork loading with stale-result protection;
 - Keychain session storage;
+- embedded VK web login by phone number;
 - VKpyMusic token and matching User-Agent import;
 - ephemeral cookie-free networking;
 - no-tracking Privacy Manifest;
@@ -27,7 +28,19 @@ The project is independent from the patched `Private Music [1.1].ipa`.
 - unit test for VK track decoding;
 - unsigned cloud build workflow.
 
-## VKpyMusic local login
+## VK web login
+
+Tap `Войти по номеру телефона` and complete authorization on the VK page.
+The login page runs in a non-persistent `WKWebView` restricted to VK domains.
+Private Music exchanges the authenticated web session directly with
+`login.vk.ru`, validates the resulting token through `users.get`, saves only
+that token in the iOS Keychain and clears all web cookies and website data.
+
+The web token endpoint and private `audio.*` methods are unofficial integration
+points. VK may change or block them, and an expired token requires signing in
+again. Use only your own account.
+
+## VKpyMusic fallback
 
 Private Music itself does not ask for a VK password or OTP and contains no
 copied `client_secret`. On Windows, run `VKpyMusic Login.cmd`. The helper creates
@@ -58,10 +71,10 @@ needed for simulator builds, but is required to install the app on an iPhone.
 
 The included GitHub Actions workflow runs on a macOS runner, compiles the iOS
 Simulator target, builds the arm64 iPhone target and packages
-`PrivateMusic-2.2.0-unsigned.ipa`. Push the contents of this directory to a GitHub
+`PrivateMusic-2.3.0-unsigned.ipa`. Push the contents of this directory to a GitHub
 repository and run the `Build unsigned IPA` workflow.
 
-Download the `PrivateMusic-2.2.0-unsigned` workflow artifact when the job
+Download the `PrivateMusic-2.3.0-unsigned` workflow artifact when the job
 finishes. The IPA still requires signing before installation on an iPhone.
 
 ## Local structural validation
@@ -74,7 +87,7 @@ python scripts/validate_project.py
 
 ## Current limitations
 
-- VKpyMusic login runs locally on Windows rather than inside the iOS app.
+- Web login uses an unofficial VK web-token exchange and may require re-login.
 - Private VK music methods may reject ordinary official tokens.
 - Playlist cover upload and following public playlists are not wired yet.
 - VK lyrics require `lyrics_id`; file sharing requires a direct non-HLS stream.
