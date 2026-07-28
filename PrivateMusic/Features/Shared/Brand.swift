@@ -24,22 +24,17 @@ enum Brand {
 }
 
 struct PrimaryButtonStyle: ButtonStyle {
+    @EnvironmentObject private var settings: AppSettings
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
             .padding(.vertical, 15)
             .padding(.horizontal, 18)
             .foregroundStyle(.white)
-            .background(
-                LinearGradient(
-                    colors: [Brand.accent, Brand.violet],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
+            .background(settings.theme.accent)
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
-

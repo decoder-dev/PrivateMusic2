@@ -1,4 +1,4 @@
-# Private Music 2.4
+# Private Music 2.5
 
 Clean SwiftUI sources for a private music player inspired by the inspected IPA.
 The project is independent from the patched `Private Music [1.1].ipa`.
@@ -15,6 +15,7 @@ The project is independent from the patched `Private Music [1.1].ipa`.
 - artwork loading with stale-result protection;
 - Keychain session storage;
 - embedded VK web login by phone number;
+- automatic web-session detection with a restricted in-app browser;
 - VKpyMusic token and matching User-Agent import;
 - ephemeral cookie-free networking;
 - no-tracking Privacy Manifest;
@@ -29,6 +30,7 @@ The project is independent from the patched `Private Music [1.1].ipa`.
 - Telegram group and VPN buttons;
 - unit test for VK track decoding;
 - unsigned cloud build workflow.
+- responsive home, full player and mini-player layouts.
 
 ## VK web login
 
@@ -73,10 +75,10 @@ needed for simulator builds, but is required to install the app on an iPhone.
 
 The included GitHub Actions workflow runs on a macOS runner, compiles the iOS
 Simulator target, builds the arm64 iPhone target and packages
-`PrivateMusic-2.4.0-unsigned.ipa`. Push the contents of this directory to a GitHub
+`PrivateMusic-2.5.0-unsigned.ipa`. Push the contents of this directory to a GitHub
 repository and run the `Build unsigned IPA` workflow.
 
-Download the `PrivateMusic-2.4.0-unsigned` workflow artifact when the job
+Download the `PrivateMusic-2.5.0-unsigned` workflow artifact when the job
 finishes. The IPA still requires signing before installation on an iPhone.
 
 ## Local structural validation
