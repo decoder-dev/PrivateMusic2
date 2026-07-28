@@ -67,4 +67,11 @@ final class TrackCollectionViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
+
+    func insertAdded(_ track: Track) {
+        guard source == .library else { return }
+        tracks.removeAll { $0.id == track.id }
+        tracks.insert(track, at: 0)
+        errorMessage = nil
+    }
 }

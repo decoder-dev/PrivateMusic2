@@ -80,8 +80,11 @@ struct PlayerView: View {
             }
         }
         .onChange(of: player.currentTrack?.id) { _ in
-            isInLibrary = false
+            updateLibraryState()
             isAddingToLibrary = false
+        }
+        .task(id: player.currentTrack?.id) {
+            updateLibraryState()
         }
     }
 
@@ -89,15 +92,15 @@ struct PlayerView: View {
         ZStack {
             Color.black
             if let artworkURL = player.currentTrack?.artworkURL {
-                AsyncImage(url: artworkURL) { phase in
-                    if case let .success(image) = phase {
-                        image
-                            .resizable()
-                            .scaledToFill()
-                            .scaleEffect(1.35)
-                            .blur(radius: 72)
-                            .saturation(1.25)
-                    }
+                CachedRemoteImage(url: artworkURL) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .scaleEffect(1.35)
+                        .blur(radius: 72)
+                        .saturation(1.25)
+                } placeholder: {
+                    Color.clear
                 }
             }
             Color.black.opacity(0.48)
@@ -408,12 +411,13 @@ struct PlayerView: View {
         Task {
             defer { isAddingToLibrary = false }
             do {
-                try await environment.musicService.addToLibrary(
+                let added = try await environment.musicService.addToLibrary(
                     track,
                     accessToken: token
                 )
                 guard player.currentTrack?.id == track.id else { return }
                 isInLibrary = true
+                MusicLibraryEvents.postAdded(added)
                 Haptics.selection()
             } catch is CancellationError {
                 return
@@ -422,6 +426,14 @@ struct PlayerView: View {
                     + error.localizedDescription
             }
         }
+    }
+
+    private func updateLibraryState() {
+        guard let track = player.currentTrack else {
+            isInLibrary = false
+            return
+        }
+        isInLibrary = track.ownerID == sessionStore.session?.userID
     }
 }
 
