@@ -151,6 +151,9 @@ struct ConnectView: View {
             await environment.musicService.configure(
                 userAgent: cleanedUserAgent
             )
+            environment.player.configureNetwork(
+                userAgent: cleanedUserAgent
+            )
             let profile = try await environment.musicService.profile(
                 accessToken: cleaned
             )
@@ -172,6 +175,9 @@ struct ConnectView: View {
         defer { isConnecting = false }
         do {
             await environment.musicService.configure(
+                userAgent: result.apiUserAgent
+            )
+            environment.player.configureNetwork(
                 userAgent: result.apiUserAgent
             )
             let profile = try await environment.musicService.profile(

@@ -29,6 +29,8 @@ required = {
     "PrivateMusic/Core/Security/KeychainStore.swift",
     "PrivateMusic/Core/Networking/APIClient.swift",
     "PrivateMusic/Services/VKWebAuthService.swift",
+    "PrivateMusic/Services/VKAudioURLResolver.swift",
+    "PrivateMusic/Services/LRCLyricsService.swift",
     "PrivateMusic/Features/Auth/VKWebLoginView.swift",
     "PrivateMusic/Features/Root/RootView.swift",
 }
@@ -62,6 +64,7 @@ for required_symbol in (
     "userAgent",
     "WKWebsiteDataStore",
     "https://login.vk.ru/?act=web_token",
+    "https://lrclib.net/api/search",
 ):
     if required_symbol not in all_source:
         fail(f"missing security/player symbol: {required_symbol}")
