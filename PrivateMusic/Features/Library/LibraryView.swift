@@ -73,6 +73,23 @@ struct LibraryView: View {
         }
         .task { await load() }
         .refreshable { await load(force: true) }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: MusicLibraryEvents.didAddTrack
+            )
+        ) { notification in
+            guard let track = notification.userInfo?[
+                MusicLibraryEvents.trackKey
+            ] as? Track else {
+                return
+            }
+            tracks.insertAdded(track)
+            Task {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+                await loadTracks(force: true)
+            }
+        }
     }
 
     private var playlistShelf: some View {
@@ -194,5 +211,11 @@ struct LibraryView: View {
             accessToken: token,
             force: force
         )
+    }
+
+    private func loadTracks(force: Bool) async {
+        guard let token = sessionStore.accessToken else { return }
+        tracks.configure(service: environment.musicService)
+        await tracks.load(accessToken: token, force: force)
     }
 }

@@ -38,7 +38,7 @@ protocol MusicService: Sendable {
     func addToLibrary(
         _ track: Track,
         accessToken: String
-    ) async throws
+    ) async throws -> Track
     func removeFromLibrary(
         _ track: Track,
         accessToken: String

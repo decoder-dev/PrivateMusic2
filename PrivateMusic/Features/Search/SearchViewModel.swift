@@ -126,10 +126,11 @@ final class SearchViewModel: ObservableObject {
         accessToken: String
     ) async {
         do {
-            try await service.addToLibrary(
+            let added = try await service.addToLibrary(
                 track,
                 accessToken: accessToken
             )
+            MusicLibraryEvents.postAdded(added)
             errorMessage = nil
         } catch is CancellationError {
             return

@@ -263,7 +263,7 @@ struct VKMusicService: MusicService {
     func addToLibrary(
         _ track: Track,
         accessToken: String
-    ) async throws {
+    ) async throws -> Track {
         var parameters = [
             "audio_id": String(track.trackID),
             "owner_id": String(track.ownerID)
@@ -271,10 +271,23 @@ struct VKMusicService: MusicService {
         if let accessKey = track.accessKey {
             parameters["access_key"] = accessKey
         }
-        let _: VKResponse<VKIgnored> = try await client.post(
+        let envelope: VKResponse<VKAudioAddResult> = try await client.post(
             path: "/method/audio.add",
             form: common(accessToken).merging(parameters) { _, new in new },
-            responseType: VKResponse<VKIgnored>.self
+            responseType: VKResponse<VKAudioAddResult>.self
+        )
+        let userID = await context.userID
+        return Track(
+            trackID: envelope.response.id,
+            ownerID: userID ?? track.ownerID,
+            title: track.title,
+            artist: track.artist,
+            albumTitle: track.albumTitle,
+            duration: track.duration,
+            streamURL: track.streamURL,
+            artworkURL: track.artworkURL,
+            accessKey: nil,
+            lyricsID: track.lyricsID
         )
     }
 
@@ -432,6 +445,27 @@ struct VKMusicService: MusicService {
 
 private struct VKLyrics: Decodable, Sendable {
     let text: String
+}
+
+private struct VKAudioAddResult: Decodable, Sendable {
+    let id: Int
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(Int.self) {
+            id = value
+            return
+        }
+        if let value = try? container.decode(String.self),
+           let parsed = Int(value) {
+            id = parsed
+            return
+        }
+        throw DecodingError.dataCorruptedError(
+            in: container,
+            debugDescription: "VK audio.add returned no audio identifier."
+        )
+    }
 }
 
 private struct VKIgnored: Decodable, Sendable {
