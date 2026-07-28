@@ -6,36 +6,34 @@ struct CatalogView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
     @State private var recommendations: [Track] = []
+    @State private var mixes: [MusicMix] = []
     @State private var playlists: [Playlist] = []
     @State private var isLoading = true
+    @State private var loadingMixID: String?
     @State private var errorMessage: String?
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 26) {
+            LazyVStack(alignment: .leading, spacing: 30) {
                 welcomeHeader
 
-                if isLoading
-                    && recommendations.isEmpty
-                    && playlists.isEmpty {
-                    loadingCard
-                } else if recommendations.isEmpty && playlists.isEmpty {
-                    unavailableCard
+                if isLoading && contentIsEmpty {
+                    loadingView
                 } else {
-                    if let errorMessage {
-                        warningBanner(errorMessage)
-                    }
+                    if !mixes.isEmpty { mixesSection }
                     if !recommendations.isEmpty {
-                        featuredSection
                         recommendationsSection
+                        trackListSection
                     }
-                    if !playlists.isEmpty {
-                        playlistsSection
+                    if !playlists.isEmpty { playlistsSection }
+                    if contentIsEmpty { unavailableView }
+                    if let errorMessage, !contentIsEmpty {
+                        retryRow(errorMessage)
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 28)
+            .padding(.horizontal, PremiumLayout.screenPadding)
+            .padding(.bottom, 110)
         }
         .background(ThemeBackground())
         .navigationTitle("Главная")
@@ -43,71 +41,117 @@ struct CatalogView: View {
         .task { await load() }
     }
 
+    private var contentIsEmpty: Bool {
+        recommendations.isEmpty && mixes.isEmpty && playlists.isEmpty
+    }
+
     private var welcomeHeader: some View {
         HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(greeting)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
+                    .tracking(0.7)
                 Text(sessionStore.profile?.firstName ?? "Слушатель")
-                    .font(.largeTitle.bold())
+                    .font(.largeTitle.weight(.heavy))
+                    .lineLimit(1)
             }
             Spacer()
-            AsyncArtwork(url: sessionStore.profile?.photoURL, size: 50)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(.primary.opacity(0.08))
-                }
+            AsyncArtwork(url: sessionStore.profile?.photoURL, size: 48)
+                .clipShape(Circle())
+                .overlay { Circle().stroke(.primary.opacity(0.12)) }
         }
-        .padding(.top, 4)
+        .padding(.top, 6)
     }
 
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
         switch hour {
-        case 5..<12: return "Доброе утро"
-        case 12..<18: return "Добрый день"
-        case 18..<23: return "Добрый вечер"
-        default: return "Доброй ночи"
+        case 5..<12: "Доброе утро"
+        case 12..<18: "Добрый день"
+        case 18..<23: "Добрый вечер"
+        default: "Доброй ночи"
         }
     }
 
-    private var featuredSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(
-                "Быстрый старт",
-                subtitle: "Нажмите на обложку, чтобы включить"
+    private var mixesSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            PremiumSectionHeader(
+                "Миксы VK",
+                subtitle: "Персональный поток под ваш вкус"
             )
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 12) {
+                    ForEach(mixes) { mix in
+                        Button { start(mix) } label: {
+                            ZStack(alignment: .bottomLeading) {
+                                AsyncArtwork(url: mix.artworkURL, size: 186)
+                                    .overlay {
+                                        LinearGradient(
+                                            colors: [.clear, .black.opacity(0.82)],
+                                            startPoint: .center,
+                                            endPoint: .bottom
+                                        )
+                                    }
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(mix.title)
+                                        .font(.headline.weight(.bold))
+                                        .foregroundStyle(.white)
+                                        .lineLimit(1)
+                                    Text(mix.subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.white.opacity(0.72))
+                                        .lineLimit(2)
+                                }
+                                .padding(14)
+                                if loadingMixID == mix.id {
+                                    ProgressView()
+                                        .tint(.white)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        .background(.black.opacity(0.28))
+                                }
+                            }
+                            .frame(width: 186, height: 186)
+                            .clipShape(RoundedRectangle(cornerRadius: 18))
+                        }
+                        .buttonStyle(PremiumPressStyle())
+                        .disabled(loadingMixID != nil)
+                    }
+                }
+            }
+        }
+    }
 
+    private var recommendationsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            PremiumSectionHeader(
+                "Для вас",
+                subtitle: "Рекомендации на основе прослушиваний VK"
+            )
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 14) {
-                    ForEach(recommendations.prefix(12)) { track in
+                    ForEach(recommendations.prefix(14)) { track in
                         Button {
                             player.play(track, in: recommendations)
                         } label: {
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 9) {
                                 ZStack(alignment: .bottomTrailing) {
-                                    AsyncArtwork(
-                                        url: track.artworkURL,
-                                        size: 148
-                                    )
+                                    AsyncArtwork(url: track.artworkURL, size: 154)
                                     Image(systemName: "play.fill")
-                                        .foregroundStyle(.white)
-                                        .frame(width: 38, height: 38)
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundStyle(
+                                            settings.theme.buttonForeground
+                                        )
+                                        .frame(width: 40, height: 40)
                                         .background(
                                             settings.theme.accent,
                                             in: Circle()
                                         )
-                                        .shadow(
-                                            color: .black.opacity(0.2),
-                                            radius: 8,
-                                            y: 3
-                                        )
                                         .padding(8)
                                 }
                                 Text(track.title)
-                                    .font(.subheadline.bold())
+                                    .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
                                 Text(track.artist)
@@ -115,36 +159,26 @@ struct CatalogView: View {
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
-                            .frame(width: 148, alignment: .leading)
+                            .frame(width: 154, alignment: .leading)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PremiumPressStyle())
                     }
                 }
-                .padding(.horizontal, 1)
             }
         }
     }
 
-    private var recommendationsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(
-                "Для вас",
-                subtitle: "Персональная подборка VK"
-            )
-
+    private var trackListSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            PremiumSectionHeader("Продолжить слушать")
             VStack(spacing: 0) {
-                ForEach(
-                    Array(0..<min(recommendations.count, 30)),
-                    id: \.self
-                ) { index in
-                    TrackRow(
-                        track: recommendations[index],
-                        queue: recommendations
-                    )
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                    if index < min(recommendations.count, 30) - 1 {
-                        Divider().padding(.leading, 76)
+                ForEach(Array(recommendations.prefix(20).enumerated()), id: \.element.id) {
+                    index, track in
+                    TrackRow(track: track, queue: recommendations)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                    if index < min(recommendations.count, 20) - 1 {
+                        Divider().padding(.leading, 72)
                     }
                 }
             }
@@ -153,108 +187,108 @@ struct CatalogView: View {
     }
 
     private var playlistsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(
+        VStack(alignment: .leading, spacing: 14) {
+            PremiumSectionHeader(
                 "Ваши плейлисты",
-                subtitle: "\(playlists.count) доступно"
+                subtitle: "\(playlists.count) в медиатеке"
             )
-
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 14) {
-                    ForEach(playlists.prefix(12)) { playlist in
+                    ForEach(playlists.prefix(16)) { playlist in
                         NavigationLink {
                             PlaylistDetailView(playlist: playlist)
                         } label: {
-                            VStack(alignment: .leading, spacing: 8) {
-                                AsyncArtwork(
-                                    url: playlist.artworkURL,
-                                    size: 138
-                                )
+                            VStack(alignment: .leading, spacing: 9) {
+                                AsyncArtwork(url: playlist.artworkURL, size: 146)
                                 Text(playlist.title)
-                                    .font(.subheadline.bold())
+                                    .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
                                 Text("\(playlist.count) треков")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                            .frame(width: 138, alignment: .leading)
+                            .frame(width: 146, alignment: .leading)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PremiumPressStyle())
                     }
                 }
-                .padding(.horizontal, 1)
             }
         }
     }
 
-    private func sectionHeader(
-        _ title: String,
-        subtitle: String
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.title2.bold())
-            Text(subtitle)
-                .font(.caption)
+    private var loadingView: some View {
+        VStack(spacing: 18) {
+            ProgressView().controlSize(.large)
+            Text("Загружаем вашу музыку")
+                .font(.headline)
+            Text("Получаем рекомендации и миксы напрямую из VK")
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 72)
     }
 
-    private var loadingCard: some View {
-        HStack(spacing: 14) {
-            ProgressView()
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Собираем музыку")
-                    .font(.headline)
-                Text("Рекомендации и плейлисты появятся здесь")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-        .padding(20)
-        .premiumCard()
-    }
-
-    private var unavailableCard: some View {
-        VStack(spacing: 14) {
-            EmptyStateView(
-                title: "Главная недоступна",
-                systemImage: "wifi.exclamationmark",
-                description: errorMessage ?? "VK не вернул данные."
-            )
-            .frame(height: 260)
-            Button("Повторить") {
-                Task { await load(force: true) }
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .padding(.bottom, 20)
-    }
-
-    private func warningBanner(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            Text(message)
-                .font(.caption)
+    private var unavailableView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "waveform.slash")
+                .font(.system(size: 40, weight: .medium))
+            Text("Музыка пока недоступна")
+                .font(.title3.bold())
+            Text(errorMessage ?? "VK не вернул рекомендации и миксы.")
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Spacer()
-            Button {
-                Task { await load(force: true) }
-            } label: {
+                .multilineTextAlignment(.center)
+            Button("Обновить") { Task { await load(force: true) } }
+                .buttonStyle(PrimaryButtonStyle())
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 52)
+    }
+
+    private func retryRow(_ message: String) -> some View {
+        Button { Task { await load(force: true) } } label: {
+            HStack(spacing: 12) {
                 Image(systemName: "arrow.clockwise")
+                Text(message)
+                    .font(.caption)
+                    .lineLimit(2)
+                Spacer()
             }
-            .accessibilityLabel("Повторить загрузку")
+            .foregroundStyle(.secondary)
+            .padding(14)
+            .premiumCard(interactive: true)
         }
-        .padding(14)
-        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
+        .buttonStyle(PremiumPressStyle())
+    }
+
+    private func start(_ mix: MusicMix) {
+        guard let token = sessionStore.accessToken else { return }
+        loadingMixID = mix.id
+        Task {
+            defer { loadingMixID = nil }
+            do {
+                let tracks = try await environment.musicService.mixTracks(
+                    mix,
+                    accessToken: token
+                )
+                guard let first = tracks.first else { return }
+                player.play(first, in: tracks)
+                errorMessage = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                errorMessage = "Не удалось запустить «\(mix.title)»: "
+                    + error.localizedDescription
+            }
+        }
     }
 
     private func load(force: Bool = false) async {
         guard let token = sessionStore.accessToken,
-              force || recommendations.isEmpty else {
+              force || contentIsEmpty else {
             isLoading = false
             return
         }
@@ -263,22 +297,34 @@ struct CatalogView: View {
         var failures: [String] = []
 
         do {
-            recommendations = try await environment.musicService.recommendations(
-                accessToken: token
-            )
+            recommendations = try await environment.musicService
+                .recommendations(accessToken: token)
+        } catch is CancellationError {
+            return
         } catch {
-            failures.append(error.localizedDescription)
+            failures.append("Рекомендации: \(error.localizedDescription)")
         }
 
         do {
-            let playlistPage = try await environment.musicService.playlists(
+            mixes = try await environment.musicService.mixes(
+                accessToken: token
+            )
+        } catch is CancellationError {
+            return
+        } catch {
+            failures.append("Миксы: \(error.localizedDescription)")
+        }
+
+        do {
+            playlists = try await environment.musicService.playlists(
                 accessToken: token,
                 offset: 0,
                 count: 30
-            )
-            playlists = playlistPage.items
+            ).items
+        } catch is CancellationError {
+            return
         } catch {
-            failures.append(error.localizedDescription)
+            failures.append("Плейлисты: \(error.localizedDescription)")
         }
 
         errorMessage = failures.first
