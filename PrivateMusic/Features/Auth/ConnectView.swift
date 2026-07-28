@@ -4,7 +4,7 @@ struct ConnectView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @State private var token = ""
-    @State private var showingAdvanced = false
+    @State private var isConnecting = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -30,41 +30,41 @@ struct ConnectView: View {
                     }
 
                     VStack(spacing: 14) {
+                        SecureField("VK access token", text: $token)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .textContentType(.password)
+                            .padding()
+                            .background(Brand.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+
                         Button {
-                            environment.useDemoMode()
-                            sessionStore.enterDemoMode()
+                            Task { await connect() }
                         } label: {
-                            Label("Открыть демо", systemImage: "play.fill")
-                                .frame(maxWidth: .infinity)
+                            HStack {
+                                if isConnecting {
+                                    ProgressView()
+                                        .tint(.white)
+                                } else {
+                                    Image(systemName: "link")
+                                }
+                                Text(
+                                    isConnecting
+                                        ? "Проверяем сессию…"
+                                        : "Подключить VK"
+                                )
+                            }
+                            .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(PrimaryButtonStyle())
-
-                        DisclosureGroup(
-                            "Подключить существующую VK-сессию",
-                            isExpanded: $showingAdvanced
-                        ) {
-                            VStack(spacing: 12) {
-                                SecureField("Access token", text: $token)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
-                                    .padding()
-                                    .background(Brand.surface)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14))
-
-                                Button("Сохранить в Keychain") {
-                                    connect()
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-                            .padding(.top, 12)
-                        }
-                        .tint(.secondary)
+                        .disabled(isConnecting || token.count < 16)
                     }
                     .padding(.horizontal, 24)
 
                     Text(
-                        "Пароль и коды подтверждения приложение не запрашивает. "
-                        + "Официальную авторизацию VK ID можно подключить отдельным модулем."
+                        "Токен проверяется запросом к VK и хранится только "
+                        + "в системном Keychain. Пароль и коды подтверждения "
+                        + "Private Music не запрашивает."
                     )
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -86,10 +86,23 @@ struct ConnectView: View {
         }
     }
 
-    private func connect() {
+    @MainActor
+    private func connect() async {
+        let cleaned = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleaned.count >= 16 else {
+            errorMessage = APIError.unauthorized.localizedDescription
+            return
+        }
+        isConnecting = true
+        defer { isConnecting = false }
         do {
-            environment.useLiveMode()
-            try sessionStore.connect(accessToken: token)
+            let profile = try await environment.musicService.profile(
+                accessToken: cleaned
+            )
+            try sessionStore.connect(
+                accessToken: cleaned,
+                profile: profile
+            )
             token = ""
         } catch {
             errorMessage = error.localizedDescription

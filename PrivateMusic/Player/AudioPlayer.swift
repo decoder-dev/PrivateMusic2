@@ -14,7 +14,7 @@ final class AudioPlayer: ObservableObject {
     private let player = AVPlayer()
     private let nowPlaying = NowPlayingController()
     private var timeObserver: Any?
-    private var endObserver: NSObjectProtocol?
+    private var notificationObservers: [NSObjectProtocol] = []
     private var remoteCommandTokens: [Any] = []
 
     var currentTrack: Track? {
@@ -25,6 +25,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     init() {
+        player.automaticallyWaitsToMinimizeStalling = true
         configureAudioSession()
         configureRemoteCommands()
         observePlayer()
@@ -45,6 +46,7 @@ final class AudioPlayer: ObservableObject {
             loadCurrentAndPlay()
             return
         }
+        activateAudioSession()
         player.play()
         isPlaying = true
         publishPlaybackState()
@@ -101,9 +103,11 @@ final class AudioPlayer: ObservableObject {
         }
 
         let item = AVPlayerItem(url: url)
+        item.preferredForwardBufferDuration = 8
         player.replaceCurrentItem(with: item)
         elapsedTime = 0
         duration = track.duration
+        activateAudioSession()
         player.play()
         isPlaying = true
         nowPlaying.update(track: track, elapsedTime: 0, rate: 1)
@@ -120,6 +124,14 @@ final class AudioPlayer: ObservableObject {
             try session.setActive(true)
         } catch {
             errorMessage = "Не удалось настроить фоновое аудио: \(error.localizedDescription)"
+        }
+    }
+
+    private func activateAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            errorMessage = "Не удалось включить звук: \(error.localizedDescription)"
         }
     }
 
@@ -183,12 +195,62 @@ final class AudioPlayer: ObservableObject {
             }
         }
 
-        endObserver = NotificationCenter.default.addObserver(
+        let center = NotificationCenter.default
+        notificationObservers.append(center.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.next() }
+        })
+        notificationObservers.append(center.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let error = notification.userInfo?[
+                AVPlayerItemFailedToPlayToEndTimeErrorKey
+            ] as? Error
+            Task { @MainActor in
+                self?.isPlaying = false
+                self?.errorMessage = error?.localizedDescription
+                    ?? "Не удалось воспроизвести аудиопоток."
+            }
+        })
+        notificationObservers.append(center.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleInterruption(notification)
+            }
+        })
+    }
+
+    private func handleInterruption(_ notification: Notification) {
+        guard let rawType = notification.userInfo?[
+            AVAudioSessionInterruptionTypeKey
+        ] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: rawType)
+        else {
+            return
+        }
+        switch type {
+        case .began:
+            isPlaying = false
+            publishPlaybackState()
+        case .ended:
+            let rawOptions = notification.userInfo?[
+                AVAudioSessionInterruptionOptionKey
+            ] as? UInt ?? 0
+            if AVAudioSession.InterruptionOptions(
+                rawValue: rawOptions
+            ).contains(.shouldResume) {
+                resume()
+            }
+        @unknown default:
+            break
         }
     }
 

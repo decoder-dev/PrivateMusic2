@@ -4,7 +4,16 @@ import UIKit
 @MainActor
 final class NowPlayingController {
     private let center = MPNowPlayingInfoCenter.default()
+    private let artworkSession: URLSession
     private var artworkTask: Task<Void, Never>?
+
+    init() {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 15
+        configuration.httpCookieStorage = nil
+        configuration.urlCache = nil
+        artworkSession = URLSession(configuration: configuration)
+    }
 
     func update(
         track: Track,
@@ -24,6 +33,7 @@ final class NowPlayingController {
         ]
 
         center.nowPlayingInfo = info
+        center.playbackState = rate > 0 ? .playing : .paused
 
         artworkTask?.cancel()
         guard let artworkURL = track.artworkURL else {
@@ -31,7 +41,7 @@ final class NowPlayingController {
         }
         artworkTask = Task {
             do {
-                let (data, response) = try await URLSession.shared.data(
+                let (data, response) = try await artworkSession.data(
                     from: artworkURL
                 )
                 guard !Task.isCancelled,
@@ -62,11 +72,13 @@ final class NowPlayingController {
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedTime
         info[MPNowPlayingInfoPropertyPlaybackRate] = rate
         center.nowPlayingInfo = info
+        center.playbackState = rate > 0 ? .playing : .paused
     }
 
     func clear() {
         artworkTask?.cancel()
         artworkTask = nil
         center.nowPlayingInfo = nil
+        center.playbackState = .stopped
     }
 }
