@@ -28,6 +28,8 @@ required = {
     "PrivateMusic/Player/NowPlayingController.swift",
     "PrivateMusic/Core/Security/KeychainStore.swift",
     "PrivateMusic/Core/Networking/APIClient.swift",
+    "PrivateMusic/Services/VKWebAuthService.swift",
+    "PrivateMusic/Features/Auth/VKWebLoginView.swift",
     "PrivateMusic/Features/Root/RootView.swift",
 }
 for relative in required:
@@ -58,6 +60,8 @@ for required_symbol in (
     "glassEffect",
     "decoder-dev",
     "userAgent",
+    "WKWebsiteDataStore",
+    "https://login.vk.ru/?act=web_token",
 ):
     if required_symbol not in all_source:
         fail(f"missing security/player symbol: {required_symbol}")
@@ -187,5 +191,6 @@ if open_braces != close_braces:
 print(f"OK: {len(swift_files)} Swift files")
 print("OK: no embedded client secret or CAPTCHA interception")
 print("OK: Keychain, ephemeral URLSession and Now Playing are present")
+print("OK: non-persistent VK web login and direct token exchange")
 print("OK: Info.plist, HTTPS endpoints and release icons")
 print("OK: valid no-tracking privacy manifest")
