@@ -46,8 +46,6 @@
   </array>
   <key>VK_API_BASE_URL</key>
   <string>https://api.vk.ru</string>
-  <key>GENIUS_API_BASE_URL</key>
-  <string>https://api.genius.com</string>
   <key>TELEGRAM_GROUP_URL</key>
   <string>https://t.me/+myDvOG6Y4s9mMDUy</string>
   <key>TELEGRAM_VPN_URL</key>

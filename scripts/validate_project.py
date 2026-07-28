@@ -6,7 +6,6 @@ import plistlib
 import re
 import struct
 import sys
-import wave
 from pathlib import Path
 
 
@@ -67,7 +66,6 @@ if plist.get("UIBackgroundModes") != ["audio"]:
     fail("Info.plist must contain only the audio background mode")
 for key in (
     "VK_API_BASE_URL",
-    "GENIUS_API_BASE_URL",
     "TELEGRAM_GROUP_URL",
     "TELEGRAM_VPN_URL",
 ):
@@ -125,13 +123,12 @@ for path, expected_size in (
     if (width, height) != (expected_size, expected_size):
         fail(f"unexpected dimensions for {path}: {width}x{height}")
 
-tone = SOURCE / "Resources" / "DemoTone.wav"
-with wave.open(str(tone), "rb") as audio:
-    duration = audio.getnframes() / audio.getframerate()
-    if audio.getnchannels() != 1 or audio.getsampwidth() != 2:
-        fail("DemoTone.wav must be mono 16-bit PCM")
-    if not 11.9 <= duration <= 12.1:
-        fail(f"unexpected demo duration: {duration}")
+for forbidden_demo in (
+    SOURCE / "Services" / "DemoMusicService.swift",
+    SOURCE / "Resources" / "DemoTone.wav",
+):
+    if forbidden_demo.exists():
+        fail(f"release must not contain demo asset: {forbidden_demo}")
 
 project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
 for required_setting in (
@@ -151,5 +148,5 @@ if open_braces != close_braces:
 print(f"OK: {len(swift_files)} Swift files")
 print("OK: no embedded client secret or CAPTCHA interception")
 print("OK: Keychain, ephemeral URLSession and Now Playing are present")
-print("OK: Info.plist, HTTPS endpoints, icons and demo audio")
+print("OK: Info.plist, HTTPS endpoints and release icons")
 print("OK: valid no-tracking privacy manifest")

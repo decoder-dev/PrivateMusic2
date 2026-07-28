@@ -31,6 +31,27 @@ struct SearchView: View {
                 List(model.tracks) { track in
                     TrackRow(track: track, queue: model.tracks)
                         .listRowBackground(Color.clear)
+                        .swipeActions(edge: .trailing) {
+                            Button {
+                                guard let token = sessionStore.accessToken
+                                else {
+                                    return
+                                }
+                                Task {
+                                    await model.add(
+                                        track,
+                                        service: environment.musicService,
+                                        accessToken: token
+                                    )
+                                }
+                            } label: {
+                                Label(
+                                    "В медиатеку",
+                                    systemImage: "plus"
+                                )
+                            }
+                            .tint(Brand.accent)
+                        }
                 }
                 .listStyle(.plain)
             }

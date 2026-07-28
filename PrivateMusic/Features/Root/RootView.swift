@@ -28,6 +28,28 @@ struct RootView: View {
         }
         .tint(Brand.accent)
         .background(Brand.background.ignoresSafeArea())
+        .alert(
+            "Ошибка воспроизведения",
+            isPresented: Binding(
+                get: { player.errorMessage != nil },
+                set: { if !$0 { player.errorMessage = nil } }
+            )
+        ) {
+            Button("ОК", role: .cancel) {}
+        } message: {
+            Text(player.errorMessage ?? "")
+        }
+        .alert(
+            "Ошибка сессии",
+            isPresented: Binding(
+                get: { sessionStore.errorMessage != nil },
+                set: { if !$0 { sessionStore.errorMessage = nil } }
+            )
+        ) {
+            Button("ОК", role: .cancel) {}
+        } message: {
+            Text(sessionStore.errorMessage ?? "")
+        }
     }
 
     private func loadProfile() async {
@@ -41,8 +63,12 @@ struct RootView: View {
             )
             sessionStore.setProfile(profile)
         } catch {
-            sessionStore.errorMessage = error.localizedDescription
+            if let apiError = error as? APIError,
+               apiError == .unauthorized {
+                sessionStore.logout()
+            } else {
+                sessionStore.errorMessage = error.localizedDescription
+            }
         }
     }
 }
-

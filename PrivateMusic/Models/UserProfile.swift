@@ -38,7 +38,7 @@ struct UserProfile: Codable, Equatable, Sendable {
             String.self,
             forKey: .photo200
         )
-        photoURL = photo.flatMap { $0.isEmpty ? nil : URL(string: $0) }
+        photoURL = photo.flatMap(URL.secureRemoteURL)
     }
 
     func encode(to encoder: Encoder) throws {
