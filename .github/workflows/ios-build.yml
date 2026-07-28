@@ -69,18 +69,22 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-2.9.0-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-2.9.1-unsigned.ipa"
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-2.9.0-unsigned.ipa" \
-            --title "Private Music 2.9.0" \
+            "$PWD/artifacts/PrivateMusic-2.9.1-unsigned.ipa" \
+            --title "Private Music 2.9.1" \
             --notes-file - <<'EOF'
-          Private Music 2.9.0
+          Private Music 2.9.1
 
+          - новая структура по целевому референсу: Моя музыка и Микс;
+          - плейлисты вынесены в горизонтальную полку над компактными треками;
+          - отдельный насыщенный Mix-экран на реальных данных VK;
+          - нижняя навигация: Моя музыка, Микс, Поиск, Профиль;
           - сохранение очереди и позиции между запусками;
           - локальная история прослушиваний с поиском и очисткой;
           - синхронные тексты с автопрокруткой и переходом к строке;
@@ -96,7 +100,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-2.9.0-unsigned
-          path: artifacts/PrivateMusic-2.9.0-unsigned.ipa
+          name: PrivateMusic-2.9.1-unsigned
+          path: artifacts/PrivateMusic-2.9.1-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
