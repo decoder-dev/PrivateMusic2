@@ -55,6 +55,42 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppTextScale: String, CaseIterable, Identifiable {
+    case compact
+    case system
+    case large
+    case extraLarge
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .compact: "Компактный"
+        case .system: "Системный"
+        case .large: "Крупный"
+        case .extraLarge: "Очень крупный"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .compact: "90%"
+        case .system: "100%"
+        case .large: "115%"
+        case .extraLarge: "130%"
+        }
+    }
+
+    var dynamicTypeSize: DynamicTypeSize? {
+        switch self {
+        case .compact: .medium
+        case .system: nil
+        case .large: .xLarge
+        case .extraLarge: .xxLarge
+        }
+    }
+}
+
 enum EqualizerPreset: String, CaseIterable, Identifiable {
     case flat
     case bass
@@ -101,6 +137,9 @@ final class AppSettings: ObservableObject {
             defaults.set(liquidGlassEnabled, forKey: Keys.liquidGlass)
         }
     }
+    @Published var textScale: AppTextScale {
+        didSet { defaults.set(textScale.rawValue, forKey: Keys.textScale) }
+    }
     @Published var equalizerEnabled: Bool {
         didSet { defaults.set(equalizerEnabled, forKey: Keys.equalizer) }
     }
@@ -136,6 +175,9 @@ final class AppSettings: ObservableObject {
         liquidGlassEnabled = defaults.object(
             forKey: Keys.liquidGlass
         ) as? Bool ?? true
+        textScale = AppTextScale(
+            rawValue: defaults.string(forKey: Keys.textScale) ?? ""
+        ) ?? .system
         equalizerEnabled = defaults.object(
             forKey: Keys.equalizer
         ) as? Bool ?? false
@@ -167,6 +209,7 @@ final class AppSettings: ObservableObject {
         theme = .dark
         appearance = .dark
         liquidGlassEnabled = true
+        textScale = .system
     }
 
     private enum Keys {
@@ -174,9 +217,21 @@ final class AppSettings: ObservableObject {
         static let theme = "appearance.theme"
         static let appearance = "appearance.mode"
         static let liquidGlass = "appearance.liquidGlass"
+        static let textScale = "appearance.textScale"
         static let equalizer = "audio.equalizer.enabled"
         static let preset = "audio.equalizer.preset"
         static let gains = "audio.equalizer.gains"
         static let preamp = "audio.equalizer.preamp"
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func appTextScale(_ scale: AppTextScale) -> some View {
+        if let dynamicTypeSize = scale.dynamicTypeSize {
+            self.dynamicTypeSize(dynamicTypeSize)
+        } else {
+            self
+        }
     }
 }
