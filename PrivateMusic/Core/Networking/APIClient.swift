@@ -4,9 +4,15 @@ actor APIClient {
     private let baseURL: URL
     private let session: URLSession
     private let decoder: JSONDecoder
+    private var userAgent: String?
 
-    init(baseURL: URL, session: URLSession? = nil) {
+    init(
+        baseURL: URL,
+        session: URLSession? = nil,
+        userAgent: String? = nil
+    ) {
         self.baseURL = baseURL
+        self.userAgent = userAgent
 
         if let session {
             self.session = session
@@ -21,6 +27,11 @@ actor APIClient {
         }
 
         self.decoder = JSONDecoder()
+    }
+
+    func setUserAgent(_ value: String?) {
+        let cleaned = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        userAgent = cleaned?.isEmpty == false ? cleaned : nil
     }
 
     func post<Response: Decodable>(
@@ -43,6 +54,9 @@ actor APIClient {
             forHTTPHeaderField: "Content-Type"
         )
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let userAgent {
+            request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        }
         request.httpBody = form
             .sorted { $0.key < $1.key }
             .map { key, value in
