@@ -113,6 +113,13 @@ final class TrackCollectionViewModel: ObservableObject {
         errorMessage = nil
     }
 
+    func removeLocally(_ track: Track) {
+        guard source == .library else { return }
+        tracks.removeAll { $0.id == track.id }
+        totalCount = max(totalCount - 1, 0)
+        errorMessage = nil
+    }
+
     private func appendUnique(_ additions: [Track]) {
         var known = Set(tracks.map(\.id))
         tracks.append(contentsOf: additions.filter {

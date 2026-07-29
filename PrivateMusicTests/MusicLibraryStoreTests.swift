@@ -12,6 +12,7 @@ final class MusicLibraryStoreTests: XCTestCase {
 
         XCTAssertTrue(store.contains(source))
         XCTAssertTrue(store.contains(stored))
+        XCTAssertEqual(store.storedTrack(for: source)?.id, stored.id)
     }
 
     func testRemovalClearsSignature() {

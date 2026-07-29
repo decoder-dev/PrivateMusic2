@@ -99,6 +99,19 @@ struct LibraryView: View {
                 await loadTracks(force: true)
             }
         }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: MusicLibraryEvents.didRemoveTrack
+            )
+        ) { notification in
+            guard let track = notification.userInfo?[
+                MusicLibraryEvents.trackKey
+            ] as? Track else {
+                return
+            }
+            tracks.removeLocally(track)
+            libraryStore.markRemoved(track)
+        }
     }
 
     private var playlistShelf: some View {

@@ -94,18 +94,29 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.5.3-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.6.0-unsigned.ipa"
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.5.3-unsigned.ipa" \
-            --title "Private Music 3.5.3" \
+            "$PWD/artifacts/PrivateMusic-3.6.0-unsigned.ipa" \
+            --title "Private Music 3.6.0" \
             --notes-file - <<'EOF'
-          Private Music 3.5.3
+          Private Music 3.6.0
 
+          - нижний ряд действий плеера опущен и получил больше воздуха;
+          - кнопка сердца теперь добавляет и удаляет трек из медиатеки;
+          - удаление работает даже для копии трека из плейлиста или микса;
+          - системное мигающее меню заменено стабильной собственной панелью;
+          - рядом с меню добавлен системный AirPlay route picker;
+          - парсер Genius извлекает все вложенные контейнеры текста целиком;
+          - добавлен тест полного текста с несколькими куплетами и вложенными div;
+          - единичный отказ обновления больше не объявляет сессию истёкшей;
+          - рабочий токен сохраняется во время фонового восстановления;
+          - проверка неизвестного срока сессии выполняется каждые 15 минут;
+          - повторное обновление продолжает работать после временного отказа VK;
           - добавлено продолжение воспроизведения при подключении Bluetooth;
           - поддержаны Bluetooth A2DP, HFP и LE-аудиоустройства;
           - добавлена автоматическая пауза при системной громкости ноль;
@@ -218,7 +229,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.5.3-unsigned
-          path: artifacts/PrivateMusic-3.5.3-unsigned.ipa
+          name: PrivateMusic-3.6.0-unsigned
+          path: artifacts/PrivateMusic-3.6.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
