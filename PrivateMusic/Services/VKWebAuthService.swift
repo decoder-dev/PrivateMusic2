@@ -54,6 +54,9 @@ struct VKWebAuthService: Sendable {
         configuration.httpShouldSetCookies = false
         configuration.urlCache = nil
         configuration.waitsForConnectivity = true
+        configuration.allowsCellularAccess = true
+        configuration.allowsExpensiveNetworkAccess = true
+        configuration.allowsConstrainedNetworkAccess = true
         configuration.timeoutIntervalForRequest = 20
         configuration.timeoutIntervalForResource = 45
         let session = URLSession(configuration: configuration)
