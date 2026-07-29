@@ -5,6 +5,7 @@ struct VKMusicService: MusicService {
     private let apiVersion: String
     private let context: VKMusicContext
     private let lyricsService = LRCLyricsService()
+    private let geniusLyricsService = GeniusLyricsService()
 
     init(
         client: APIClient,
@@ -309,6 +310,13 @@ struct VKMusicService: MusicService {
         for track: Track,
         accessToken: String
     ) async throws -> Lyrics {
+        do {
+            return try await geniusLyricsService.lyrics(for: track)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Genius can reject automated requests in some regions.
+        }
         if let lyricsID = track.lyricsID {
             do {
                 let envelope: VKResponse<VKLyrics> = try await client.post(
