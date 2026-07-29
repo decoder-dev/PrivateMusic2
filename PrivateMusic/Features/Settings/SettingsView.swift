@@ -146,13 +146,17 @@ struct SettingsView: View {
             }
 
             Section("Подключение") {
-                LabeledContent("Сеть") {
+                HStack(spacing: 12) {
+                    Text("Сеть")
+                    Spacer(minLength: 16)
                     Label(
                         networkTitle,
                         systemImage: networkIcon
                     )
+                    .lineLimit(1)
                     .foregroundStyle(networkTint)
                 }
+                .padding(.vertical, 2)
                 LabeledContent("Сессия VK", value: sessionTitle)
                 if let expiresAt = sessionStore.session?.expiresAt {
                     LabeledContent(
@@ -188,18 +192,39 @@ struct SettingsView: View {
     }
 
     private var networkTitle: String {
-        switch networkMonitor.state {
-        case .online:
-            return "Доступна"
-        case .constrained:
-            return "Мобильная или ограниченная"
-        case .offline:
+        guard networkMonitor.state != .offline else {
+            return "Нет подключения"
+        }
+        switch networkMonitor.transport {
+        case .wifi:
+            return "Wi‑Fi доступен"
+        case .cellular:
+            return "Мобильная сеть"
+        case .wired:
+            return "Проводная сеть"
+        case .other:
+            return "Сеть доступна"
+        case .unavailable:
             return "Нет подключения"
         }
     }
 
     private var networkIcon: String {
-        networkMonitor.state == .offline ? "wifi.slash" : "wifi"
+        guard networkMonitor.state != .offline else {
+            return "wifi.slash"
+        }
+        switch networkMonitor.transport {
+        case .wifi:
+            return "wifi"
+        case .cellular:
+            return "cellularbars"
+        case .wired:
+            return "network"
+        case .other:
+            return "network"
+        case .unavailable:
+            return "wifi.slash"
+        }
     }
 
     private var networkTint: Color {
