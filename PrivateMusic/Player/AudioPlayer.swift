@@ -12,6 +12,26 @@ enum RepeatMode: String, CaseIterable {
     }
 }
 
+enum AudioRoutePolicy {
+    static let minimumAudibleVolume: Float = 0.001
+
+    static func shouldPause(
+        volume: Float,
+        enabled: Bool,
+        isPlaying: Bool
+    ) -> Bool {
+        enabled && isPlaying && volume <= minimumAudibleVolume
+    }
+
+    static func isBluetooth(_ portType: AVAudioSession.Port) -> Bool {
+        [
+            .bluetoothA2DP,
+            .bluetoothHFP,
+            .bluetoothLE
+        ].contains(portType)
+    }
+}
+
 @MainActor
 final class AudioPlayer: ObservableObject {
     @Published private(set) var queue: [Track] = []
@@ -38,6 +58,7 @@ final class AudioPlayer: ObservableObject {
     private var sleepTask: Task<Void, Never>?
     private var streamUserAgent: String?
     private var itemStatusObservation: NSKeyValueObservation?
+    private var outputVolumeObservation: NSKeyValueObservation?
     private var defaultContinuationProvider: (() async throws -> [Track])?
     private var activeContinuationProvider: (() async throws -> [Track])?
     private var streamRefreshProvider: ((Track) async throws -> Track)?
@@ -51,6 +72,8 @@ final class AudioPlayer: ObservableObject {
     private var didAttemptStreamRefresh = false
     private var audioSessionConfigured = false
     private var restoredTrackIDs = Set<String>()
+    private var resumeOnBluetoothConnection = true
+    private var pauseAtMinimumVolume = true
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -68,6 +91,8 @@ final class AudioPlayer: ObservableObject {
         self.defaults = defaults
         self.historyStore = historyStore
         self.streamUserAgent = userAgent
+        resumeOnBluetoothConnection = settings.resumeOnBluetoothConnection
+        pauseAtMinimumVolume = settings.pauseAtMinimumVolume
         shuffleEnabled = defaults.bool(forKey: "player.shuffle")
         repeatMode = RepeatMode(
             rawValue: defaults.string(forKey: "player.repeat") ?? ""
@@ -86,6 +111,20 @@ final class AudioPlayer: ObservableObject {
                     enabled: enabled,
                     gains: gains,
                     preamp: preamp
+                )
+            }
+            .store(in: &cancellables)
+        settings.$resumeOnBluetoothConnection
+            .sink { [weak self] enabled in
+                self?.resumeOnBluetoothConnection = enabled
+            }
+            .store(in: &cancellables)
+        settings.$pauseAtMinimumVolume
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                self.pauseAtMinimumVolume = enabled
+                self.handleOutputVolume(
+                    AVAudioSession.sharedInstance().outputVolume
                 )
             }
             .store(in: &cancellables)
@@ -225,6 +264,9 @@ final class AudioPlayer: ObservableObject {
         player.play()
         isPlaying = true
         publishPlaybackState()
+        handleOutputVolume(
+            AVAudioSession.sharedInstance().outputVolume
+        )
     }
 
     func pause() {
@@ -399,6 +441,9 @@ final class AudioPlayer: ObservableObject {
             isPlaying = true
             isBuffering = true
             historyStore.record(track)
+            handleOutputVolume(
+                AVAudioSession.sharedInstance().outputVolume
+            )
         } else {
             isPlaying = false
             isBuffering = false
@@ -567,6 +612,15 @@ final class AudioPlayer: ObservableObject {
                 self?.handleRouteChange(notification)
             }
         })
+        outputVolumeObservation = AVAudioSession.sharedInstance().observe(
+            \.outputVolume,
+            options: [.initial, .new]
+        ) { [weak self] session, change in
+            let volume = change.newValue ?? session.outputVolume
+            Task { @MainActor in
+                self?.handleOutputVolume(volume)
+            }
+        }
     }
 
     private func handleInterruption(_ notification: Notification) {
@@ -599,8 +653,39 @@ final class AudioPlayer: ObservableObject {
         guard let rawReason = notification.userInfo?[
             AVAudioSessionRouteChangeReasonKey
         ] as? UInt,
-              AVAudioSession.RouteChangeReason(rawValue: rawReason)
-                == .oldDeviceUnavailable else {
+              let reason = AVAudioSession.RouteChangeReason(
+                rawValue: rawReason
+              ) else {
+            return
+        }
+        switch reason {
+        case .oldDeviceUnavailable:
+            pause()
+        case .newDeviceAvailable:
+            guard resumeOnBluetoothConnection,
+                  currentTrack != nil,
+                  !isPlaying,
+                  hasBluetoothOutput else {
+                return
+            }
+            resume()
+        default:
+            break
+        }
+    }
+
+    private var hasBluetoothOutput: Bool {
+        AVAudioSession.sharedInstance().currentRoute.outputs.contains {
+            AudioRoutePolicy.isBluetooth($0.portType)
+        }
+    }
+
+    private func handleOutputVolume(_ volume: Float) {
+        guard AudioRoutePolicy.shouldPause(
+            volume: volume,
+            enabled: pauseAtMinimumVolume,
+            isPlaying: isPlaying
+        ) else {
             return
         }
         pause()
