@@ -17,11 +17,14 @@ struct PlaylistDetailView: View {
                     description: error
                 )
             } else if model.tracks.isEmpty {
-                EmptyStateView(
-                    title: playlist.title,
-                    systemImage: "music.note",
-                    description: "В плейлисте пока нет доступных треков."
-                )
+                VStack(spacing: 18) {
+                    playlistHeader
+                    EmptyStateView(
+                        title: playlist.title,
+                        systemImage: "music.note",
+                        description: "В плейлисте пока нет доступных треков."
+                    )
+                }
             } else {
                 List(model.tracks) { track in
                     TrackRow(track: track, queue: model.tracks)
@@ -47,6 +50,10 @@ struct PlaylistDetailView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    playlistHeader
+                        .padding(.bottom, 8)
+                }
             }
         }
         .background(ThemeBackground())
@@ -54,6 +61,31 @@ struct PlaylistDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .refreshable { await load(force: true) }
+    }
+
+    private var playlistHeader: some View {
+        HStack(spacing: 14) {
+            PlaylistArtworkView(playlist: playlist, size: 72)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(playlist.title)
+                    .font(.headline)
+                    .lineLimit(2)
+                Label(
+                    "Импортировано из \(playlist.source.title)",
+                    systemImage: "arrow.down.circle"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                Text("\(playlist.count) треков")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(ThemeBackground())
+        .premiumAppear()
     }
 
     private func remove(_ track: Track) async {
