@@ -16,6 +16,9 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             NavigationStack {
                 CatalogView()
+                    .safeAreaInset(edge: .bottom, spacing: 6) {
+                        miniPlayerInset
+                    }
             }
             .tag(Tab.home)
             .tabItem {
@@ -24,6 +27,9 @@ struct MainTabView: View {
 
             NavigationStack {
                 LibraryView()
+                    .safeAreaInset(edge: .bottom, spacing: 6) {
+                        miniPlayerInset
+                    }
             }
             .tag(Tab.library)
             .tabItem {
@@ -32,6 +38,9 @@ struct MainTabView: View {
 
             NavigationStack {
                 SearchView()
+                    .safeAreaInset(edge: .bottom, spacing: 6) {
+                        miniPlayerInset
+                    }
             }
             .tag(Tab.search)
             .tabItem {
@@ -40,16 +49,13 @@ struct MainTabView: View {
 
             NavigationStack {
                 ProfileView()
+                    .safeAreaInset(edge: .bottom, spacing: 6) {
+                        miniPlayerInset
+                    }
             }
             .tag(Tab.profile)
             .tabItem {
                 Label("Профиль", systemImage: "person.crop.circle")
-            }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 6) {
-            if player.currentTrack != nil {
-                MiniPlayerView()
-                    .padding(.horizontal, 12)
             }
         }
         .toolbarBackground(.visible, for: .tabBar)
@@ -58,5 +64,13 @@ struct MainTabView: View {
             for: .tabBar
         )
         .tint(settings.theme.accent)
+    }
+
+    @ViewBuilder
+    private var miniPlayerInset: some View {
+        if player.currentTrack != nil {
+            MiniPlayerView()
+                .padding(.horizontal, 12)
+        }
     }
 }
