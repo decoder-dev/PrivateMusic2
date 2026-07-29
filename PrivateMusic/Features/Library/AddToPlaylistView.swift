@@ -29,14 +29,17 @@ struct AddToPlaylistView: View {
                             Task { await add(to: playlist) }
                         } label: {
                             HStack(spacing: 12) {
-                                AsyncArtwork(
-                                    url: playlist.artworkURL,
+                                PlaylistArtworkView(
+                                    playlist: playlist,
                                     size: 48
                                 )
                                 VStack(alignment: .leading) {
                                     Text(playlist.title)
                                     Text("\(playlist.count) треков")
                                         .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text(playlist.source.title)
+                                        .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
