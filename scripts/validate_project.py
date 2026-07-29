@@ -57,7 +57,7 @@ for forbidden in (
 for required_symbol in (
     "MPNowPlayingInfoCenter",
     "MPRemoteCommandCenter",
-    "kSecAttrAccessibleWhenUnlockedThisDeviceOnly",
+    "kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly",
     "URLSessionConfiguration.ephemeral",
     "MTAudioProcessingTapCreate",
     "glassEffect",
