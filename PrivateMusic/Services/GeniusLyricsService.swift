@@ -125,9 +125,13 @@ struct GeniusLyricsService: Sendable {
             return nil
         }
         let range = NSRange(html.startIndex..., in: html)
-        let fragments = expression.matches(in: html, range: range).compactMap {
-            guard $0.numberOfRanges > 1,
-                  let valueRange = Range($0.range(at: 1), in: html) else {
+        let matches = expression.matches(in: html, range: range)
+        let fragments: [String] = matches.compactMap { match in
+            guard match.numberOfRanges > 1,
+                  let valueRange = Range(
+                    match.range(at: 1),
+                    in: html
+                  ) else {
                 return nil
             }
             return String(html[valueRange])
@@ -147,14 +151,20 @@ struct GeniusLyricsService: Sendable {
         return attributed.string
             .replacingOccurrences(of: "\u{00A0}", with: " ")
             .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map {
+                String($0).trimmingCharacters(
+                    in: CharacterSet.whitespaces
+                )
+            }
             .reduce(into: [String]()) { lines, line in
                 if !line.isEmpty || lines.last?.isEmpty == false {
                     lines.append(line)
                 }
             }
             .joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(
+                in: CharacterSet.whitespacesAndNewlines
+            )
     }
 
     private static func normalized(_ value: String) -> String {
