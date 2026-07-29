@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct PlayerView: View {
     @EnvironmentObject private var environment: AppEnvironment
@@ -112,19 +113,19 @@ struct PlayerView: View {
                     image
                         .resizable()
                         .scaledToFill()
-                        .scaleEffect(1.35)
-                        .blur(radius: 72)
-                        .saturation(1.25)
+                        .scaleEffect(1.28)
+                        .blur(radius: 78)
+                        .saturation(1.12)
                 } placeholder: {
                     Color.clear
                 }
             }
-            Color.black.opacity(0.48)
+            Color.black.opacity(0.56)
             LinearGradient(
                 colors: [
-                    .black.opacity(0.12),
-                    .black.opacity(0.5),
-                    .black.opacity(0.88)
+                    .black.opacity(0.18),
+                    .black.opacity(0.42),
+                    .black.opacity(0.92)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -137,12 +138,12 @@ struct PlayerView: View {
         _ track: Track,
         size: CGSize
     ) -> some View {
-        let compact = size.height < 730
-        let horizontalPadding: CGFloat = compact ? 20 : 24
+        let compact = size.height < 740
+        let horizontalPadding: CGFloat = compact ? 20 : 22
         let contentWidth = max(size.width - horizontalPadding * 2, 0)
         let artworkSize = min(
             contentWidth,
-            size.height * (compact ? 0.3 : 0.34)
+            size.height * (compact ? 0.36 : 0.38)
         )
 
         return VStack(spacing: 0) {
@@ -151,27 +152,30 @@ struct PlayerView: View {
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 17, weight: .bold))
-                        .frame(width: 40, height: 40)
-                        .background(.white.opacity(0.1), in: Circle())
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(width: 36, height: 36)
+                        .background(.white.opacity(0.08), in: Circle())
+                        .overlay {
+                            Circle().stroke(.white.opacity(0.08), lineWidth: 0.5)
+                        }
                 }
                 .buttonStyle(PlayerControlStyle())
                 Spacer()
                 VStack(spacing: 2) {
                     Text("СЕЙЧАС ИГРАЕТ")
                         .font(.caption2.weight(.bold))
-                        .tracking(0.8)
-                        .foregroundStyle(.white.opacity(0.48))
+                        .tracking(1.1)
+                        .foregroundStyle(.white.opacity(0.5))
                     Text(queuePosition)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.34))
+                        .font(.system(size: 10, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(.white.opacity(0.38))
                 }
                 Spacer()
                 actionMenu(track)
             }
-            .padding(.top, compact ? 8 : 12)
-
-            Spacer(minLength: compact ? 10 : 18)
+            .frame(height: 40)
+            .padding(.top, compact ? 6 : 10)
 
             AsyncArtwork(url: track.artworkURL, size: artworkSize)
                 .id(track.id)
@@ -187,8 +191,14 @@ struct PlayerView: View {
                         : .spring(response: 0.42, dampingFraction: 0.86),
                     value: track.id
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 18))
-                .shadow(color: .black.opacity(0.34), radius: 28, y: 16)
+                .clipShape(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(.white.opacity(0.08), lineWidth: 0.7)
+                }
+                .shadow(color: .black.opacity(0.42), radius: 26, y: 14)
                 .offset(
                     x: reduceMotion ? 0 : artworkDrag.width * 0.16,
                     y: reduceMotion ? 0 : artworkDrag.height * 0.08
@@ -201,21 +211,32 @@ struct PlayerView: View {
                     "Свайп в стороны меняет трек, вверх открывает очередь, "
                         + "вниз закрывает плеер"
                 )
+                .padding(.top, compact ? 8 : 18)
 
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(track.title)
-                        .font(.title3.weight(.bold))
+                        .font(
+                            .system(
+                                size: compact ? 21 : 23,
+                                weight: .bold
+                            )
+                        )
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                    Text(track.artist)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.58))
-                        .lineLimit(1)
+                    Button {
+                        showingArtist = true
+                    } label: {
+                        Text(track.artist)
+                            .font(.system(size: compact ? 14 : 15))
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.58))
                     if let album = track.albumTitle, !album.isEmpty {
                         Text(album)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.38))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.36))
                             .lineLimit(1)
                     }
                 }
@@ -230,8 +251,8 @@ struct PlayerView: View {
                     .foregroundStyle(
                         isInLibrary ? .white : .white.opacity(0.72)
                     )
-                    .frame(width: 42, height: 42)
-                    .background(.white.opacity(0.09), in: Circle())
+                    .frame(width: 38, height: 38)
+                    .background(.white.opacity(0.08), in: Circle())
                 }
                 .buttonStyle(PlayerControlStyle())
                 .disabled(isInLibrary || isAddingToLibrary)
@@ -239,34 +260,35 @@ struct PlayerView: View {
                     isInLibrary ? "В медиатеке" : "Добавить в медиатеку"
                 )
             }
-            .padding(.top, compact ? 12 : 16)
+            .padding(.top, compact ? 10 : 14)
 
-            VStack(spacing: 6) {
-                Slider(
+            VStack(spacing: 3) {
+                CompactPlayerSlider(
                     value: Binding(
                         get: { player.elapsedTime },
                         set: { player.seek(to: $0) }
                     ),
-                    in: 0...max(player.duration, 1)
+                    range: 0...max(player.duration, 1)
                 )
-                .tint(.white)
+                .frame(height: 20)
+                .accessibilityLabel("Позиция воспроизведения")
                 HStack {
                     Text(player.elapsedTime.formattedDuration)
                     Spacer()
                     Text("-\(remainingTime.formattedDuration)")
                 }
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.white.opacity(0.58))
+                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.52))
             }
-            .padding(.top, compact ? 10 : 14)
+            .padding(.top, compact ? 8 : 11)
 
             primaryControls
-                .padding(.top, compact ? 8 : 12)
+                .padding(.top, compact ? 5 : 8)
 
             quickActions(track)
-                .padding(.top, compact ? 6 : 10)
+                .padding(.top, compact ? 4 : 8)
 
-            Spacer(minLength: compact ? 10 : 18)
+            Spacer(minLength: compact ? 6 : 12)
         }
         .frame(
             width: contentWidth,
@@ -275,8 +297,6 @@ struct PlayerView: View {
         )
         .padding(.horizontal, horizontalPadding)
         .foregroundStyle(.white)
-        .contentShape(Rectangle())
-        .simultaneousGesture(dismissGesture)
     }
 
     private func actionMenu(_ track: Track) -> some View {
@@ -315,8 +335,11 @@ struct PlayerView: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill(.white.opacity(0.1))
-                    .frame(width: 40, height: 40)
+                    .fill(.white.opacity(0.08))
+                    .frame(width: 36, height: 36)
+                    .overlay {
+                        Circle().stroke(.white.opacity(0.08), lineWidth: 0.5)
+                    }
                 if isPreparingShare {
                     ProgressView().tint(.white)
                 } else {
@@ -345,8 +368,8 @@ struct PlayerView: View {
                 player.previous()
             } label: {
                 Image(systemName: "backward.fill")
-                    .font(.system(size: 29, weight: .semibold))
-                    .frame(width: 58, height: 58)
+                    .font(.system(size: 25, weight: .semibold))
+                    .frame(width: 48, height: 52)
             }
             Spacer()
             Button {
@@ -354,10 +377,11 @@ struct PlayerView: View {
                 player.playPause()
             } label: {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 34, weight: .bold))
-                    .frame(width: 62, height: 62)
+                    .font(.system(size: 29, weight: .bold))
+                    .frame(width: 60, height: 60)
                     .background(.white, in: Circle())
                     .foregroundStyle(.black)
+                    .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
             }
             Spacer()
             Button {
@@ -365,8 +389,8 @@ struct PlayerView: View {
                 player.next()
             } label: {
                 Image(systemName: "forward.fill")
-                    .font(.system(size: 29, weight: .semibold))
-                    .frame(width: 58, height: 58)
+                    .font(.system(size: 25, weight: .semibold))
+                    .frame(width: 48, height: 52)
             }
             Spacer()
             secondaryButton(
@@ -382,7 +406,7 @@ struct PlayerView: View {
     }
 
     private func quickActions(_ track: Track) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             quickAction("quote.bubble", title: "Текст") {
                 showingLyrics = true
             }
@@ -412,20 +436,18 @@ struct PlayerView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            VStack(spacing: 4) {
+            VStack(spacing: 5) {
                 Image(systemName: image)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(width: 36, height: 34)
+                    .background(.white.opacity(0.07), in: Circle())
                 Text(title)
-                    .font(.caption2.weight(.medium))
+                    .font(.system(size: 10, weight: .semibold))
                     .lineLimit(1)
             }
-            .foregroundStyle(.white.opacity(0.72))
+            .foregroundStyle(.white.opacity(0.66))
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
-            .background(.white.opacity(0.07), in: RoundedRectangle(
-                cornerRadius: 14,
-                style: .continuous
-            ))
+            .frame(height: 52)
         }
         .buttonStyle(PlayerControlStyle())
     }
@@ -438,7 +460,7 @@ struct PlayerView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: image)
-                .font(.system(size: 21, weight: .semibold))
+                .font(.system(size: 19, weight: .semibold))
                 .foregroundStyle(
                     active ? Color.white : Color.white.opacity(0.58)
                 )
@@ -481,18 +503,6 @@ struct PlayerView: View {
                 } else if vertical > 72 {
                     dismiss()
                 }
-            }
-    }
-
-    private var dismissGesture: some Gesture {
-        DragGesture(minimumDistance: 28)
-            .onEnded { value in
-                guard value.translation.height > 110,
-                      abs(value.translation.width)
-                        < value.translation.height else {
-                    return
-                }
-                dismiss()
             }
     }
 
@@ -581,6 +591,77 @@ struct PlayerView: View {
         }
         isInLibrary = libraryStore.contains(track)
             || track.ownerID == sessionStore.session?.userID
+    }
+}
+
+private struct CompactPlayerSlider: UIViewRepresentable {
+    @Binding var value: TimeInterval
+    let range: ClosedRange<TimeInterval>
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> UISlider {
+        let slider = UISlider(frame: .zero)
+        slider.isContinuous = true
+        slider.minimumTrackTintColor = .white
+        slider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.18)
+        slider.setThumbImage(Self.thumbImage, for: .normal)
+        slider.setThumbImage(Self.highlightedThumbImage, for: .highlighted)
+        slider.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.valueChanged(_:)),
+            for: .valueChanged
+        )
+        return slider
+    }
+
+    func updateUIView(_ slider: UISlider, context: Context) {
+        context.coordinator.parent = self
+        slider.minimumValue = Float(range.lowerBound)
+        slider.maximumValue = Float(max(range.upperBound, range.lowerBound + 1))
+        guard !slider.isTracking else { return }
+        let safeValue = value.isFinite ? value : range.lowerBound
+        slider.setValue(
+            Float(min(max(safeValue, range.lowerBound), range.upperBound)),
+            animated: false
+        )
+    }
+
+    private static let thumbImage = makeThumb(diameter: 12)
+    private static let highlightedThumbImage = makeThumb(diameter: 15)
+
+    private static func makeThumb(diameter: CGFloat) -> UIImage {
+        let size = CGSize(width: diameter, height: diameter)
+        return UIGraphicsImageRenderer(size: size).image { context in
+            context.cgContext.setShadow(
+                offset: CGSize(width: 0, height: 1),
+                blur: 3,
+                color: UIColor.black.withAlphaComponent(0.28).cgColor
+            )
+            UIColor.white.setFill()
+            UIBezierPath(
+                ovalIn: CGRect(origin: .zero, size: size).insetBy(
+                    dx: 0.5,
+                    dy: 0.5
+                )
+            )
+            .fill()
+        }
+    }
+
+    final class Coordinator: NSObject {
+        var parent: CompactPlayerSlider
+
+        init(parent: CompactPlayerSlider) {
+            self.parent = parent
+        }
+
+        @objc
+        func valueChanged(_ slider: UISlider) {
+            parent.value = TimeInterval(slider.value)
+        }
     }
 }
 
