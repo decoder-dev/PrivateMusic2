@@ -124,7 +124,10 @@ final class AudioPlayer: ObservableObject {
         restoredTrackIDs.removeAll()
         activeContinuationProvider =
             continuation ?? defaultContinuationProvider
-        let prepared = normalizedQueue(selected: track, tracks: tracks)
+        let prepared = PlaybackQueueBuilder.normalized(
+            selected: track,
+            tracks: tracks
+        )
         if shuffleEnabled {
             queue = [track]
                 + prepared.filter { $0.id != track.id }.shuffled()
@@ -727,24 +730,6 @@ final class AudioPlayer: ObservableObject {
             errorMessage = "Не удалось продолжить очередь: "
                 + error.localizedDescription
         }
-    }
-
-    private func normalizedQueue(
-        selected track: Track,
-        tracks: [Track]
-    ) -> [Track] {
-        var seen = Set<String>()
-        var result: [Track] = []
-        for item in tracks {
-            let resolved = item.id == track.id ? track : item
-            if seen.insert(resolved.id).inserted {
-                result.append(resolved)
-            }
-        }
-        if seen.insert(track.id).inserted {
-            result.insert(track, at: 0)
-        }
-        return result
     }
 
     private func persistPlayback() {

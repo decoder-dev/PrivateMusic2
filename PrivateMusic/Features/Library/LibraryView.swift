@@ -4,6 +4,7 @@ struct LibraryView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var libraryStore: MusicLibraryStore
     @StateObject private var tracks = TrackCollectionViewModel(source: .library)
     @StateObject private var playlists = PlaylistLibraryViewModel()
     @State private var showingEditor = false
@@ -21,7 +22,7 @@ struct LibraryView: View {
                     Text("Треки")
                         .font(.title2.weight(.bold))
                     Spacer()
-                    Text("\(tracks.tracks.count)")
+                    Text("\(tracks.totalCount)")
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -40,6 +41,9 @@ struct LibraryView: View {
                         ForEach(Array(tracks.tracks.enumerated()), id: \.element.id) {
                             index, track in
                             libraryRow(track)
+                                .onAppear {
+                                    loadMoreIfNeeded(after: track)
+                                }
                             if index < tracks.tracks.count - 1 {
                                 Divider().padding(.leading, 66)
                             }
@@ -48,7 +52,7 @@ struct LibraryView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 120)
+            .padding(.bottom, 24)
         }
         .background(ThemeBackground())
         .navigationTitle("Медиатека")
@@ -86,6 +90,7 @@ struct LibraryView: View {
                 return
             }
             tracks.insertAdded(track)
+            libraryStore.markAdded(source: track, stored: track)
             Task {
                 try? await Task.sleep(for: .milliseconds(500))
                 guard !Task.isCancelled else { return }
@@ -120,6 +125,9 @@ struct LibraryView: View {
                             .frame(width: 136, alignment: .leading)
                         }
                         .buttonStyle(PremiumPressStyle())
+                        .onAppear {
+                            loadMorePlaylistsIfNeeded(after: playlist)
+                        }
                     }
                 }
             }
@@ -156,7 +164,14 @@ struct LibraryView: View {
                 }
                 Button(role: .destructive) {
                     guard let token = sessionStore.accessToken else { return }
-                    Task { await tracks.remove(track, accessToken: token) }
+                    Task {
+                        if await tracks.remove(
+                            track,
+                            accessToken: token
+                        ) {
+                            libraryStore.markRemoved(track)
+                        }
+                    }
                 } label: {
                     Label("Удалить", systemImage: "trash")
                 }
@@ -208,6 +223,7 @@ struct LibraryView: View {
         guard let token = sessionStore.accessToken else { return }
         tracks.configure(service: environment.musicService)
         await tracks.load(accessToken: token, force: force)
+        libraryStore.replace(with: tracks.tracks)
         await playlists.load(
             service: environment.musicService,
             accessToken: token,
@@ -219,5 +235,30 @@ struct LibraryView: View {
         guard let token = sessionStore.accessToken else { return }
         tracks.configure(service: environment.musicService)
         await tracks.load(accessToken: token, force: force)
+        libraryStore.replace(with: tracks.tracks)
+    }
+
+    private func loadMoreIfNeeded(after track: Track) {
+        guard track.id == tracks.tracks.last?.id,
+              let token = sessionStore.accessToken else {
+            return
+        }
+        Task {
+            await tracks.loadMore(accessToken: token)
+            libraryStore.replace(with: tracks.tracks)
+        }
+    }
+
+    private func loadMorePlaylistsIfNeeded(after playlist: Playlist) {
+        guard playlist.id == playlists.playlists.last?.id,
+              let token = sessionStore.accessToken else {
+            return
+        }
+        Task {
+            await playlists.loadMore(
+                service: environment.musicService,
+                accessToken: token
+            )
+        }
     }
 }
