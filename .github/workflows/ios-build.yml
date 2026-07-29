@@ -94,18 +94,30 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.4.0-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.5.0-unsigned.ipa"
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.4.0-unsigned.ipa" \
-            --title "Private Music 3.4.0" \
+            "$PWD/artifacts/PrivateMusic-3.5.0-unsigned.ipa" \
+            --title "Private Music 3.5.0" \
             --notes-file - <<'EOF'
-          Private Music 3.4.0
+          Private Music 3.5.0
 
+          - полноэкранный плеер полностью перестроен по премиальному UI-промту;
+          - устранена огромная пустота между верхней панелью и обложкой;
+          - обложка, метаданные, прогресс и controls получили строгую иерархию;
+          - уменьшены верхние кнопки, типографика и основные элементы управления;
+          - тяжёлые нижние плитки заменены компактными быстрыми действиями;
+          - стандартный крупный Slider заменён точным компактным скраббером;
+          - скраббер получил небольшой thumb и корректное непрерывное перемещение;
+          - глобальный свайп закрытия удалён, чтобы не конфликтовать с controls;
+          - жесты смены трека, очереди и закрытия сохранены только на обложке;
+          - фон и новая обложка меняются плавно без чёрного промежуточного кадра;
+          - компоновка адаптирована для компактных и крупных экранов iPhone;
+          - сохранены Reduce Motion, Dynamic Type и доступность системного скраббера;
           - подключение VK переработано для длительной стабильной работы;
           - временная потеря сети больше не блокирует приложение и не удаляет сессию;
           - восстановление токена выполняется в фоне без замены основного интерфейса;
@@ -187,7 +199,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.4.0-unsigned
-          path: artifacts/PrivateMusic-3.4.0-unsigned.ipa
+          name: PrivateMusic-3.5.0-unsigned
+          path: artifacts/PrivateMusic-3.5.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
