@@ -77,7 +77,9 @@ struct LibraryView: View {
                 Task { await load(force: true) }
             }
         }
-        .task { await load() }
+        .task(id: sessionStore.accessToken) {
+            await load(force: true)
+        }
         .refreshable { await load(force: true) }
         .onReceive(
             NotificationCenter.default.publisher(
