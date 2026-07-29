@@ -16,8 +16,9 @@ struct CachedRemoteImage<
         ZStack {
             placeholder()
                 .opacity(image == nil ? 1 : 0)
-            if let image, loadedURL == url {
+            if let image {
                 content(Image(uiImage: image))
+                    .id(loadedURL)
                     .transition(.opacity)
             }
         }
@@ -35,19 +36,28 @@ struct CachedRemoteImage<
             return
         }
         if let cached = ArtworkImageCache.shared.image(for: url) {
-            image = cached
-            loadedURL = url
+            withAnimation(.easeOut(duration: 0.18)) {
+                image = cached
+                loadedURL = url
+            }
             return
         }
-        image = nil
-        loadedURL = nil
         do {
             let (data, response) = try await ArtworkImageCache.shared.session
                 .data(from: url)
             guard !Task.isCancelled,
-                  let http = response as? HTTPURLResponse,
+                  self.url == url else {
+                return
+            }
+            guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode),
                   let loaded = UIImage(data: data) else {
+                if loadedURL != url {
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        image = nil
+                        loadedURL = nil
+                    }
+                }
                 return
             }
             ArtworkImageCache.shared.insert(loaded, for: url)
@@ -55,7 +65,14 @@ struct CachedRemoteImage<
                 image = loaded
                 loadedURL = url
             }
+        } catch is CancellationError {
+            return
         } catch {
+            guard self.url == url, loadedURL != url else { return }
+            withAnimation(.easeOut(duration: 0.16)) {
+                image = nil
+                loadedURL = nil
+            }
             return
         }
     }
