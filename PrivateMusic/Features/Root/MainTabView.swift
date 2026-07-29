@@ -60,7 +60,7 @@ struct MainTabView: View {
         }
         .toolbarBackground(.visible, for: .tabBar)
         .toolbarBackground(
-            settings.theme.colors[0].opacity(0.82),
+            settings.theme.colors[0],
             for: .tabBar
         )
         .tint(settings.theme.accent)
@@ -71,6 +71,7 @@ struct MainTabView: View {
         if player.currentTrack != nil {
             MiniPlayerView()
                 .padding(.horizontal, 12)
+                .padding(.bottom, 4)
         }
     }
 }
