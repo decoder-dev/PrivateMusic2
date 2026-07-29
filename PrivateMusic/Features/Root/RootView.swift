@@ -11,6 +11,7 @@ struct RootView: View {
     @State private var refreshError: String?
     @State private var automaticRetryTask: Task<Void, Never>?
     @State private var automaticRetryAttempt = 0
+    @State private var isValidatingSession = false
 
     var body: some View {
         Group {
@@ -116,11 +117,10 @@ struct RootView: View {
         await environment.musicService.configure(userAgent: session.userAgent)
         environment.player.configureNetwork(userAgent: session.userAgent)
 
-        if session.needsRefresh
-            || (session.expiresAt == nil && session.canRefresh) {
+        if session.shouldRefreshProactively {
             await refreshWebSession()
         } else {
-            await loadProfile()
+            await loadProfile(forceValidation: true)
         }
 
         guard let current = sessionStore.session,
@@ -132,17 +132,19 @@ struct RootView: View {
         } ?? 1_800
         try? await Task.sleep(for: .seconds(delay))
         guard !Task.isCancelled, scenePhase == .active else { return }
-        await refreshWebSession()
+        if current.shouldRefreshProactively {
+            await refreshWebSession()
+        } else {
+            await loadProfile(forceValidation: true)
+        }
     }
 
     private func recoverActiveSession() async {
         guard let session = sessionStore.session else { return }
-        if session.needsRefresh
-            || (session.expiresAt == nil && session.canRefresh)
-            || refreshError != nil {
+        if session.shouldRefreshProactively {
             await refreshWebSession()
         } else {
-            await loadProfile()
+            await loadProfile(forceValidation: true)
         }
     }
 
@@ -219,11 +221,16 @@ struct RootView: View {
         }
     }
 
-    private func loadProfile() async {
-        guard sessionStore.profile == nil,
+    private func loadProfile(forceValidation: Bool = false) async {
+        guard forceValidation || sessionStore.profile == nil else {
+            return
+        }
+        guard !isValidatingSession,
               let token = sessionStore.accessToken else {
             return
         }
+        isValidatingSession = true
+        defer { isValidatingSession = false }
         do {
             let profile = try await environment.musicService.profile(
                 accessToken: token

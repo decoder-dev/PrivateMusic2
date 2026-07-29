@@ -28,7 +28,7 @@ struct KeychainStore: Sendable {
         let values: [String: Any] = [
             kSecValueData as String: data,
             kSecAttrAccessible as String:
-            kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
 
         let updateStatus = SecItemUpdate(

@@ -50,7 +50,9 @@ struct CatalogView: View {
         .navigationBarTitleDisplayMode(.inline)
         .dynamicTypeSize(...DynamicTypeSize.large)
         .refreshable { await load(force: true) }
-        .task { await load() }
+        .task(id: sessionStore.accessToken) {
+            await load(force: true)
+        }
     }
 
     private var contentIsEmpty: Bool {
