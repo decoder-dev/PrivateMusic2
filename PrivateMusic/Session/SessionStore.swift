@@ -8,6 +8,7 @@ final class SessionStore: ObservableObject {
 
     private let keychain: KeychainStore
     private let sessionAccount = "vk-session-v2"
+    private let profileAccount = "vk-profile-v1"
 
     init(keychain: KeychainStore) {
         self.keychain = keychain
@@ -16,6 +17,15 @@ final class SessionStore: ObservableObject {
             session = saved?.isExpired == false || saved?.canRefresh == true
                 ? saved
                 : nil
+            if let session,
+               let cachedProfile = try? keychain.load(
+                    UserProfile.self,
+                    account: profileAccount
+               ),
+               cachedProfile.id == session.userID
+                    || session.userID == nil {
+                profile = cachedProfile
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -54,6 +64,7 @@ final class SessionStore: ObservableObject {
             webUserAgent: webUserAgent
         )
         try keychain.save(value, account: sessionAccount)
+        try? keychain.save(profile, account: profileAccount)
         session = value
         self.profile = profile
         errorMessage = nil
@@ -74,6 +85,7 @@ final class SessionStore: ObservableObject {
     }
 
     func setProfile(_ profile: UserProfile) {
+        try? keychain.save(profile, account: profileAccount)
         self.profile = profile
         errorMessage = nil
     }
@@ -84,6 +96,11 @@ final class SessionStore: ObservableObject {
             try keychain.delete(account: sessionAccount)
         } catch {
             deletionError = error.localizedDescription
+        }
+        do {
+            try keychain.delete(account: profileAccount)
+        } catch {
+            deletionError = deletionError ?? error.localizedDescription
         }
         session = nil
         profile = nil
