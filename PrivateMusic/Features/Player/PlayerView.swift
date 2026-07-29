@@ -139,6 +139,7 @@ struct PlayerView: View {
         size: CGSize
     ) -> some View {
         let compact = size.height < 740
+        let spacious = size.height >= 820
         let horizontalPadding: CGFloat = compact ? 20 : 22
         let contentWidth = max(size.width - horizontalPadding * 2, 0)
         let artworkSize = min(
@@ -211,7 +212,10 @@ struct PlayerView: View {
                     "Свайп в стороны меняет трек, вверх открывает очередь, "
                         + "вниз закрывает плеер"
                 )
-                .padding(.top, compact ? 12 : 26)
+                .padding(
+                    .top,
+                    compact ? 12 : (spacious ? 34 : 28)
+                )
 
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -260,7 +264,10 @@ struct PlayerView: View {
                     isInLibrary ? "В медиатеке" : "Добавить в медиатеку"
                 )
             }
-            .padding(.top, compact ? 10 : 14)
+            .padding(
+                .top,
+                compact ? 10 : (spacious ? 21 : 16)
+            )
 
             VStack(spacing: 3) {
                 CompactPlayerSlider(
@@ -280,13 +287,22 @@ struct PlayerView: View {
                 .font(.system(size: 11, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.52))
             }
-            .padding(.top, compact ? 8 : 11)
+            .padding(
+                .top,
+                compact ? 8 : (spacious ? 16 : 12)
+            )
 
             primaryControls
-                .padding(.top, compact ? 5 : 8)
+                .padding(
+                    .top,
+                    compact ? 5 : (spacious ? 14 : 9)
+                )
 
             quickActions(track)
-                .padding(.top, compact ? 4 : 8)
+                .padding(
+                    .top,
+                    compact ? 4 : (spacious ? 15 : 9)
+                )
 
             Spacer(minLength: compact ? 6 : 12)
         }
