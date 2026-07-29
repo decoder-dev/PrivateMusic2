@@ -22,9 +22,35 @@ ditto "$app_path" "$work_dir/Payload/$(basename "$app_path")"
 
 (
   cd "$work_dir"
-  /usr/bin/zip -qry "$output_path" Payload
+  # Store entries without compression. The IPA is larger, but this avoids
+  # extraction failures in older mobile signing tools while remaining a
+  # standards-compliant ZIP archive accepted by Apple's tooling.
+  /usr/bin/zip -0 -qry "$output_path" Payload
 )
 
 /usr/bin/unzip -t "$output_path"
-echo "Created $output_path"
+python3 - "$output_path" <<'PY'
+import sys
+import zipfile
 
+path = sys.argv[1]
+with zipfile.ZipFile(path) as archive:
+    if archive.testzip() is not None:
+        raise SystemExit("IPA contains a corrupted ZIP entry")
+    names = archive.namelist()
+    if not names or not all(name.startswith("Payload/") for name in names):
+        raise SystemExit("IPA contains files outside Payload")
+    if not any(name.endswith(".app/Info.plist") for name in names):
+        raise SystemExit("IPA is missing application Info.plist")
+    unsupported = [
+        info.filename
+        for info in archive.infolist()
+        if info.compress_type != zipfile.ZIP_STORED
+    ]
+    if unsupported:
+        raise SystemExit(
+            "IPA compatibility mode contains compressed entries: "
+            + ", ".join(unsupported)
+        )
+PY
+echo "Created $output_path"
