@@ -12,6 +12,7 @@ struct RootView: View {
     @State private var automaticRetryTask: Task<Void, Never>?
     @State private var automaticRetryAttempt = 0
     @State private var isValidatingSession = false
+    @State private var refreshRequiresReplacement = false
 
     var body: some View {
         Group {
@@ -129,7 +130,7 @@ struct RootView: View {
         }
         let delay = current.expiresAt.map {
             max($0.timeIntervalSinceNow - 90, 1)
-        } ?? 1_800
+        } ?? 900
         try? await Task.sleep(for: .seconds(delay))
         guard !Task.isCancelled, scenePhase == .active else { return }
         if current.shouldRefreshProactively {
@@ -149,7 +150,9 @@ struct RootView: View {
     }
 
     @MainActor
-    private func refreshWebSession() async {
+    private func refreshWebSession(
+        tokenWasRejected: Bool = false
+    ) async {
         guard !isRefreshingSession else { return }
         guard networkMonitor.isReachable else {
             refreshError = nil
@@ -161,9 +164,15 @@ struct RootView: View {
             refreshError = "Нужно один раз войти заново"
             return
         }
+        let mustReplaceToken =
+            tokenWasRejected || refreshRequiresReplacement
 
         isRefreshingSession = true
-        refreshError = nil
+        if mustReplaceToken {
+            refreshError = "Восстанавливаем сессию VK…"
+        } else {
+            refreshError = nil
+        }
         defer { isRefreshingSession = false }
         do {
             let result = try await environment.webAuthService.exchange(
@@ -183,6 +192,7 @@ struct RootView: View {
             automaticRetryTask?.cancel()
             automaticRetryTask = nil
             automaticRetryAttempt = 0
+            refreshRequiresReplacement = false
             refreshError = nil
         } catch is CancellationError {
             return
@@ -190,9 +200,16 @@ struct RootView: View {
             refreshError = "VK временно недоступен"
             scheduleAutomaticRetry()
         } catch let error as APIError where error == .unauthorized {
-            refreshError = "Сессия VK истекла"
+            refreshRequiresReplacement = mustReplaceToken
+            refreshError = mustReplaceToken
+                ? "Восстанавливаем сессию VK…"
+                : nil
+            scheduleAutomaticRetry()
         } catch {
-            refreshError = "Не удалось обновить подключение"
+            refreshRequiresReplacement = mustReplaceToken
+            refreshError = mustReplaceToken
+                ? "Восстанавливаем сессию VK…"
+                : "Не удалось обновить подключение"
             scheduleAutomaticRetry()
         }
     }
@@ -210,11 +227,15 @@ struct RootView: View {
             do {
                 try await Task.sleep(for: .seconds(delay))
                 guard networkMonitor.isReachable,
-                      sessionStore.session != nil,
-                      refreshError != nil else {
+                      let session = sessionStore.session,
+                      refreshRequiresReplacement
+                        || session.shouldRefreshProactively
+                        || refreshError != nil else {
                     return
                 }
-                await refreshWebSession()
+                await refreshWebSession(
+                    tokenWasRejected: refreshRequiresReplacement
+                )
             } catch {
                 return
             }
@@ -236,6 +257,10 @@ struct RootView: View {
                 accessToken: token
             )
             sessionStore.setProfile(profile)
+            automaticRetryTask?.cancel()
+            automaticRetryTask = nil
+            automaticRetryAttempt = 0
+            refreshRequiresReplacement = false
             refreshError = nil
         } catch is CancellationError {
             return
@@ -243,7 +268,8 @@ struct RootView: View {
             if let apiError = error as? APIError,
                apiError == .unauthorized {
                 if sessionStore.session?.canRefresh == true {
-                    await refreshWebSession()
+                    refreshRequiresReplacement = true
+                    await refreshWebSession(tokenWasRejected: true)
                 } else {
                     refreshError = "Сессия VK истекла"
                 }

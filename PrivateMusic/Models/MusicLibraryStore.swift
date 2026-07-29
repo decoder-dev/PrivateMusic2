@@ -3,9 +3,14 @@ import Foundation
 @MainActor
 final class MusicLibraryStore: ObservableObject {
     @Published private(set) var signatures = Set<String>()
+    private var tracksBySignature: [String: Track] = [:]
 
     func replace(with tracks: [Track]) {
         signatures = Set(tracks.map(Self.signature))
+        tracksBySignature = Dictionary(
+            tracks.map { (Self.signature($0), $0) },
+            uniquingKeysWith: { current, _ in current }
+        )
     }
 
     func contains(_ track: Track) -> Bool {
@@ -13,12 +18,22 @@ final class MusicLibraryStore: ObservableObject {
     }
 
     func markAdded(source: Track, stored: Track) {
-        signatures.insert(Self.signature(source))
-        signatures.insert(Self.signature(stored))
+        let sourceSignature = Self.signature(source)
+        let storedSignature = Self.signature(stored)
+        signatures.insert(sourceSignature)
+        signatures.insert(storedSignature)
+        tracksBySignature[sourceSignature] = stored
+        tracksBySignature[storedSignature] = stored
     }
 
     func markRemoved(_ track: Track) {
-        signatures.remove(Self.signature(track))
+        let signature = Self.signature(track)
+        signatures.remove(signature)
+        tracksBySignature.removeValue(forKey: signature)
+    }
+
+    func storedTrack(for track: Track) -> Track? {
+        tracksBySignature[Self.signature(track)]
     }
 
     private static func signature(_ track: Track) -> String {
