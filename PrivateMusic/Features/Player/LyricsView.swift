@@ -33,12 +33,15 @@ struct LyricsView: View {
                         .padding()
                     }
                 } else {
-                    EmptyStateView(
-                        title: "Текст недоступен",
-                        systemImage: "quote.bubble",
-                        description: errorMessage
-                            ?? "Для этого трека текст не найден."
-                    )
+                    VStack(spacing: 18) {
+                        EmptyStateView(
+                            title: "Текст недоступен",
+                            systemImage: "quote.bubble",
+                            description: errorMessage
+                                ?? "Для этого трека текст не найден."
+                        )
+                        geniusLink(title: "Найти текст на Genius")
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -105,9 +108,38 @@ struct LyricsView: View {
     }
 
     private func source(_ lyrics: Lyrics) -> some View {
-        Text("Источник: \(lyrics.source)")
-            .font(.caption)
-            .foregroundStyle(.tertiary)
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Источник: \(lyrics.source)")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            geniusLink(
+                title: lyrics.source == "Genius"
+                    ? "Открыть оригинал на Genius"
+                    : "Проверить текст на Genius",
+                destination: lyrics.sourceURL
+            )
+        }
+    }
+
+    private func geniusLink(
+        title: String,
+        destination: URL? = nil
+    ) -> some View {
+        Link(
+            destination: destination
+                ?? GeniusLyricsService.searchPageURL(for: track)
+        ) {
+            Label(title, systemImage: "arrow.up.right")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 14)
+                .frame(height: 40)
+                .background(
+                    Color(red: 1, green: 0.98, blue: 0.18),
+                    in: Capsule()
+                )
+        }
+        .buttonStyle(PremiumPressStyle())
     }
 
     private func activeLineIndex(in lyrics: Lyrics) -> Int {
