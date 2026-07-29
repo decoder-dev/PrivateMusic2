@@ -211,7 +211,7 @@ struct PlayerView: View {
                     "Свайп в стороны меняет трек, вверх открывает очередь, "
                         + "вниз закрывает плеер"
                 )
-                .padding(.top, compact ? 8 : 18)
+                .padding(.top, compact ? 12 : 26)
 
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
