@@ -41,7 +41,23 @@ final class ConnectionStabilityTests: XCTestCase {
 
         XCTAssertFalse(session.isExpired)
         XCTAssertFalse(session.needsRefresh)
+        XCTAssertFalse(session.shouldRefreshProactively)
         XCTAssertTrue(session.canRefresh)
+    }
+
+    func testSessionWithoutExpiryIsValidatedBeforeCookieRefresh() {
+        let session = makeSession(expiresAt: nil)
+
+        XCTAssertFalse(session.shouldRefreshProactively)
+        XCTAssertTrue(session.canRefresh)
+    }
+
+    func testKnownExpiringSessionRefreshesProactively() {
+        let session = makeSession(
+            expiresAt: Date().addingTimeInterval(30)
+        )
+
+        XCTAssertTrue(session.shouldRefreshProactively)
     }
 
     func testConnectivityErrorsAreClassifiedForBackgroundRecovery() {
