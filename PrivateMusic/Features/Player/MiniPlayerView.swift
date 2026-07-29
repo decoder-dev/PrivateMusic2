@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MiniPlayerView: View {
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var settings: AppSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @GestureState private var dragOffset: CGSize = .zero
 
@@ -67,10 +68,21 @@ struct MiniPlayerView: View {
                 .frame(height: 2)
                 .padding(.horizontal, 12)
             }
-            .adaptiveGlass(
-                in: RoundedRectangle(cornerRadius: 16),
-                interactive: true
+            .background(
+                settings.theme.surface.opacity(0.98),
+                in: RoundedRectangle(
+                    cornerRadius: 16,
+                    style: .continuous
+                )
             )
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: 16,
+                    style: .continuous
+                )
+                .stroke(.primary.opacity(0.13), lineWidth: 0.8)
+            }
+            .shadow(color: .black.opacity(0.24), radius: 12, y: 6)
             .frame(height: 58)
             .dynamicTypeSize(...DynamicTypeSize.large)
             .offset(

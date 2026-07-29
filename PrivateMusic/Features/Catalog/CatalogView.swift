@@ -15,7 +15,7 @@ struct CatalogView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 30) {
+            LazyVStack(alignment: .leading, spacing: 24) {
                 welcomeHeader
 
                 if !history.entries.isEmpty {
@@ -37,10 +37,12 @@ struct CatalogView: View {
                 }
             }
             .padding(.horizontal, PremiumLayout.screenPadding)
-            .padding(.bottom, 110)
+            .padding(.bottom, 24)
         }
         .background(ThemeBackground())
         .navigationTitle("Главная")
+        .navigationBarTitleDisplayMode(.inline)
+        .dynamicTypeSize(...DynamicTypeSize.large)
         .refreshable { await load(force: true) }
         .task { await load() }
     }
@@ -58,11 +60,11 @@ struct CatalogView: View {
                     .textCase(.uppercase)
                     .tracking(0.7)
                 Text(sessionStore.profile?.firstName ?? "Слушатель")
-                    .font(.largeTitle.weight(.heavy))
+                    .font(.title2.weight(.bold))
                     .lineLimit(1)
             }
             Spacer()
-            AsyncArtwork(url: sessionStore.profile?.photoURL, size: 48)
+            AsyncArtwork(url: sessionStore.profile?.photoURL, size: 42)
                 .clipShape(Circle())
                 .overlay { Circle().stroke(.primary.opacity(0.12)) }
         }
@@ -90,7 +92,7 @@ struct CatalogView: View {
                     ForEach(mixes) { mix in
                         Button { start(mix) } label: {
                             ZStack(alignment: .bottomLeading) {
-                                AsyncArtwork(url: mix.artworkURL, size: 186)
+                                AsyncArtwork(url: mix.artworkURL, size: 158)
                                     .overlay {
                                         LinearGradient(
                                             colors: [.clear, .black.opacity(0.82)],
@@ -108,7 +110,7 @@ struct CatalogView: View {
                                         .foregroundStyle(.white.opacity(0.72))
                                         .lineLimit(2)
                                 }
-                                .padding(14)
+                                .padding(12)
                                 if loadingMixID == mix.id {
                                     ProgressView()
                                         .tint(.white)
@@ -116,8 +118,8 @@ struct CatalogView: View {
                                         .background(.black.opacity(0.28))
                                 }
                             }
-                            .frame(width: 186, height: 186)
-                            .clipShape(RoundedRectangle(cornerRadius: 18))
+                            .frame(width: 158, height: 158)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
                         }
                         .buttonStyle(PremiumPressStyle())
                         .disabled(loadingMixID != nil)
@@ -141,13 +143,13 @@ struct CatalogView: View {
                         } label: {
                             VStack(alignment: .leading, spacing: 9) {
                                 ZStack(alignment: .bottomTrailing) {
-                                    AsyncArtwork(url: track.artworkURL, size: 154)
+                                    AsyncArtwork(url: track.artworkURL, size: 136)
                                     Image(systemName: "play.fill")
                                         .font(.system(size: 15, weight: .bold))
                                         .foregroundStyle(
                                             settings.theme.buttonForeground
                                         )
-                                        .frame(width: 40, height: 40)
+                                        .frame(width: 36, height: 36)
                                         .background(
                                             settings.theme.accent,
                                             in: Circle()
@@ -163,7 +165,7 @@ struct CatalogView: View {
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
-                            .frame(width: 154, alignment: .leading)
+                            .frame(width: 136, alignment: .leading)
                         }
                         .buttonStyle(PremiumPressStyle())
                     }
@@ -188,7 +190,7 @@ struct CatalogView: View {
                             VStack(alignment: .leading, spacing: 9) {
                                 AsyncArtwork(
                                     url: entry.track.artworkURL,
-                                    size: 132
+                                    size: 116
                                 )
                                 Text(entry.track.title)
                                     .font(.subheadline.weight(.semibold))
@@ -199,7 +201,7 @@ struct CatalogView: View {
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
-                            .frame(width: 132, alignment: .leading)
+                            .frame(width: 116, alignment: .leading)
                         }
                         .buttonStyle(PremiumPressStyle())
                     }
@@ -239,7 +241,7 @@ struct CatalogView: View {
                             PlaylistDetailView(playlist: playlist)
                         } label: {
                             VStack(alignment: .leading, spacing: 9) {
-                                AsyncArtwork(url: playlist.artworkURL, size: 146)
+                                AsyncArtwork(url: playlist.artworkURL, size: 132)
                                 Text(playlist.title)
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
@@ -248,7 +250,7 @@ struct CatalogView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                            .frame(width: 146, alignment: .leading)
+                            .frame(width: 132, alignment: .leading)
                         }
                         .buttonStyle(PremiumPressStyle())
                     }
@@ -270,7 +272,7 @@ struct CatalogView: View {
                                 VStack(alignment: .leading, spacing: 9) {
                                     RoundedRectangle(cornerRadius: 18)
                                         .fill(.primary.opacity(0.09))
-                                        .frame(width: 146, height: 146)
+                                        .frame(width: 132, height: 132)
                                     RoundedRectangle(cornerRadius: 4)
                                         .fill(.primary.opacity(0.09))
                                         .frame(width: 112, height: 12)
