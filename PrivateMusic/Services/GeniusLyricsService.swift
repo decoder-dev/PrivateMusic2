@@ -117,24 +117,50 @@ struct GeniusLyricsService: Sendable {
         return data
     }
 
-    private static func extractLyrics(from html: String) -> String? {
-        guard let expression = try? NSRegularExpression(
-            pattern: #"<div[^>]+data-lyrics-container="true"[^>]*>(.*?)</div>"#,
-            options: [.caseInsensitive, .dotMatchesLineSeparators]
+    static func extractLyrics(from html: String) -> String? {
+        guard let containerExpression = try? NSRegularExpression(
+            pattern:
+                #"<div\b[^>]*\bdata-lyrics-container\s*=\s*["']true["'][^>]*>"#,
+            options: [.caseInsensitive]
+        ),
+              let divExpression = try? NSRegularExpression(
+                pattern: #"</?div\b[^>]*>"#,
+                options: [.caseInsensitive]
         ) else {
             return nil
         }
-        let range = NSRange(html.startIndex..., in: html)
-        let matches = expression.matches(in: html, range: range)
-        let fragments: [String] = matches.compactMap { match in
-            guard match.numberOfRanges > 1,
-                  let valueRange = Range(
-                    match.range(at: 1),
-                    in: html
-                  ) else {
-                return nil
+
+        let source = html as NSString
+        let fullRange = NSRange(location: 0, length: source.length)
+        let openings = containerExpression.matches(
+            in: html,
+            range: fullRange
+        )
+        let fragments: [String] = openings.compactMap { opening in
+            let contentStart = NSMaxRange(opening.range)
+            guard contentStart < source.length else { return nil }
+            let searchRange = NSRange(
+                location: contentStart,
+                length: source.length - contentStart
+            )
+            var depth = 1
+            for tag in divExpression.matches(in: html, range: searchRange) {
+                let value = source.substring(with: tag.range)
+                if value.hasPrefix("</") || value.hasPrefix("</".uppercased()) {
+                    depth -= 1
+                    if depth == 0 {
+                        return source.substring(
+                            with: NSRange(
+                                location: contentStart,
+                                length: tag.range.location - contentStart
+                            )
+                        )
+                    }
+                } else {
+                    depth += 1
+                }
             }
-            return String(html[valueRange])
+            return nil
         }
         guard !fragments.isEmpty else { return nil }
         let joined = fragments.joined(separator: "<br>")
