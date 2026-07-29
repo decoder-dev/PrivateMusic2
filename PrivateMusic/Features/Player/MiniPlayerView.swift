@@ -28,30 +28,41 @@ struct MiniPlayerView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Spacer()
+                    HStack(spacing: 0) {
+                        Button {
+                            Haptics.trackChange()
+                            player.previous()
+                        } label: {
+                            Image(systemName: "backward.fill")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(width: 32, height: 40)
+                        }
 
-                    Button {
-                        Haptics.selection()
-                        player.playPause()
-                    } label: {
-                        Image(
-                            systemName: player.isPlaying
-                                ? "pause.fill"
-                                : "play.fill"
-                        )
-                        .font(.headline)
-                        .frame(width: 32, height: 40)
-                    }
-
-                    Button {
-                        Haptics.trackChange()
-                        player.next()
-                    } label: {
-                        Image(systemName: "forward.fill")
+                        Button {
+                            Haptics.selection()
+                            player.playPause()
+                        } label: {
+                            Image(
+                                systemName: player.isPlaying
+                                    ? "pause.fill"
+                                    : "play.fill"
+                            )
                             .font(.headline)
-                            .frame(width: 32, height: 40)
+                            .frame(width: 34, height: 40)
+                        }
+
+                        Button {
+                            Haptics.trackChange()
+                            player.next()
+                        } label: {
+                            Image(systemName: "forward.fill")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(width: 32, height: 40)
+                        }
                     }
+                    .buttonStyle(PremiumPressStyle())
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
