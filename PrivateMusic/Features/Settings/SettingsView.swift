@@ -50,6 +50,38 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Плеер и аудио") {
+                Toggle(
+                    isOn: $settings.resumeOnBluetoothConnection
+                ) {
+                    Label(
+                        "Продолжать при подключении Bluetooth",
+                        systemImage: "dot.radiowaves.left.and.right"
+                    )
+                }
+                Text(
+                    "Если в очереди есть текущий трек, воспроизведение "
+                        + "продолжится после подключения наушников или колонки."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+                Toggle(
+                    isOn: $settings.pauseAtMinimumVolume
+                ) {
+                    Label(
+                        "Пауза при минимальной громкости",
+                        systemImage: "speaker.slash"
+                    )
+                }
+                Text(
+                    "При снижении системной громкости до нуля трек "
+                        + "останавливается на текущей позиции."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
             Section("Эквалайзер") {
                 Toggle(
                     "Обработка звука",

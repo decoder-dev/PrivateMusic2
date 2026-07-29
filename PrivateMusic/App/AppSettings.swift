@@ -152,6 +152,22 @@ final class AppSettings: ObservableObject {
     @Published var equalizerPreamp: Double {
         didSet { defaults.set(equalizerPreamp, forKey: Keys.preamp) }
     }
+    @Published var resumeOnBluetoothConnection: Bool {
+        didSet {
+            defaults.set(
+                resumeOnBluetoothConnection,
+                forKey: Keys.resumeOnBluetoothConnection
+            )
+        }
+    }
+    @Published var pauseAtMinimumVolume: Bool {
+        didSet {
+            defaults.set(
+                pauseAtMinimumVolume,
+                forKey: Keys.pauseAtMinimumVolume
+            )
+        }
+    }
 
     private let defaults: UserDefaults
 
@@ -191,6 +207,12 @@ final class AppSettings: ObservableObject {
             equalizerGains = EqualizerPreset.flat.gains
         }
         equalizerPreamp = defaults.object(forKey: Keys.preamp) as? Double ?? 0
+        resumeOnBluetoothConnection = defaults.object(
+            forKey: Keys.resumeOnBluetoothConnection
+        ) as? Bool ?? true
+        pauseAtMinimumVolume = defaults.object(
+            forKey: Keys.pauseAtMinimumVolume
+        ) as? Bool ?? true
     }
 
     func selectPreset(_ preset: EqualizerPreset) {
@@ -222,6 +244,10 @@ final class AppSettings: ObservableObject {
         static let preset = "audio.equalizer.preset"
         static let gains = "audio.equalizer.gains"
         static let preamp = "audio.equalizer.preamp"
+        static let resumeOnBluetoothConnection =
+            "audio.bluetooth.resumeOnConnection"
+        static let pauseAtMinimumVolume =
+            "audio.volume.pauseAtMinimum"
     }
 }
 
