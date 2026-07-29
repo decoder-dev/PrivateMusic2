@@ -32,7 +32,9 @@ struct MixView: View {
         }
         .background(ThemeBackground())
         .navigationTitle("Микс")
-        .task { await load() }
+        .task(id: sessionStore.accessToken) {
+            await load(force: true)
+        }
         .refreshable { await load(force: true) }
     }
 

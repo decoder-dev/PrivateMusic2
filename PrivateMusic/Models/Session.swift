@@ -26,6 +26,10 @@ struct Session: Codable, Equatable, Sendable {
         needsRefresh(at: Date())
     }
 
+    var shouldRefreshProactively: Bool {
+        expiresAt != nil && needsRefresh
+    }
+
     func needsRefresh(
         at date: Date,
         leeway: TimeInterval = 120
