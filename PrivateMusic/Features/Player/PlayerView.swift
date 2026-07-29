@@ -138,21 +138,40 @@ struct PlayerView: View {
         size: CGSize
     ) -> some View {
         let compact = size.height < 730
-        let horizontalPadding: CGFloat = compact ? 24 : 28
+        let horizontalPadding: CGFloat = compact ? 20 : 24
         let contentWidth = max(size.width - horizontalPadding * 2, 0)
         let artworkSize = min(
             contentWidth,
-            size.height * (compact ? 0.36 : 0.39)
+            size.height * (compact ? 0.3 : 0.34)
         )
 
         return VStack(spacing: 0) {
-            Capsule()
-                .fill(.white.opacity(0.45))
-                .frame(width: 46, height: 5)
-                .padding(.top, compact ? 8 : 14)
-                .accessibilityLabel("Смахните вниз, чтобы закрыть")
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 17, weight: .bold))
+                        .frame(width: 40, height: 40)
+                        .background(.white.opacity(0.1), in: Circle())
+                }
+                .buttonStyle(PlayerControlStyle())
+                Spacer()
+                VStack(spacing: 2) {
+                    Text("СЕЙЧАС ИГРАЕТ")
+                        .font(.caption2.weight(.bold))
+                        .tracking(0.8)
+                        .foregroundStyle(.white.opacity(0.48))
+                    Text(queuePosition)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.34))
+                }
+                Spacer()
+                actionMenu(track)
+            }
+            .padding(.top, compact ? 8 : 12)
 
-            Spacer(minLength: compact ? 14 : 32)
+            Spacer(minLength: compact ? 10 : 18)
 
             AsyncArtwork(url: track.artworkURL, size: artworkSize)
                 .id(track.id)
@@ -183,7 +202,7 @@ struct PlayerView: View {
                         + "вниз закрывает плеер"
                 )
 
-            HStack(alignment: .center, spacing: 16) {
+            HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(track.title)
                         .font(.title3.weight(.bold))
@@ -201,11 +220,28 @@ struct PlayerView: View {
                     }
                 }
                 Spacer(minLength: 10)
-                actionMenu(track)
+                Button {
+                    addToLibrary(track)
+                } label: {
+                    Image(
+                        systemName: isInLibrary ? "heart.fill" : "heart"
+                    )
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(
+                        isInLibrary ? .white : .white.opacity(0.72)
+                    )
+                    .frame(width: 42, height: 42)
+                    .background(.white.opacity(0.09), in: Circle())
+                }
+                .buttonStyle(PlayerControlStyle())
+                .disabled(isInLibrary || isAddingToLibrary)
+                .accessibilityLabel(
+                    isInLibrary ? "В медиатеке" : "Добавить в медиатеку"
+                )
             }
-            .padding(.top, compact ? 16 : 22)
+            .padding(.top, compact ? 12 : 16)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 Slider(
                     value: Binding(
                         get: { player.elapsedTime },
@@ -222,13 +258,15 @@ struct PlayerView: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.white.opacity(0.58))
             }
-            .padding(.top, compact ? 18 : 24)
+            .padding(.top, compact ? 10 : 14)
 
-            Spacer(minLength: compact ? 16 : 28)
             primaryControls
-            Spacer(minLength: compact ? 18 : 34)
-            secondaryControls
-            Spacer(minLength: compact ? 18 : 30)
+                .padding(.top, compact ? 8 : 12)
+
+            quickActions(track)
+                .padding(.top, compact ? 6 : 10)
+
+            Spacer(minLength: compact ? 10 : 18)
         }
         .frame(
             width: contentWidth,
@@ -277,14 +315,14 @@ struct PlayerView: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill(.white.opacity(0.92))
-                    .frame(width: 42, height: 42)
+                    .fill(.white.opacity(0.1))
+                    .frame(width: 40, height: 40)
                 if isPreparingShare {
-                    ProgressView().tint(.black)
+                    ProgressView().tint(.white)
                 } else {
                     Image(systemName: "ellipsis")
                         .font(.headline)
-                        .foregroundStyle(.black)
+                        .foregroundStyle(.white)
                 }
             }
         }
@@ -292,39 +330,7 @@ struct PlayerView: View {
     }
 
     private var primaryControls: some View {
-        HStack {
-            Button {
-                Haptics.trackChange()
-                player.previous()
-            } label: {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 34, weight: .semibold))
-                    .frame(width: 72, height: 62)
-            }
-            Spacer()
-            Button {
-                Haptics.selection()
-                player.playPause()
-            } label: {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 52, weight: .bold))
-                    .frame(width: 80, height: 70)
-            }
-            Spacer()
-            Button {
-                Haptics.trackChange()
-                player.next()
-            } label: {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 34, weight: .semibold))
-                    .frame(width: 72, height: 62)
-            }
-        }
-        .buttonStyle(PlayerControlStyle())
-    }
-
-    private var secondaryControls: some View {
-        HStack {
+        HStack(spacing: 0) {
             secondaryButton(
                 "shuffle",
                 active: player.shuffleEnabled,
@@ -334,20 +340,33 @@ struct PlayerView: View {
                 player.toggleShuffle()
             }
             Spacer()
-            secondaryButton(
-                "quote.bubble",
-                active: false,
-                label: "Текст"
-            ) {
-                showingLyrics = true
+            Button {
+                Haptics.trackChange()
+                player.previous()
+            } label: {
+                Image(systemName: "backward.fill")
+                    .font(.system(size: 29, weight: .semibold))
+                    .frame(width: 58, height: 58)
             }
             Spacer()
-            secondaryButton(
-                "list.bullet",
-                active: false,
-                label: "Очередь"
-            ) {
-                showingQueue = true
+            Button {
+                Haptics.selection()
+                player.playPause()
+            } label: {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 34, weight: .bold))
+                    .frame(width: 62, height: 62)
+                    .background(.white, in: Circle())
+                    .foregroundStyle(.black)
+            }
+            Spacer()
+            Button {
+                Haptics.trackChange()
+                player.next()
+            } label: {
+                Image(systemName: "forward.fill")
+                    .font(.system(size: 29, weight: .semibold))
+                    .frame(width: 58, height: 58)
             }
             Spacer()
             secondaryButton(
@@ -359,7 +378,56 @@ struct PlayerView: View {
                 player.cycleRepeatMode()
             }
         }
-        .padding(.horizontal, 18)
+        .buttonStyle(PlayerControlStyle())
+    }
+
+    private func quickActions(_ track: Track) -> some View {
+        HStack(spacing: 8) {
+            quickAction("quote.bubble", title: "Текст") {
+                showingLyrics = true
+            }
+            quickAction("list.bullet", title: "Очередь") {
+                showingQueue = true
+            }
+            quickAction(
+                "rectangle.stack.badge.plus",
+                title: "Плейлист"
+            ) {
+                showingPlaylists = true
+            }
+            quickAction(
+                isPreparingShare
+                    ? "arrow.triangle.2.circlepath"
+                    : "square.and.arrow.up",
+                title: "Экспорт"
+            ) {
+                startShare(track)
+            }
+        }
+    }
+
+    private func quickAction(
+        _ image: String,
+        title: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: image)
+                    .font(.system(size: 17, weight: .semibold))
+                Text(title)
+                    .font(.caption2.weight(.medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.white.opacity(0.72))
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background(.white.opacity(0.07), in: RoundedRectangle(
+                cornerRadius: 14,
+                style: .continuous
+            ))
+        }
+        .buttonStyle(PlayerControlStyle())
     }
 
     private func secondaryButton(
@@ -382,6 +450,14 @@ struct PlayerView: View {
 
     private var remainingTime: TimeInterval {
         max(player.duration - player.elapsedTime, 0)
+    }
+
+    private var queuePosition: String {
+        guard let currentIndex = player.currentIndex,
+              !player.queue.isEmpty else {
+            return "PRIVATE MUSIC"
+        }
+        return "\(currentIndex + 1) ИЗ \(player.queue.count)"
     }
 
     private var artworkGesture: some Gesture {
