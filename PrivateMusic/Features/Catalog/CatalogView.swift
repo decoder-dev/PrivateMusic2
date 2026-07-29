@@ -17,19 +17,25 @@ struct CatalogView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
                 welcomeHeader
+                    .premiumAppear()
 
                 if !history.entries.isEmpty {
                     recentlyPlayedSection
+                        .premiumAppear(delay: 0.03)
                 }
                 if isLoading && contentIsEmpty {
                     catalogSkeleton
                 } else {
-                    if !mixes.isEmpty { mixesSection }
-                    if !recommendations.isEmpty {
-                        recommendationsSection
-                        trackListSection
+                    if !mixes.isEmpty {
+                        mixesSection.premiumAppear(delay: 0.06)
                     }
-                    if !playlists.isEmpty { playlistsSection }
+                    if !recommendations.isEmpty {
+                        recommendationsSection.premiumAppear(delay: 0.09)
+                        trackListSection.premiumAppear(delay: 0.12)
+                    }
+                    if !playlists.isEmpty {
+                        playlistsSection.premiumAppear(delay: 0.15)
+                    }
                     if contentIsEmpty { unavailableView }
                     if let errorMessage, !contentIsEmpty {
                         retryRow(errorMessage)
@@ -245,12 +251,18 @@ struct CatalogView: View {
                             PlaylistDetailView(playlist: playlist)
                         } label: {
                             VStack(alignment: .leading, spacing: 9) {
-                                AsyncArtwork(url: playlist.artworkURL, size: 132)
+                                PlaylistArtworkView(
+                                    playlist: playlist,
+                                    size: 132
+                                )
                                 Text(playlist.title)
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
-                                Text("\(playlist.count) треков")
+                                Text(
+                                    "\(playlist.count) треков • "
+                                        + playlist.source.shortTitle
+                                )
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
