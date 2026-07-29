@@ -53,7 +53,9 @@ struct VKWebAuthService: Sendable {
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
         configuration.urlCache = nil
-        configuration.timeoutIntervalForRequest = 30
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = 20
+        configuration.timeoutIntervalForResource = 45
         let session = URLSession(configuration: configuration)
 
         var request = URLRequest(
@@ -80,12 +82,106 @@ struct VKWebAuthService: Sendable {
         request.httpBody = "version=1&app_id=\(webClientID)"
             .data(using: .utf8)
 
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode) else {
-            throw VKWebAuthError.invalidResponse
+        for attempt in 0..<3 {
+            do {
+                let (data, response) = try await session.data(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    throw VKWebAuthError.invalidResponse
+                }
+                if (http.statusCode == 429 || http.statusCode >= 500),
+                   attempt < 2 {
+                    try await Task.sleep(
+                        for: .milliseconds(500 * (attempt + 1))
+                    )
+                    continue
+                }
+                guard (200..<300).contains(http.statusCode) else {
+                    throw VKWebAuthError.invalidResponse
+                }
+                let headers = http.allHeaderFields.reduce(
+                    into: [String: String]()
+                ) { result, item in
+                    guard let key = item.key as? String,
+                          let value = item.value as? String else {
+                        return
+                    }
+                    result[key] = value
+                }
+                return try decode(
+                    data,
+                    cookies: Self.mergingCookieHeader(
+                        cleanedCookies,
+                        responseHeaders: headers,
+                        url: tokenURL
+                    ),
+                    webUserAgent: webUserAgent
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as URLError where error.code == .cancelled {
+                throw CancellationError()
+            } catch let error as URLError {
+                if RequestRetryPolicy.transient.shouldRetry(error.code),
+                   attempt < 2 {
+                    try await Task.sleep(
+                        for: .milliseconds(500 * (attempt + 1))
+                    )
+                    continue
+                }
+                switch error.code {
+                case .notConnectedToInternet,
+                     .networkConnectionLost,
+                     .dataNotAllowed,
+                     .internationalRoamingOff:
+                    throw APIError.offline
+                case .timedOut:
+                    throw APIError.timedOut
+                default:
+                    throw APIError.transport(error.localizedDescription)
+                }
+            }
         }
+        throw VKWebAuthError.invalidResponse
+    }
 
+    static func mergingCookieHeader(
+        _ original: String,
+        responseHeaders: [String: String],
+        url: URL
+    ) -> String {
+        var values = original
+            .split(separator: ";")
+            .reduce(into: [String: String]()) { result, component in
+                let pair = component.split(
+                    separator: "=",
+                    maxSplits: 1,
+                    omittingEmptySubsequences: false
+                )
+                guard pair.count == 2 else { return }
+                let name = pair[0].trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+                guard !name.isEmpty else { return }
+                result[name] = String(pair[1])
+            }
+        let updated = HTTPCookie.cookies(
+            withResponseHeaderFields: responseHeaders,
+            for: url
+        )
+        for cookie in updated {
+            values[cookie.name] = cookie.value
+        }
+        return values
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: "; ")
+    }
+
+    private func decode(
+        _ data: Data,
+        cookies: String,
+        webUserAgent: String
+    ) throws -> VKWebAuthResult {
         let envelope: WebTokenEnvelope
         do {
             envelope = try JSONDecoder().decode(
@@ -121,7 +217,7 @@ struct VKWebAuthService: Sendable {
             userID: payload.userID,
             expiresAt: expiresAt,
             apiUserAgent: apiUserAgent,
-            refreshCookie: cleanedCookies,
+            refreshCookie: cookies,
             webUserAgent: webUserAgent
         )
     }
