@@ -10,15 +10,18 @@ struct CachedRemoteImage<
     @ViewBuilder let placeholder: () -> Placeholder
 
     @State private var image: UIImage?
+    @State private var loadedURL: URL?
 
     var body: some View {
-        Group {
-            if let image {
+        ZStack {
+            placeholder()
+                .opacity(image == nil ? 1 : 0)
+            if let image, loadedURL == url {
                 content(Image(uiImage: image))
-            } else {
-                placeholder()
+                    .transition(.opacity)
             }
         }
+        .animation(.easeOut(duration: 0.22), value: loadedURL)
         .task(id: url) {
             await load()
         }
@@ -26,12 +29,18 @@ struct CachedRemoteImage<
 
     @MainActor
     private func load() async {
-        image = nil
-        guard let url else { return }
-        if let cached = ArtworkImageCache.shared.image(for: url) {
-            image = cached
+        guard let url else {
+            image = nil
+            loadedURL = nil
             return
         }
+        if let cached = ArtworkImageCache.shared.image(for: url) {
+            image = cached
+            loadedURL = url
+            return
+        }
+        image = nil
+        loadedURL = nil
         do {
             let (data, response) = try await ArtworkImageCache.shared.session
                 .data(from: url)
@@ -42,7 +51,10 @@ struct CachedRemoteImage<
                 return
             }
             ArtworkImageCache.shared.insert(loaded, for: url)
-            image = loaded
+            withAnimation(.easeOut(duration: 0.22)) {
+                image = loaded
+                loadedURL = url
+            }
         } catch {
             return
         }

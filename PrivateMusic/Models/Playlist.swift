@@ -1,5 +1,21 @@
 import Foundation
 
+enum PlaylistSource: String, Codable, Hashable, Sendable {
+    case vk
+
+    var title: String {
+        switch self {
+        case .vk: "VK Музыка"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .vk: "VK"
+        }
+    }
+}
+
 struct Playlist: Codable, Hashable, Identifiable, Sendable {
     let id: Int
     let ownerID: Int
@@ -8,6 +24,8 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
     let count: Int
     let artworkURL: URL?
     let accessKey: String?
+
+    var source: PlaylistSource { .vk }
 
     enum CodingKeys: String, CodingKey {
         case id

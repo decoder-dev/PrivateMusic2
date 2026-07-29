@@ -94,18 +94,28 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.1.0-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.2.0-unsigned.ipa"
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.1.0-unsigned.ipa" \
-            --title "Private Music 3.1.0" \
+            "$PWD/artifacts/PrivateMusic-3.2.0-unsigned.ipa" \
+            --title "Private Music 3.2.0" \
             --notes-file - <<'EOF'
-          Private Music 3.1.0
+          Private Music 3.2.0
 
+          - включён ProMotion и частота интерфейса до 120 Гц на поддерживаемых iPhone;
+          - добавлены плавные переходы вкладок, карточек, обложек и мини-плеера;
+          - анимации автоматически упрощаются при включённом «Уменьшении движения»;
+          - обложки плейлистов получили заметную маркировку источника VK Музыка;
+          - карточка плейлиста теперь показывает сервис, откуда он импортирован;
+          - «Поделиться» экспортирует сам аудиофайл, а не текстовую ссылку;
+          - перед экспортом приложение обновляет истёкшую ссылку VK;
+          - поддержан экспорт обычных аудиофайлов и сборка HLS-потока в M4A;
+          - временные экспортированные файлы удаляются после закрытия меню;
+          - устранено мерцание обложек при загрузке из памяти и сети;
           - единый непрозрачный dock объединяет мини-плеер и навигацию;
           - вкладки сохраняют своё состояние при переключении;
           - медиатека, плейлисты и поиск получили бесконечную пагинацию;
@@ -152,7 +162,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.1.0-unsigned
-          path: artifacts/PrivateMusic-3.1.0-unsigned.ipa
+          name: PrivateMusic-3.2.0-unsigned
+          path: artifacts/PrivateMusic-3.2.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

@@ -56,6 +56,35 @@ struct PremiumPressStyle: ButtonStyle {
     }
 }
 
+struct PremiumAppearModifier: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
+    let delay: Double
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(reduceMotion || appeared ? 1 : 0)
+            .scaleEffect(reduceMotion || appeared ? 1 : 0.97)
+            .offset(y: reduceMotion || appeared ? 0 : 8)
+            .onAppear {
+                guard !appeared else { return }
+                if reduceMotion {
+                    appeared = true
+                } else {
+                    withAnimation(
+                        .spring(
+                            response: 0.44,
+                            dampingFraction: 0.86
+                        )
+                        .delay(delay)
+                    ) {
+                        appeared = true
+                    }
+                }
+            }
+    }
+}
+
 struct PremiumSectionHeader: View {
     let title: String
     let subtitle: String?
@@ -102,5 +131,9 @@ enum Haptics {
 extension View {
     func premiumCard(interactive: Bool = false) -> some View {
         modifier(PremiumCardModifier(interactive: interactive))
+    }
+
+    func premiumAppear(delay: Double = 0) -> some View {
+        modifier(PremiumAppearModifier(delay: delay))
     }
 }

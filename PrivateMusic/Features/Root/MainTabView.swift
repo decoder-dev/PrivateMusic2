@@ -29,6 +29,7 @@ struct MainTabView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var libraryStore: MusicLibraryStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: MainTab = .home
 
     var body: some View {
@@ -63,6 +64,10 @@ struct MainTabView: View {
             .allowsHitTesting(selectedTab == tab)
             .accessibilityHidden(selectedTab != tab)
             .zIndex(selectedTab == tab ? 1 : 0)
+            .animation(
+                reduceMotion ? nil : .easeInOut(duration: 0.18),
+                value: selectedTab
+            )
     }
 
     private func refreshLibraryIndex() async {
@@ -95,6 +100,7 @@ struct MainTabView: View {
 private struct PlaybackTabDock: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selection: MainTab
 
     var body: some View {
@@ -104,6 +110,9 @@ private struct PlaybackTabDock: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
                     .padding(.bottom, 7)
+                    .transition(
+                        .move(edge: .bottom).combined(with: .opacity)
+                    )
                 Divider().opacity(0.5)
             }
 
@@ -111,11 +120,23 @@ private struct PlaybackTabDock: View {
                 ForEach(MainTab.allCases, id: \.self) { tab in
                     Button {
                         Haptics.selection()
-                        selection = tab
+                        if reduceMotion {
+                            selection = tab
+                        } else {
+                            withAnimation(
+                                .spring(
+                                    response: 0.32,
+                                    dampingFraction: 0.82
+                                )
+                            ) {
+                                selection = tab
+                            }
+                        }
                     } label: {
                         VStack(spacing: 3) {
                             Image(systemName: tab.image)
                                 .font(.system(size: 20, weight: .semibold))
+                                .scaleEffect(selection == tab ? 1.08 : 0.94)
                             Text(tab.title)
                                 .font(.caption2.weight(.semibold))
                                 .lineLimit(1)
@@ -146,5 +167,11 @@ private struct PlaybackTabDock: View {
         .overlay(alignment: .top) {
             Divider().opacity(0.7)
         }
+        .animation(
+            reduceMotion
+                ? nil
+                : .spring(response: 0.34, dampingFraction: 0.86),
+            value: player.currentTrack?.id
+        )
     }
 }

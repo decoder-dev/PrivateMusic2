@@ -110,8 +110,8 @@ struct LibraryView: View {
                             PlaylistDetailView(playlist: playlist)
                         } label: {
                             VStack(alignment: .leading, spacing: 8) {
-                                AsyncArtwork(
-                                    url: playlist.artworkURL,
+                                PlaylistArtworkView(
+                                    playlist: playlist,
                                     size: 136
                                 )
                                 Text(playlist.title)
@@ -123,6 +123,16 @@ struct LibraryView: View {
                                     .foregroundStyle(.secondary)
                             }
                             .frame(width: 136, alignment: .leading)
+                            .premiumAppear(
+                                delay: min(
+                                    Double(
+                                        playlists.playlists.firstIndex(
+                                            of: playlist
+                                        ) ?? 0
+                                    ) * 0.025,
+                                    0.2
+                                )
+                            )
                         }
                         .buttonStyle(PremiumPressStyle())
                         .onAppear {

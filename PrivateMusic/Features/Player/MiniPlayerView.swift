@@ -32,6 +32,7 @@ struct MiniPlayerView: View {
                     Spacer()
 
                     Button {
+                        Haptics.selection()
                         player.playPause()
                     } label: {
                         Image(
@@ -44,6 +45,7 @@ struct MiniPlayerView: View {
                     }
 
                     Button {
+                        Haptics.trackChange()
                         player.next()
                     } label: {
                         Image(systemName: "forward.fill")
@@ -84,6 +86,17 @@ struct MiniPlayerView: View {
             }
             .shadow(color: .black.opacity(0.24), radius: 12, y: 6)
             .frame(height: 58)
+            .id(track.id)
+            .transition(
+                .asymmetric(
+                    insertion: .opacity.combined(
+                        with: .move(edge: .trailing)
+                    ),
+                    removal: .opacity.combined(
+                        with: .move(edge: .leading)
+                    )
+                )
+            )
             .dynamicTypeSize(...DynamicTypeSize.large)
             .offset(
                 x: reduceMotion ? 0 : dragOffset.width * 0.12,

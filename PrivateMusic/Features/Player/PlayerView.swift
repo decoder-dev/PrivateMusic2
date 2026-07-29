@@ -15,6 +15,8 @@ struct PlayerView: View {
     @State private var showingPlaylists = false
     @State private var showingSettings = false
     @State private var shareFileURL: URL?
+    @State private var shareCleanupURL: URL?
+    @State private var shareTask: Task<Void, Never>?
     @State private var isPreparingShare = false
     @State private var isInLibrary = false
     @State private var isAddingToLibrary = false
@@ -74,13 +76,16 @@ struct PlayerView: View {
             isPresented: Binding(
                 get: { shareFileURL != nil },
                 set: { if !$0 { shareFileURL = nil } }
-            )
+            ),
+            onDismiss: cleanupSharedFile
         ) {
             if let shareFileURL {
                 TrackShareSheet(fileURL: shareFileURL)
             }
         }
         .onChange(of: player.currentTrack?.id) { _ in
+            shareTask?.cancel()
+            shareTask = nil
             updateLibraryState()
             isAddingToLibrary = false
         }
@@ -89,6 +94,13 @@ struct PlayerView: View {
         }
         .onChange(of: libraryStore.signatures) { _ in
             updateLibraryState()
+        }
+        .onDisappear {
+            shareTask?.cancel()
+            shareTask = nil
+            if shareFileURL == nil {
+                cleanupSharedFile()
+            }
         }
     }
 
@@ -143,6 +155,19 @@ struct PlayerView: View {
             Spacer(minLength: compact ? 14 : 32)
 
             AsyncArtwork(url: track.artworkURL, size: artworkSize)
+                .id(track.id)
+                .transition(
+                    .asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
+                        removal: .opacity.combined(with: .scale(scale: 1.02))
+                    )
+                )
+                .animation(
+                    reduceMotion
+                        ? nil
+                        : .spring(response: 0.42, dampingFraction: 0.86),
+                    value: track.id
+                )
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .shadow(color: .black.opacity(0.34), radius: 28, y: 16)
                 .offset(
@@ -235,7 +260,7 @@ struct PlayerView: View {
                 )
             }
             Button {
-                Task { await prepareShare(track) }
+                startShare(track)
             } label: {
                 Label("Поделиться", systemImage: "square.and.arrow.up")
             }
@@ -396,14 +421,54 @@ struct PlayerView: View {
     }
 
     private func prepareShare(_ track: Track) async {
+        guard let token = sessionStore.accessToken else {
+            player.errorMessage = "Войдите во VK, чтобы экспортировать песню."
+            return
+        }
         isPreparingShare = true
         defer { isPreparingShare = false }
         do {
-            shareFileURL = try await shareService.prepareFile(for: track)
+            let refreshed = try await environment.musicService.refreshedTrack(
+                track,
+                accessToken: token
+            )
+            guard !Task.isCancelled,
+                  player.currentTrack?.id == track.id else {
+                return
+            }
+            cleanupSharedFile()
+            let fileURL = try await shareService.prepareFile(
+                for: refreshed,
+                userAgent: sessionStore.userAgent
+            )
+            guard !Task.isCancelled else {
+                try? FileManager.default.removeItem(at: fileURL)
+                return
+            }
+            shareCleanupURL = fileURL
+            shareFileURL = fileURL
+            Haptics.selection()
+        } catch is CancellationError {
+            return
         } catch {
-            player.errorMessage = "Не удалось подготовить файл: "
-                + error.localizedDescription
+            player.errorMessage =
+                "Не удалось экспортировать песню. Обновите сессию VK "
+                + "или попробуйте ещё раз."
         }
+    }
+
+    private func startShare(_ track: Track) {
+        guard shareTask == nil else { return }
+        shareTask = Task {
+            await prepareShare(track)
+            shareTask = nil
+        }
+    }
+
+    private func cleanupSharedFile() {
+        guard let url = shareCleanupURL else { return }
+        try? FileManager.default.removeItem(at: url)
+        shareCleanupURL = nil
     }
 
     private func addToLibrary(_ track: Track) {

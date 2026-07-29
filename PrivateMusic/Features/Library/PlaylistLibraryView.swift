@@ -30,8 +30,8 @@ struct PlaylistLibraryView: View {
                         PlaylistDetailView(playlist: playlist)
                     } label: {
                         HStack(spacing: 12) {
-                            AsyncArtwork(
-                                url: playlist.artworkURL,
+                            PlaylistArtworkView(
+                                playlist: playlist,
                                 size: 56
                             )
                             VStack(alignment: .leading, spacing: 4) {
@@ -40,6 +40,9 @@ struct PlaylistLibraryView: View {
                                     .lineLimit(2)
                                 Text("\(playlist.count) треков")
                                     .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("Из \(playlist.source.title)")
+                                    .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
                         }
