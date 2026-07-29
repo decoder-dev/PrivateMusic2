@@ -1,5 +1,32 @@
 import Foundation
 
+enum RequestRetryPolicy: Sendable, Equatable {
+    case transient
+    case never
+
+    var maximumAttempts: Int {
+        switch self {
+        case .transient: 3
+        case .never: 1
+        }
+    }
+
+    func shouldRetry(_ code: URLError.Code) -> Bool {
+        guard self == .transient else { return false }
+        return [
+            .timedOut,
+            .cannotFindHost,
+            .cannotConnectToHost,
+            .networkConnectionLost,
+            .dnsLookupFailed,
+            .notConnectedToInternet,
+            .internationalRoamingOff,
+            .callIsActive,
+            .dataNotAllowed
+        ].contains(code)
+    }
+}
+
 actor APIClient {
     private let baseURL: URL
     private let session: URLSession
@@ -37,6 +64,7 @@ actor APIClient {
     func post<Response: Decodable>(
         path: String,
         form: [String: String],
+        retryPolicy: RequestRetryPolicy = .transient,
         responseType: Response.Type
     ) async throws -> Response {
         guard let url = URL(string: path, relativeTo: baseURL) else {
@@ -65,15 +93,21 @@ actor APIClient {
             .joined(separator: "&")
             .data(using: .utf8)
 
-        for attempt in 0..<3 {
+        for attempt in 0..<retryPolicy.maximumAttempts {
             do {
                 let (data, response) = try await session.data(for: request)
                 guard let http = response as? HTTPURLResponse else {
                     throw APIError.invalidResponse
                 }
-                if (http.statusCode == 429 || http.statusCode >= 500),
-                   attempt < 2 {
-                    try await retryDelay(attempt: attempt)
+                if retryPolicy == .transient,
+                   (http.statusCode == 429 || http.statusCode >= 500),
+                   attempt + 1 < retryPolicy.maximumAttempts {
+                    try await retryDelay(
+                        attempt: attempt,
+                        retryAfter: http.value(
+                            forHTTPHeaderField: "Retry-After"
+                        )
+                    )
                     continue
                 }
                 guard (200..<300).contains(http.statusCode) else {
@@ -90,8 +124,13 @@ actor APIClient {
                     if error.errorCode == 5 {
                         throw APIError.unauthorized
                     }
-                    if [6, 10].contains(error.errorCode), attempt < 2 {
-                        try await retryDelay(attempt: attempt)
+                    if retryPolicy == .transient,
+                       [6, 10].contains(error.errorCode),
+                       attempt + 1 < retryPolicy.maximumAttempts {
+                        try await retryDelay(
+                            attempt: attempt,
+                            retryAfter: nil
+                        )
                         continue
                     }
                     throw APIError.server(
@@ -111,20 +150,43 @@ actor APIClient {
                 throw CancellationError()
             } catch let error as URLError where error.code == .cancelled {
                 throw CancellationError()
-            } catch {
-                if attempt < 2 {
-                    try await retryDelay(attempt: attempt)
+            } catch let error as URLError {
+                if retryPolicy.shouldRetry(error.code),
+                   attempt + 1 < retryPolicy.maximumAttempts {
+                    try await retryDelay(attempt: attempt, retryAfter: nil)
                     continue
                 }
+                throw Self.apiError(for: error)
+            } catch {
                 throw APIError.transport(error.localizedDescription)
             }
         }
         throw APIError.invalidResponse
     }
 
-    private func retryDelay(attempt: Int) async throws {
-        let delay = UInt64(attempt + 1) * 350_000_000
-        try await Task.sleep(nanoseconds: delay)
+    private func retryDelay(
+        attempt: Int,
+        retryAfter: String?
+    ) async throws {
+        let serverDelay = retryAfter.flatMap(Double.init)
+        let exponential = min(pow(2, Double(attempt)) * 0.55, 4)
+        let jitter = Double.random(in: 0.85...1.15)
+        let delay = min(max(serverDelay ?? exponential * jitter, 0.2), 8)
+        try await Task.sleep(for: .seconds(delay))
+    }
+
+    private static func apiError(for error: URLError) -> APIError {
+        switch error.code {
+        case .notConnectedToInternet,
+             .networkConnectionLost,
+             .dataNotAllowed,
+             .internationalRoamingOff:
+            return .offline
+        case .timedOut:
+            return .timedOut
+        default:
+            return .transport(error.localizedDescription)
+        }
     }
 }
 

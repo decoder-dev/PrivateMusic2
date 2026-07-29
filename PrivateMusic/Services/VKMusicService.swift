@@ -275,6 +275,7 @@ struct VKMusicService: MusicService {
         let envelope: VKResponse<VKAudioAddResult> = try await client.post(
             path: "/method/audio.add",
             form: common(accessToken).merging(parameters) { _, new in new },
+            retryPolicy: .never,
             responseType: VKResponse<VKAudioAddResult>.self
         )
         let userID = await context.userID
@@ -302,6 +303,7 @@ struct VKMusicService: MusicService {
                 "audio_id": String(track.trackID),
                 "owner_id": String(track.ownerID)
             ]) { _, new in new },
+            retryPolicy: .never,
             responseType: VKResponse<VKIgnored>.self
         )
     }
@@ -355,6 +357,7 @@ struct VKMusicService: MusicService {
                 "title": title,
                 "description": description
             ]) { _, new in new },
+            retryPolicy: .never,
             responseType: VKResponse<Playlist>.self
         )
         return envelope.response
@@ -374,6 +377,7 @@ struct VKMusicService: MusicService {
                 "title": title,
                 "description": description
             ]) { _, new in new },
+            retryPolicy: .never,
             responseType: VKResponse<VKIgnored>.self
         )
     }
@@ -388,6 +392,7 @@ struct VKMusicService: MusicService {
                 "owner_id": String(playlist.ownerID),
                 "playlist_id": String(playlist.id)
             ]) { _, new in new },
+            retryPolicy: .never,
             responseType: VKResponse<VKIgnored>.self
         )
     }
@@ -404,6 +409,7 @@ struct VKMusicService: MusicService {
                 "playlist_id": String(playlist.id),
                 "audio_ids": track.id
             ]) { _, new in new },
+            retryPolicy: .never,
             responseType: VKResponse<VKIgnored>.self
         )
     }
@@ -420,6 +426,7 @@ struct VKMusicService: MusicService {
                 "playlist_id": String(playlist.id),
                 "audio_ids": track.id
             ]) { _, new in new },
+            retryPolicy: .never,
             responseType: VKResponse<VKIgnored>.self
         )
     }

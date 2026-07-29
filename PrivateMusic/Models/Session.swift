@@ -9,8 +9,12 @@ struct Session: Codable, Equatable, Sendable {
     let webUserAgent: String?
 
     var isExpired: Bool {
+        isExpired(at: Date())
+    }
+
+    func isExpired(at date: Date) -> Bool {
         guard let expiresAt else { return false }
-        return expiresAt <= Date()
+        return expiresAt <= date
     }
 
     var canRefresh: Bool {
@@ -19,7 +23,14 @@ struct Session: Codable, Equatable, Sendable {
     }
 
     var needsRefresh: Bool {
+        needsRefresh(at: Date())
+    }
+
+    func needsRefresh(
+        at date: Date,
+        leeway: TimeInterval = 120
+    ) -> Bool {
         guard let expiresAt else { return false }
-        return expiresAt <= Date().addingTimeInterval(120)
+        return expiresAt <= date.addingTimeInterval(leeway)
     }
 }

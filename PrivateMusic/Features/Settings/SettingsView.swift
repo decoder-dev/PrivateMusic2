@@ -3,6 +3,8 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var sessionStore: SessionStore
+    @EnvironmentObject private var networkMonitor: NetworkMonitor
 
     private let frequencies = [
         "31", "62", "125", "250", "500",
@@ -143,6 +145,33 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Подключение") {
+                LabeledContent("Сеть") {
+                    Label(
+                        networkTitle,
+                        systemImage: networkIcon
+                    )
+                    .foregroundStyle(networkTint)
+                }
+                LabeledContent("Сессия VK", value: sessionTitle)
+                if let expiresAt = sessionStore.session?.expiresAt {
+                    LabeledContent(
+                        "Обновление до",
+                        value: expiresAt.formatted(
+                            date: .abbreviated,
+                            time: .shortened
+                        )
+                    )
+                }
+                Text(
+                    "При обрыве сети сессия не удаляется. "
+                        + "Подключение восстанавливается автоматически, "
+                        + "а данные входа остаются в системном Keychain."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
             Section("О приложении") {
                 LabeledContent("Приложение", value: "Private Music")
                 LabeledContent("Версия", value: version)
@@ -156,6 +185,39 @@ struct SettingsView: View {
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle("Настройки")
+    }
+
+    private var networkTitle: String {
+        switch networkMonitor.state {
+        case .online:
+            return "Доступна"
+        case .constrained:
+            return "Мобильная или ограниченная"
+        case .offline:
+            return "Нет подключения"
+        }
+    }
+
+    private var networkIcon: String {
+        networkMonitor.state == .offline ? "wifi.slash" : "wifi"
+    }
+
+    private var networkTint: Color {
+        networkMonitor.state == .offline ? .orange : .green
+    }
+
+    private var sessionTitle: String {
+        guard let session = sessionStore.session else {
+            return "Не подключена"
+        }
+        if session.needsRefresh {
+            return session.canRefresh
+                ? "Автовосстановление включено"
+                : "Требуется повторный вход"
+        }
+        return session.canRefresh
+            ? "Подключена · автообновление"
+            : "Подключена"
     }
 
     private var themePicker: some View {

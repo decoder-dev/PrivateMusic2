@@ -10,6 +10,7 @@ struct PrivateMusicApp: App {
                 .environmentObject(environment)
                 .environmentObject(environment.settings)
                 .environmentObject(environment.sessionStore)
+                .environmentObject(environment.networkMonitor)
                 .environmentObject(environment.historyStore)
                 .environmentObject(environment.libraryStore)
                 .environmentObject(environment.player)
