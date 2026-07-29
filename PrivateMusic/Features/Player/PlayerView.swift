@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import AVKit
 
 struct PlayerView: View {
     @EnvironmentObject private var environment: AppEnvironment
@@ -15,12 +16,13 @@ struct PlayerView: View {
     @State private var showingArtist = false
     @State private var showingPlaylists = false
     @State private var showingSettings = false
+    @State private var showingActionPanel = false
     @State private var shareFileURL: URL?
     @State private var shareCleanupURL: URL?
     @State private var shareTask: Task<Void, Never>?
     @State private var isPreparingShare = false
     @State private var isInLibrary = false
-    @State private var isAddingToLibrary = false
+    @State private var isUpdatingLibrary = false
     private let shareService = TrackShareService()
 
     var body: some View {
@@ -33,6 +35,29 @@ struct PlayerView: View {
                         track,
                         size: proxy.size
                     )
+                    if showingActionPanel {
+                        Color.black.opacity(0.001)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                showingActionPanel = false
+                            }
+                        actionPanel(track)
+                            .frame(
+                                maxWidth: .infinity,
+                                maxHeight: .infinity,
+                                alignment: .topTrailing
+                            )
+                            .padding(.top, 56)
+                            .padding(.trailing, 22)
+                            .transition(
+                                .opacity.combined(
+                                    with: .scale(
+                                        scale: 0.96,
+                                        anchor: .topTrailing
+                                    )
+                                )
+                            )
+                    }
                 } else {
                     EmptyStateView(
                         title: "Плеер",
@@ -88,7 +113,8 @@ struct PlayerView: View {
             shareTask?.cancel()
             shareTask = nil
             updateLibraryState()
-            isAddingToLibrary = false
+            isUpdatingLibrary = false
+            showingActionPanel = false
         }
         .task(id: player.currentTrack?.id) {
             updateLibraryState()
@@ -148,20 +174,7 @@ struct PlayerView: View {
         )
 
         return VStack(spacing: 0) {
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 15, weight: .bold))
-                        .frame(width: 36, height: 36)
-                        .background(.white.opacity(0.08), in: Circle())
-                        .overlay {
-                            Circle().stroke(.white.opacity(0.08), lineWidth: 0.5)
-                        }
-                }
-                .buttonStyle(PlayerControlStyle())
-                Spacer()
+            ZStack {
                 VStack(spacing: 2) {
                     Text("СЕЙЧАС ИГРАЕТ")
                         .font(.caption2.weight(.bold))
@@ -172,8 +185,36 @@ struct PlayerView: View {
                         .monospacedDigit()
                         .foregroundStyle(.white.opacity(0.38))
                 }
-                Spacer()
-                actionMenu(track)
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 15, weight: .bold))
+                            .frame(width: 36, height: 36)
+                            .background(.white.opacity(0.08), in: Circle())
+                            .overlay {
+                                Circle().stroke(
+                                    .white.opacity(0.08),
+                                    lineWidth: 0.5
+                                )
+                            }
+                    }
+                    .buttonStyle(PlayerControlStyle())
+                    Spacer()
+                    HStack(spacing: 8) {
+                        AirPlayRoutePicker()
+                            .frame(width: 36, height: 36)
+                            .background(.white.opacity(0.08), in: Circle())
+                            .overlay {
+                                Circle().stroke(
+                                    .white.opacity(0.08),
+                                    lineWidth: 0.5
+                                )
+                            }
+                        actionMenuButton
+                    }
+                }
             }
             .frame(height: 40)
             .padding(.top, compact ? 6 : 10)
@@ -246,7 +287,7 @@ struct PlayerView: View {
                 }
                 Spacer(minLength: 10)
                 Button {
-                    addToLibrary(track)
+                    toggleLibrary(track)
                 } label: {
                     Image(
                         systemName: isInLibrary ? "heart.fill" : "heart"
@@ -259,9 +300,11 @@ struct PlayerView: View {
                     .background(.white.opacity(0.08), in: Circle())
                 }
                 .buttonStyle(PlayerControlStyle())
-                .disabled(isInLibrary || isAddingToLibrary)
+                .disabled(isUpdatingLibrary)
                 .accessibilityLabel(
-                    isInLibrary ? "В медиатеке" : "Добавить в медиатеку"
+                    isInLibrary
+                        ? "Удалить из медиатеки"
+                        : "Добавить в медиатеку"
                 )
             }
             .padding(
@@ -301,7 +344,7 @@ struct PlayerView: View {
             quickActions(track)
                 .padding(
                     .top,
-                    compact ? 4 : (spacious ? 15 : 9)
+                    compact ? 9 : (spacious ? 28 : 16)
                 )
 
             Spacer(minLength: compact ? 6 : 12)
@@ -315,57 +358,98 @@ struct PlayerView: View {
         .foregroundStyle(.white)
     }
 
-    private func actionMenu(_ track: Track) -> some View {
-        Menu {
-            Button { addToLibrary(track) } label: {
-                Label(
-                    isInLibrary ? "Добавлено в медиатеку" : "В медиатеку",
-                    systemImage: isInLibrary ? "heart.fill" : "heart"
-                )
+    private var actionMenuButton: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.16)) {
+                showingActionPanel.toggle()
             }
-            .disabled(isInLibrary || isAddingToLibrary)
-            Button { showingArtist = true } label: {
-                Label("Исполнитель", systemImage: "person.wave.2")
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.headline)
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background(.white.opacity(0.08), in: Circle())
+                .overlay {
+                    Circle().stroke(.white.opacity(0.08), lineWidth: 0.5)
+                }
+        }
+        .buttonStyle(PlayerControlStyle())
+        .accessibilityLabel("Действия с треком")
+    }
+
+    private func actionPanel(_ track: Track) -> some View {
+        VStack(spacing: 0) {
+            panelAction(
+                isInLibrary ? "Удалить из медиатеки" : "В медиатеку",
+                systemImage: isInLibrary ? "heart.slash" : "heart"
+            ) {
+                showingActionPanel = false
+                toggleLibrary(track)
             }
-            Button { showingPlaylists = true } label: {
-                Label(
-                    "Добавить в плейлист",
-                    systemImage: "rectangle.stack.badge.plus"
-                )
+            panelAction("Исполнитель", systemImage: "person.wave.2") {
+                showingActionPanel = false
+                showingArtist = true
             }
-            Button {
+            panelAction(
+                "Добавить в плейлист",
+                systemImage: "rectangle.stack.badge.plus"
+            ) {
+                showingActionPanel = false
+                showingPlaylists = true
+            }
+            panelAction("Поделиться", systemImage: "square.and.arrow.up") {
+                showingActionPanel = false
                 startShare(track)
-            } label: {
-                Label("Поделиться", systemImage: "square.and.arrow.up")
             }
             .disabled(isPreparingShare)
-            Divider()
-            Toggle("Эквалайзер", isOn: $settings.equalizerEnabled)
-            Button { showingSettings = true } label: {
-                Label(
-                    "Настройки звука",
-                    systemImage: "slider.horizontal.3"
-                )
+            Divider().overlay(.white.opacity(0.08))
+            Toggle(isOn: $settings.equalizerEnabled) {
+                Label("Эквалайзер", systemImage: "waveform")
+            }
+            .tint(.white)
+            .padding(.horizontal, 16)
+            .frame(height: 48)
+            panelAction(
+                "Настройки звука",
+                systemImage: "slider.horizontal.3"
+            ) {
+                showingActionPanel = false
+                showingSettings = true
             }
             Text("Качество: автоматически VK")
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(.white.opacity(0.08))
-                    .frame(width: 36, height: 36)
-                    .overlay {
-                        Circle().stroke(.white.opacity(0.08), lineWidth: 0.5)
-                    }
-                if isPreparingShare {
-                    ProgressView().tint(.white)
-                } else {
-                    Image(systemName: "ellipsis")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                }
-            }
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.42))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
         }
-        .accessibilityLabel("Действия с треком")
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(.white)
+        .frame(width: 258)
+        .background(
+            Color(white: 0.105).opacity(0.99),
+            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(.white.opacity(0.1), lineWidth: 0.7)
+        }
+        .shadow(color: .black.opacity(0.55), radius: 24, y: 12)
+    }
+
+    private func panelAction(
+        _ title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .frame(height: 48)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PlayerControlStyle())
     }
 
     private var primaryControls: some View {
@@ -573,28 +657,45 @@ struct PlayerView: View {
         shareCleanupURL = nil
     }
 
-    private func addToLibrary(_ track: Track) {
-        guard !isAddingToLibrary,
+    private func toggleLibrary(_ track: Track) {
+        guard !isUpdatingLibrary,
               let token = sessionStore.accessToken else {
             return
         }
-        isAddingToLibrary = true
+        let removing = isInLibrary
+        isUpdatingLibrary = true
         Task {
-            defer { isAddingToLibrary = false }
+            defer { isUpdatingLibrary = false }
             do {
-                let added = try await environment.musicService.addToLibrary(
-                    track,
-                    accessToken: token
-                )
-                guard player.currentTrack?.id == track.id else { return }
-                isInLibrary = true
-                libraryStore.markAdded(source: track, stored: added)
-                MusicLibraryEvents.postAdded(added)
+                if removing {
+                    let stored = libraryStore.storedTrack(for: track) ?? track
+                    try await environment.musicService.removeFromLibrary(
+                        stored,
+                        accessToken: token
+                    )
+                    libraryStore.markRemoved(track)
+                    libraryStore.markRemoved(stored)
+                    MusicLibraryEvents.postRemoved(stored)
+                    if player.currentTrack?.id == track.id {
+                        isInLibrary = false
+                    }
+                } else {
+                    let added = try await environment.musicService.addToLibrary(
+                        track,
+                        accessToken: token
+                    )
+                    libraryStore.markAdded(source: track, stored: added)
+                    MusicLibraryEvents.postAdded(added)
+                    if player.currentTrack?.id == track.id {
+                        isInLibrary = true
+                    }
+                }
                 Haptics.selection()
             } catch is CancellationError {
                 return
             } catch {
-                player.errorMessage = "Не удалось добавить трек: "
+                let action = removing ? "удалить" : "добавить"
+                player.errorMessage = "Не удалось \(action) трек: "
                     + error.localizedDescription
             }
         }
@@ -607,6 +708,24 @@ struct PlayerView: View {
         }
         isInLibrary = libraryStore.contains(track)
             || track.ownerID == sessionStore.session?.userID
+    }
+}
+
+private struct AirPlayRoutePicker: UIViewRepresentable {
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let picker = AVRoutePickerView(frame: .zero)
+        picker.tintColor = .white
+        picker.activeTintColor = .white
+        picker.prioritizesVideoDevices = false
+        return picker
+    }
+
+    func updateUIView(
+        _ picker: AVRoutePickerView,
+        context: Context
+    ) {
+        picker.tintColor = .white
+        picker.activeTintColor = .white
     }
 }
 
