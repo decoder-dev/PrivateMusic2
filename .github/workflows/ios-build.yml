@@ -94,18 +94,32 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.3.1-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.4.0-unsigned.ipa"
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.3.1-unsigned.ipa" \
-            --title "Private Music 3.3.1" \
+            "$PWD/artifacts/PrivateMusic-3.4.0-unsigned.ipa" \
+            --title "Private Music 3.4.0" \
             --notes-file - <<'EOF'
-          Private Music 3.3.1
+          Private Music 3.4.0
 
+          - подключение VK переработано для длительной стабильной работы;
+          - временная потеря сети больше не блокирует приложение и не удаляет сессию;
+          - восстановление токена выполняется в фоне без замены основного интерфейса;
+          - при возвращении сети подключение восстанавливается автоматически;
+          - добавлены контролируемые повторы с экспоненциальной задержкой;
+          - чтения безопасно повторяются, а изменения медиатеки выполняются один раз;
+          - устранён риск двойного добавления треков и повторных изменений плейлистов;
+          - отменённые запросы никогда не перезапускаются;
+          - ошибки отсутствия сети и тайм-аута получили отдельную обработку;
+          - обновлённые VK cookie сохраняются вместе с новым токеном;
+          - профиль и owner ID кэшируются в Keychain и доступны без сети;
+          - сессии без срока действия периодически проверяются и обновляются;
+          - в настройках добавлена диагностика сети, сессии и срока обновления;
+          - добавлены unit-тесты политик повторов, срока сессии и ротации cookie;
           - IPA полностью пересобран из чистой Release-сборки;
           - архив переведён в максимально совместимый ZIP Store-режим;
           - устранена несовместимость со старыми распаковщиками ESign/Scarlet;
@@ -173,7 +187,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.3.1-unsigned
-          path: artifacts/PrivateMusic-3.3.1-unsigned.ipa
+          name: PrivateMusic-3.4.0-unsigned
+          path: artifacts/PrivateMusic-3.4.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

@@ -5,6 +5,7 @@ final class AppEnvironment: ObservableObject {
     let configuration: AppConfiguration
     let settings: AppSettings
     let sessionStore: SessionStore
+    let networkMonitor: NetworkMonitor
     let historyStore: ListeningHistoryStore
     let libraryStore: MusicLibraryStore
     let player: AudioPlayer
@@ -18,6 +19,7 @@ final class AppEnvironment: ObservableObject {
         self.configuration = configuration
         self.settings = AppSettings()
         self.sessionStore = SessionStore(keychain: keychain)
+        self.networkMonitor = NetworkMonitor()
         self.historyStore = ListeningHistoryStore()
         self.libraryStore = MusicLibraryStore()
         self.player = AudioPlayer(
