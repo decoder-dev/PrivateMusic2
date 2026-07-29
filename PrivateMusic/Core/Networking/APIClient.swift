@@ -47,6 +47,9 @@ actor APIClient {
             let configuration = URLSessionConfiguration.ephemeral
             configuration.timeoutIntervalForRequest = 30
             configuration.waitsForConnectivity = true
+            configuration.allowsCellularAccess = true
+            configuration.allowsExpensiveNetworkAccess = true
+            configuration.allowsConstrainedNetworkAccess = true
             configuration.httpCookieStorage = nil
             configuration.httpShouldSetCookies = false
             configuration.urlCache = nil
