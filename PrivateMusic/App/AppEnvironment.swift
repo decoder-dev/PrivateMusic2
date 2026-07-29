@@ -6,6 +6,7 @@ final class AppEnvironment: ObservableObject {
     let settings: AppSettings
     let sessionStore: SessionStore
     let historyStore: ListeningHistoryStore
+    let libraryStore: MusicLibraryStore
     let player: AudioPlayer
     let musicService: any MusicService
     let webAuthService: VKWebAuthService
@@ -18,6 +19,7 @@ final class AppEnvironment: ObservableObject {
         self.settings = AppSettings()
         self.sessionStore = SessionStore(keychain: keychain)
         self.historyStore = ListeningHistoryStore()
+        self.libraryStore = MusicLibraryStore()
         self.player = AudioPlayer(
             settings: settings,
             historyStore: historyStore,

@@ -1,0 +1,79 @@
+import SwiftUI
+
+struct MixArtworkView: View {
+    let mix: MusicMix
+    let tracks: [Track]
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let artworkURL = mix.artworkURL {
+                tile(url: artworkURL, dimension: size)
+            } else if selectedTracks.count >= 4 {
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        tile(
+                            url: selectedTracks[0].artworkURL,
+                            dimension: size / 2
+                        )
+                        tile(
+                            url: selectedTracks[1].artworkURL,
+                            dimension: size / 2
+                        )
+                    }
+                    HStack(spacing: 0) {
+                        tile(
+                            url: selectedTracks[2].artworkURL,
+                            dimension: size / 2
+                        )
+                        tile(
+                            url: selectedTracks[3].artworkURL,
+                            dimension: size / 2
+                        )
+                    }
+                }
+            } else {
+                ZStack {
+                    LinearGradient(
+                        colors: [
+                            Color(white: 0.24),
+                            Color(white: 0.08)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    Image(systemName: "waveform")
+                        .font(.system(size: size * 0.25, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.82))
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+    }
+
+    private var selectedTracks: [Track] {
+        let available = tracks.filter { $0.artworkURL != nil }
+        guard !available.isEmpty else { return [] }
+        let seed = mix.id.unicodeScalars.reduce(0) {
+            ($0 &* 31 &+ Int($1.value)) & 0x7fffffff
+        }
+        return (0..<min(4, available.count)).map { index in
+            available[(seed + index * 7) % available.count]
+        }
+    }
+
+    private func tile(url: URL?, dimension: CGFloat) -> some View {
+        CachedRemoteImage(url: url) { image in
+            image
+                .resizable()
+                .scaledToFill()
+        } placeholder: {
+            Color(white: 0.18)
+        }
+        .frame(width: dimension, height: dimension)
+        .clipped()
+    }
+}

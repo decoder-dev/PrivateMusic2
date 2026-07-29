@@ -5,11 +5,14 @@ final class SearchViewModel: ObservableObject {
     @Published var query = ""
     @Published private(set) var tracks: [Track] = []
     @Published private(set) var isLoading = false
+    @Published private(set) var isLoadingMore = false
     @Published private(set) var recentQueries: [String]
     @Published var errorMessage: String?
 
     private var searchTask: Task<Void, Never>?
     private var searchRevision = 0
+    private var nextOffset: Int?
+    private var activeQuery = ""
     private let defaults: UserDefaults
     private let historyKey = "search.recent.queries.v1"
 
@@ -42,6 +45,8 @@ final class SearchViewModel: ObservableObject {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalized.count >= 2 else {
             tracks = []
+            nextOffset = nil
+            activeQuery = ""
             errorMessage = nil
             isLoading = false
             return
@@ -73,16 +78,18 @@ final class SearchViewModel: ObservableObject {
             }
         }
         do {
-            let results = try await service.search(
+            let page = try await service.search(
                 query: query,
                 accessToken: accessToken,
                 offset: 0,
                 count: 100
-            ).items
+            )
             guard revision == searchRevision, !Task.isCancelled else {
                 return
             }
-            tracks = results
+            tracks = page.items
+            nextOffset = page.nextOffset
+            activeQuery = query
             if !tracks.isEmpty {
                 record(query)
             }
@@ -93,6 +100,50 @@ final class SearchViewModel: ObservableObject {
             guard revision == searchRevision, !Task.isCancelled else {
                 return
             }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadMore(
+        service: any MusicService,
+        accessToken: String
+    ) async {
+        let normalized = query.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard normalized == activeQuery,
+              !isLoading,
+              !isLoadingMore,
+              let offset = nextOffset else {
+            return
+        }
+        let revision = searchRevision
+        isLoadingMore = true
+        defer {
+            if revision == searchRevision {
+                isLoadingMore = false
+            }
+        }
+        do {
+            let page = try await service.search(
+                query: normalized,
+                accessToken: accessToken,
+                offset: offset,
+                count: 100
+            )
+            guard revision == searchRevision, !Task.isCancelled else {
+                return
+            }
+            var known = Set(tracks.map(\.id))
+            tracks.append(contentsOf: page.items.filter {
+                known.insert($0.id).inserted
+            })
+            nextOffset = page.nextOffset
+            errorMessage = nil
+        } catch is CancellationError {
+            return
+        } catch {
+            guard revision == searchRevision else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -124,7 +175,7 @@ final class SearchViewModel: ObservableObject {
         _ track: Track,
         service: any MusicService,
         accessToken: String
-    ) async {
+    ) async -> Track? {
         do {
             let added = try await service.addToLibrary(
                 track,
@@ -132,10 +183,12 @@ final class SearchViewModel: ObservableObject {
             )
             MusicLibraryEvents.postAdded(added)
             errorMessage = nil
+            return added
         } catch is CancellationError {
-            return
+            return nil
         } catch {
             errorMessage = error.localizedDescription
+            return nil
         }
     }
 }

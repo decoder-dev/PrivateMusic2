@@ -38,6 +38,12 @@ struct PlaylistDetailView: View {
                                 }
                             }
                         }
+                        .onAppear {
+                            guard track.id == model.tracks.last?.id else {
+                                return
+                            }
+                            Task { await loadMore() }
+                        }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -69,13 +75,24 @@ struct PlaylistDetailView: View {
             force: force
         )
     }
+
+    private func loadMore() async {
+        guard let token = sessionStore.accessToken else { return }
+        await model.loadMore(
+            playlist: playlist,
+            service: environment.musicService,
+            accessToken: token
+        )
+    }
 }
 
 @MainActor
 private final class PlaylistDetailViewModel: ObservableObject {
     @Published private(set) var tracks: [Track] = []
     @Published private(set) var isLoading = false
+    @Published private(set) var isLoadingMore = false
     @Published var errorMessage: String?
+    private var nextOffset: Int?
 
     func load(
         playlist: Playlist,
@@ -87,12 +104,46 @@ private final class PlaylistDetailViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            tracks = try await service.playlistTracks(
+            let page = try await service.playlistTracks(
                 playlist,
                 accessToken: accessToken,
                 offset: 0,
                 count: 100
-            ).items
+            )
+            tracks = page.items
+            nextOffset = page.nextOffset
+            errorMessage = nil
+        } catch is CancellationError {
+            return
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadMore(
+        playlist: Playlist,
+        service: any MusicService,
+        accessToken: String
+    ) async {
+        guard !isLoading,
+              !isLoadingMore,
+              let offset = nextOffset else {
+            return
+        }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        do {
+            let page = try await service.playlistTracks(
+                playlist,
+                accessToken: accessToken,
+                offset: offset,
+                count: 100
+            )
+            var known = Set(tracks.map(\.id))
+            tracks.append(contentsOf: page.items.filter {
+                known.insert($0.id).inserted
+            })
+            nextOffset = page.nextOffset
             errorMessage = nil
         } catch is CancellationError {
             return

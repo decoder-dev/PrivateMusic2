@@ -9,6 +9,7 @@ struct SearchView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var libraryStore: MusicLibraryStore
     @StateObject private var model = SearchViewModel()
     @State private var scope: Scope = .tracks
 
@@ -45,16 +46,29 @@ struct SearchView: View {
                         List(model.tracks) { track in
                             TrackRow(track: track, queue: model.tracks)
                                 .listRowBackground(Color.clear)
+                                .onAppear {
+                                    guard track.id
+                                        == model.tracks.last?.id else {
+                                        return
+                                    }
+                                    loadMore()
+                                }
                                 .swipeActions(edge: .trailing) {
                                     Button {
                                         add(track)
                                     } label: {
                                         Label(
-                                            "В медиатеку",
-                                            systemImage: "plus"
+                                            libraryStore.contains(track)
+                                                ? "Добавлено"
+                                                : "В медиатеку",
+                                            systemImage:
+                                                libraryStore.contains(track)
+                                                ? "checkmark"
+                                                : "plus"
                                         )
                                     }
                                     .tint(settings.theme.accent)
+                                    .disabled(libraryStore.contains(track))
                                 }
                         }
                         .listStyle(.plain)
@@ -143,8 +157,20 @@ struct SearchView: View {
     private func add(_ track: Track) {
         guard let token = sessionStore.accessToken else { return }
         Task {
-            await model.add(
+            if let added = await model.add(
                 track,
+                service: environment.musicService,
+                accessToken: token
+            ) {
+                libraryStore.markAdded(source: track, stored: added)
+            }
+        }
+    }
+
+    private func loadMore() {
+        guard let token = sessionStore.accessToken else { return }
+        Task {
+            await model.loadMore(
                 service: environment.musicService,
                 accessToken: token
             )

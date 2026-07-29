@@ -5,6 +5,7 @@ struct PlayerView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var libraryStore: MusicLibraryStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @GestureState private var artworkDrag: CGSize = .zero
@@ -84,6 +85,9 @@ struct PlayerView: View {
             isAddingToLibrary = false
         }
         .task(id: player.currentTrack?.id) {
+            updateLibraryState()
+        }
+        .onChange(of: libraryStore.signatures) { _ in
             updateLibraryState()
         }
     }
@@ -417,6 +421,7 @@ struct PlayerView: View {
                 )
                 guard player.currentTrack?.id == track.id else { return }
                 isInLibrary = true
+                libraryStore.markAdded(source: track, stored: added)
                 MusicLibraryEvents.postAdded(added)
                 Haptics.selection()
             } catch is CancellationError {
@@ -433,7 +438,8 @@ struct PlayerView: View {
             isInLibrary = false
             return
         }
-        isInLibrary = track.ownerID == sessionStore.session?.userID
+        isInLibrary = libraryStore.contains(track)
+            || track.ownerID == sessionStore.session?.userID
     }
 }
 

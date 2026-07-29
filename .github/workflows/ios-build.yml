@@ -31,10 +31,35 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             build 2>&1 | tee simulator-build.log
+      - name: Run unit tests
+        run: |
+          SIMULATOR_ID="$(
+            xcrun simctl list devices available -j |
+            python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          for devices in data.get("devices", {}).values():
+              for device in devices:
+                  if (
+                      device.get("isAvailable")
+                      and device.get("name", "").startswith("iPhone")
+                  ):
+                      print(device["udid"])
+                      raise SystemExit
+          raise SystemExit("No available iPhone simulator")
+          '
+          )"
+          xcodebuild \
+            -project PrivateMusic.xcodeproj \
+            -scheme PrivateMusic \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            CODE_SIGNING_ALLOWED=NO \
+            test 2>&1 | tee test.log
       - name: Report compiler errors
         if: failure()
         run: |
-          grep -E '(^| )error:' simulator-build.log \
+          grep -E '(^| )error:' simulator-build.log test.log \
             | tail -30 \
             | while IFS= read -r line; do
                 safe="${line//'%'/'%25'}"
@@ -44,7 +69,7 @@ jobs:
               done
           {
             echo '```text'
-            grep -E '(^| )(error|warning):' simulator-build.log \
+            grep -E '(^| )(error|warning):' simulator-build.log test.log \
               | tail -100 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -69,18 +94,26 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.0.2-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.1.0-unsigned.ipa"
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.0.2-unsigned.ipa" \
-            --title "Private Music 3.0.2" \
+            "$PWD/artifacts/PrivateMusic-3.1.0-unsigned.ipa" \
+            --title "Private Music 3.1.0" \
             --notes-file - <<'EOF'
-          Private Music 3.0.2
+          Private Music 3.1.0
 
+          - единый непрозрачный dock объединяет мини-плеер и навигацию;
+          - вкладки сохраняют своё состояние при переключении;
+          - медиатека, плейлисты и поиск получили бесконечную пагинацию;
+          - снят прежний лимит отображения первых 100 треков;
+          - общий индекс медиатеки корректно определяет добавленные копии VK;
+          - карточки VK-миксов собираются из настоящих обложек треков;
+          - добавлены unit-тесты нормализации очереди и индекса медиатеки;
+          - CI теперь обязательно запускает тесты на iOS Simulator;
           - устранено визуальное просвечивание контента под мини-плеером;
           - мини-плеер и панель вкладок теперь имеют раздельный плотный фон;
           - Главная получила компактную шапку и уменьшенные карточки;
@@ -119,7 +152,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.0.2-unsigned
-          path: artifacts/PrivateMusic-3.0.2-unsigned.ipa
+          name: PrivateMusic-3.1.0-unsigned
+          path: artifacts/PrivateMusic-3.1.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

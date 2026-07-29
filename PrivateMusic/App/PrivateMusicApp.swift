@@ -11,6 +11,7 @@ struct PrivateMusicApp: App {
                 .environmentObject(environment.settings)
                 .environmentObject(environment.sessionStore)
                 .environmentObject(environment.historyStore)
+                .environmentObject(environment.libraryStore)
                 .environmentObject(environment.player)
         }
     }
