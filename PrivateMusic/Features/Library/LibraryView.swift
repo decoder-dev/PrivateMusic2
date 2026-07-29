@@ -51,7 +51,9 @@ struct LibraryView: View {
             .padding(.bottom, 120)
         }
         .background(ThemeBackground())
-        .navigationTitle("Моя музыка")
+        .navigationTitle("Медиатека")
+        .navigationBarTitleDisplayMode(.inline)
+        .dynamicTypeSize(...DynamicTypeSize.large)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 NavigationLink {
@@ -105,17 +107,17 @@ struct LibraryView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 AsyncArtwork(
                                     url: playlist.artworkURL,
-                                    size: 156
+                                    size: 136
                                 )
                                 Text(playlist.title)
-                                    .font(.headline)
+                                    .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
                                 Text("\(playlist.count) треков")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                            .frame(width: 156, alignment: .leading)
+                            .frame(width: 136, alignment: .leading)
                         }
                         .buttonStyle(PremiumPressStyle())
                     }
@@ -130,10 +132,10 @@ struct LibraryView: View {
                 player.play(track, in: tracks.tracks)
             } label: {
                 HStack(spacing: 12) {
-                AsyncArtwork(url: track.artworkURL, size: 52)
+                AsyncArtwork(url: track.artworkURL, size: 46)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(track.title)
-                        .font(.headline)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     Text(track.artist)
@@ -173,7 +175,7 @@ struct LibraryView: View {
                 ForEach(0..<3, id: \.self) { _ in
                     RoundedRectangle(cornerRadius: 20)
                         .fill(.primary.opacity(0.08))
-                        .frame(width: 156, height: 190)
+                        .frame(width: 136, height: 168)
                 }
             }
         }
@@ -186,7 +188,7 @@ struct LibraryView: View {
                 HStack(spacing: 12) {
                     RoundedRectangle(cornerRadius: 11)
                         .fill(.primary.opacity(0.08))
-                        .frame(width: 52, height: 52)
+                        .frame(width: 46, height: 46)
                     VStack(alignment: .leading, spacing: 8) {
                         RoundedRectangle(cornerRadius: 4)
                             .fill(.primary.opacity(0.09))

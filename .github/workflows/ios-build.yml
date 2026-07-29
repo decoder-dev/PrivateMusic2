@@ -69,18 +69,23 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.0.0-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.0.1-unsigned.ipa"
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.0.0-unsigned.ipa" \
-            --title "Private Music 3.0.0" \
+            "$PWD/artifacts/PrivateMusic-3.0.1-unsigned.ipa" \
+            --title "Private Music 3.0.1" \
             --notes-file - <<'EOF'
-          Private Music 3.0.0
+          Private Music 3.0.1
 
+          - мини-плеер теперь всегда расположен над панелью вкладок;
+          - уменьшены шрифты, обложки и элементы управления;
+          - медиатека получила компактную навигацию и более плотный список;
+          - полноэкранный плеер стал легче и пропорциональнее;
+          - масштаб текста больше не наследует экстремальные системные значения;
           - новая навигация: Главная, Медиатека, Поиск и Профиль;
           - полноценная Главная с историей, VK-миксами, рекомендациями и плейлистами;
           - автоматический запасной источник рекомендаций через персональный VK-микс;
@@ -110,7 +115,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.0.0-unsigned
-          path: artifacts/PrivateMusic-3.0.0-unsigned.ipa
+          name: PrivateMusic-3.0.1-unsigned
+          path: artifacts/PrivateMusic-3.0.1-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

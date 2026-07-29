@@ -74,17 +74,17 @@ enum AppTextScale: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .compact: "90%"
+        case .compact: "85%"
         case .system: "100%"
-        case .large: "115%"
-        case .extraLarge: "130%"
+        case .large: "110%"
+        case .extraLarge: "120%"
         }
     }
 
-    var dynamicTypeSize: DynamicTypeSize? {
+    var dynamicTypeSize: DynamicTypeSize {
         switch self {
         case .compact: .medium
-        case .system: nil
+        case .system: .large
         case .large: .xLarge
         case .extraLarge: .xxLarge
         }
@@ -226,12 +226,7 @@ final class AppSettings: ObservableObject {
 }
 
 extension View {
-    @ViewBuilder
     func appTextScale(_ scale: AppTextScale) -> some View {
-        if let dynamicTypeSize = scale.dynamicTypeSize {
-            self.dynamicTypeSize(dynamicTypeSize)
-        } else {
-            self
-        }
+        dynamicTypeSize(scale.dynamicTypeSize)
     }
 }

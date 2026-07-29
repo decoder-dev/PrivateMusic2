@@ -46,7 +46,7 @@ struct PlayerView: View {
             .clipped()
         }
         .preferredColorScheme(.dark)
-        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .dynamicTypeSize(...DynamicTypeSize.large)
         .ignoresSafeArea(edges: .bottom)
         .sheet(isPresented: $showingQueue) {
             QueueView()
@@ -122,11 +122,11 @@ struct PlayerView: View {
         size: CGSize
     ) -> some View {
         let compact = size.height < 730
-        let horizontalPadding: CGFloat = compact ? 22 : 26
+        let horizontalPadding: CGFloat = compact ? 24 : 28
         let contentWidth = max(size.width - horizontalPadding * 2, 0)
         let artworkSize = min(
             contentWidth,
-            size.height * (compact ? 0.39 : 0.43)
+            size.height * (compact ? 0.36 : 0.39)
         )
 
         return VStack(spacing: 0) {
@@ -157,11 +157,11 @@ struct PlayerView: View {
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(track.title)
-                        .font(.title2.weight(.heavy))
+                        .font(.title3.weight(.bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(track.artist)
-                        .font(.title3)
+                        .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.58))
                         .lineLimit(1)
                     if let album = track.albumTitle, !album.isEmpty {
@@ -174,7 +174,7 @@ struct PlayerView: View {
                 Spacer(minLength: 10)
                 actionMenu(track)
             }
-            .padding(.top, compact ? 18 : 28)
+            .padding(.top, compact ? 16 : 22)
 
             VStack(spacing: 8) {
                 Slider(
@@ -193,7 +193,7 @@ struct PlayerView: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.white.opacity(0.58))
             }
-            .padding(.top, compact ? 20 : 32)
+            .padding(.top, compact ? 18 : 24)
 
             Spacer(minLength: compact ? 16 : 28)
             primaryControls
@@ -269,8 +269,8 @@ struct PlayerView: View {
                 player.previous()
             } label: {
                 Image(systemName: "backward.fill")
-                    .font(.system(size: 42, weight: .semibold))
-                    .frame(width: 82, height: 74)
+                    .font(.system(size: 34, weight: .semibold))
+                    .frame(width: 72, height: 62)
             }
             Spacer()
             Button {
@@ -278,8 +278,8 @@ struct PlayerView: View {
                 player.playPause()
             } label: {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 62, weight: .bold))
-                    .frame(width: 92, height: 82)
+                    .font(.system(size: 52, weight: .bold))
+                    .frame(width: 80, height: 70)
             }
             Spacer()
             Button {
@@ -287,8 +287,8 @@ struct PlayerView: View {
                 player.next()
             } label: {
                 Image(systemName: "forward.fill")
-                    .font(.system(size: 42, weight: .semibold))
-                    .frame(width: 82, height: 74)
+                    .font(.system(size: 34, weight: .semibold))
+                    .frame(width: 72, height: 62)
             }
         }
         .buttonStyle(PlayerControlStyle())
@@ -330,7 +330,7 @@ struct PlayerView: View {
                 player.cycleRepeatMode()
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 18)
     }
 
     private func secondaryButton(
@@ -341,7 +341,7 @@ struct PlayerView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: image)
-                .font(.system(size: 24, weight: .semibold))
+                .font(.system(size: 21, weight: .semibold))
                 .foregroundStyle(
                     active ? Color.white : Color.white.opacity(0.58)
                 )

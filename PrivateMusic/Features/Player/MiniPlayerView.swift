@@ -8,16 +8,16 @@ struct MiniPlayerView: View {
     var body: some View {
         if let track = player.currentTrack {
             VStack(spacing: 0) {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Button {
                         Haptics.open()
                         player.isPlayerPresented = true
                     } label: {
-                        HStack(spacing: 12) {
-                            AsyncArtwork(url: track.artworkURL, size: 46)
+                        HStack(spacing: 10) {
+                            AsyncArtwork(url: track.artworkURL, size: 42)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(track.title)
-                                    .font(.subheadline.bold())
+                                    .font(.subheadline.weight(.semibold))
                                     .lineLimit(1)
                                 Text(track.artist)
                                     .font(.caption)
@@ -38,18 +38,20 @@ struct MiniPlayerView: View {
                                 ? "pause.fill"
                                 : "play.fill"
                         )
-                        .font(.title3)
-                        .frame(width: 34, height: 34)
+                        .font(.headline)
+                        .frame(width: 32, height: 40)
                     }
 
                     Button {
                         player.next()
                     } label: {
                         Image(systemName: "forward.fill")
-                            .frame(width: 34, height: 34)
+                            .font(.headline)
+                            .frame(width: 32, height: 40)
                     }
                 }
-                .padding(9)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
 
                 GeometryReader { proxy in
                     Capsule()
@@ -66,9 +68,11 @@ struct MiniPlayerView: View {
                 .padding(.horizontal, 12)
             }
             .adaptiveGlass(
-                in: RoundedRectangle(cornerRadius: 18),
+                in: RoundedRectangle(cornerRadius: 16),
                 interactive: true
             )
+            .frame(height: 58)
+            .dynamicTypeSize(...DynamicTypeSize.large)
             .offset(
                 x: reduceMotion ? 0 : dragOffset.width * 0.12,
                 y: reduceMotion ? 0 : min(dragOffset.height * 0.08, 0)
