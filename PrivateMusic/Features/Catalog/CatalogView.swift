@@ -92,7 +92,11 @@ struct CatalogView: View {
                     ForEach(mixes) { mix in
                         Button { start(mix) } label: {
                             ZStack(alignment: .bottomLeading) {
-                                AsyncArtwork(url: mix.artworkURL, size: 158)
+                                MixArtworkView(
+                                    mix: mix,
+                                    tracks: recommendations,
+                                    size: 158
+                                )
                                     .overlay {
                                         LinearGradient(
                                             colors: [.clear, .black.opacity(0.82)],
