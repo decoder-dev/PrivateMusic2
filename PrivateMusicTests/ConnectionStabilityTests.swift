@@ -87,6 +87,45 @@ final class ConnectionStabilityTests: XCTestCase {
         XCTAssertFalse(result.contains("old-value"))
     }
 
+    func testMinimumVolumePolicyPausesOnlyActivePlayback() {
+        XCTAssertTrue(
+            AudioRoutePolicy.shouldPause(
+                volume: 0,
+                enabled: true,
+                isPlaying: true
+            )
+        )
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldPause(
+                volume: 0.5,
+                enabled: true,
+                isPlaying: true
+            )
+        )
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldPause(
+                volume: 0,
+                enabled: false,
+                isPlaying: true
+            )
+        )
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldPause(
+                volume: 0,
+                enabled: true,
+                isPlaying: false
+            )
+        )
+    }
+
+    func testBluetoothRoutePolicyRecognizesPlaybackPorts() {
+        XCTAssertTrue(AudioRoutePolicy.isBluetooth(.bluetoothA2DP))
+        XCTAssertTrue(AudioRoutePolicy.isBluetooth(.bluetoothHFP))
+        XCTAssertTrue(AudioRoutePolicy.isBluetooth(.bluetoothLE))
+        XCTAssertFalse(AudioRoutePolicy.isBluetooth(.builtInSpeaker))
+        XCTAssertFalse(AudioRoutePolicy.isBluetooth(.airPlay))
+    }
+
     private func makeSession(expiresAt: Date?) -> Session {
         Session(
             accessToken: "0123456789abcdef",
