@@ -25,6 +25,7 @@ enum Brand {
 
 struct PrimaryButtonStyle: ButtonStyle {
     @EnvironmentObject private var settings: AppSettings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -33,8 +34,24 @@ struct PrimaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 18)
             .foregroundStyle(settings.theme.buttonForeground)
             .background(settings.theme.accent)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: PremiumLayout.compactRadius,
+                    style: .continuous
+                )
+            )
+            .contentShape(
+                RoundedRectangle(
+                    cornerRadius: PremiumLayout.compactRadius,
+                    style: .continuous
+                )
+            )
+            .scaleEffect(
+                reduceMotion || !configuration.isPressed ? 1 : 0.98
+            )
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.12),
+                value: configuration.isPressed
+            )
     }
 }

@@ -5,7 +5,12 @@ enum PremiumLayout {
     static let screenPadding: CGFloat = 16
     static let cardRadius: CGFloat = 22
     static let compactRadius: CGFloat = 16
+    static let controlRadius: CGFloat = 14
     static let minimumTapTarget: CGFloat = 44
+
+    static func artworkRadius(for size: CGFloat) -> CGFloat {
+        min(cardRadius, max(8, size * 0.18))
+    }
 }
 
 struct PremiumCardModifier: ViewModifier {
@@ -13,22 +18,22 @@ struct PremiumCardModifier: ViewModifier {
     let interactive: Bool
 
     func body(content: Content) -> some View {
+        let shape = RoundedRectangle(
+            cornerRadius: PremiumLayout.cardRadius,
+            style: .continuous
+        )
+
         content
             .background(
                 Color(uiColor: .secondarySystemBackground)
                     .opacity(settings.liquidGlassEnabled ? 0.72 : 0.96),
-                in: RoundedRectangle(
-                    cornerRadius: PremiumLayout.cardRadius,
-                    style: .continuous
-                )
+                in: shape
             )
             .overlay {
-                RoundedRectangle(
-                    cornerRadius: PremiumLayout.cardRadius,
-                    style: .continuous
-                )
-                .stroke(.primary.opacity(0.07), lineWidth: 0.75)
+                shape.stroke(.primary.opacity(0.07), lineWidth: 0.75)
             }
+            .clipShape(shape)
+            .contentShape(shape)
             .shadow(
                 color: .black.opacity(interactive ? 0.07 : 0.04),
                 radius: interactive ? 14 : 9,

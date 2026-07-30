@@ -53,7 +53,12 @@ struct ConnectView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 92, height: 92)
-                .clipShape(RoundedRectangle(cornerRadius: 22))
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: PremiumLayout.cardRadius,
+                        style: .continuous
+                    )
+                )
                 .shadow(color: .black.opacity(0.12), radius: 20, y: 10)
 
             VStack(spacing: 5) {
@@ -156,7 +161,10 @@ struct ConnectView: View {
                     .padding()
                     .background(
                         Color(uiColor: .tertiarySystemFill),
-                        in: RoundedRectangle(cornerRadius: 14)
+                        in: RoundedRectangle(
+                            cornerRadius: PremiumLayout.controlRadius,
+                            style: .continuous
+                        )
                     )
 
                 TextField("User-Agent из VKpyMusic", text: $userAgent)
@@ -165,7 +173,10 @@ struct ConnectView: View {
                     .padding()
                     .background(
                         Color(uiColor: .tertiarySystemFill),
-                        in: RoundedRectangle(cornerRadius: 14)
+                        in: RoundedRectangle(
+                            cornerRadius: PremiumLayout.controlRadius,
+                            style: .continuous
+                        )
                     )
 
                 Button {
@@ -190,7 +201,10 @@ struct ConnectView: View {
         .padding(16)
         .background(
             Color(uiColor: .secondarySystemBackground),
-            in: RoundedRectangle(cornerRadius: 18)
+            in: RoundedRectangle(
+                cornerRadius: PremiumLayout.compactRadius,
+                style: .continuous
+            )
         )
     }
 

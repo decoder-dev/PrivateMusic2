@@ -21,14 +21,18 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *), settings.liquidGlassEnabled {
-            content.glassEffect(
-                .regular
-                    .tint(.primary.opacity(0.06))
-                    .interactive(interactive),
-                in: shape
-            )
+            content
+                .clipShape(shape)
+                .glassEffect(
+                    .regular
+                        .tint(.primary.opacity(0.06))
+                        .interactive(interactive),
+                    in: shape
+                )
+                .contentShape(shape)
         } else if settings.liquidGlassEnabled {
             content
+                .clipShape(shape)
                 .background(.ultraThinMaterial, in: shape)
                 .overlay {
                     shape.stroke(
@@ -36,8 +40,10 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                         lineWidth: 0.8
                     )
                 }
+                .contentShape(shape)
         } else {
             content
+                .clipShape(shape)
                 .background(
                     settings.theme.surface,
                     in: shape
@@ -45,6 +51,7 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                 .overlay {
                     shape.stroke(.primary.opacity(0.08), lineWidth: 0.7)
                 }
+                .contentShape(shape)
         }
     }
 }

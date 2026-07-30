@@ -79,5 +79,6 @@ struct QueueView: View {
                 }
             }
         }
+        .presentationDragIndicator(.visible)
     }
 }

@@ -296,6 +296,7 @@ struct RootView: View {
 }
 
 private struct ConnectionBanner: View {
+    @EnvironmentObject private var settings: AppSettings
     let icon: String?
     let message: String
     let tint: Color
@@ -321,10 +322,27 @@ private struct ConnectionBanner: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .bottom) {
-            Divider()
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: bannerShape)
+        .overlay {
+            bannerShape.stroke(.primary.opacity(0.1), lineWidth: 0.7)
         }
+        .clipShape(bannerShape)
+        .contentShape(bannerShape)
+        .shadow(
+            color: .black.opacity(settings.theme == .dark ? 0.16 : 0.08),
+            radius: 8,
+            y: 3
+        )
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
+
+    private var bannerShape: RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: PremiumLayout.compactRadius,
+            style: .continuous
+        )
     }
 }

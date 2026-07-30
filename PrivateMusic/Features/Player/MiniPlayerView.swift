@@ -103,19 +103,18 @@ struct MiniPlayerView: View {
             }
             .background(
                 settings.theme.surface.opacity(0.98),
-                in: RoundedRectangle(
-                    cornerRadius: 16,
-                    style: .continuous
-                )
+                in: containerShape
             )
             .overlay {
-                RoundedRectangle(
-                    cornerRadius: 16,
-                    style: .continuous
-                )
-                .stroke(.primary.opacity(0.13), lineWidth: 0.8)
+                containerShape.stroke(.primary.opacity(0.13), lineWidth: 0.8)
             }
-            .shadow(color: .black.opacity(0.24), radius: 12, y: 6)
+            .clipShape(containerShape)
+            .contentShape(containerShape)
+            .shadow(
+                color: .black.opacity(settings.theme == .dark ? 0.24 : 0.12),
+                radius: 12,
+                y: 6
+            )
             .frame(minHeight: 58)
             .transition(
                 .asymmetric(
@@ -154,6 +153,13 @@ struct MiniPlayerView: View {
                     player.previous()
                 }
             }
+    }
+
+    private var containerShape: RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: PremiumLayout.compactRadius,
+            style: .continuous
+        )
     }
 
     private var progress: CGFloat {

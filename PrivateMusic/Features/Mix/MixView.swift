@@ -75,7 +75,12 @@ struct MixView: View {
             }
             .foregroundStyle(.white)
             .frame(height: 230)
-            .clipShape(RoundedRectangle(cornerRadius: 24))
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: PremiumLayout.cardRadius,
+                    style: .continuous
+                )
+            )
         }
         .buttonStyle(PremiumPressStyle())
         .disabled(loadingMixID != nil)
@@ -105,7 +110,15 @@ struct MixView: View {
                                     }
                                 }
                                 .frame(width: 166, height: 166)
-                                .clipShape(RoundedRectangle(cornerRadius: 20))
+                                .clipShape(
+                                    RoundedRectangle(
+                                        cornerRadius:
+                                            PremiumLayout.artworkRadius(
+                                                for: 166
+                                            ),
+                                        style: .continuous
+                                    )
+                                )
                                 Text(mix.title)
                                     .font(.headline)
                                     .foregroundStyle(.primary)
@@ -186,13 +199,19 @@ struct MixView: View {
 
     private var skeleton: some View {
         VStack(alignment: .leading, spacing: 26) {
-            RoundedRectangle(cornerRadius: 24)
+            RoundedRectangle(
+                cornerRadius: PremiumLayout.cardRadius,
+                style: .continuous
+            )
                 .fill(.primary.opacity(0.08))
                 .frame(height: 230)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
                     ForEach(0..<3, id: \.self) { _ in
-                        RoundedRectangle(cornerRadius: 20)
+                        RoundedRectangle(
+                            cornerRadius: PremiumLayout.cardRadius,
+                            style: .continuous
+                        )
                             .fill(.primary.opacity(0.08))
                             .frame(width: 166, height: 205)
                     }

@@ -34,7 +34,12 @@ struct ProfileView: View {
                     Image("AppIconPreview")
                         .resizable()
                         .frame(width: 60, height: 60)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .clipShape(
+                            RoundedRectangle(
+                                cornerRadius: PremiumLayout.controlRadius,
+                                style: .continuous
+                            )
+                        )
                     Text("Private Music \(version)")
                         .foregroundStyle(.secondary)
                     Text("decoder-dev")

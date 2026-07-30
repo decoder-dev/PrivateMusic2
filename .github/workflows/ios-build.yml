@@ -96,18 +96,29 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.9.0-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.10.0-unsigned.ipa"
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.9.0-unsigned.ipa" \
-            --title "Private Music 3.9.0" \
+            "$PWD/artifacts/PrivateMusic-3.10.0-unsigned.ipa" \
+            --title "Private Music 3.10.0" \
             --notes-file - <<'EOF'
-          Private Music 3.9.0
+          Private Music 3.10.0
 
+          - быстрые действия закреплены единым dock внизу над safe area;
+          - экран плеера полностью перерассчитывает высоту с учётом нижнего dock;
+          - compact, standard и tall-компоновки используют плавные метрики без скачков;
+          - landscape получил двухколоночный режим с учётом боковых safe areas;
+          - обложка уменьшается раньше controls и никогда не перекрывает нижнюю панель;
+          - нижний dock и дополнительные поверхности получили continuous-скругления;
+          - радиусы интерфейса унифицированы по шкале 14/16/22 pt;
+          - карточки, glass-поверхности и обложки корректно clip/contentShape;
+          - улучшены VoiceOver-порядок, действия обложки и Dynamic Type плеера;
+          - Reduce Motion теперь учитывается всеми общими button styles;
+          - добавлены тесты геометрии 320–430 pt, landscape и home indicator;
           - поиск получил постоянно видимую строку вместо нестабильного системного drawer;
           - добавлены состояния ввода, загрузки, результатов, пустой выдачи и ошибки;
           - debounce и revision-защита исключают устаревшие результаты и ошибку Canceled;
@@ -288,7 +299,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.9.0-unsigned
-          path: artifacts/PrivateMusic-3.9.0-unsigned.ipa
+          name: PrivateMusic-3.10.0-unsigned
+          path: artifacts/PrivateMusic-3.10.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

@@ -297,7 +297,11 @@ private struct ArtistLoadingView: View {
         ScrollView {
             VStack(spacing: 0) {
                 HStack(spacing: 16) {
-                    RoundedRectangle(cornerRadius: 18)
+                    RoundedRectangle(
+                        cornerRadius:
+                            PremiumLayout.artworkRadius(for: 88),
+                        style: .continuous
+                    )
                         .fill(Color(uiColor: .tertiarySystemFill))
                         .frame(width: 88, height: 88)
 
@@ -342,7 +346,10 @@ private struct ArtistLoadingView: View {
 private struct ArtistLoadingRow: View {
     var body: some View {
         HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(
+                cornerRadius: PremiumLayout.artworkRadius(for: 52),
+                style: .continuous
+            )
                 .fill(Color(uiColor: .tertiarySystemFill))
                 .frame(width: 52, height: 52)
 
@@ -412,7 +419,10 @@ private struct ArtistInlineError: View {
         .padding(12)
         .background(
             Color(uiColor: .secondarySystemBackground),
-            in: RoundedRectangle(cornerRadius: 14)
+            in: RoundedRectangle(
+                cornerRadius: PremiumLayout.controlRadius,
+                style: .continuous
+            )
         )
     }
 }

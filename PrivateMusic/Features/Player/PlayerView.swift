@@ -10,6 +10,7 @@ struct PlayerView: View {
     @EnvironmentObject private var libraryStore: MusicLibraryStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @GestureState private var artworkDrag: CGSize = .zero
     @State private var presentedSheet: PlayerSheet?
     @State private var deferredPlayerAction: DeferredPlayerAction?
@@ -30,7 +31,7 @@ struct PlayerView: View {
                     playerContent(
                         track,
                         size: proxy.size,
-                        bottomInset: proxy.safeAreaInsets.bottom
+                        safeInsets: proxy.safeAreaInsets
                     )
                 } else {
                     EmptyStateView(
@@ -49,8 +50,7 @@ struct PlayerView: View {
             .clipped()
         }
         .preferredColorScheme(.dark)
-        .dynamicTypeSize(...DynamicTypeSize.large)
-        .ignoresSafeArea(edges: .bottom)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .sheet(
             item: $presentedSheet,
             onDismiss: handleSheetDismissal
@@ -112,229 +112,326 @@ struct PlayerView: View {
         .ignoresSafeArea()
     }
 
+    @ViewBuilder
     private func playerContent(
         _ track: Track,
         size: CGSize,
-        bottomInset: CGFloat
+        safeInsets: EdgeInsets
     ) -> some View {
-        let compact = size.height < 740
-        let spacious = size.height >= 820
-        let horizontalPadding: CGFloat = compact ? 20 : 22
-        let contentWidth = max(size.width - horizontalPadding * 2, 0)
-        let artworkSize = min(
-            contentWidth,
-            size.height * (compact ? 0.36 : 0.38)
+        let metrics = PlayerLayoutMetrics.resolve(
+            containerSize: size,
+            safeBottom: safeInsets.bottom,
+            safeLeading: safeInsets.leading,
+            safeTrailing: safeInsets.trailing,
+            usesAccessibilityText: dynamicTypeSize.isAccessibilitySize,
+            hasAlbum: track.albumTitle?.isEmpty == false
         )
 
-        return VStack(spacing: 0) {
-            ZStack {
-                VStack(spacing: 2) {
-                    Text("СЕЙЧАС ИГРАЕТ")
-                        .font(.caption2.weight(.bold))
-                        .tracking(1.1)
-                        .foregroundStyle(.white.opacity(0.5))
-                    Text(queuePosition)
-                        .font(.system(size: 10, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(.white.opacity(0.38))
-                }
-                HStack {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 15, weight: .bold))
-                            .frame(width: 44, height: 44)
-                            .background(.white.opacity(0.08), in: Circle())
-                            .overlay {
-                                Circle().stroke(
-                                    .white.opacity(0.08),
-                                    lineWidth: 0.5
-                                )
-                            }
-                    }
-                    .buttonStyle(PlayerControlStyle())
-                    .accessibilityLabel(L10n.text("Закрыть плеер"))
-                    Spacer()
-                    HStack(spacing: 8) {
-                        AirPlayRoutePicker()
-                            .frame(width: 44, height: 44)
-                            .background(.white.opacity(0.08), in: Circle())
-                            .overlay {
-                                Circle().stroke(
-                                    .white.opacity(0.08),
-                                    lineWidth: 0.5
-                                )
-                            }
-                            .accessibilityLabel(
-                                L10n.text(
-                                    "Выбрать устройство воспроизведения"
-                                )
-                            )
-                        actionMenuButton(track)
-                    }
-                }
+        Group {
+            if metrics.mode == .landscape {
+                landscapePlayerContent(track, metrics: metrics)
+            } else {
+                portraitPlayerContent(track, metrics: metrics)
             }
-            .frame(height: 44)
-            .padding(.top, compact ? 6 : 10)
+        }
+        .frame(
+            width: metrics.contentWidth,
+            height: size.height
+        )
+        .padding(.leading, metrics.leadingPadding)
+        .padding(.trailing, metrics.trailingPadding)
+        .foregroundStyle(.white)
+    }
 
-            AsyncArtwork(url: track.artworkURL, size: artworkSize)
-                .clipShape(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(.white.opacity(0.08), lineWidth: 0.7)
-                }
-                .shadow(color: .black.opacity(0.42), radius: 26, y: 14)
-                .offset(
-                    x: reduceMotion ? 0 : artworkDrag.width * 0.16,
-                    y: reduceMotion ? 0 : artworkDrag.height * 0.08
-                )
-                .rotationEffect(
-                    .degrees(reduceMotion ? 0 : artworkDrag.width / 65)
-                )
-                .animation(
-                    reduceMotion
-                        ? nil
-                        : .spring(response: 0.3, dampingFraction: 0.82),
-                    value: artworkDrag == .zero
-                )
-                .gesture(artworkGesture)
-                .accessibilityLabel(
-                    L10n.format(
-                        "Обложка: %@ — %@",
-                        track.title,
-                        track.artist
-                    )
-                )
-                .accessibilityHint(
-                    L10n.text(
-                        "Свайп в стороны меняет трек, вверх открывает очередь, "
-                            + "вниз закрывает плеер"
-                    )
-                )
-                .padding(
-                    .top,
-                    compact ? 12 : (spacious ? 34 : 28)
-                )
+    private func portraitPlayerContent(
+        _ track: Track,
+        metrics: PlayerLayoutMetrics
+    ) -> some View {
+        VStack(spacing: 0) {
+            playerHeader(track)
+                .frame(height: metrics.headerHeight)
+                .padding(.top, metrics.headerTopPadding)
 
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(track.title)
-                        .font(
-                            .system(
-                                size: compact ? 21 : 23,
-                                weight: .bold
-                            )
-                        )
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Button {
-                        present(.artist(track.artist))
-                    } label: {
-                        Text(track.artist)
-                            .font(.system(size: compact ? 14 : 15))
-                            .lineLimit(1)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.58))
-                    if let album = track.albumTitle, !album.isEmpty {
-                        Text(album)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.52))
-                            .lineLimit(1)
-                    }
+            Spacer(minLength: metrics.artworkTopSpacing)
+
+            playerArtwork(track, size: metrics.artworkSize)
+
+            Spacer(minLength: metrics.metadataTopSpacing)
+
+            trackMetadata(track)
+
+            Spacer(minLength: metrics.progressTopSpacing)
+
+            progressControls
+
+            Spacer(minLength: metrics.controlsTopSpacing)
+
+            primaryControls
+                .frame(height: metrics.primaryControlsHeight)
+
+            Spacer(minLength: metrics.quickActionsTopSpacing)
+
+            quickActions(track)
+                .frame(height: metrics.quickActionsHeight)
+
+            Color.clear
+                .frame(height: metrics.bottomPadding)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func landscapePlayerContent(
+        _ track: Track,
+        metrics: PlayerLayoutMetrics
+    ) -> some View {
+        VStack(spacing: 0) {
+            playerHeader(track)
+                .frame(height: metrics.headerHeight)
+                .padding(.top, metrics.headerTopPadding)
+
+            Spacer(minLength: metrics.artworkTopSpacing)
+
+            HStack(spacing: metrics.landscapeColumnSpacing) {
+                playerArtwork(track, size: metrics.artworkSize)
+
+                VStack(spacing: 0) {
+                    trackMetadata(track)
+
+                    Spacer(minLength: metrics.progressTopSpacing)
+
+                    progressControls
+
+                    Spacer(minLength: metrics.controlsTopSpacing)
+
+                    primaryControls
+                        .frame(height: metrics.primaryControlsHeight)
                 }
-                Spacer(minLength: 10)
+                .frame(maxHeight: .infinity)
+            }
+            .frame(maxHeight: .infinity)
+
+            Spacer(minLength: metrics.quickActionsTopSpacing)
+
+            quickActions(track)
+                .frame(height: metrics.quickActionsHeight)
+
+            Color.clear
+                .frame(height: metrics.bottomPadding)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func playerHeader(_ track: Track) -> some View {
+        ZStack {
+            VStack(spacing: 2) {
+                Text("СЕЙЧАС ИГРАЕТ")
+                    .font(.caption2.weight(.bold))
+                    .tracking(1.1)
+                    .foregroundStyle(.white.opacity(0.5))
+                Text(queuePosition)
+                    .font(.system(size: 10, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(.white.opacity(0.56))
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilitySortPriority(1)
+
+            HStack {
                 Button {
-                    toggleLibrary(track)
+                    dismiss()
                 } label: {
-                    Image(
-                        systemName: isInLibrary ? "heart.fill" : "heart"
-                    )
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(
-                        isInLibrary ? .white : .white.opacity(0.72)
-                    )
-                    .frame(width: 44, height: 44)
-                    .background(.white.opacity(0.08), in: Circle())
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(width: 44, height: 44)
+                        .background(.white.opacity(0.08), in: Circle())
+                        .overlay {
+                            Circle().stroke(
+                                .white.opacity(0.08),
+                                lineWidth: 0.5
+                            )
+                        }
                 }
                 .buttonStyle(PlayerControlStyle())
-                .disabled(isUpdatingLibrary)
-                .accessibilityLabel(
-                    L10n.text(
-                        isInLibrary
-                            ? "Удалить из медиатеки"
-                            : "Добавить в медиатеку"
-                    )
-                )
-                .accessibilityValue(
-                    L10n.text(
-                        isInLibrary
-                            ? "Трек добавлен в медиатеку"
-                            : "Трек не добавлен в медиатеку"
-                    )
-                )
-            }
-            .padding(
-                .top,
-                compact ? 10 : (spacious ? 21 : 16)
-            )
+                .accessibilityLabel(L10n.text("Закрыть плеер"))
+                .accessibilitySortPriority(4)
 
-            VStack(spacing: 3) {
-                CompactPlayerSlider(
-                    value: Binding(
-                        get: { displayedElapsedTime },
-                        set: { scrubPosition = $0 }
-                    ),
-                    range: 0...max(player.duration, 1),
-                    onEditingBegan: {
-                        scrubPosition = player.elapsedTime
-                    },
-                    onCommit: commitScrubbing
-                )
-                .frame(height: 20)
-                .accessibilityLabel(
-                    L10n.text("Позиция воспроизведения")
-                )
-                .accessibilityValue(
-                    "\(displayedElapsedTime.formattedDuration) / "
-                        + player.duration.formattedDuration
-                )
-                HStack {
-                    Text(displayedElapsedTime.formattedDuration)
-                    Spacer()
-                    Text("-\(remainingTime.formattedDuration)")
+                Spacer()
+
+                HStack(spacing: 8) {
+                    AirPlayRoutePicker()
+                        .frame(width: 44, height: 44)
+                        .background(.white.opacity(0.08), in: Circle())
+                        .overlay {
+                            Circle().stroke(
+                                .white.opacity(0.08),
+                                lineWidth: 0.5
+                            )
+                        }
+                        .accessibilityLabel(
+                            L10n.text(
+                                "Выбрать устройство воспроизведения"
+                            )
+                        )
+                        .accessibilitySortPriority(3)
+                    actionMenuButton(track)
+                        .accessibilitySortPriority(2)
                 }
-                .font(.system(size: 11, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.52))
             }
-            .padding(
-                .top,
-                compact ? 8 : (spacious ? 16 : 12)
+        }
+    }
+
+    private func playerArtwork(
+        _ track: Track,
+        size: CGFloat
+    ) -> some View {
+        AsyncArtwork(url: track.artworkURL, size: size)
+            .clipShape(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
             )
-
-            VStack(spacing: compact ? 7 : 11) {
-                primaryControls
-                quickActions(track)
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(.white.opacity(0.08), lineWidth: 0.7)
             }
-            .padding(.top, compact ? 5 : (spacious ? 14 : 9))
+            .shadow(color: .black.opacity(0.42), radius: 26, y: 14)
+            .offset(
+                x: reduceMotion ? 0 : artworkDrag.width * 0.16,
+                y: reduceMotion ? 0 : artworkDrag.height * 0.08
+            )
+            .rotationEffect(
+                .degrees(reduceMotion ? 0 : artworkDrag.width / 65)
+            )
+            .animation(
+                reduceMotion
+                    ? nil
+                    : .spring(response: 0.3, dampingFraction: 0.82),
+                value: artworkDrag == .zero
+            )
+            .gesture(artworkGesture)
+            .accessibilityLabel(
+                L10n.format(
+                    "Обложка: %@ — %@",
+                    track.title,
+                    track.artist
+                )
+            )
+            .accessibilityHint(
+                L10n.text(
+                    "Свайп в стороны меняет трек, вверх открывает очередь, "
+                        + "вниз закрывает плеер"
+                )
+            )
+            .accessibilityAction(
+                named: L10n.text("Следующий трек")
+            ) {
+                Haptics.trackChange()
+                player.next()
+            }
+            .accessibilityAction(
+                named: L10n.text("Предыдущий трек")
+            ) {
+                Haptics.trackChange()
+                player.previous()
+            }
+            .accessibilityAction(
+                named: L10n.text("Очередь")
+            ) {
+                present(.queue)
+            }
+            .accessibilityAction(
+                named: L10n.text("Закрыть плеер")
+            ) {
+                dismiss()
+            }
+    }
 
-            Spacer(
-                minLength: max(
-                    bottomInset,
-                    compact ? 8 : 16
+    private func trackMetadata(_ track: Track) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(track.title)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Button {
+                    present(.artist(track.artist))
+                } label: {
+                    Text(track.artist)
+                        .font(.subheadline)
+                        .lineLimit(1)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white.opacity(0.58))
+                if let album = track.albumTitle, !album.isEmpty {
+                    Text(album)
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.52))
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 10)
+
+            Button {
+                toggleLibrary(track)
+            } label: {
+                Image(
+                    systemName: isInLibrary ? "heart.fill" : "heart"
+                )
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(
+                    isInLibrary ? .white : .white.opacity(0.72)
+                )
+                .frame(width: 44, height: 44)
+                .background(.white.opacity(0.08), in: Circle())
+            }
+            .buttonStyle(PlayerControlStyle())
+            .disabled(isUpdatingLibrary)
+            .accessibilityLabel(
+                L10n.text(
+                    isInLibrary
+                        ? "Удалить из медиатеки"
+                        : "Добавить в медиатеку"
+                )
+            )
+            .accessibilityValue(
+                L10n.text(
+                    isInLibrary
+                        ? "Трек добавлен в медиатеку"
+                        : "Трек не добавлен в медиатеку"
                 )
             )
         }
-        .frame(
-            width: contentWidth,
-            height: size.height,
-            alignment: .top
-        )
-        .padding(.horizontal, horizontalPadding)
-        .foregroundStyle(.white)
+    }
+
+    private var progressControls: some View {
+        VStack(spacing: 3) {
+            CompactPlayerSlider(
+                value: Binding(
+                    get: { displayedElapsedTime },
+                    set: { scrubPosition = $0 }
+                ),
+                range: 0...max(player.duration, 1),
+                onEditingBegan: {
+                    scrubPosition = player.elapsedTime
+                },
+                onCommit: commitScrubbing
+            )
+            .frame(height: 20)
+            .accessibilityLabel(
+                L10n.text("Позиция воспроизведения")
+            )
+            .accessibilityValue(
+                "\(displayedElapsedTime.formattedDuration) / "
+                    + player.duration.formattedDuration
+            )
+
+            HStack {
+                Text(displayedElapsedTime.formattedDuration)
+                Spacer()
+                Text("-\(remainingTime.formattedDuration)")
+            }
+            .font(.system(size: 11, weight: .medium).monospacedDigit())
+            .foregroundStyle(.white.opacity(0.52))
+        }
     }
 
     private func actionMenuButton(_ track: Track) -> some View {
@@ -438,10 +535,20 @@ struct PlayerView: View {
                 isPreparingShare
                     ? "arrow.triangle.2.circlepath"
                     : "square.and.arrow.up",
-                title: "Экспорт"
+                title: "Поделиться"
             ) {
                 startShare(track)
             }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 6)
+        .background(
+            .ultraThinMaterial,
+            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(.white.opacity(0.09), lineWidth: 0.7)
         }
     }
 
@@ -457,12 +564,12 @@ struct PlayerView: View {
                     .frame(width: 36, height: 34)
                     .background(.white.opacity(0.07), in: Circle())
                 Text(L10n.text(title))
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
                     .lineLimit(1)
             }
             .foregroundStyle(.white.opacity(0.66))
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
+            .frame(minHeight: 52)
         }
         .buttonStyle(PlayerControlStyle())
     }
@@ -772,6 +879,217 @@ struct PlayerView: View {
         }
         isInLibrary = libraryStore.contains(track)
             || track.ownerID == sessionStore.session?.userID
+    }
+}
+
+enum PlayerLayoutMode: Equatable {
+    case compact
+    case standard
+    case tall
+    case landscape
+}
+
+struct PlayerLayoutMetrics: Equatable {
+    let mode: PlayerLayoutMode
+    let usesAccessibilityText: Bool
+    let contentWidth: CGFloat
+    let leadingPadding: CGFloat
+    let trailingPadding: CGFloat
+    let headerHeight: CGFloat
+    let headerTopPadding: CGFloat
+    let artworkSize: CGFloat
+    let artworkTopSpacing: CGFloat
+    let metadataTopSpacing: CGFloat
+    let progressTopSpacing: CGFloat
+    let controlsTopSpacing: CGFloat
+    let primaryControlsHeight: CGFloat
+    let quickActionsTopSpacing: CGFloat
+    let quickActionsHeight: CGFloat
+    let bottomPadding: CGFloat
+    let landscapeColumnSpacing: CGFloat
+    let minimumContentHeight: CGFloat
+
+    static func resolve(
+        containerSize: CGSize,
+        safeBottom: CGFloat = 0,
+        safeLeading: CGFloat = 0,
+        safeTrailing: CGFloat = 0,
+        usesAccessibilityText: Bool = false,
+        hasAlbum: Bool = true
+    ) -> PlayerLayoutMetrics {
+        let isLandscape =
+            containerSize.width > containerSize.height * 1.12
+        let mode: PlayerLayoutMode
+        if isLandscape {
+            mode = .landscape
+        } else if containerSize.height < 720 {
+            mode = .compact
+        } else if containerSize.height < 860 {
+            mode = .standard
+        } else {
+            mode = .tall
+        }
+
+        let portraitProgress = min(
+            max((containerSize.height - 667) / (932 - 667), 0),
+            1
+        )
+        func portraitValue(
+            _ compact: CGFloat,
+            _ tall: CGFloat
+        ) -> CGFloat {
+            compact + (tall - compact) * portraitProgress
+        }
+        let baseHorizontalPadding: CGFloat = mode == .landscape
+            ? 14
+            : portraitValue(18, 22)
+        let leadingPadding = max(
+            baseHorizontalPadding,
+            safeLeading + (mode == .landscape ? 8 : 0)
+        )
+        let trailingPadding = max(
+            baseHorizontalPadding,
+            safeTrailing + (mode == .landscape ? 8 : 0)
+        )
+        let contentWidth = max(
+            containerSize.width - leadingPadding - trailingPadding,
+            0
+        )
+
+        let headerHeight: CGFloat = 44
+        let headerTopPadding: CGFloat
+        let artworkTopSpacing: CGFloat
+        let metadataTopSpacing: CGFloat
+        let progressTopSpacing: CGFloat
+        let controlsTopSpacing: CGFloat
+        let quickActionsTopSpacing: CGFloat
+        let artworkRatio: CGFloat
+
+        if mode == .landscape {
+            headerTopPadding = 2
+            artworkTopSpacing = 2
+            metadataTopSpacing = 0
+            progressTopSpacing = 4
+            controlsTopSpacing = 4
+            quickActionsTopSpacing = 4
+            artworkRatio = 0.55
+        } else {
+            headerTopPadding = portraitValue(4, 10)
+            artworkTopSpacing = portraitValue(8, 20)
+            metadataTopSpacing = portraitValue(8, 12)
+            progressTopSpacing = portraitValue(6, 10)
+            controlsTopSpacing = portraitValue(4, 9)
+            quickActionsTopSpacing = portraitValue(6, 8)
+            artworkRatio = portraitValue(0.35, 0.42)
+        }
+
+        let primaryControlsHeight: CGFloat = 60
+        let quickActionsHeight: CGFloat =
+            usesAccessibilityText ? 72 : 64
+        let bottomPadding = max(
+            safeBottom,
+            mode == .landscape ? 6 : 10
+        )
+        let metadataHeight: CGFloat
+        if usesAccessibilityText {
+            metadataHeight = hasAlbum ? 100 : 78
+        } else {
+            metadataHeight = hasAlbum ? 68 : 54
+        }
+        let progressHeight: CGFloat = usesAccessibilityText ? 45 : 39
+
+        let artworkSize: CGFloat
+        let minimumContentHeight: CGFloat
+        if mode == .landscape {
+            let availableMainHeight = max(
+                containerSize.height
+                    - headerTopPadding
+                    - headerHeight
+                    - artworkTopSpacing
+                    - quickActionsTopSpacing
+                    - quickActionsHeight
+                    - bottomPadding,
+                0
+            )
+            let rightColumnMinimum =
+                metadataHeight
+                + progressTopSpacing
+                + progressHeight
+                + controlsTopSpacing
+                + primaryControlsHeight
+            artworkSize = max(
+                min(
+                    min(
+                        contentWidth * 0.36,
+                        containerSize.height * artworkRatio
+                    ),
+                    availableMainHeight
+                ),
+                min(112, availableMainHeight)
+            )
+            minimumContentHeight =
+                headerTopPadding
+                + headerHeight
+                + artworkTopSpacing
+                + max(artworkSize, rightColumnMinimum)
+                + quickActionsTopSpacing
+                + quickActionsHeight
+                + bottomPadding
+        } else {
+            let fixedWithoutArtwork =
+                headerTopPadding
+                + headerHeight
+                + artworkTopSpacing
+                + metadataTopSpacing
+                + metadataHeight
+                + progressTopSpacing
+                + progressHeight
+                + controlsTopSpacing
+                + primaryControlsHeight
+                + quickActionsTopSpacing
+                + quickActionsHeight
+                + bottomPadding
+            let availableArtworkHeight = max(
+                containerSize.height - fixedWithoutArtwork,
+                0
+            )
+            artworkSize = max(
+                min(
+                    min(
+                        contentWidth,
+                        containerSize.height * artworkRatio
+                    ),
+                    availableArtworkHeight
+                ),
+                min(112, availableArtworkHeight)
+            )
+            minimumContentHeight = fixedWithoutArtwork + artworkSize
+        }
+
+        return PlayerLayoutMetrics(
+            mode: mode,
+            usesAccessibilityText: usesAccessibilityText,
+            contentWidth: contentWidth,
+            leadingPadding: leadingPadding,
+            trailingPadding: trailingPadding,
+            headerHeight: headerHeight,
+            headerTopPadding: headerTopPadding,
+            artworkSize: artworkSize,
+            artworkTopSpacing: artworkTopSpacing,
+            metadataTopSpacing: metadataTopSpacing,
+            progressTopSpacing: progressTopSpacing,
+            controlsTopSpacing: controlsTopSpacing,
+            primaryControlsHeight: primaryControlsHeight,
+            quickActionsTopSpacing: quickActionsTopSpacing,
+            quickActionsHeight: quickActionsHeight,
+            bottomPadding: bottomPadding,
+            landscapeColumnSpacing: mode == .landscape ? 20 : 0,
+            minimumContentHeight: minimumContentHeight
+        )
+    }
+
+    func quickActionsBottomY(containerHeight: CGFloat) -> CGFloat {
+        max(containerHeight - bottomPadding, 0)
     }
 }
 
