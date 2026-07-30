@@ -8,7 +8,6 @@ struct PlayerView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var libraryStore: MusicLibraryStore
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @GestureState private var artworkDrag: CGSize = .zero
@@ -20,6 +19,7 @@ struct PlayerView: View {
     @State private var isInLibrary = false
     @State private var isUpdatingLibrary = false
     @State private var scrubPosition: TimeInterval?
+    @State private var isDismissing = false
     private let shareService = TrackShareService()
 
     var body: some View {
@@ -237,7 +237,7 @@ struct PlayerView: View {
 
                 HStack {
                     Button {
-                        dismiss()
+                        closePlayer()
                     } label: {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 15, weight: .bold))
@@ -336,7 +336,7 @@ struct PlayerView: View {
             .accessibilityAction(
                 named: L10n.text("Закрыть плеер")
             ) {
-                dismiss()
+                closePlayer()
             }
     }
 
@@ -546,37 +546,30 @@ struct PlayerView: View {
     }
 
     private func quickActions(_ track: Track) -> some View {
-        HStack(spacing: 0) {
-            quickAction("quote.bubble", title: "Текст") {
-                present(.lyrics(track))
-            }
-            quickAction("list.bullet", title: "Очередь") {
-                present(.queue)
-            }
-            quickAction(
-                "rectangle.stack.badge.plus",
-                title: "Плейлист"
-            ) {
-                present(.playlists(track))
-            }
-            quickAction(
-                isPreparingShare
-                    ? "arrow.triangle.2.circlepath"
-                    : "square.and.arrow.up",
-                title: "Поделиться"
-            ) {
-                startShare(track)
+        AdaptiveGlassContainer(spacing: 14) {
+            HStack(spacing: 0) {
+                quickAction("quote.bubble", title: "Текст") {
+                    present(.lyrics(track))
+                }
+                quickAction("list.bullet", title: "Очередь") {
+                    present(.queue)
+                }
+                quickAction(
+                    "rectangle.stack.badge.plus",
+                    title: "Плейлист"
+                ) {
+                    present(.playlists(track))
+                }
+                quickAction(
+                    isPreparingShare
+                        ? "arrow.triangle.2.circlepath"
+                        : "square.and.arrow.up",
+                    title: "Поделиться"
+                ) {
+                    startShare(track)
+                }
             }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 6)
-        .adaptiveGlass(
-            in: RoundedRectangle(
-                cornerRadius: 22,
-                style: .continuous
-            ),
-            interactive: true
-        )
     }
 
     private func quickAction(
@@ -588,15 +581,15 @@ struct PlayerView: View {
             VStack(spacing: 5) {
                 Image(systemName: image)
                     .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 36, height: 34)
-                    .background(controlSurface, in: Circle())
+                    .frame(width: 44, height: 44)
+                    .adaptiveGlass(in: Circle(), interactive: true)
                 Text(L10n.text(title))
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
             }
-            .foregroundStyle(playerForeground.opacity(0.66))
+            .foregroundStyle(playerForeground.opacity(0.72))
             .frame(maxWidth: .infinity)
-            .frame(minHeight: 52)
+            .frame(minHeight: 61)
         }
         .buttonStyle(PlayerControlStyle())
     }
@@ -648,10 +641,6 @@ struct PlayerView: View {
 
     private var playerBackground: Color {
         settings.theme == .light ? .white : .black
-    }
-
-    private var controlSurface: Color {
-        playerForeground.opacity(settings.theme == .light ? 0.07 : 0.08)
     }
 
     private var backgroundGradient: [Color] {
@@ -807,9 +796,19 @@ struct PlayerView: View {
                 } else if vertical < -60 {
                     present(.queue)
                 } else if vertical > 72 {
-                    dismiss()
+                    closePlayer()
                 }
             }
+    }
+
+    private func closePlayer() {
+        guard !isDismissing else { return }
+        isDismissing = true
+        presentedSheet = nil
+        deferredPlayerAction = nil
+        shareTask?.cancel()
+        shareTask = nil
+        player.dismissPlayer()
     }
 
     private func prepareShare(_ track: Track) async {
