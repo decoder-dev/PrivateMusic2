@@ -41,7 +41,9 @@ struct MainTabView: View {
                 NavigationStack { LibraryView() }
             }
             tabScreen(.search) {
-                NavigationStack { SearchView() }
+                NavigationStack {
+                    SearchView(isActive: selectedTab == .search)
+                }
             }
             tabScreen(.profile) {
                 NavigationStack { ProfileView() }
@@ -107,74 +109,83 @@ private struct PlaybackTabDock: View {
     @Binding var selection: MainTab
 
     var body: some View {
-        VStack(spacing: 0) {
-            if player.currentTrack != nil {
-                MiniPlayerView()
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                    .padding(.bottom, 7)
-                    .transition(
-                        .move(edge: .bottom).combined(with: .opacity)
-                    )
-                Divider().opacity(0.5)
-            }
-
-            HStack(spacing: 0) {
-                ForEach(MainTab.allCases, id: \.self) { tab in
-                    Button {
-                        Haptics.selection()
-                        if reduceMotion {
-                            selection = tab
-                        } else {
-                            withAnimation(
-                                .spring(
-                                    response: 0.32,
-                                    dampingFraction: 0.82
-                                )
-                            ) {
-                                selection = tab
-                            }
-                        }
-                    } label: {
-                        VStack(spacing: 3) {
-                            Image(systemName: tab.image)
-                                .font(.system(size: 20, weight: .semibold))
-                                .scaleEffect(selection == tab ? 1.08 : 0.94)
-                            Text(tab.title)
-                                .font(.caption2.weight(.semibold))
-                                .lineLimit(1)
-                        }
-                        .foregroundStyle(
-                            selection == tab
-                                ? settings.theme.accent
-                                : Color.secondary
+        AdaptiveGlassContainer(spacing: 10) {
+            VStack(spacing: 8) {
+                if player.currentTrack != nil {
+                    MiniPlayerView()
+                        .transition(
+                            .move(edge: .bottom).combined(with: .opacity)
                         )
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(
-                        selection == tab ? .isSelected : []
-                    )
                 }
+
+                HStack(spacing: 4) {
+                    ForEach(MainTab.allCases, id: \.self) { tab in
+                        tabButton(tab)
+                    }
+                }
+                .padding(5)
+                .adaptiveGlass(
+                    in: RoundedRectangle(
+                        cornerRadius: 24,
+                        style: .continuous
+                    ),
+                    interactive: true
+                )
             }
-            .padding(.horizontal, 8)
-            .padding(.top, 2)
         }
         .dynamicTypeSize(...DynamicTypeSize.large)
-        .background(
-            settings.theme.colors[0]
-                .ignoresSafeArea(edges: .bottom)
-        )
-        .overlay(alignment: .top) {
-            Divider().opacity(0.7)
-        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 5)
         .animation(
             reduceMotion
                 ? nil
                 : .spring(response: 0.34, dampingFraction: 0.86),
             value: player.currentTrack?.id
         )
+    }
+
+    private func tabButton(_ tab: MainTab) -> some View {
+        Button {
+            Haptics.selection()
+            if reduceMotion {
+                selection = tab
+            } else {
+                withAnimation(
+                    .spring(response: 0.32, dampingFraction: 0.82)
+                ) {
+                    selection = tab
+                }
+            }
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: tab.image)
+                    .font(.system(size: 20, weight: .semibold))
+                    .scaleEffect(selection == tab ? 1.04 : 0.94)
+                Text(tab.title)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(
+                selection == tab
+                    ? selectedColor
+                    : Color.primary.opacity(0.58)
+            )
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .background {
+                if selection == tab {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.09))
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selection == tab ? .isSelected : [])
+    }
+
+    private var selectedColor: Color {
+        settings.theme == .light ? .black : .white
     }
 }

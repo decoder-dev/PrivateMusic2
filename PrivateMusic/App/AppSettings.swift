@@ -17,11 +17,13 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 
     var accent: Color {
-        Color(red: 0.04, green: 0.50, blue: 1.0)
+        self == .dark
+            ? Color(red: 0.04, green: 0.50, blue: 1.0)
+            : .black
     }
 
     var secondaryAccent: Color {
-        self == .dark ? Color(white: 0.32) : Color(white: 0.78)
+        self == .dark ? Color(white: 0.32) : Color(white: 0.90)
     }
 
     var colorScheme: ColorScheme { self == .dark ? .dark : .light }
@@ -132,11 +134,6 @@ final class AppSettings: ObservableObject {
     @Published var appearance: AppearanceMode {
         didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) }
     }
-    @Published var liquidGlassEnabled: Bool {
-        didSet {
-            defaults.set(liquidGlassEnabled, forKey: Keys.liquidGlass)
-        }
-    }
     @Published var textScale: AppTextScale {
         didSet { defaults.set(textScale.rawValue, forKey: Keys.textScale) }
     }
@@ -196,9 +193,10 @@ final class AppSettings: ObservableObject {
                 rawValue: defaults.string(forKey: Keys.appearance) ?? ""
             ) ?? .system
         }
-        liquidGlassEnabled = defaults.object(
-            forKey: Keys.liquidGlass
-        ) as? Bool ?? true
+        if settingsVersion < 4 {
+            defaults.removeObject(forKey: LegacyKeys.liquidGlass)
+            defaults.set(4, forKey: Keys.version)
+        }
         textScale = AppTextScale(
             rawValue: defaults.string(forKey: Keys.textScale) ?? ""
         ) ?? .system
@@ -241,7 +239,6 @@ final class AppSettings: ObservableObject {
     func resetAppearance() {
         theme = .dark
         appearance = .dark
-        liquidGlassEnabled = true
         textScale = .system
     }
 
@@ -249,7 +246,6 @@ final class AppSettings: ObservableObject {
         static let version = "settings.schema.version"
         static let theme = "appearance.theme"
         static let appearance = "appearance.mode"
-        static let liquidGlass = "appearance.liquidGlass"
         static let textScale = "appearance.textScale"
         static let equalizer = "audio.equalizer.enabled"
         static let preset = "audio.equalizer.preset"
@@ -261,6 +257,10 @@ final class AppSettings: ObservableObject {
             "audio.volume.pauseAtMinimum"
         static let advanceOnPlaybackError =
             "audio.playback.advanceOnError"
+    }
+
+    private enum LegacyKeys {
+        static let liquidGlass = "appearance.liquidGlass"
     }
 }
 

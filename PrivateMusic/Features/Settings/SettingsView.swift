@@ -32,20 +32,6 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Toggle(
-                    "Liquid Glass",
-                    isOn: $settings.liquidGlassEnabled
-                )
-                Text(
-                    L10n.text(
-                        "На iOS 26 используется системное интерактивное "
-                            + "стекло. На iOS 16–25 — совместимый эффект "
-                            + "системного материала."
-                    )
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
                 Button("Сбросить оформление") {
                     withAnimation(.easeInOut(duration: 0.25)) {
                         settings.resetAppearance()
