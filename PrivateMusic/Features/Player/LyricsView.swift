@@ -5,6 +5,7 @@ struct LyricsView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let track: Track
     @State private var lyrics: Lyrics?
     @State private var errorMessage: String?
@@ -78,16 +79,24 @@ struct LyricsView: View {
                                 if copiedLineID == line.id {
                                     Image(systemName: "checkmark")
                                         .foregroundStyle(.secondary)
+                                        .accessibilityHidden(true)
                                 }
                             }
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .id(line.id)
+                        .accessibilityLabel(line.text)
+                        .accessibilityHint(
+                            L10n.text("Перейти к этой строке")
+                        )
+                        .accessibilityAction(
+                            named: Text(L10n.text("Скопировать строку"))
+                        ) {
+                            copy(line)
+                        }
                         .onLongPressGesture {
-                            UIPasteboard.general.string = line.text
-                            copiedLineID = line.id
-                            Haptics.selection()
+                            copy(line)
                         }
                     }
                     source(lyrics).padding(.top, 18)
@@ -97,11 +106,18 @@ struct LyricsView: View {
             }
             .onChange(of: activeLineIndex(in: lyrics)) { index in
                 guard lyrics.lines.indices.contains(index) else { return }
-                withAnimation(.easeInOut(duration: 0.35)) {
+                if reduceMotion {
                     proxy.scrollTo(
                         lyrics.lines[index].id,
                         anchor: .center
                     )
+                } else {
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        proxy.scrollTo(
+                            lyrics.lines[index].id,
+                            anchor: .center
+                        )
+                    }
                 }
             }
         }
@@ -111,7 +127,7 @@ struct LyricsView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(L10n.format("Источник: %@", lyrics.source))
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
             geniusLink(
                 title: lyrics.source == "Genius"
                     ? "Открыть оригинал на Genius"
@@ -151,6 +167,16 @@ struct LyricsView: View {
             ? player.elapsedTime
             : 0
         return lyrics.lines.lastIndex { $0.time <= elapsed } ?? 0
+    }
+
+    private func copy(_ line: LyricLine) {
+        UIPasteboard.general.string = line.text
+        copiedLineID = line.id
+        Haptics.selection()
+        UIAccessibility.post(
+            notification: .announcement,
+            argument: L10n.text("Строка скопирована")
+        )
     }
 
     private func load() async {
