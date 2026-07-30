@@ -109,7 +109,7 @@ struct LyricsView: View {
 
     private func source(_ lyrics: Lyrics) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Источник: \(lyrics.source)")
+            Text(L10n.format("Источник: %@", lyrics.source))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             geniusLink(
@@ -129,7 +129,11 @@ struct LyricsView: View {
             destination: destination
                 ?? GeniusLyricsService.searchPageURL(for: track)
         ) {
-            Label(title, systemImage: "arrow.up.right")
+            Label {
+                Text(L10n.text(title))
+            } icon: {
+                Image(systemName: "arrow.up.right")
+            }
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.black)
                 .padding(.horizontal, 14)
@@ -150,16 +154,18 @@ struct LyricsView: View {
     }
 
     private func load() async {
-        guard let token = sessionStore.accessToken else {
+        guard sessionStore.accessToken != nil else {
             isLoading = false
             return
         }
         defer { isLoading = false }
         do {
-            lyrics = try await environment.musicService.lyrics(
-                for: track,
-                accessToken: token
-            )
+            lyrics = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.lyrics(
+                    for: track,
+                    accessToken: token
+                )
+            }
         } catch is CancellationError {
             return
         } catch {

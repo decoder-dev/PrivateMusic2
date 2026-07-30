@@ -28,8 +28,15 @@ final class MusicLibraryStore: ObservableObject {
 
     func markRemoved(_ track: Track) {
         let signature = Self.signature(track)
+        let storedID = tracksBySignature[signature]?.id ?? track.id
+        let aliases = tracksBySignature.compactMap { key, stored in
+            key == signature || stored.id == storedID ? key : nil
+        }
+        for alias in aliases {
+            signatures.remove(alias)
+            tracksBySignature.removeValue(forKey: alias)
+        }
         signatures.remove(signature)
-        tracksBySignature.removeValue(forKey: signature)
     }
 
     func storedTrack(for track: Track) -> Track? {

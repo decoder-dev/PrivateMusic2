@@ -59,7 +59,7 @@ struct ConnectView: View {
             VStack(spacing: 5) {
                 Text("Private Music")
                     .font(.system(size: 34, weight: .bold))
-                Text("Вся ваша музыка VK в одном плеере")
+                Text("Музыка из вашей медиатеки VK в одном плеере")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -73,8 +73,7 @@ struct ConnectView: View {
                 Text("Подключите VK")
                     .font(.title3.bold())
                 Text(
-                    "Вход откроется на странице VK и обычно занимает "
-                        + "меньше минуты."
+                    "Вход откроется на официальной странице VK."
                 )
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -83,7 +82,10 @@ struct ConnectView: View {
             VStack(alignment: .leading, spacing: 12) {
                 benefit("phone.fill", "Вход по номеру телефона")
                 benefit("lock.shield.fill", "Пароль остаётся на стороне VK")
-                benefit("key.fill", "Токен хранится в защищённом Keychain")
+                benefit(
+                    "key.fill",
+                    "Данные сессии хранятся в системном Keychain"
+                )
             }
 
             Button {
@@ -96,9 +98,11 @@ struct ConnectView: View {
                         Image(systemName: "person.crop.circle.badge.checkmark")
                     }
                     Text(
-                        isConnecting
-                            ? "Подключаем аккаунт…"
-                            : "Продолжить с VK"
+                        L10n.text(
+                            isConnecting
+                                ? "Подключаем аккаунт…"
+                                : "Продолжить с VK"
+                        )
                     )
                 }
                 .frame(maxWidth: .infinity)
@@ -112,7 +116,7 @@ struct ConnectView: View {
 
     private func benefit(_ icon: String, _ title: String) -> some View {
         Label {
-            Text(title)
+            Text(L10n.text(title))
                 .font(.subheadline)
         } icon: {
             Image(systemName: icon)
@@ -126,9 +130,12 @@ struct ConnectView: View {
             Image(systemName: "checkmark.shield")
                 .foregroundStyle(.green)
             Text(
-                "Private Music не читает поля формы входа, не сохраняет "
-                    + "пароль и не отправляет данные авторизации на свой сервер. "
-                    + "Сессия хранится только в системном Keychain."
+                L10n.text(
+                    "Private Music не читает поля формы входа и не отправляет "
+                        + "пароль или код подтверждения на собственный сервер. "
+                        + "Полученные данные сессии сохраняются в системном "
+                        + "Keychain этого устройства."
+                )
             )
             .font(.caption)
             .foregroundStyle(.secondary)

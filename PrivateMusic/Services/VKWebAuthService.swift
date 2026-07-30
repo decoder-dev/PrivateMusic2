@@ -17,13 +17,17 @@ enum VKWebAuthError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noSession:
-            return "Сначала завершите вход по номеру телефона на странице VK."
+            return L10n.text(
+                "Сначала завершите вход по номеру телефона на странице VK."
+            )
         case let .rejected(message):
             return message.isEmpty
-                ? "VK не подтвердил веб-сессию."
+                ? L10n.text("VK не подтвердил веб-сессию.")
                 : message
         case .invalidResponse:
-            return "VK вернул некорректный ответ авторизации."
+            return L10n.text(
+                "VK вернул некорректный ответ авторизации."
+            )
         }
     }
 }
@@ -45,7 +49,11 @@ struct VKWebAuthService: Sendable {
         let cleanedCookies = cookieHeader.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
-        guard !cleanedCookies.isEmpty else {
+        let cleanedWebUserAgent = webUserAgent.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !cleanedCookies.isEmpty,
+              !cleanedWebUserAgent.isEmpty else {
             throw VKWebAuthError.noSession
         }
 
@@ -79,7 +87,7 @@ struct VKWebAuthService: Sendable {
             forHTTPHeaderField: "Cookie"
         )
         request.setValue(
-            webUserAgent.trimmingCharacters(in: .whitespacesAndNewlines),
+            cleanedWebUserAgent,
             forHTTPHeaderField: "User-Agent"
         )
         request.httpBody = "version=1&app_id=\(webClientID)"
@@ -117,7 +125,7 @@ struct VKWebAuthService: Sendable {
                         responseHeaders: headers,
                         url: tokenURL
                     ),
-                    webUserAgent: webUserAgent
+                    webUserAgent: cleanedWebUserAgent
                 )
             } catch is CancellationError {
                 throw CancellationError()

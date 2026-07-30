@@ -18,6 +18,7 @@ struct PlayerView: View {
     @State private var isPreparingShare = false
     @State private var isInLibrary = false
     @State private var isUpdatingLibrary = false
+    @State private var scrubPosition: TimeInterval?
     private let shareService = TrackShareService()
 
     var body: some View {
@@ -84,6 +85,7 @@ struct PlayerView: View {
         .onChange(of: player.currentTrack?.id) { _ in
             shareTask?.cancel()
             shareTask = nil
+            scrubPosition = nil
             updateLibraryState()
             isUpdatingLibrary = false
             showingActionPanel = false
@@ -216,8 +218,10 @@ struct PlayerView: View {
                 )
                 .gesture(artworkGesture)
                 .accessibilityHint(
-                    "Свайп в стороны меняет трек, вверх открывает очередь, "
-                        + "вниз закрывает плеер"
+                    L10n.text(
+                        "Свайп в стороны меняет трек, вверх открывает очередь, "
+                            + "вниз закрывает плеер"
+                    )
                 )
                 .padding(
                     .top,
@@ -281,15 +285,19 @@ struct PlayerView: View {
             VStack(spacing: 3) {
                 CompactPlayerSlider(
                     value: Binding(
-                        get: { player.elapsedTime },
-                        set: { player.seek(to: $0) }
+                        get: { displayedElapsedTime },
+                        set: { scrubPosition = $0 }
                     ),
-                    range: 0...max(player.duration, 1)
+                    range: 0...max(player.duration, 1),
+                    onEditingBegan: {
+                        scrubPosition = player.elapsedTime
+                    },
+                    onCommit: commitScrubbing
                 )
                 .frame(height: 20)
                 .accessibilityLabel("Позиция воспроизведения")
                 HStack {
-                    Text(player.elapsedTime.formattedDuration)
+                    Text(displayedElapsedTime.formattedDuration)
                     Spacer()
                     Text("-\(remainingTime.formattedDuration)")
                 }
@@ -377,7 +385,7 @@ struct PlayerView: View {
                 setActionPanelPresented(false)
                 present(.settings)
             }
-            Text("Качество: автоматически VK")
+            Text(L10n.text("Качество: автоматически VK"))
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.42))
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -404,7 +412,11 @@ struct PlayerView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
+            Label {
+                Text(L10n.text(title))
+            } icon: {
+                Image(systemName: systemImage)
+            }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .frame(height: 48)
@@ -502,7 +514,7 @@ struct PlayerView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .frame(width: 36, height: 34)
                     .background(.white.opacity(0.07), in: Circle())
-                Text(title)
+                Text(L10n.text(title))
                     .font(.system(size: 10, weight: .semibold))
                     .lineLimit(1)
             }
@@ -528,11 +540,20 @@ struct PlayerView: View {
                 .frame(width: 44, height: 44)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(label)
+        .accessibilityLabel(L10n.text(label))
     }
 
     private var remainingTime: TimeInterval {
-        max(player.duration - player.elapsedTime, 0)
+        max(player.duration - displayedElapsedTime, 0)
+    }
+
+    private var displayedElapsedTime: TimeInterval {
+        scrubPosition ?? player.elapsedTime
+    }
+
+    private func commitScrubbing(_ position: TimeInterval) {
+        player.seek(to: position)
+        scrubPosition = nil
     }
 
     @ViewBuilder
@@ -585,7 +606,11 @@ struct PlayerView: View {
               !player.queue.isEmpty else {
             return "PRIVATE MUSIC"
         }
-        return "\(currentIndex + 1) ИЗ \(player.queue.count)"
+        return L10n.format(
+            "%d ИЗ %d",
+            currentIndex + 1,
+            player.queue.count
+        )
     }
 
     private var artworkGesture: some Gesture {
@@ -613,17 +638,21 @@ struct PlayerView: View {
     }
 
     private func prepareShare(_ track: Track) async {
-        guard let token = sessionStore.accessToken else {
-            player.errorMessage = "Войдите во VK, чтобы экспортировать песню."
+        guard sessionStore.accessToken != nil else {
+            player.errorMessage = L10n.text(
+                "Войдите во VK, чтобы экспортировать песню."
+            )
             return
         }
         isPreparingShare = true
         defer { isPreparingShare = false }
         do {
-            let refreshed = try await environment.musicService.refreshedTrack(
-                track,
-                accessToken: token
-            )
+            let refreshed = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.refreshedTrack(
+                    track,
+                    accessToken: token
+                )
+            }
             guard !Task.isCancelled,
                   player.currentTrack?.id == track.id else {
                 return
@@ -646,9 +675,10 @@ struct PlayerView: View {
         } catch is CancellationError {
             return
         } catch {
-            player.errorMessage =
+            player.errorMessage = L10n.text(
                 "Не удалось экспортировать песню. Обновите сессию VK "
-                + "или попробуйте ещё раз."
+                    + "или попробуйте ещё раз."
+            )
         }
     }
 
@@ -668,7 +698,7 @@ struct PlayerView: View {
 
     private func toggleLibrary(_ track: Track) {
         guard !isUpdatingLibrary,
-              let token = sessionStore.accessToken else {
+              sessionStore.accessToken != nil else {
             return
         }
         let removing = isInLibrary
@@ -678,10 +708,12 @@ struct PlayerView: View {
             do {
                 if removing {
                     let stored = libraryStore.storedTrack(for: track) ?? track
-                    try await environment.musicService.removeFromLibrary(
-                        stored,
-                        accessToken: token
-                    )
+                    try await environment.withAuthorizedToken { token in
+                        try await environment.musicService.removeFromLibrary(
+                            stored,
+                            accessToken: token
+                        )
+                    }
                     libraryStore.markRemoved(track)
                     libraryStore.markRemoved(stored)
                     MusicLibraryEvents.postRemoved(stored)
@@ -689,10 +721,13 @@ struct PlayerView: View {
                         isInLibrary = false
                     }
                 } else {
-                    let added = try await environment.musicService.addToLibrary(
-                        track,
-                        accessToken: token
-                    )
+                    let added = try await environment.withAuthorizedToken {
+                        token in
+                        try await environment.musicService.addToLibrary(
+                            track,
+                            accessToken: token
+                        )
+                    }
                     libraryStore.markAdded(source: track, stored: added)
                     MusicLibraryEvents.postAdded(added)
                     if player.currentTrack?.id == track.id {
@@ -703,9 +738,12 @@ struct PlayerView: View {
             } catch is CancellationError {
                 return
             } catch {
-                let action = removing ? "удалить" : "добавить"
-                player.errorMessage = "Не удалось \(action) трек: "
-                    + error.localizedDescription
+                player.errorMessage = L10n.format(
+                    removing
+                        ? "Не удалось удалить трек: %@"
+                        : "Не удалось добавить трек: %@",
+                    error.localizedDescription
+                )
             }
         }
     }
@@ -767,6 +805,8 @@ private struct AirPlayRoutePicker: UIViewRepresentable {
 private struct CompactPlayerSlider: UIViewRepresentable {
     @Binding var value: TimeInterval
     let range: ClosedRange<TimeInterval>
+    let onEditingBegan: () -> Void
+    let onCommit: (TimeInterval) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -783,6 +823,16 @@ private struct CompactPlayerSlider: UIViewRepresentable {
             context.coordinator,
             action: #selector(Coordinator.valueChanged(_:)),
             for: .valueChanged
+        )
+        slider.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.editingBegan(_:)),
+            for: .touchDown
+        )
+        slider.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.editingEnded(_:)),
+            for: [.touchUpInside, .touchUpOutside, .touchCancel]
         )
         return slider
     }
@@ -830,7 +880,24 @@ private struct CompactPlayerSlider: UIViewRepresentable {
 
         @objc
         func valueChanged(_ slider: UISlider) {
+            if !slider.isTracking {
+                parent.onEditingBegan()
+            }
             parent.value = TimeInterval(slider.value)
+            if !slider.isTracking {
+                parent.onCommit(TimeInterval(slider.value))
+            }
+        }
+
+        @objc
+        func editingBegan(_ slider: UISlider) {
+            parent.onEditingBegan()
+        }
+
+        @objc
+        func editingEnded(_ slider: UISlider) {
+            parent.value = TimeInterval(slider.value)
+            parent.onCommit(TimeInterval(slider.value))
         }
     }
 }

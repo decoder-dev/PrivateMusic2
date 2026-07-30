@@ -96,10 +96,10 @@ struct PremiumSectionHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title)
+            Text(L10n.text(title))
                 .font(.title2.weight(.bold))
             if let subtitle {
-                Text(subtitle)
+                Text(L10n.text(subtitle))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }

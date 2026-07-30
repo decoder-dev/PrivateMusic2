@@ -75,6 +75,8 @@ final class AudioPlayer: ObservableObject {
     private var loadedTrackID: String?
     private var resumeOnBluetoothConnection = true
     private var pauseAtMinimumVolume = true
+    private var advanceOnPlaybackError = true
+    private var lastNowPlayingSecond = -1
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -94,6 +96,7 @@ final class AudioPlayer: ObservableObject {
         self.streamUserAgent = userAgent
         resumeOnBluetoothConnection = settings.resumeOnBluetoothConnection
         pauseAtMinimumVolume = settings.pauseAtMinimumVolume
+        advanceOnPlaybackError = settings.advanceOnPlaybackError
         shuffleEnabled = defaults.bool(forKey: "player.shuffle")
         repeatMode = RepeatMode(
             rawValue: defaults.string(forKey: "player.repeat") ?? ""
@@ -127,6 +130,11 @@ final class AudioPlayer: ObservableObject {
                 self.handleOutputVolume(
                     AVAudioSession.sharedInstance().outputVolume
                 )
+            }
+            .store(in: &cancellables)
+        settings.$advanceOnPlaybackError
+            .sink { [weak self] enabled in
+                self?.advanceOnPlaybackError = enabled
             }
             .store(in: &cancellables)
         restorePlayback()
@@ -269,7 +277,7 @@ final class AudioPlayer: ObservableObject {
         guard activateAudioSession() else { return }
         player.play()
         isPlaying = true
-        publishPlaybackState()
+        publishPlaybackState(force: true)
         handleOutputVolume(
             AVAudioSession.sharedInstance().outputVolume
         )
@@ -278,7 +286,7 @@ final class AudioPlayer: ObservableObject {
     func pause() {
         player.pause()
         isPlaying = false
-        publishPlaybackState()
+        publishPlaybackState(force: true)
     }
 
     func next() {
@@ -328,11 +336,14 @@ final class AudioPlayer: ObservableObject {
         player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
         elapsedTime = targetSeconds
         persistPlayback()
-        publishPlaybackState()
+        publishPlaybackState(force: true)
     }
 
     func stop() {
         playbackGeneration += 1
+        sleepTask?.cancel()
+        sleepTask = nil
+        sleepTimerEndDate = nil
         cancelContinuation()
         cancelStreamRefresh()
         player.pause()
@@ -350,6 +361,7 @@ final class AudioPlayer: ObservableObject {
         didAttemptStreamRefresh = false
         restoredTrackIDs.removeAll()
         nowPlaying.clear()
+        lastNowPlayingSecond = -1
         defaults.removeObject(forKey: PlaybackSnapshot.key)
         try? AVAudioSession.sharedInstance().setActive(
             false,
@@ -374,10 +386,22 @@ final class AudioPlayer: ObservableObject {
     ) {
         guard let track = currentTrack else { return }
         guard let url = track.streamURL else {
+            if streamRefreshProvider != nil {
+                if !didAttemptStreamRefresh {
+                    requiresStreamRefresh = true
+                    refreshCurrentStream(autoplay: autoplay)
+                    return
+                }
+                if advancePastFailedTrackIfPossible() {
+                    return
+                }
+            }
             loadedTrackID = track.id
             elapsedTime = 0
             duration = track.duration
-            errorMessage = "Для этого трека отсутствует доступный аудиопоток."
+            errorMessage = L10n.text(
+                "Для этого трека отсутствует доступный аудиопоток."
+            )
             isPlaying = false
             nowPlaying.update(track: track, elapsedTime: 0, rate: 0)
             return
@@ -478,17 +502,19 @@ final class AudioPlayer: ObservableObject {
 
     private func activateAudioSession() -> Bool {
         guard audioSessionConfigured || configureAudioSession() else {
-            errorMessage =
+            errorMessage = L10n.text(
                 "Не удалось подготовить фоновое воспроизведение."
+            )
             return false
         }
         do {
             try AVAudioSession.sharedInstance().setActive(true, options: [])
             return true
         } catch {
-            errorMessage =
+            errorMessage = L10n.text(
                 "Не удалось включить звук. Закройте другое аудиоприложение "
-                + "и повторите попытку."
+                    + "и повторите попытку."
+            )
             return false
         }
     }
@@ -641,7 +667,7 @@ final class AudioPlayer: ObservableObject {
         switch type {
         case .began:
             isPlaying = false
-            publishPlaybackState()
+            publishPlaybackState(force: true)
         case .ended:
             let rawOptions = notification.userInfo?[
                 AVAudioSessionInterruptionOptionKey
@@ -707,7 +733,10 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    private func publishPlaybackState() {
+    private func publishPlaybackState(force: Bool = false) {
+        let second = Int(elapsedTime.rounded(.down))
+        guard force || second != lastNowPlayingSecond else { return }
+        lastNowPlayingSecond = second
         nowPlaying.updatePlayback(
             elapsedTime: elapsedTime,
             rate: isPlaying ? 1 : 0
@@ -715,17 +744,64 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func handleItemFailure(_ error: Error?) {
-        publishPlaybackState()
+        publishPlaybackState(force: true)
         if !didAttemptStreamRefresh, streamRefreshProvider != nil {
             refreshCurrentStream(autoplay: true)
             return
         }
+        if advancePastFailedTrackIfPossible() {
+            return
+        }
         let urlError = error as? URLError
-        errorMessage = urlError?.code == .cancelled
-            ? "Аудиопоток был прерван. Повторите воспроизведение."
-            : "Не удалось воспроизвести этот трек. "
-                + "Проверьте подключение и попробуйте ещё раз."
+        errorMessage = L10n.text(
+            urlError?.code == .cancelled
+                ? "Аудиопоток был прерван. Повторите воспроизведение."
+                : "Не удалось воспроизвести этот трек. "
+                    + "Проверьте подключение и попробуйте ещё раз."
+        )
         Haptics.error()
+    }
+
+    @discardableResult
+    private func advancePastFailedTrackIfPossible() -> Bool {
+        guard advanceOnPlaybackError,
+              let currentIndex,
+              !queue.isEmpty else {
+            return false
+        }
+
+        if currentIndex + 1 < queue.count {
+            cancelContinuation()
+            cancelStreamRefresh()
+            requiresStreamRefresh = false
+            didAttemptStreamRefresh = false
+            self.currentIndex = currentIndex + 1
+            errorMessage = nil
+            resetProgressForTrackTransition()
+            persistPlayback()
+            loadCurrentAndPlay()
+            return true
+        }
+
+        if activeContinuationProvider != nil {
+            errorMessage = nil
+            startContinuationIfNeeded()
+            return true
+        }
+
+        guard repeatMode == .all, queue.count > 1 else {
+            return false
+        }
+        cancelContinuation()
+        cancelStreamRefresh()
+        requiresStreamRefresh = false
+        didAttemptStreamRefresh = false
+        self.currentIndex = 0
+        errorMessage = nil
+        resetProgressForTrackTransition()
+        persistPlayback()
+        loadCurrentAndPlay()
+        return true
     }
 
     private func refreshCurrentStream(autoplay: Bool) {
@@ -772,10 +848,13 @@ final class AudioPlayer: ObservableObject {
                 self.streamRefreshTask = nil
                 self.isBuffering = false
                 self.isPlaying = false
-                self.errorMessage =
-                    "Не удалось обновить ссылку на аудиопоток. "
-                    + "Проверьте сессию VK и подключение."
-                self.publishPlaybackState()
+                if !self.advancePastFailedTrackIfPossible() {
+                    self.errorMessage = L10n.text(
+                        "Не удалось обновить ссылку на аудиопоток. "
+                            + "Проверьте подключение и повторите попытку."
+                    )
+                    self.publishPlaybackState(force: true)
+                }
             }
         }
     }
@@ -819,21 +898,29 @@ final class AudioPlayer: ObservableObject {
             return
         }
         do {
-            let existing = Set(queue.map(\.id))
-            var discovered = Set<String>()
-            let proposed = try await continuationTracks(
-                from: continuationProvider
-            )
-            guard !Task.isCancelled,
-                  generation == continuationGeneration,
-                  currentIndex == sourceIndex else {
-                return
-            }
-            let additions = proposed.filter {
-                !existing.contains($0.id)
-                    && discovered.insert($0.id).inserted
+            var additions: [Track] = []
+            for attempt in 0..<3 {
+                let proposed = try await continuationTracks(
+                    from: continuationProvider
+                )
+                guard !Task.isCancelled,
+                      generation == continuationGeneration,
+                      currentIndex == sourceIndex else {
+                    return
+                }
+                additions = PlaybackQueueBuilder.uniqueAdditions(
+                    existing: queue,
+                    candidates: proposed
+                )
+                if !additions.isEmpty {
+                    break
+                }
+                if attempt < 2 {
+                    try await Task.sleep(for: .milliseconds(180))
+                }
             }
             guard !additions.isEmpty else {
+                isBuffering = false
                 pause()
                 return
             }
@@ -848,9 +935,11 @@ final class AudioPlayer: ObservableObject {
             return
         } catch let error as APIError
             where error == .unauthorized || error.isConnectivityFailure {
+            isBuffering = false
             pause()
             return
         } catch {
+            isBuffering = false
             pause()
             return
         }
@@ -891,6 +980,7 @@ final class AudioPlayer: ObservableObject {
         elapsedTime = 0
         duration = currentTrack?.duration ?? 0
         lastPersistedSecond = -1
+        lastNowPlayingSecond = -1
     }
 
     private func restorePlayback() {
@@ -906,8 +996,11 @@ final class AudioPlayer: ObservableObject {
         restoredTrackIDs = Set(snapshot.queue.map(\.id))
         currentIndex = snapshot.currentIndex
         loadedTrackID = nil
-        elapsedTime = max(snapshot.elapsedTime, 0)
         duration = currentTrack?.duration ?? 0
+        let restoredPosition = max(snapshot.elapsedTime, 0)
+        elapsedTime = duration > 0
+            ? min(restoredPosition, duration)
+            : restoredPosition
         requiresStreamRefresh = true
         if let track = currentTrack {
             nowPlaying.update(

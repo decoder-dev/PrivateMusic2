@@ -4,6 +4,8 @@ struct SearchView: View {
     private enum Scope: String, CaseIterable {
         case tracks = "Треки"
         case artists = "Исполнители"
+
+        var title: String { L10n.text(rawValue) }
     }
 
     @EnvironmentObject private var environment: AppEnvironment
@@ -29,13 +31,16 @@ struct SearchView: View {
                 EmptyStateView(
                     title: "Ничего не найдено",
                     systemImage: "magnifyingglass",
-                    description: "По запросу «\(model.query)» нет результатов."
+                    description: L10n.format(
+                        "По запросу «%@» нет результатов.",
+                        model.query
+                    )
                 )
             } else {
                 VStack(spacing: 0) {
                     Picker("Тип поиска", selection: $scope) {
                         ForEach(Scope.allCases, id: \.self) {
-                            Text($0.rawValue).tag($0)
+                            Text($0.title).tag($0)
                         }
                     }
                     .pickerStyle(.segmented)
@@ -58,9 +63,11 @@ struct SearchView: View {
                                         add(track)
                                     } label: {
                                         Label(
-                                            libraryStore.contains(track)
-                                                ? "Добавлено"
-                                                : "В медиатеку",
+                                            L10n.text(
+                                                libraryStore.contains(track)
+                                                    ? "Добавлено"
+                                                    : "В медиатеку"
+                                            ),
                                             systemImage:
                                                 libraryStore.contains(track)
                                                 ? "checkmark"
@@ -95,11 +102,17 @@ struct SearchView: View {
         .navigationTitle("Поиск")
         .searchable(text: $model.query, prompt: "Треки и исполнители")
         .onChange(of: model.query) { _ in
-            guard let token = sessionStore.accessToken else { return }
-            model.schedule(
-                service: environment.musicService,
-                accessToken: token
-            )
+            guard sessionStore.accessToken != nil else { return }
+            model.schedule { query, offset, count in
+                try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.search(
+                        query: query,
+                        accessToken: token,
+                        offset: offset,
+                        count: count
+                    )
+                }
+            }
         }
     }
 
@@ -168,12 +181,18 @@ struct SearchView: View {
     }
 
     private func loadMore() {
-        guard let token = sessionStore.accessToken else { return }
+        guard sessionStore.accessToken != nil else { return }
         Task {
-            await model.loadMore(
-                service: environment.musicService,
-                accessToken: token
-            )
+            await model.loadMore { query, offset, count in
+                try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.search(
+                        query: query,
+                        accessToken: token,
+                        offset: offset,
+                        count: count
+                    )
+                }
+            }
         }
     }
 }

@@ -15,7 +15,11 @@ struct PlaylistArtworkView: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
-                "\(playlist.title), импортировано из \(playlist.source.title)"
+                L10n.format(
+                    "%@, импортировано из %@",
+                    playlist.title,
+                    playlist.source.title
+                )
             )
     }
 

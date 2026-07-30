@@ -5,7 +5,7 @@ enum PlaylistSource: String, Codable, Hashable, Sendable {
 
     var title: String {
         switch self {
-        case .vk: "VK Музыка"
+        case .vk: L10n.text("VK Музыка")
         }
     }
 

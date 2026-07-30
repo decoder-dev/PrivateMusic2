@@ -22,7 +22,7 @@ struct VKWebLoginView: View {
                             .opacity(0.82)
                         VStack(spacing: 12) {
                             ProgressView()
-                            Text("Открываем защищённую страницу VK…")
+                            Text("Открываем страницу VK…")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -94,15 +94,20 @@ struct VKWebLoginView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(
-                    isCompleting
-                        ? "Подтверждаем вход…"
-                        : "Официальная страница VK"
+                    L10n.text(
+                        isCompleting
+                            ? "Подтверждаем вход…"
+                            : "Официальная страница VK"
+                    )
                 )
                 .font(.subheadline.weight(.semibold))
                 Text(
-                    isCompleting
-                        ? "Обычно это занимает несколько секунд"
-                        : "Private Music не получает пароль и код из SMS"
+                    L10n.text(
+                        isCompleting
+                            ? "Проверяем данные сессии"
+                            : "Private Music не получает пароль и код "
+                                + "подтверждения"
+                    )
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -171,7 +176,7 @@ struct VKWebLoginView: View {
                 .frame(width: 32, height: 32)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(label)
+        .accessibilityLabel(L10n.text(label))
     }
 
     @MainActor

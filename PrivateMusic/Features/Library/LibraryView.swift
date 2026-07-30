@@ -133,7 +133,7 @@ struct LibraryView: View {
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
-                                Text("\(playlist.count) треков")
+                                Text(L10n.trackCount(playlist.count))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -245,45 +245,78 @@ struct LibraryView: View {
     }
 
     private func load(force: Bool = false) async {
-        guard let token = sessionStore.accessToken else { return }
+        guard sessionStore.accessToken != nil else { return }
         tracks.configure(service: environment.musicService)
-        await tracks.load(accessToken: token, force: force)
+        await tracks.load(force: force) {
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.library(
+                    accessToken: token,
+                    offset: 0,
+                    count: 100
+                )
+            }
+        }
         libraryStore.replace(with: tracks.tracks)
-        await playlists.load(
-            service: environment.musicService,
-            accessToken: token,
-            force: force
-        )
+        await playlists.load(force: force) {
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.playlists(
+                    accessToken: token,
+                    offset: 0,
+                    count: 100
+                )
+            }
+        }
     }
 
     private func loadTracks(force: Bool) async {
-        guard let token = sessionStore.accessToken else { return }
+        guard sessionStore.accessToken != nil else { return }
         tracks.configure(service: environment.musicService)
-        await tracks.load(accessToken: token, force: force)
+        await tracks.load(force: force) {
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.library(
+                    accessToken: token,
+                    offset: 0,
+                    count: 100
+                )
+            }
+        }
         libraryStore.replace(with: tracks.tracks)
     }
 
     private func loadMoreIfNeeded(after track: Track) {
         guard track.id == tracks.tracks.last?.id,
-              let token = sessionStore.accessToken else {
+              sessionStore.accessToken != nil else {
             return
         }
         Task {
-            await tracks.loadMore(accessToken: token)
+            await tracks.loadMore { offset in
+                try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.library(
+                        accessToken: token,
+                        offset: offset,
+                        count: 100
+                    )
+                }
+            }
             libraryStore.replace(with: tracks.tracks)
         }
     }
 
     private func loadMorePlaylistsIfNeeded(after playlist: Playlist) {
         guard playlist.id == playlists.playlists.last?.id,
-              let token = sessionStore.accessToken else {
+              sessionStore.accessToken != nil else {
             return
         }
         Task {
-            await playlists.loadMore(
-                service: environment.musicService,
-                accessToken: token
-            )
+            await playlists.loadMore { offset in
+                try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.playlists(
+                        accessToken: token,
+                        offset: offset,
+                        count: 100
+                    )
+                }
+            }
         }
     }
 }

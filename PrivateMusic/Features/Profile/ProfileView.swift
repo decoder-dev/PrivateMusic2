@@ -57,7 +57,13 @@ struct ProfileView: View {
             }
             Button("Отмена", role: .cancel) {}
         } message: {
-            Text("Для повторного подключения потребуется вход в VK.")
+            Text(
+                L10n.text(
+                    "После выхода сохранённая сессия будет удалена с этого "
+                        + "устройства. Для подключения потребуется снова "
+                        + "войти в VK."
+                )
+            )
         }
     }
 
@@ -71,7 +77,10 @@ struct ProfileView: View {
         HStack(spacing: 16) {
             AsyncArtwork(url: sessionStore.profile?.photoURL, size: 76)
             VStack(alignment: .leading, spacing: 4) {
-                Text(sessionStore.profile?.displayName ?? "Слушатель")
+                Text(
+                    sessionStore.profile?.displayName
+                        ?? L10n.text("Слушатель")
+                )
                     .font(.title3.bold())
                 Text("Private Music")
                     .foregroundStyle(.secondary)
@@ -92,8 +101,8 @@ struct ProfileView: View {
             )
             Divider().padding(.leading, 54)
             linkButton(
-                title: "Быстрый VPN",
-                subtitle: "Стабильное подключение",
+                title: "VPN",
+                subtitle: "Открыть Telegram-бота",
                 icon: "lock.fill",
                 url: environment.configuration.telegramVPNURL
             )
@@ -116,9 +125,9 @@ struct ProfileView: View {
                     .frame(width: 28)
                     .foregroundStyle(Brand.accent)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
+                    Text(L10n.text(title))
                         .foregroundStyle(.primary)
-                    Text(subtitle)
+                    Text(L10n.text(subtitle))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

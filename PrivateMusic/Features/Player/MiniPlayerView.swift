@@ -97,7 +97,6 @@ struct MiniPlayerView: View {
             }
             .shadow(color: .black.opacity(0.24), radius: 12, y: 6)
             .frame(height: 58)
-            .id(track.id)
             .transition(
                 .asymmetric(
                     insertion: .opacity.combined(

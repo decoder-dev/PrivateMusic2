@@ -36,7 +36,9 @@ struct PlaylistEditorView: View {
             .scrollContentBackground(.hidden)
             .background(ThemeBackground())
             .navigationTitle(
-                playlist == nil ? "Новый плейлист" : "Редактирование"
+                L10n.text(
+                    playlist == nil ? "Новый плейлист" : "Редактирование"
+                )
             )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -45,7 +47,9 @@ struct PlaylistEditorView: View {
                         .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Сохраняем…" : "Сохранить") {
+                    Button(
+                        L10n.text(isSaving ? "Сохраняем…" : "Сохранить")
+                    ) {
                         Task { await save() }
                     }
                     .disabled(

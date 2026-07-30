@@ -67,7 +67,10 @@ struct CatalogView: View {
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
                     .tracking(0.7)
-                Text(sessionStore.profile?.firstName ?? "Слушатель")
+                Text(
+                    sessionStore.profile?.firstName
+                        ?? L10n.text("Слушатель")
+                )
                     .font(.title2.weight(.bold))
                     .lineLimit(1)
             }
@@ -82,10 +85,10 @@ struct CatalogView: View {
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
         return switch hour {
-        case 5..<12: "Доброе утро"
-        case 12..<18: "Добрый день"
-        case 18..<23: "Добрый вечер"
-        default: "Доброй ночи"
+        case 5..<12: L10n.text("Доброе утро")
+        case 12..<18: L10n.text("Добрый день")
+        case 18..<23: L10n.text("Добрый вечер")
+        default: L10n.text("Доброй ночи")
         }
     }
 
@@ -244,7 +247,10 @@ struct CatalogView: View {
         VStack(alignment: .leading, spacing: 14) {
             PremiumSectionHeader(
                 "Ваши плейлисты",
-                subtitle: "\(playlists.count) в медиатеке"
+                subtitle: L10n.format(
+                    "%@ в медиатеке",
+                    L10n.playlistCount(playlists.count)
+                )
             )
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 14) {
@@ -262,8 +268,11 @@ struct CatalogView: View {
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
                                 Text(
-                                    "\(playlist.count) треков • "
-                                        + playlist.source.shortTitle
+                                    L10n.format(
+                                        "%@ • %@",
+                                        L10n.trackCount(playlist.count),
+                                        playlist.source.shortTitle
+                                    )
                                 )
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -314,7 +323,10 @@ struct CatalogView: View {
                 .font(.system(size: 40, weight: .medium))
             Text("Музыка пока недоступна")
                 .font(.title3.bold())
-            Text(errorMessage ?? "VK не вернул рекомендации и миксы.")
+            Text(
+                errorMessage
+                    ?? L10n.text("VK не вернул рекомендации и миксы.")
+            )
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -342,34 +354,42 @@ struct CatalogView: View {
     }
 
     private func start(_ mix: MusicMix) {
-        guard let token = sessionStore.accessToken else { return }
+        guard sessionStore.accessToken != nil else { return }
         loadingMixID = mix.id
         Task {
             defer { loadingMixID = nil }
             do {
-                let tracks = try await environment.musicService.mixTracks(
-                    mix,
-                    accessToken: token
-                )
-                guard let first = tracks.first else { return }
-                player.play(first, in: tracks) {
+                let tracks = try await environment.withAuthorizedToken {
+                    token in
                     try await environment.musicService.mixTracks(
                         mix,
                         accessToken: token
                     )
                 }
+                guard let first = tracks.first else { return }
+                player.play(first, in: tracks) {
+                    try await environment.withAuthorizedToken { token in
+                        try await environment.musicService.mixTracks(
+                            mix,
+                            accessToken: token
+                        )
+                    }
+                }
                 errorMessage = nil
             } catch is CancellationError {
                 return
             } catch {
-                errorMessage = "Не удалось запустить «\(mix.title)»: "
-                    + error.localizedDescription
+                errorMessage = L10n.format(
+                    "Не удалось запустить «%@»: %@",
+                    mix.title,
+                    error.localizedDescription
+                )
             }
         }
     }
 
     private func load(force: Bool = false) async {
-        guard let token = sessionStore.accessToken,
+        guard sessionStore.accessToken != nil,
               force || contentIsEmpty else {
             isLoading = false
             return
@@ -379,34 +399,51 @@ struct CatalogView: View {
         var failures: [String] = []
 
         do {
-            recommendations = try await environment.musicService
-                .recommendations(accessToken: token)
+            recommendations = try await environment.withAuthorizedToken {
+                token in
+                try await environment.musicService.recommendations(
+                    accessToken: token
+                )
+            }
         } catch is CancellationError {
             return
         } catch {
-            failures.append("Рекомендации: \(error.localizedDescription)")
-        }
-
-        do {
-            mixes = try await environment.musicService.mixes(
-                accessToken: token
+            failures.append(
+                L10n.format(
+                    "Рекомендации: %@",
+                    error.localizedDescription
+                )
             )
-        } catch is CancellationError {
-            return
-        } catch {
-            failures.append("Миксы: \(error.localizedDescription)")
         }
 
         do {
-            playlists = try await environment.musicService.playlists(
-                accessToken: token,
-                offset: 0,
-                count: 30
-            ).items
+            mixes = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.mixes(
+                    accessToken: token
+                )
+            }
         } catch is CancellationError {
             return
         } catch {
-            failures.append("Плейлисты: \(error.localizedDescription)")
+            failures.append(
+                L10n.format("Миксы: %@", error.localizedDescription)
+            )
+        }
+
+        do {
+            playlists = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.playlists(
+                    accessToken: token,
+                    offset: 0,
+                    count: 30
+                )
+            }.items
+        } catch is CancellationError {
+            return
+        } catch {
+            failures.append(
+                L10n.format("Плейлисты: %@", error.localizedDescription)
+            )
         }
 
         errorMessage = failures.first

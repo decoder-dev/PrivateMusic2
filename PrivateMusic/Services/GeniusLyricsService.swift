@@ -63,21 +63,27 @@ struct GeniusLyricsService: Sendable {
                     && $0.url != nil
                     && $0.primaryArtist != nil
             }
-        let normalizedArtist = Self.normalized(track.artist)
-        let normalizedTitle = Self.normalized(track.title)
-        let match = candidates.first {
-            let artist = Self.normalized($0.primaryArtist?.name ?? "")
-            let title = Self.normalized($0.title ?? "")
-            return artist.contains(normalizedArtist)
-                || normalizedArtist.contains(artist)
-                || title == normalizedTitle
-        } ?? candidates.first
+        let ranked = candidates.map {
+            (
+                candidate: $0,
+                score: Self.matchScore(
+                    trackArtist: track.artist,
+                    trackTitle: track.title,
+                    candidateArtist: $0.primaryArtist?.name ?? "",
+                    candidateTitle: $0.title ?? ""
+                )
+            )
+        }
+        let best = ranked.max { lhs, rhs in lhs.score < rhs.score }
+        let match = (best?.score ?? 0) > 0
+            ? best?.candidate
+            : candidates.first
         guard let rawURL = match?.url,
               let url = URL.secureRemoteURL(rawURL),
               url.host?.lowercased().hasSuffix("genius.com") == true else {
             throw APIError.server(
                 code: 404,
-                message: "Текст не найден на Genius."
+                message: L10n.text("Текст не найден на Genius.")
             )
         }
         return url
@@ -118,11 +124,17 @@ struct GeniusLyricsService: Sendable {
     }
 
     static func extractLyrics(from html: String) -> String? {
-        guard let containerExpression = try? NSRegularExpression(
-            pattern:
-                #"<div\b[^>]*\bdata-lyrics-container\s*=\s*["']true["'][^>]*>"#,
-            options: [.caseInsensitive]
-        ),
+        let containerPatterns = [
+            #"<div\b[^>]*\bdata-lyrics-container\s*=\s*["']true["'][^>]*>"#,
+            #"<div\b[^>]*\bclass\s*=\s*["'][^"']*(?:Lyrics__Container|\blyrics\b)[^"']*["'][^>]*>"#
+        ]
+        let containerExpressions = containerPatterns.compactMap {
+            try? NSRegularExpression(
+                pattern: $0,
+                options: [.caseInsensitive]
+            )
+        }
+        guard containerExpressions.count == containerPatterns.count,
               let divExpression = try? NSRegularExpression(
                 pattern: #"</?div\b[^>]*>"#,
                 options: [.caseInsensitive]
@@ -132,10 +144,15 @@ struct GeniusLyricsService: Sendable {
 
         let source = html as NSString
         let fullRange = NSRange(location: 0, length: source.length)
-        let openings = containerExpression.matches(
-            in: html,
-            range: fullRange
-        )
+        var openingsByLocation: [Int: NSTextCheckingResult] = [:]
+        for expression in containerExpressions {
+            for match in expression.matches(in: html, range: fullRange) {
+                openingsByLocation[match.range.location] = match
+            }
+        }
+        let openings = openingsByLocation.values.sorted {
+            $0.range.location < $1.range.location
+        }
         let fragments: [String] = openings.compactMap { opening in
             let contentStart = NSMaxRange(opening.range)
             guard contentStart < source.length else { return nil }
@@ -191,6 +208,36 @@ struct GeniusLyricsService: Sendable {
             .trimmingCharacters(
                 in: CharacterSet.whitespacesAndNewlines
             )
+    }
+
+    static func matchScore(
+        trackArtist: String,
+        trackTitle: String,
+        candidateArtist: String,
+        candidateTitle: String
+    ) -> Int {
+        let wantedArtist = normalized(trackArtist)
+        let wantedTitle = normalized(trackTitle)
+        let foundArtist = normalized(candidateArtist)
+        let foundTitle = normalized(candidateTitle)
+        guard !wantedTitle.isEmpty, !foundTitle.isEmpty else { return 0 }
+
+        var score = 0
+        if wantedTitle == foundTitle {
+            score += 70
+        } else if wantedTitle.contains(foundTitle)
+                    || foundTitle.contains(wantedTitle) {
+            score += 48
+        }
+        if !wantedArtist.isEmpty, !foundArtist.isEmpty {
+            if wantedArtist == foundArtist {
+                score += 30
+            } else if wantedArtist.contains(foundArtist)
+                        || foundArtist.contains(wantedArtist) {
+                score += 20
+            }
+        }
+        return score
     }
 
     private static func normalized(_ value: String) -> String {

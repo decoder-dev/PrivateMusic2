@@ -5,6 +5,7 @@ final class SessionStore: ObservableObject {
     @Published private(set) var session: Session?
     @Published private(set) var profile: UserProfile?
     @Published var errorMessage: String?
+    @Published private(set) var sessionRevision = 0
 
     private let keychain: KeychainStore
     private let sessionAccount = "vk-session-v2"
@@ -14,18 +15,23 @@ final class SessionStore: ObservableObject {
         self.keychain = keychain
         do {
             let saved = try keychain.load(Session.self, account: sessionAccount)
-            session = saved?.isExpired == false || saved?.canRefresh == true
-                ? saved
-                : nil
-            if let session,
-               let cachedProfile = try? keychain.load(
+            let isUsable = saved?.isExpired == false
+                || saved?.canRefresh == true
+            var restored = isUsable ? saved : nil
+            if let cachedProfile = try? keychain.load(
                     UserProfile.self,
                     account: profileAccount
-               ),
-               cachedProfile.id == session.userID
-                    || session.userID == nil {
+               ), let candidate = restored,
+               cachedProfile.id == candidate.userID
+                    || candidate.userID == nil {
                 profile = cachedProfile
+                if candidate.userID == nil {
+                    let upgraded = candidate.updatingUserID(cachedProfile.id)
+                    try? keychain.save(upgraded, account: sessionAccount)
+                    restored = upgraded
+                }
             }
+            session = restored
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -67,6 +73,7 @@ final class SessionStore: ObservableObject {
         try? keychain.save(profile, account: profileAccount)
         session = value
         self.profile = profile
+        sessionRevision &+= 1
         errorMessage = nil
     }
 
@@ -84,10 +91,34 @@ final class SessionStore: ObservableObject {
         )
     }
 
-    func setProfile(_ profile: UserProfile) {
-        try? keychain.save(profile, account: profileAccount)
+    @discardableResult
+    func setProfile(
+        _ profile: UserProfile,
+        matchingAccessToken expectedAccessToken: String
+    ) -> Bool {
+        guard let currentSession = session,
+              currentSession.accessToken == expectedAccessToken else {
+            return false
+        }
+        var persistenceError: Error?
+        do {
+            try keychain.save(profile, account: profileAccount)
+        } catch {
+            persistenceError = error
+        }
+        if currentSession.userID != profile.id {
+            let updated = currentSession.updatingUserID(profile.id)
+            do {
+                try keychain.save(updated, account: sessionAccount)
+                session = updated
+                sessionRevision &+= 1
+            } catch {
+                persistenceError = persistenceError ?? error
+            }
+        }
         self.profile = profile
-        errorMessage = nil
+        errorMessage = persistenceError?.localizedDescription
+        return true
     }
 
     func logout() {
@@ -104,6 +135,7 @@ final class SessionStore: ObservableObject {
         }
         session = nil
         profile = nil
+        sessionRevision &+= 1
         errorMessage = deletionError
     }
 }

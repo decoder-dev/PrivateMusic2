@@ -56,4 +56,57 @@ final class GeniusLyricsServiceTests: XCTestCase {
             try XCTUnwrap(lyrics.range(of: "[Куплет 2]")?.lowerBound)
         )
     }
+
+    func testLyricsParserSupportsLegacyContainerWithoutDataAttribute()
+        throws {
+        let html = """
+        <html><body>
+        <div class="lyrics">
+        [Verse 1]<br>First line<br>Second line
+        </div>
+        </body></html>
+        """
+
+        let lyrics = try XCTUnwrap(
+            GeniusLyricsService.extractLyrics(from: html)
+        )
+
+        XCTAssertTrue(lyrics.contains("[Verse 1]"))
+        XCTAssertTrue(lyrics.contains("First line"))
+        XCTAssertTrue(lyrics.contains("Second line"))
+    }
+
+    func testContainerMatchingTwoSelectorsIsNotParsedTwice() throws {
+        let html = """
+        <div class="Lyrics__Container" data-lyrics-container="true">
+        Only once
+        </div>
+        """
+
+        let lyrics = try XCTUnwrap(
+            GeniusLyricsService.extractLyrics(from: html)
+        )
+
+        XCTAssertEqual(
+            lyrics.components(separatedBy: "Only once").count - 1,
+            1
+        )
+    }
+
+    func testExactSongOutranksDifferentSongBySameArtist() {
+        let exact = GeniusLyricsService.matchScore(
+            trackArtist: "Artist",
+            trackTitle: "Wanted Song",
+            candidateArtist: "Artist",
+            candidateTitle: "Wanted Song"
+        )
+        let wrongSong = GeniusLyricsService.matchScore(
+            trackArtist: "Artist",
+            trackTitle: "Wanted Song",
+            candidateArtist: "Artist",
+            candidateTitle: "Completely Different"
+        )
+
+        XCTAssertGreaterThan(exact, wrongSong)
+    }
 }

@@ -12,6 +12,7 @@ struct RootView: View {
     @State private var automaticRetryAttempt = 0
     @State private var isValidatingSession = false
     @State private var refreshRequiresReplacement = false
+    @State private var refreshNeedsLogin = false
 
     var body: some View {
         Group {
@@ -27,7 +28,7 @@ struct RootView: View {
                     }
             }
         }
-        .task(id: sessionStore.session?.accessToken) {
+        .task(id: sessionStore.sessionRevision) {
             await maintainSession()
         }
         .onChange(of: sessionStore.session == nil) { isLoggedOut in
@@ -38,16 +39,23 @@ struct RootView: View {
                 environment.cancelSessionRecovery()
                 player.stop()
                 refreshError = nil
+                refreshNeedsLogin = false
             }
         }
         .onChange(of: networkMonitor.revision) { _ in
             guard networkMonitor.isReachable,
-                  sessionStore.session != nil,
-                  sessionStore.session?.needsRefresh == true
-                    || refreshError != nil else {
+                  !refreshNeedsLogin,
+                  let session = sessionStore.session,
+                  session.needsRefresh || refreshError != nil else {
                 return
             }
-            Task { await refreshWebSession() }
+            Task {
+                if session.needsRefresh {
+                    await refreshWebSession()
+                } else {
+                    await loadProfile(forceValidation: true)
+                }
+            }
         }
         .onChange(of: scenePhase) { phase in
             guard phase == .active, sessionStore.session != nil else {
@@ -103,42 +111,45 @@ struct RootView: View {
                 icon: "exclamationmark.circle.fill",
                 message: refreshError,
                 tint: .orange,
-                retry: {
-                    Task { await refreshWebSession() }
-                }
+                retry: refreshNeedsLogin
+                    ? nil
+                    : { Task { await refreshWebSession() } }
             )
         }
     }
 
     private func maintainSession() async {
-        guard let session = sessionStore.session else { return }
-        await environment.musicService.configure(userAgent: session.userAgent)
-        environment.player.configureNetwork(userAgent: session.userAgent)
+        guard let initialSession = sessionStore.session else { return }
+        await environment.musicService.configure(
+            userAgent: initialSession.userAgent
+        )
+        environment.player.configureNetwork(
+            userAgent: initialSession.userAgent
+        )
 
-        if session.shouldRefreshProactively {
-            await refreshWebSession()
-        } else {
-            await loadProfile(forceValidation: true)
-        }
+        while !Task.isCancelled, sessionStore.session != nil {
+            if scenePhase == .active, !refreshNeedsLogin,
+               let current = sessionStore.session {
+                if current.shouldRefreshProactively {
+                    await refreshWebSession()
+                } else {
+                    await loadProfile(forceValidation: true)
+                }
+            }
 
-        guard let current = sessionStore.session,
-              current.canRefresh else {
-            return
-        }
-        let delay = current.expiresAt.map {
-            max($0.timeIntervalSinceNow - 90, 1)
-        } ?? 900
-        try? await Task.sleep(for: .seconds(delay))
-        guard !Task.isCancelled, scenePhase == .active else { return }
-        if current.shouldRefreshProactively {
-            await refreshWebSession()
-        } else {
-            await loadProfile(forceValidation: true)
+            guard let current = sessionStore.session else { return }
+            let delay = current.maintenanceDelay()
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
         }
     }
 
     private func recoverActiveSession() async {
-        guard let session = sessionStore.session else { return }
+        guard !refreshNeedsLogin,
+              let session = sessionStore.session else { return }
         if session.shouldRefreshProactively {
             await refreshWebSession()
         } else {
@@ -156,6 +167,7 @@ struct RootView: View {
         }
         guard let session = sessionStore.session,
               session.canRefresh else {
+            refreshNeedsLogin = true
             refreshError =
                 "Автовосстановление VK недоступно — откройте профиль"
             return
@@ -174,30 +186,34 @@ struct RootView: View {
             automaticRetryTask = nil
             automaticRetryAttempt = 0
             refreshRequiresReplacement = false
+            refreshNeedsLogin = false
             refreshError = nil
         } catch is CancellationError {
             return
-        } catch let error as APIError where error.isConnectivityFailure {
-            refreshError = "VK пока не отвечает — сессия сохранена"
-            scheduleAutomaticRetry()
-        } catch let error as APIError where error == .unauthorized {
-            refreshRequiresReplacement = mustReplaceToken
-            refreshError = sessionStore.session?.canRefresh == true
-                ? "Восстанавливаем подключение VK…"
-                : "Автовосстановление VK недоступно — откройте профиль"
-            scheduleAutomaticRetry()
         } catch {
-            refreshRequiresReplacement = mustReplaceToken
-            refreshError = mustReplaceToken
-                ? "Восстанавливаем подключение VK…"
-                : "VK пока не отвечает — сессия сохранена"
-            scheduleAutomaticRetry()
+            switch SessionRecoveryDisposition.classify(error) {
+            case .ignore:
+                return
+            case .retry:
+                refreshRequiresReplacement = mustReplaceToken
+                refreshError = "VK пока не отвечает — сессия сохранена"
+                scheduleAutomaticRetry(usingWebSession: true)
+            case .requiresLogin:
+                automaticRetryTask?.cancel()
+                automaticRetryTask = nil
+                refreshRequiresReplacement = true
+                refreshNeedsLogin = true
+                refreshError =
+                    "VK отклонил сохранённый вход — подключите аккаунт снова"
+            }
         }
     }
 
     @MainActor
-    private func scheduleAutomaticRetry() {
-        guard sessionStore.session?.canRefresh == true else { return }
+    private func scheduleAutomaticRetry(usingWebSession: Bool) {
+        guard let currentSession = sessionStore.session else { return }
+        guard !usingWebSession || currentSession.canRefresh else { return }
+        guard !refreshNeedsLogin else { return }
         automaticRetryTask?.cancel()
         automaticRetryAttempt += 1
         let delay = min(
@@ -214,9 +230,15 @@ struct RootView: View {
                         || refreshError != nil else {
                     return
                 }
-                await refreshWebSession(
-                    tokenWasRejected: refreshRequiresReplacement
-                )
+                if usingWebSession
+                    || refreshRequiresReplacement
+                    || session.shouldRefreshProactively {
+                    await refreshWebSession(
+                        tokenWasRejected: refreshRequiresReplacement
+                    )
+                } else {
+                    await loadProfile(forceValidation: true)
+                }
             } catch {
                 return
             }
@@ -234,35 +256,40 @@ struct RootView: View {
         isValidatingSession = true
         defer { isValidatingSession = false }
         do {
-            let profile = try await environment.withAuthorizedToken { token in
-                try await environment.musicService.profile(
+            let validated = try await environment.withAuthorizedToken { token in
+                let profile = try await environment.musicService.profile(
                     accessToken: token
                 )
+                return (profile: profile, accessToken: token)
             }
-            sessionStore.setProfile(profile)
+            guard sessionStore.setProfile(
+                validated.profile,
+                matchingAccessToken: validated.accessToken
+            ) else {
+                return
+            }
             automaticRetryTask?.cancel()
             automaticRetryTask = nil
             automaticRetryAttempt = 0
             refreshRequiresReplacement = false
+            refreshNeedsLogin = false
             refreshError = nil
         } catch is CancellationError {
             return
         } catch {
-            if let apiError = error as? APIError,
-               apiError == .unauthorized {
-                if sessionStore.session?.canRefresh == true {
-                    refreshRequiresReplacement = true
-                    refreshError = "Восстанавливаем подключение VK…"
-                    scheduleAutomaticRetry()
-                } else {
-                    refreshError =
-                        "Автовосстановление VK недоступно — откройте профиль"
-                }
-            } else if let apiError = error as? APIError,
-                      apiError.isConnectivityFailure {
+            switch SessionRecoveryDisposition.classify(error) {
+            case .ignore:
+                return
+            case .retry:
                 refreshError = "VK пока не отвечает — сессия сохранена"
-            } else {
-                refreshError = "VK пока не отвечает — сессия сохранена"
+                scheduleAutomaticRetry(usingWebSession: false)
+            case .requiresLogin:
+                automaticRetryTask?.cancel()
+                automaticRetryTask = nil
+                refreshRequiresReplacement = true
+                refreshNeedsLogin = true
+                refreshError =
+                    "VK отклонил сохранённый вход — подключите аккаунт снова"
             }
         }
     }
@@ -284,7 +311,7 @@ private struct ConnectionBanner: View {
                 Image(systemName: icon)
                     .foregroundStyle(tint)
             }
-            Text(message)
+            Text(L10n.text(message))
                 .font(.footnote.weight(.semibold))
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)

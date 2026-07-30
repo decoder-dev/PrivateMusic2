@@ -35,7 +35,7 @@ struct AddToPlaylistView: View {
                                 )
                                 VStack(alignment: .leading) {
                                     Text(playlist.title)
-                                    Text("\(playlist.count) треков")
+                                    Text(L10n.trackCount(playlist.count))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                     Text(playlist.source.title)
@@ -80,18 +80,20 @@ struct AddToPlaylistView: View {
     }
 
     private func load() async {
-        guard let token = sessionStore.accessToken,
+        guard sessionStore.accessToken != nil,
               let userID = sessionStore.session?.userID else {
             isLoading = false
             return
         }
         defer { isLoading = false }
         do {
-            let page = try await environment.musicService.playlists(
-                accessToken: token,
-                offset: 0,
-                count: 100
-            )
+            let page = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.playlists(
+                    accessToken: token,
+                    offset: 0,
+                    count: 100
+                )
+            }
             playlists = page.items.filter { $0.ownerID == userID }
         } catch is CancellationError {
             return
@@ -101,15 +103,17 @@ struct AddToPlaylistView: View {
     }
 
     private func add(to playlist: Playlist) async {
-        guard let token = sessionStore.accessToken else { return }
+        guard sessionStore.accessToken != nil else { return }
         savingPlaylistID = playlist.id
         defer { savingPlaylistID = nil }
         do {
-            try await environment.musicService.add(
-                track,
-                to: playlist,
-                accessToken: token
-            )
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.add(
+                    track,
+                    to: playlist,
+                    accessToken: token
+                )
+            }
             dismiss()
         } catch is CancellationError {
             return

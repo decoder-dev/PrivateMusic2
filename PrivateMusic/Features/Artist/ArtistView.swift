@@ -53,18 +53,20 @@ struct ArtistView: View {
     }
 
     private func load() async {
-        guard let token = sessionStore.accessToken else {
+        guard sessionStore.accessToken != nil else {
             isLoading = false
             return
         }
         defer { isLoading = false }
         do {
-            let page = try await environment.musicService.search(
-                query: artist,
-                accessToken: token,
-                offset: 0,
-                count: 100
-            )
+            let page = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.search(
+                    query: artist,
+                    accessToken: token,
+                    offset: 0,
+                    count: 100
+                )
+            }
             tracks = page.items.filter {
                 $0.artist.localizedCaseInsensitiveContains(artist)
             }

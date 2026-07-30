@@ -43,6 +43,7 @@ final class AppEnvironment: ObservableObject {
             client: client,
             apiVersion: configuration.apiVersion,
             initialUserID: sessionStore.session?.userID
+                ?? sessionStore.profile?.id
         )
         self.musicService = service
         player.configureContinuation { [weak self, service] in
@@ -106,6 +107,7 @@ final class AppEnvironment: ObservableObject {
               let webUserAgent = baselineSession.webUserAgent else {
             throw APIError.unauthorized
         }
+        let baselineRevision = sessionStore.sessionRevision
 
         let recoveryID = UUID()
         isRecoveringSession = true
@@ -122,7 +124,14 @@ final class AppEnvironment: ObservableObject {
             guard let currentSession = sessionStore.session else {
                 throw CancellationError()
             }
-            guard currentSession == baselineSession else {
+            guard sessionStore.sessionRevision == baselineRevision,
+                  currentSession == baselineSession else {
+                await musicService.configure(
+                    userAgent: currentSession.userAgent
+                )
+                player.configureNetwork(
+                    userAgent: currentSession.userAgent
+                )
                 return currentSession.accessToken
             }
 
@@ -137,7 +146,8 @@ final class AppEnvironment: ObservableObject {
                 guard let latestSession = sessionStore.session else {
                     throw CancellationError()
                 }
-                guard latestSession == baselineSession else {
+                guard sessionStore.sessionRevision == baselineRevision,
+                      latestSession == baselineSession else {
                     await musicService.configure(
                         userAgent: latestSession.userAgent
                     )
@@ -170,5 +180,36 @@ final class AppEnvironment: ObservableObject {
         sessionRecovery?.task.cancel()
         sessionRecovery = nil
         isRecoveringSession = false
+    }
+}
+
+enum SessionRecoveryDisposition: Equatable {
+    case ignore
+    case retry
+    case requiresLogin
+
+    static func classify(_ error: Error) -> SessionRecoveryDisposition {
+        if error is CancellationError {
+            return .ignore
+        }
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .unauthorized:
+                return .requiresLogin
+            case let .server(code, _) where code == 5:
+                return .requiresLogin
+            default:
+                return .retry
+            }
+        }
+        if let webError = error as? VKWebAuthError {
+            switch webError {
+            case .noSession, .rejected:
+                return .requiresLogin
+            case .invalidResponse:
+                return .retry
+            }
+        }
+        return .retry
     }
 }

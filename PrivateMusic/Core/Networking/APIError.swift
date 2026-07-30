@@ -13,21 +13,26 @@ enum APIError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidRequest:
-            return "Не удалось создать запрос."
+            return L10n.text("Не удалось создать запрос.")
         case .invalidResponse:
-            return "Сервер вернул некорректный ответ."
+            return L10n.text("Сервер вернул некорректный ответ.")
         case .unauthorized:
-            return "Сессия недействительна. Войдите снова."
+            return L10n.text("Сессия VK требует обновления.")
         case .offline:
-            return "Нет подключения к интернету."
+            return L10n.text("Нет подключения к интернету.")
         case .timedOut:
-            return "Сервер не ответил вовремя. Попробуйте ещё раз."
+            return L10n.text(
+                "Сервер не ответил вовремя. Попробуйте ещё раз."
+            )
         case let .server(_, message):
             return message
         case let .transport(message):
-            return "Сетевая ошибка: \(message)"
+            return L10n.format("Сетевая ошибка: %@", message)
         case let .decoding(message):
-            return "Не удалось обработать ответ: \(message)"
+            return L10n.format(
+                "Не удалось обработать ответ: %@",
+                message
+            )
         }
     }
 
@@ -38,5 +43,15 @@ enum APIError: LocalizedError, Equatable {
         default:
             return false
         }
+    }
+
+    static func httpStatus(_ statusCode: Int) -> APIError {
+        if statusCode == 401 {
+            return .unauthorized
+        }
+        return .server(
+            code: statusCode,
+            message: L10n.format("Сервер вернул HTTP %d.", statusCode)
+        )
     }
 }

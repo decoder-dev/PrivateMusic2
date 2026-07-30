@@ -7,7 +7,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var title: String {
-        self == .dark ? "Тёмная" : "Светлая"
+        L10n.text(self == .dark ? "Тёмная" : "Светлая")
     }
 
     var colors: [Color] {
@@ -40,9 +40,9 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .system: "Системная"
-        case .dark: "Тёмная"
-        case .light: "Светлая"
+        case .system: L10n.text("Системная")
+        case .dark: L10n.text("Тёмная")
+        case .light: L10n.text("Светлая")
         }
     }
 
@@ -65,10 +65,10 @@ enum AppTextScale: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .compact: "Компактный"
-        case .system: "Системный"
-        case .large: "Крупный"
-        case .extraLarge: "Очень крупный"
+        case .compact: L10n.text("Компактный")
+        case .system: L10n.text("Системный")
+        case .large: L10n.text("Крупный")
+        case .extraLarge: L10n.text("Очень крупный")
         }
     }
 
@@ -103,12 +103,12 @@ enum EqualizerPreset: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .flat: "Без обработки"
-        case .bass: "Больше баса"
-        case .vocal: "Вокал"
-        case .electronic: "Электроника"
-        case .rock: "Рок"
-        case .custom: "Своя"
+        case .flat: L10n.text("Без обработки")
+        case .bass: L10n.text("Больше баса")
+        case .vocal: L10n.text("Вокал")
+        case .electronic: L10n.text("Электроника")
+        case .rock: L10n.text("Рок")
+        case .custom: L10n.text("Своя")
         }
     }
 
@@ -168,6 +168,14 @@ final class AppSettings: ObservableObject {
             )
         }
     }
+    @Published var advanceOnPlaybackError: Bool {
+        didSet {
+            defaults.set(
+                advanceOnPlaybackError,
+                forKey: Keys.advanceOnPlaybackError
+            )
+        }
+    }
 
     private let defaults: UserDefaults
 
@@ -213,6 +221,9 @@ final class AppSettings: ObservableObject {
         pauseAtMinimumVolume = defaults.object(
             forKey: Keys.pauseAtMinimumVolume
         ) as? Bool ?? true
+        advanceOnPlaybackError = defaults.object(
+            forKey: Keys.advanceOnPlaybackError
+        ) as? Bool ?? true
     }
 
     func selectPreset(_ preset: EqualizerPreset) {
@@ -248,6 +259,8 @@ final class AppSettings: ObservableObject {
             "audio.bluetooth.resumeOnConnection"
         static let pauseAtMinimumVolume =
             "audio.volume.pauseAtMinimum"
+        static let advanceOnPlaybackError =
+            "audio.playback.advanceOnError"
     }
 }
 

@@ -18,6 +18,43 @@ final class ConnectionStabilityTests: XCTestCase {
         XCTAssertFalse(
             RequestRetryPolicy.never.shouldRetry(.networkConnectionLost)
         )
+        XCTAssertFalse(
+            RequestRetryPolicy.never.shouldRetry(statusCode: 429)
+        )
+        XCTAssertFalse(
+            RequestRetryPolicy.never.shouldRetry(statusCode: 503)
+        )
+    }
+
+    func testReadPolicyRetriesOnlyTransientHTTPFailures() {
+        XCTAssertTrue(
+            RequestRetryPolicy.transient.shouldRetry(statusCode: 429)
+        )
+        XCTAssertTrue(
+            RequestRetryPolicy.transient.shouldRetry(statusCode: 408)
+        )
+        XCTAssertTrue(
+            RequestRetryPolicy.transient.shouldRetry(statusCode: 503)
+        )
+        XCTAssertFalse(
+            RequestRetryPolicy.transient.shouldRetry(statusCode: 401)
+        )
+        XCTAssertFalse(
+            RequestRetryPolicy.transient.shouldRetry(statusCode: 404)
+        )
+    }
+
+    func testHTTPAuthenticationStatusesAreClassifiedAsUnauthorized() {
+        XCTAssertEqual(APIError.httpStatus(401), .unauthorized)
+        guard case let .server(forbiddenCode, _) = APIError.httpStatus(403)
+        else {
+            return XCTFail("HTTP 403 is not proof of an expired token.")
+        }
+        XCTAssertEqual(forbiddenCode, 403)
+        guard case let .server(code, _) = APIError.httpStatus(429) else {
+            return XCTFail("HTTP 429 must remain a server error.")
+        }
+        XCTAssertEqual(code, 429)
     }
 
     func testSessionRefreshUsesDeterministicLeeway() {
@@ -52,12 +89,79 @@ final class ConnectionStabilityTests: XCTestCase {
         XCTAssertTrue(session.canRefresh)
     }
 
+    func testWhitespaceOnlyRefreshCredentialsAreRejected() {
+        let session = Session(
+            accessToken: "0123456789abcdef",
+            userAgent: nil,
+            userID: 1,
+            expiresAt: nil,
+            refreshCookie: "  \n",
+            webUserAgent: "\t"
+        )
+
+        XCTAssertFalse(session.canRefresh)
+    }
+
+    func testWebExchangeRejectsWhitespaceCredentialsWithoutNetworking() async {
+        do {
+            _ = try await VKWebAuthService().exchange(
+                cookieHeader: " \n",
+                webUserAgent: "\t"
+            )
+            XCTFail("Whitespace credentials must not start a request.")
+        } catch VKWebAuthError.noSession {
+            // Expected.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testKnownExpiringSessionRefreshesProactively() {
         let session = makeSession(
             expiresAt: Date().addingTimeInterval(30)
         )
 
         XCTAssertTrue(session.shouldRefreshProactively)
+    }
+
+    func testSessionMaintenanceRepeatsAndAvoidsExpiredTokenHotLoop() {
+        let now = Date(timeIntervalSince1970: 2_000_000)
+        XCTAssertEqual(
+            makeSession(expiresAt: nil).maintenanceDelay(at: now),
+            900
+        )
+        XCTAssertEqual(
+            makeSession(
+                expiresAt: now.addingTimeInterval(600)
+            ).maintenanceDelay(at: now),
+            510
+        )
+        XCTAssertEqual(
+            makeSession(
+                expiresAt: now.addingTimeInterval(30)
+            ).maintenanceDelay(at: now),
+            900
+        )
+    }
+
+    func testAddingResolvedUserIDPreservesRefreshCredentials() {
+        let original = Session(
+            accessToken: "0123456789abcdef",
+            userAgent: "API Agent",
+            userID: nil,
+            expiresAt: Date(timeIntervalSince1970: 2_000_000),
+            refreshCookie: "remixsid=test",
+            webUserAgent: "Web Agent"
+        )
+
+        let updated = original.updatingUserID(42)
+
+        XCTAssertEqual(updated.userID, 42)
+        XCTAssertEqual(updated.accessToken, original.accessToken)
+        XCTAssertEqual(updated.userAgent, original.userAgent)
+        XCTAssertEqual(updated.expiresAt, original.expiresAt)
+        XCTAssertEqual(updated.refreshCookie, original.refreshCookie)
+        XCTAssertEqual(updated.webUserAgent, original.webUserAgent)
     }
 
     func testConnectivityErrorsAreClassifiedForBackgroundRecovery() {
@@ -69,6 +173,39 @@ final class ConnectionStabilityTests: XCTestCase {
         XCTAssertFalse(APIError.unauthorized.isConnectivityFailure)
         XCTAssertFalse(
             APIError.server(code: 5, message: "Auth").isConnectivityFailure
+        )
+    }
+
+    func testRecoveryPolicyDoesNotRetryRejectedCredentialsForever() {
+        XCTAssertEqual(
+            SessionRecoveryDisposition.classify(APIError.unauthorized),
+            .requiresLogin
+        )
+        XCTAssertEqual(
+            SessionRecoveryDisposition.classify(
+                APIError.server(code: 5, message: "User authorization failed")
+            ),
+            .requiresLogin
+        )
+        XCTAssertEqual(
+            SessionRecoveryDisposition.classify(
+                VKWebAuthError.rejected("Session expired")
+            ),
+            .requiresLogin
+        )
+        XCTAssertEqual(
+            SessionRecoveryDisposition.classify(APIError.offline),
+            .retry
+        )
+        XCTAssertEqual(
+            SessionRecoveryDisposition.classify(
+                VKWebAuthError.invalidResponse
+            ),
+            .retry
+        )
+        XCTAssertEqual(
+            SessionRecoveryDisposition.classify(CancellationError()),
+            .ignore
         )
     }
 
