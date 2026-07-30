@@ -37,15 +37,14 @@ final class OfflineTrackStore: ObservableObject {
     private let fileManager: FileManager
     private let rootURL: URL
     private let downloadService: TrackShareService
-    private let hlsDownloadService: HLSOfflineDownloadService
+    private let hlsDownloadService: HLSOfflineDownloadService?
     private var activeAccountID: Int?
 
     init(
         fileManager: FileManager = .default,
         rootURL: URL? = nil,
         downloadService: TrackShareService = TrackShareService(),
-        hlsDownloadService: HLSOfflineDownloadService =
-            .shared
+        hlsDownloadService: HLSOfflineDownloadService? = nil
     ) {
         self.fileManager = fileManager
         self.downloadService = downloadService
@@ -236,7 +235,9 @@ final class OfflineTrackStore: ObservableObject {
         )
         try ensureFreeSpace(for: estimatedSize)
 
-        let location = try await hlsDownloadService.download(
+        let location = try await (
+            hlsDownloadService ?? HLSOfflineDownloadService.shared
+        ).download(
             track: track,
             userAgent: userAgent
         )
