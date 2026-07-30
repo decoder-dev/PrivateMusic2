@@ -322,6 +322,9 @@
 "Не удалось подготовить аудиофайл: %@" = "Could not prepare the audio file: %@";
 "VK не предоставил прямой аудиофайл для этого трека." = "VK did not provide a direct audio file for this track.";
 "Этот трек нельзя экспортировать в MP3." = "This track cannot be exported as an MP3.";
+"VK не предоставил HLS-поток для загрузки." = "VK did not provide an HLS stream to download.";
+"Не удалось начать загрузку HLS." = "The HLS download could not be started.";
+"Системный загрузчик не сохранил аудио." = "The system downloader did not save the audio.";
 "Файл слишком большой для офлайн-загрузки." = "The file is too large for offline download.";
 "Для офлайн-музыки занято больше 5 ГБ. Удалите часть загрузок." = "Offline music uses more than 5 GB. Remove some downloads.";
 "На устройстве недостаточно свободного места." = "There is not enough free storage on this device.";

@@ -3,11 +3,21 @@ import Foundation
 struct OfflineTrackRecord: Codable, Identifiable, Equatable, Sendable {
     let track: Track
     let relativePath: String
+    let storage: OfflineTrackStorage?
     let byteCount: Int64
     let downloadedAt: Date
     var lastPlayedAt: Date
 
     var id: String { track.id }
+
+    var resolvedStorage: OfflineTrackStorage {
+        storage ?? .directFile
+    }
+}
+
+enum OfflineTrackStorage: String, Codable, Sendable {
+    case directFile
+    case hlsPackage
 }
 
 enum OfflineTrackState: Equatable {
@@ -27,15 +37,19 @@ final class OfflineTrackStore: ObservableObject {
     private let fileManager: FileManager
     private let rootURL: URL
     private let downloadService: TrackShareService
+    private let hlsDownloadService: HLSOfflineDownloadService
     private var activeAccountID: Int?
 
     init(
         fileManager: FileManager = .default,
         rootURL: URL? = nil,
-        downloadService: TrackShareService = TrackShareService()
+        downloadService: TrackShareService = TrackShareService(),
+        hlsDownloadService: HLSOfflineDownloadService =
+            .shared
     ) {
         self.fileManager = fileManager
         self.downloadService = downloadService
+        self.hlsDownloadService = hlsDownloadService
         if let rootURL {
             self.rootURL = rootURL
         } else {
@@ -78,7 +92,7 @@ final class OfflineTrackStore: ObservableObject {
               let directory = accountDirectory else {
             return nil
         }
-        let url = directory.appendingPathComponent(record.relativePath)
+        let url = resolvedURL(for: record, accountDirectory: directory)
         guard fileManager.fileExists(atPath: url.path) else { return nil }
         return url
     }
@@ -106,6 +120,26 @@ final class OfflineTrackStore: ObservableObject {
         downloadingTrackIDs.insert(track.id)
         defer { downloadingTrackIDs.remove(track.id) }
 
+        if isHLS(track.streamURL) {
+            try await downloadHLS(
+                track,
+                accountID: accountID,
+                userAgent: userAgent
+            )
+        } else {
+            try await downloadDirectFile(
+                track,
+                accountID: accountID,
+                userAgent: userAgent
+            )
+        }
+    }
+
+    private func downloadDirectFile(
+        _ track: Track,
+        accountID: Int,
+        userAgent: String?
+    ) async throws {
         let payload = try await downloadService.preparePayload(
             for: track,
             userAgent: userAgent
@@ -182,6 +216,7 @@ final class OfflineTrackStore: ObservableObject {
         records[track.id] = OfflineTrackRecord(
             track: storedTrack,
             relativePath: relativePath,
+            storage: .directFile,
             byteCount: byteCount,
             downloadedAt: now,
             lastPlayedAt: now
@@ -189,17 +224,91 @@ final class OfflineTrackStore: ObservableObject {
         try saveManifest()
     }
 
+    private func downloadHLS(
+        _ track: Track,
+        accountID: Int,
+        userAgent: String?
+    ) async throws {
+        try createProtectedDirectory(rootURL)
+        let estimatedSize = min(
+            Self.maximumTrackSize,
+            max(20_000_000, Int64(track.duration * 40_000))
+        )
+        try ensureFreeSpace(for: estimatedSize)
+
+        let location = try await hlsDownloadService.download(
+            track: track,
+            userAgent: userAgent
+        )
+        guard activeAccountID == accountID else {
+            try? fileManager.removeItem(at: location)
+            throw CancellationError()
+        }
+
+        let byteCount = allocatedSize(at: location)
+        guard byteCount > 0,
+              byteCount <= Self.maximumTrackSize else {
+            try? fileManager.removeItem(at: location)
+            throw offlineError("Файл слишком большой для офлайн-загрузки.")
+        }
+        guard totalByteCount + byteCount <= Self.maximumLibrarySize else {
+            try? fileManager.removeItem(at: location)
+            throw offlineError(
+                "Для офлайн-музыки занято больше 5 ГБ. "
+                    + "Удалите часть загрузок."
+            )
+        }
+        let storedTrack = Track(
+            trackID: track.trackID,
+            ownerID: track.ownerID,
+            title: track.title,
+            artist: track.artist,
+            albumTitle: track.albumTitle,
+            duration: track.duration,
+            streamURL: nil,
+            artworkURL: track.artworkURL,
+            accessKey: track.accessKey,
+            lyricsID: track.lyricsID
+        )
+        let record = OfflineTrackRecord(
+            track: storedTrack,
+            relativePath: relativePathFromHome(for: location),
+            storage: .hlsPackage,
+            byteCount: byteCount,
+            downloadedAt: Date(),
+            lastPlayedAt: Date()
+        )
+        records[track.id] = record
+        do {
+            try saveManifest()
+        } catch {
+            records.removeValue(forKey: track.id)
+            try? fileManager.removeItem(at: location)
+            throw error
+        }
+    }
+
     func remove(_ track: Track) {
         guard let record = records.removeValue(forKey: track.id),
               let directory = accountDirectory else {
             return
         }
-        let fileURL = directory.appendingPathComponent(record.relativePath)
-        let trackDirectory = fileURL.deletingLastPathComponent()
-        if trackDirectory.standardizedFileURL.path.hasPrefix(
-            directory.standardizedFileURL.path + "/"
-        ) {
-            try? fileManager.removeItem(at: trackDirectory)
+        let fileURL = resolvedURL(
+            for: record,
+            accountDirectory: directory
+        )
+        switch record.resolvedStorage {
+        case .directFile:
+            let trackDirectory = fileURL.deletingLastPathComponent()
+            if trackDirectory.standardizedFileURL.path.hasPrefix(
+                directory.standardizedFileURL.path + "/"
+            ) {
+                try? fileManager.removeItem(at: trackDirectory)
+            }
+        case .hlsPackage:
+            if isInsideAppContainer(fileURL) {
+                try? fileManager.removeItem(at: fileURL)
+            }
         }
         try? saveManifest()
     }
@@ -253,7 +362,10 @@ final class OfflineTrackStore: ObservableObject {
         guard let directory = accountDirectory else { return }
         var reconciled = records
         for (id, record) in records {
-            let url = directory.appendingPathComponent(record.relativePath)
+            let url = resolvedURL(
+                for: record,
+                accountDirectory: directory
+            )
             if !fileManager.fileExists(atPath: url.path) {
                 reconciled.removeValue(forKey: id)
             }
@@ -300,6 +412,76 @@ final class OfflineTrackStore: ObservableObject {
            capacity < byteCount + 100_000_000 {
             throw offlineError("На устройстве недостаточно свободного места.")
         }
+    }
+
+    private func resolvedURL(
+        for record: OfflineTrackRecord,
+        accountDirectory: URL
+    ) -> URL {
+        switch record.resolvedStorage {
+        case .directFile:
+            return accountDirectory.appendingPathComponent(
+                record.relativePath
+            )
+        case .hlsPackage:
+            return homeDirectory.appendingPathComponent(
+                record.relativePath
+            )
+        }
+    }
+
+    private var homeDirectory: URL {
+        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+    }
+
+    private func relativePathFromHome(for url: URL) -> String {
+        let homePath = homeDirectory.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        guard path.hasPrefix(homePath + "/") else {
+            return url.lastPathComponent
+        }
+        return String(path.dropFirst(homePath.count + 1))
+    }
+
+    private func isInsideAppContainer(_ url: URL) -> Bool {
+        url.standardizedFileURL.path.hasPrefix(
+            homeDirectory.standardizedFileURL.path + "/"
+        )
+    }
+
+    private func allocatedSize(at url: URL) -> Int64 {
+        let keys: Set<URLResourceKey> = [
+            .isRegularFileKey,
+            .fileAllocatedSizeKey,
+            .totalFileAllocatedSizeKey
+        ]
+        guard let enumerator = fileManager.enumerator(
+            at: url,
+            includingPropertiesForKeys: Array(keys),
+            options: []
+        ) else {
+            let values = try? url.resourceValues(forKeys: keys)
+            return Int64(
+                values?.totalFileAllocatedSize
+                    ?? values?.fileAllocatedSize
+                    ?? 0
+            )
+        }
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            let values = try? fileURL.resourceValues(forKeys: keys)
+            guard values?.isRegularFile == true else { continue }
+            total += Int64(
+                values?.totalFileAllocatedSize
+                    ?? values?.fileAllocatedSize
+                    ?? 0
+            )
+        }
+        return total
+    }
+
+    private func isHLS(_ url: URL?) -> Bool {
+        url?.pathExtension.caseInsensitiveCompare("m3u8") == .orderedSame
     }
 
     private func offlineError(_ message: String) -> APIError {

@@ -36,6 +36,7 @@ required = {
     "PrivateMusic/Features/Root/RootView.swift",
     "PrivateMusic/Models/OfflineTrackStore.swift",
     "PrivateMusic/Features/Library/OfflineDownloadsView.swift",
+    "PrivateMusic/Services/HLSOfflineDownloadService.swift",
 }
 for relative in required:
     if not (ROOT / relative).is_file():
@@ -113,6 +114,13 @@ for required_offline_symbol in (
 ):
     if required_offline_symbol not in audio_player_source:
         fail(f"offline playback is missing: {required_offline_symbol}")
+for required_hls_symbol in (
+    "AVAssetDownloadURLSession",
+    "hlsPackage",
+    "handleEventsForBackgroundURLSession",
+):
+    if required_hls_symbol not in all_source:
+        fail(f"HLS offline support is missing: {required_hls_symbol}")
 for forbidden_share_symbol in (
     "case vkLink",
     "linkPayload(",

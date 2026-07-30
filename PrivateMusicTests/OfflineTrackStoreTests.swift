@@ -50,6 +50,33 @@ final class OfflineTrackStoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: localURL.path))
     }
 
+    func testLegacyManifestDefaultsToDirectFileStorage() throws {
+        let json = """
+        [{
+          "track": {
+            "id": 7,
+            "owner_id": -42,
+            "title": "Title",
+            "artist": "Artist",
+            "duration": 120
+          },
+          "relativePath": "tracks/-42_7/audio.mp3",
+          "byteCount": 8,
+          "downloadedAt": "2026-07-30T12:00:00Z",
+          "lastPlayedAt": "2026-07-30T12:00:00Z"
+        }]
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let records = try decoder.decode(
+            [OfflineTrackRecord].self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertEqual(records.first?.resolvedStorage, .directFile)
+    }
+
     private func makeDownloadService() -> TrackShareService {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [OfflineURLProtocol.self]
