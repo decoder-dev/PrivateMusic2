@@ -1,12 +1,15 @@
 import SwiftUI
+import UIKit
 
 struct PlaylistArtworkView: View {
+    @ObservedObject private var offlinePlaylists =
+        OfflinePlaylistStore.shared
     let playlist: Playlist
     var size: CGFloat
     var showsSource = true
 
     var body: some View {
-        AsyncArtwork(url: playlist.artworkURL, size: size)
+        artwork
             .overlay(alignment: .bottomLeading) {
                 if showsSource {
                     sourceBadge
@@ -21,6 +24,25 @@ struct PlaylistArtworkView: View {
                     playlist.source.title
                 )
             )
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
+        if let url = offlinePlaylists.localArtworkURL(for: playlist),
+           let image = UIImage(contentsOfFile: url.path) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: PremiumLayout.artworkRadius(for: size),
+                        style: .continuous
+                    )
+                )
+        } else {
+            AsyncArtwork(url: playlist.artworkURL, size: size)
+        }
     }
 
     private var sourceBadge: some View {

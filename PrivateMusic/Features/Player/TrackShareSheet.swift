@@ -1,5 +1,8 @@
 import SwiftUI
 import UIKit
+import AVFoundation
+import LinkPresentation
+import UniformTypeIdentifiers
 
 enum TrackSharePayload: Equatable, Sendable {
     case audioFile(URL)
@@ -53,8 +56,12 @@ actor TrackShareService {
         guard let streamURL = track.streamURL else {
             throw directAudioUnavailableError
         }
-        guard !isHLS(streamURL) else {
-            throw directAudioUnavailableError
+        if isHLS(streamURL) {
+            return try await exportM4A(
+                from: streamURL,
+                track: track,
+                userAgent: userAgent
+            )
         }
 
         var request = URLRequest(url: streamURL)
@@ -85,18 +92,20 @@ actor TrackShareService {
             throw directAudioUnavailableError
         }
         if requiresMP3 {
-            guard http.mimeType?.lowercased() == "audio/mpeg",
-                  isLikelyMP3(at: temporaryURL) else {
+            guard isLikelyMP3(at: temporaryURL) else {
                 throw directMP3UnavailableError
             }
         }
 
         let destination = exportDestination(
             for: track,
-            extensionName: try fileExtension(
-                response: http,
-                sourceURL: streamURL
-            )
+            extensionName: requiresMP3
+                ? "mp3"
+                : try fileExtension(
+                    response: http,
+                    sourceURL: streamURL,
+                    downloadedURL: temporaryURL
+                )
         )
         do {
             try fileManager.moveItem(at: temporaryURL, to: destination)
@@ -110,22 +119,38 @@ actor TrackShareService {
         _ sourceURL: URL,
         track: Track,
         requiresMP3: Bool = true
-    ) throws -> TrackSharePayload {
+    ) async throws -> TrackSharePayload {
         guard sourceURL.isFileURL,
               fileManager.fileExists(atPath: sourceURL.path) else {
             throw directAudioUnavailableError
         }
+        if sourceURL.hasDirectoryPath
+            || sourceURL.pathExtension.lowercased() == "movpkg" {
+            guard !requiresMP3 else {
+                throw directMP3UnavailableError
+            }
+            return try await exportM4A(
+                from: sourceURL,
+                track: track,
+                userAgent: nil
+            )
+        }
         if requiresMP3 {
-            guard sourceURL.pathExtension.lowercased() == "mp3",
-                  isLikelyMP3(at: sourceURL) else {
+            guard isLikelyMP3(at: sourceURL) else {
                 throw directMP3UnavailableError
             }
         }
+        let extensionName: String
+        if isLikelyMP3(at: sourceURL) {
+            extensionName = "mp3"
+        } else if isLikelyM4A(at: sourceURL) {
+            extensionName = "m4a"
+        } else {
+            extensionName = sourceURL.pathExtension.lowercased()
+        }
         let destination = exportDestination(
             for: track,
-            extensionName: sourceURL.pathExtension.isEmpty
-                ? "mp3"
-                : sourceURL.pathExtension
+            extensionName: extensionName.isEmpty ? "m4a" : extensionName
         )
         do {
             try fileManager.linkItem(at: sourceURL, to: destination)
@@ -232,8 +257,15 @@ actor TrackShareService {
 
     private func fileExtension(
         response: HTTPURLResponse,
-        sourceURL: URL
+        sourceURL: URL,
+        downloadedURL: URL
     ) throws -> String {
+        if isLikelyMP3(at: downloadedURL) {
+            return "mp3"
+        }
+        if isLikelyM4A(at: downloadedURL) {
+            return "m4a"
+        }
         switch response.mimeType?.lowercased() {
         case "audio/mpeg", "audio/mp3": return "mp3"
         case "audio/mp4", "audio/x-m4a": return "m4a"
@@ -249,6 +281,67 @@ actor TrackShareService {
         throw directAudioUnavailableError
     }
 
+    private func exportM4A(
+        from sourceURL: URL,
+        track: Track,
+        userAgent: String?
+    ) async throws -> TrackSharePayload {
+        let asset: AVURLAsset
+        if sourceURL.isFileURL {
+            asset = AVURLAsset(url: sourceURL)
+        } else {
+            asset = AVURLAsset(
+                url: sourceURL,
+                options: [
+                    "AVURLAssetHTTPHeaderFieldsKey":
+                        requestHeaders(userAgent: userAgent)
+                ]
+            )
+        }
+        let isExportable = try await asset.load(.isExportable)
+        guard isExportable,
+              let exporter = AVAssetExportSession(
+                asset: asset,
+                presetName: AVAssetExportPresetAppleM4A
+              ) else {
+            throw audioExportUnavailableError
+        }
+        let destination = exportDestination(
+            for: track,
+            extensionName: "m4a"
+        )
+        exporter.outputURL = destination
+        exporter.outputFileType = .m4a
+        exporter.shouldOptimizeForNetworkUse = false
+        let fallbackError = audioExportUnavailableError
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, Error>) in
+                exporter.exportAsynchronously {
+                    switch exporter.status {
+                    case .completed:
+                        continuation.resume(returning: ())
+                    case .cancelled:
+                        continuation.resume(throwing: CancellationError())
+                    default:
+                        continuation.resume(
+                            throwing: exporter.error
+                                ?? fallbackError
+                        )
+                    }
+                }
+            }
+        } onCancel: {
+            exporter.cancelExport()
+        }
+        guard isLikelyM4A(at: destination),
+              (try? fileSize(at: destination)) ?? 0 > 0 else {
+            try? fileManager.removeItem(at: destination)
+            throw audioExportUnavailableError
+        }
+        return .audioFile(destination)
+    }
+
     private func isLikelyMP3(at url: URL) -> Bool {
         guard let handle = try? FileHandle(forReadingFrom: url) else {
             return false
@@ -261,6 +354,27 @@ actor TrackShareService {
         guard prefix.count >= 2 else { return false }
         return prefix[prefix.startIndex] == 0xFF
             && prefix[prefix.index(after: prefix.startIndex)] & 0xE0 == 0xE0
+    }
+
+    private func isLikelyM4A(at url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return false
+        }
+        defer { try? handle.close() }
+        let prefix = (try? handle.read(upToCount: 12)) ?? Data()
+        guard prefix.count >= 12 else { return false }
+        let typeRange = prefix.index(prefix.startIndex, offsetBy: 4)
+            ..<prefix.index(prefix.startIndex, offsetBy: 8)
+        return String(data: prefix[typeRange], encoding: .ascii) == "ftyp"
+    }
+
+    private var audioExportUnavailableError: APIError {
+        APIError.server(
+            code: 415,
+            message: L10n.text(
+                "Этот поток нельзя экспортировать в аудиофайл."
+            )
+        )
     }
 
     private func isHLSFile(at url: URL) -> Bool {
@@ -294,7 +408,9 @@ struct TrackShareSheet: UIViewControllerRepresentable {
         let activityItems: [Any]
         switch payload {
         case let .audioFile(fileURL):
-            activityItems = [fileURL]
+            activityItems = [
+                AudioFileActivityItemSource(fileURL: fileURL)
+            ]
         }
         let controller = UIActivityViewController(
             activityItems: activityItems,
@@ -312,4 +428,59 @@ struct TrackShareSheet: UIViewControllerRepresentable {
         _ uiViewController: UIActivityViewController,
         context: Context
     ) {}
+}
+
+private final class AudioFileActivityItemSource:
+    NSObject,
+    UIActivityItemSource {
+    private let fileURL: URL
+
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+    }
+
+    func activityViewControllerPlaceholderItem(
+        _ activityViewController: UIActivityViewController
+    ) -> Any {
+        fileURL
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        itemForActivityType activityType: UIActivity.ActivityType?
+    ) -> Any? {
+        fileURL
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?
+    ) -> String {
+        contentType.identifier
+    }
+
+    func activityViewControllerLinkMetadata(
+        _ activityViewController: UIActivityViewController
+    ) -> LPLinkMetadata? {
+        let metadata = LPLinkMetadata()
+        metadata.title = fileURL.deletingPathExtension().lastPathComponent
+        metadata.originalURL = fileURL
+        metadata.url = fileURL
+        return metadata
+    }
+
+    private var contentType: UTType {
+        switch fileURL.pathExtension.lowercased() {
+        case "mp3":
+            return .mp3
+        case "m4a":
+            return .mpeg4Audio
+        case "aac":
+            return .mpeg4Audio
+        case "wav":
+            return .wav
+        default:
+            return .audio
+        }
+    }
 }
