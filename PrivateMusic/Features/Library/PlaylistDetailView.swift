@@ -3,6 +3,8 @@ import SwiftUI
 struct PlaylistDetailView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
+    @ObservedObject private var offlinePlaylists =
+        OfflinePlaylistStore.shared
     let playlist: Playlist
     @StateObject private var model = PlaylistDetailViewModel()
 
@@ -59,7 +61,17 @@ struct PlaylistDetailView: View {
         .background(ThemeBackground())
         .navigationTitle(playlist.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                offlineButton
+            }
+        }
         .task { await load() }
+        .task(id: sessionStore.session?.userID) {
+            offlinePlaylists.configure(
+                accountID: sessionStore.session?.userID
+            )
+        }
         .refreshable { await load(force: true) }
     }
 
@@ -84,11 +96,75 @@ struct PlaylistDetailView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if let record = offlinePlaylists.record(for: playlist),
+               record.state == .downloading || record.state == .queued {
+                VStack(alignment: .trailing, spacing: 3) {
+                    ProgressView(value: record.progress)
+                        .frame(width: 72)
+                    Text(
+                        L10n.format(
+                            "%d из %d",
+                            record.completedCount,
+                            record.totalCount
+                        )
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(ThemeBackground())
         .premiumAppear()
+    }
+
+    @ViewBuilder
+    private var offlineButton: some View {
+        switch offlinePlaylists.record(for: playlist)?.state {
+        case .queued, .downloading:
+            Button {
+                offlinePlaylists.cancelDownload(for: playlist)
+            } label: {
+                Label("Отменить загрузку", systemImage: "xmark.circle")
+            }
+        case .available:
+            Menu {
+                Button(role: .destructive) {
+                    offlinePlaylists.remove(playlist)
+                } label: {
+                    Label("Удалить плейлист", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "arrow.down.circle.fill")
+            }
+        case .partial, .cancelled, .failed, .none:
+            Button {
+                startOfflineDownload()
+            } label: {
+                Label("Скачать плейлист", systemImage: "arrow.down.circle")
+            }
+        }
+    }
+
+    private func startOfflineDownload() {
+        guard sessionStore.accessToken != nil else { return }
+        offlinePlaylists.startDownload(
+            playlist: playlist,
+            fetchPage: { offset in
+                try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.playlistTracks(
+                        playlist,
+                        accessToken: token,
+                        offset: offset,
+                        count: 100
+                    )
+                }
+            },
+            downloadTrack: { track in
+                try await environment.downloadForOffline(track)
+            }
+        )
     }
 
     private func remove(_ track: Track) async {
