@@ -1,5 +1,10 @@
 import SwiftUI
 
+enum AdaptiveGlassVariant {
+    case regular
+    case clear
+}
+
 struct ThemeBackground: View {
     @EnvironmentObject private var settings: AppSettings
 
@@ -16,19 +21,32 @@ struct ThemeBackground: View {
 private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     let shape: S
     let interactive: Bool
+    let variant: AdaptiveGlassVariant
+    let tint: Color?
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content
-                .clipShape(shape)
-                .glassEffect(
-                    .regular
-                        .tint(.primary.opacity(0.06))
-                        .interactive(interactive),
-                    in: shape
-                )
-                .contentShape(shape)
+            switch variant {
+            case .regular:
+                content
+                    .clipShape(shape)
+                    .glassEffect(
+                        .regular
+                            .tint(tint ?? .primary.opacity(0.06))
+                            .interactive(interactive),
+                        in: shape
+                    )
+                    .contentShape(shape)
+            case .clear:
+                content
+                    .clipShape(shape)
+                    .glassEffect(
+                        .clear.interactive(interactive),
+                        in: shape
+                    )
+                    .contentShape(shape)
+            }
         } else {
             content
                 .clipShape(shape)
@@ -71,12 +89,16 @@ struct AdaptiveGlassContainer<Content: View>: View {
 extension View {
     func adaptiveGlass<S: Shape>(
         in shape: S,
-        interactive: Bool = false
+        interactive: Bool = false,
+        variant: AdaptiveGlassVariant = .regular,
+        tint: Color? = nil
     ) -> some View {
         modifier(
             AdaptiveGlassModifier(
                 shape: shape,
-                interactive: interactive
+                interactive: interactive,
+                variant: variant,
+                tint: tint
             )
         )
     }

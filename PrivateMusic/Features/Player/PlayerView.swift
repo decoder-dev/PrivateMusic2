@@ -242,13 +242,11 @@ struct PlayerView: View {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 15, weight: .bold))
                         .frame(width: 44, height: 44)
-                        .background(controlSurface, in: Circle())
-                        .overlay {
-                            Circle().stroke(
-                                playerForeground.opacity(0.08),
-                                lineWidth: 0.5
-                            )
-                        }
+                        .adaptiveGlass(
+                            in: Circle(),
+                            interactive: true,
+                            variant: .clear
+                        )
                 }
                 .buttonStyle(PlayerControlStyle())
                 .accessibilityLabel(L10n.text("Закрыть плеер"))
@@ -261,13 +259,11 @@ struct PlayerView: View {
                         tintColor: UIColor(playerForeground)
                     )
                         .frame(width: 44, height: 44)
-                        .background(controlSurface, in: Circle())
-                        .overlay {
-                            Circle().stroke(
-                                playerForeground.opacity(0.08),
-                                lineWidth: 0.5
-                            )
-                        }
+                        .adaptiveGlass(
+                            in: Circle(),
+                            interactive: true,
+                            variant: .clear
+                        )
                         .accessibilityLabel(
                             L10n.text(
                                 "Выбрать устройство воспроизведения"
@@ -384,7 +380,11 @@ struct PlayerView: View {
                         : playerForeground.opacity(0.72)
                 )
                 .frame(width: 44, height: 44)
-                .background(controlSurface, in: Circle())
+                .adaptiveGlass(
+                    in: Circle(),
+                    interactive: true,
+                    variant: .clear
+                )
             }
             .buttonStyle(PlayerControlStyle())
             .disabled(isUpdatingLibrary)
@@ -446,13 +446,11 @@ struct PlayerView: View {
                 .font(.headline)
                 .foregroundStyle(playerForeground)
                 .frame(width: 44, height: 44)
-                .background(controlSurface, in: Circle())
-                .overlay {
-                    Circle().stroke(
-                        playerForeground.opacity(0.08),
-                        lineWidth: 0.5
-                    )
-                }
+                .adaptiveGlass(
+                    in: Circle(),
+                    interactive: true,
+                    variant: .clear
+                )
         }
         .buttonStyle(PlayerControlStyle())
         .accessibilityLabel(L10n.text("Действия с треком"))
@@ -549,14 +547,13 @@ struct PlayerView: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 6)
-        .background(
-            .ultraThinMaterial,
-            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+        .adaptiveGlass(
+            in: RoundedRectangle(
+                cornerRadius: 22,
+                style: .continuous
+            ),
+            interactive: true
         )
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(playerForeground.opacity(0.09), lineWidth: 0.7)
-        }
     }
 
     private func quickAction(
