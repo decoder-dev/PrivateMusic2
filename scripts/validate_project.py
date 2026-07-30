@@ -108,6 +108,17 @@ if ".clipped()" in player_view_source:
     fail("full-screen player must not clip its safe-area background")
 if ".clear.interactive" in glass_source:
     fail("Liquid Glass variants must not be mixed in navigation controls")
+if ".adaptiveGlass(\n            in: RoundedRectangle" in player_view_source:
+    fail("player quick actions must not use a heavy enclosing glass panel")
+for source_path in swift_files:
+    if source_path == SOURCE / "Player" / "AudioPlayer.swift":
+        continue
+    source_text = source_path.read_text(encoding="utf-8")
+    if re.search(r"isPlayerPresented\s*=", source_text):
+        fail(
+            "player presentation state must change only through AudioPlayer: "
+            f"{source_path.relative_to(ROOT)}"
+        )
 
 helper_path = ROOT / "scripts" / "vkpymusic_login.py"
 helper_source = helper_path.read_text(encoding="utf-8")
@@ -230,3 +241,4 @@ print("OK: non-persistent VK web login and direct token exchange")
 print("OK: Info.plist, HTTPS endpoints and release icons")
 print("OK: valid no-tracking privacy manifest")
 print("OK: edge-to-edge player and consistent Liquid Glass controls")
+print("OK: deterministic player presentation and lightweight action dock")
