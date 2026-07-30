@@ -213,7 +213,10 @@ struct LibraryView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 14) {
                 ForEach(0..<3, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(
+                        cornerRadius: PremiumLayout.cardRadius,
+                        style: .continuous
+                    )
                         .fill(.primary.opacity(0.08))
                         .frame(width: 136, height: 168)
                 }
@@ -226,7 +229,11 @@ struct LibraryView: View {
         VStack(spacing: 14) {
             ForEach(0..<7, id: \.self) { _ in
                 HStack(spacing: 12) {
-                    RoundedRectangle(cornerRadius: 11)
+                    RoundedRectangle(
+                        cornerRadius:
+                            PremiumLayout.artworkRadius(for: 46),
+                        style: .continuous
+                    )
                         .fill(.primary.opacity(0.08))
                         .frame(width: 46, height: 46)
                     VStack(alignment: .leading, spacing: 8) {

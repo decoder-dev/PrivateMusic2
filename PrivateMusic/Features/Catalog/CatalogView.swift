@@ -152,13 +152,13 @@ struct CatalogView: View {
                             .clipped()
                             .clipShape(
                                 RoundedRectangle(
-                                    cornerRadius: 15,
+                                    cornerRadius: PremiumLayout.compactRadius,
                                     style: .continuous
                                 )
                             )
                             .overlay {
                                 RoundedRectangle(
-                                    cornerRadius: 15,
+                                    cornerRadius: PremiumLayout.compactRadius,
                                     style: .continuous
                                 )
                                 .stroke(.primary.opacity(0.08), lineWidth: 0.5)
@@ -318,7 +318,13 @@ struct CatalogView: View {
                         ) {
                             ForEach(0..<3, id: \.self) { _ in
                                 VStack(alignment: .leading, spacing: 6) {
-                                    RoundedRectangle(cornerRadius: 15)
+                                    RoundedRectangle(
+                                        cornerRadius:
+                                            PremiumLayout.artworkRadius(
+                                                for: metrics.trackWidth
+                                            ),
+                                        style: .continuous
+                                    )
                                         .fill(.primary.opacity(0.09))
                                         .frame(
                                             width: metrics.trackWidth,
@@ -606,11 +612,17 @@ private struct HomeTrackArtwork: View {
         }
         .frame(width: size, height: size)
         .clipShape(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
+            RoundedRectangle(
+                cornerRadius: PremiumLayout.artworkRadius(for: size),
+                style: .continuous
+            )
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(.primary.opacity(0.07), lineWidth: 0.5)
+            RoundedRectangle(
+                cornerRadius: PremiumLayout.artworkRadius(for: size),
+                style: .continuous
+            )
+            .stroke(.primary.opacity(0.07), lineWidth: 0.5)
         }
     }
 }
