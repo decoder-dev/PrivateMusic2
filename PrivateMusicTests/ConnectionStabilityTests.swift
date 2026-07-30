@@ -261,6 +261,12 @@ final class ConnectionStabilityTests: XCTestCase {
         XCTAssertTrue(AudioRoutePolicy.isBluetooth(.bluetoothLE))
         XCTAssertFalse(AudioRoutePolicy.isBluetooth(.builtInSpeaker))
         XCTAssertFalse(AudioRoutePolicy.isBluetooth(.airPlay))
+        XCTAssertTrue(AudioRoutePolicy.isExternalPlayback(.airPlay))
+        XCTAssertTrue(AudioRoutePolicy.isExternalPlayback(.carAudio))
+        XCTAssertTrue(AudioRoutePolicy.isExternalPlayback(.bluetoothA2DP))
+        XCTAssertFalse(
+            AudioRoutePolicy.isExternalPlayback(.builtInSpeaker)
+        )
     }
 
     private func makeSession(expiresAt: Date?) -> Session {
