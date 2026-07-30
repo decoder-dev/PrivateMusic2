@@ -30,6 +30,16 @@ enum AudioRoutePolicy {
             .bluetoothLE
         ].contains(portType)
     }
+
+    static func isExternalPlayback(_ portType: AVAudioSession.Port) -> Bool {
+        isBluetooth(portType)
+            || portType == .airPlay
+            || portType == .headphones
+            || portType == .lineOut
+            || portType == .carAudio
+            || portType == .HDMI
+            || portType == .usbAudio
+    }
 }
 
 @MainActor
@@ -65,6 +75,7 @@ final class AudioPlayer: ObservableObject {
     private var offlineURLProvider: ((Track) -> URL?)?
     private var offlineInvalidationHandler: ((Track) -> Void)?
     private var offlinePlayedHandler: ((Track) -> Void)?
+    private var playbackReadyHandler: ((Track, Bool) -> Void)?
     private var loadedOfflineTrackID: String?
     private var continuationTask: Task<Void, Never>?
     private var streamRefreshTask: Task<Void, Never>?
@@ -81,6 +92,7 @@ final class AudioPlayer: ObservableObject {
     private var pauseAtMinimumVolume = true
     private var advanceOnPlaybackError = true
     private var lastNowPlayingSecond = -1
+    private var resumeAfterRouteTransfer = false
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -116,6 +128,7 @@ final class AudioPlayer: ObservableObject {
             rawValue: defaults.string(forKey: "player.repeat") ?? ""
         ) ?? .off
         player.automaticallyWaitsToMinimizeStalling = true
+        player.allowsExternalPlayback = true
         _ = configureAudioSession()
         configureRemoteCommands()
         observePlayer()
@@ -125,11 +138,17 @@ final class AudioPlayer: ObservableObject {
                 settings.$equalizerPreamp
             )
             .sink { [weak self] enabled, gains, preamp in
-                self?.equalizer.update(
+                guard let self else { return }
+                let wasEnabled = self.equalizer.isEnabled
+                self.equalizer.update(
                     enabled: enabled,
                     gains: gains,
                     preamp: preamp
                 )
+                if wasEnabled != enabled,
+                   self.player.currentItem != nil {
+                    self.reloadCurrentItemForAudioProcessing()
+                }
             }
             .store(in: &cancellables)
         settings.$resumeOnBluetoothConnection
@@ -176,6 +195,12 @@ final class AudioPlayer: ObservableObject {
         offlineURLProvider = lookup
         offlineInvalidationHandler = invalidate
         offlinePlayedHandler = markPlayed
+    }
+
+    func configurePlaybackReady(
+        _ handler: @escaping (Track, Bool) -> Void
+    ) {
+        playbackReadyHandler = handler
     }
 
     func configureNetwork(userAgent: String?) {
@@ -473,6 +498,7 @@ final class AudioPlayer: ObservableObject {
                     if isOffline {
                         self.offlinePlayedHandler?(track)
                     }
+                    self.playbackReadyHandler?(track, isOffline)
                     if position > 0 {
                         self.seek(to: min(position, self.duration))
                     }
@@ -528,6 +554,7 @@ final class AudioPlayer: ObservableObject {
             try session.setCategory(
                 .playback,
                 mode: .default,
+                routeSharingPolicy: .longFormAudio,
                 options: []
             )
             audioSessionConfigured = true
@@ -683,6 +710,15 @@ final class AudioPlayer: ObservableObject {
                 self?.handleRouteChange(notification)
             }
         })
+        notificationObservers.append(center.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleMediaServicesReset()
+            }
+        })
         outputVolumeObservation = AVAudioSession.sharedInstance().observe(
             \.outputVolume,
             options: [.initial, .new]
@@ -731,8 +767,19 @@ final class AudioPlayer: ObservableObject {
         }
         switch reason {
         case .oldDeviceUnavailable:
+            resumeAfterRouteTransfer = isPlaying
             pause()
         case .newDeviceAvailable:
+            audioSessionConfigured = false
+            _ = configureAudioSession()
+            if resumeAfterRouteTransfer,
+               hasExternalOutput,
+               currentTrack != nil {
+                resumeAfterRouteTransfer = false
+                resume()
+                return
+            }
+            resumeAfterRouteTransfer = false
             guard resumeOnBluetoothConnection,
                   currentTrack != nil,
                   !isPlaying,
@@ -745,9 +792,36 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
+    private func handleMediaServicesReset() {
+        let shouldResume = isPlaying
+        let position = elapsedTime
+        audioSessionConfigured = false
+        guard configureAudioSession() else {
+            errorMessage = L10n.text(
+                "Не удалось восстановить аудиовыход."
+            )
+            return
+        }
+        guard currentTrack != nil else { return }
+        loadCurrent(autoplay: shouldResume, startAt: position)
+    }
+
+    private func reloadCurrentItemForAudioProcessing() {
+        guard currentTrack != nil else { return }
+        let shouldResume = isPlaying
+        let position = elapsedTime
+        loadCurrent(autoplay: shouldResume, startAt: position)
+    }
+
     private var hasBluetoothOutput: Bool {
         AVAudioSession.sharedInstance().currentRoute.outputs.contains {
             AudioRoutePolicy.isBluetooth($0.portType)
+        }
+    }
+
+    private var hasExternalOutput: Bool {
+        AVAudioSession.sharedInstance().currentRoute.outputs.contains {
+            AudioRoutePolicy.isExternalPlayback($0.portType)
         }
     }
 

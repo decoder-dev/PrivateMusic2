@@ -66,26 +66,38 @@ final class HLSOfflineDownloadService: NSObject,
             options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
         )
 
-        return try await withCheckedThrowingContinuation { continuation in
-            guard let task = session.makeAssetDownloadTask(
-                asset: asset,
-                assetTitle: "\(track.artist) — \(track.title)",
-                assetArtworkData: nil,
-                options: nil
-            ) else {
-                continuation.resume(
-                    throwing: HLSOfflineDownloadError.cannotCreateTask
-                )
-                return
-            }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                guard let task = session.makeAssetDownloadTask(
+                    asset: asset,
+                    assetTitle: "\(track.artist) — \(track.title)",
+                    assetArtworkData: nil,
+                    options: nil
+                ) else {
+                    continuation.resume(
+                        throwing: HLSOfflineDownloadError.cannotCreateTask
+                    )
+                    return
+                }
 
-            task.taskDescription = track.id
-            synchronized {
-                activeDownloads[task.taskIdentifier] = ActiveDownload(
-                    continuation: continuation
-                )
+                task.taskDescription = track.id
+                synchronized {
+                    activeDownloads[task.taskIdentifier] = ActiveDownload(
+                        continuation: continuation
+                    )
+                }
+                if Task.isCancelled {
+                    task.cancel()
+                } else {
+                    task.resume()
+                }
             }
-            task.resume()
+        } onCancel: {
+            session.getAllTasks { tasks in
+                tasks
+                    .filter { $0.taskDescription == track.id }
+                    .forEach { $0.cancel() }
+            }
         }
     }
 

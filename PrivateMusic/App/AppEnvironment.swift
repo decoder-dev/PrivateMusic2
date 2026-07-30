@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 @MainActor
@@ -18,6 +19,9 @@ final class AppEnvironment: ObservableObject {
         let task: Task<String, Error>
     }
     private var sessionRecovery: SessionRecovery?
+    private var cancellables = Set<AnyCancellable>()
+    private var automaticCacheTask: Task<Void, Never>?
+    private var pendingAutomaticCacheTrack: Track?
 
     init(
         configuration: AppConfiguration = .current,
@@ -31,15 +35,22 @@ final class AppEnvironment: ObservableObject {
         self.libraryStore = MusicLibraryStore()
         let offlineStore = OfflineTrackStore()
         self.offlineStore = offlineStore
+        offlineStore.configureStorage(
+            limitGB: settings.offlineStorageLimitGB
+        )
         offlineStore.configure(
             accountID: sessionStore.session?.userID
                 ?? sessionStore.profile?.id
         )
-        self.player = AudioPlayer(
+        let player = AudioPlayer(
             settings: settings,
             historyStore: historyStore,
             userAgent: sessionStore.userAgent
         )
+        self.player = player
+        offlineStore.configureEvictionProtection { [weak player] in
+            player?.currentTrack?.id
+        }
         self.webAuthService = VKWebAuthService()
 
         let client = APIClient(
@@ -79,16 +90,36 @@ final class AppEnvironment: ObservableObject {
                 offlineStore?.markPlayed(track)
             }
         )
+        player.configurePlaybackReady { [weak self] track, isOffline in
+            guard !isOffline else { return }
+            self?.scheduleAutomaticCache(for: track)
+        }
+        settings.$offlineStorageLimitGB
+            .removeDuplicates()
+            .sink { [weak offlineStore] limitGB in
+                offlineStore?.configureStorage(limitGB: limitGB)
+            }
+            .store(in: &cancellables)
+        settings.$automaticOfflineCacheEnabled
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                guard !enabled else { return }
+                self?.pendingAutomaticCacheTrack = nil
+            }
+            .store(in: &cancellables)
     }
 
     func configureOfflineAccount() {
-        offlineStore.configure(
-            accountID: sessionStore.session?.userID
-                ?? sessionStore.profile?.id
-        )
+        let accountID = sessionStore.session?.userID
+            ?? sessionStore.profile?.id
+        offlineStore.configure(accountID: accountID)
+        OfflinePlaylistStore.shared.configure(accountID: accountID)
     }
 
-    func downloadForOffline(_ track: Track) async throws {
+    func downloadForOffline(
+        _ track: Track,
+        retention: OfflineTrackRetention = .manual
+    ) async throws {
         let refreshed = try await withAuthorizedToken { token in
             try await musicService.refreshedTrack(
                 track,
@@ -97,8 +128,48 @@ final class AppEnvironment: ObservableObject {
         }
         try await offlineStore.download(
             refreshed,
-            userAgent: sessionStore.userAgent
+            userAgent: sessionStore.userAgent,
+            retention: retention
         )
+    }
+
+    private func scheduleAutomaticCache(for track: Track) {
+        guard settings.automaticOfflineCacheEnabled,
+              networkMonitor.state == .online,
+              networkMonitor.transport == .wifi
+                || networkMonitor.transport == .wired,
+              !ProcessInfo.processInfo.isLowPowerModeEnabled,
+              !offlineStore.contains(track) else {
+            return
+        }
+        pendingAutomaticCacheTrack = track
+        guard automaticCacheTask == nil else { return }
+        automaticCacheTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled,
+                  let next = pendingAutomaticCacheTrack {
+                pendingAutomaticCacheTrack = nil
+                guard settings.automaticOfflineCacheEnabled,
+                      networkMonitor.state == .online,
+                      networkMonitor.transport == .wifi
+                        || networkMonitor.transport == .wired,
+                      !ProcessInfo.processInfo.isLowPowerModeEnabled else {
+                    continue
+                }
+                do {
+                    try await downloadForOffline(
+                        next,
+                        retention: .automaticCache
+                    )
+                } catch is CancellationError {
+                    break
+                } catch {
+                    // Automatic caching is opportunistic and must never
+                    // interrupt playback with an error.
+                }
+            }
+            automaticCacheTask = nil
+        }
     }
 
     func withAuthorizedToken<Value>(

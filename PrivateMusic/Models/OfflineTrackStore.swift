@@ -4,6 +4,7 @@ struct OfflineTrackRecord: Codable, Identifiable, Equatable, Sendable {
     let track: Track
     let relativePath: String
     let storage: OfflineTrackStorage?
+    var retention: OfflineTrackRetention?
     let byteCount: Int64
     let downloadedAt: Date
     var lastPlayedAt: Date
@@ -13,11 +14,20 @@ struct OfflineTrackRecord: Codable, Identifiable, Equatable, Sendable {
     var resolvedStorage: OfflineTrackStorage {
         storage ?? .directFile
     }
+
+    var resolvedRetention: OfflineTrackRetention {
+        retention ?? .manual
+    }
 }
 
 enum OfflineTrackStorage: String, Codable, Sendable {
     case directFile
     case hlsPackage
+}
+
+enum OfflineTrackRetention: String, Codable, Sendable {
+    case manual
+    case automaticCache
 }
 
 enum OfflineTrackState: Equatable {
@@ -29,16 +39,20 @@ enum OfflineTrackState: Equatable {
 @MainActor
 final class OfflineTrackStore: ObservableObject {
     static let maximumTrackSize: Int64 = 150_000_000
-    static let maximumLibrarySize: Int64 = 5_000_000_000
+    static let minimumLibrarySize: Int64 = 5_000_000_000
+    static let maximumLibrarySize: Int64 = 100_000_000_000
 
     @Published private(set) var records: [String: OfflineTrackRecord] = [:]
     @Published private(set) var downloadingTrackIDs: Set<String> = []
+    @Published private(set) var storageLimitBytes =
+        OfflineTrackStore.minimumLibrarySize
 
     private let fileManager: FileManager
     private let rootURL: URL
     private let downloadService: TrackShareService
     private let hlsDownloadService: HLSOfflineDownloadService?
     private var activeAccountID: Int?
+    private var protectedTrackIDProvider: (() -> String?)?
 
     init(
         fileManager: FileManager = .default,
@@ -75,6 +89,18 @@ final class OfflineTrackStore: ObservableObject {
         reconcile()
     }
 
+    func configureStorage(limitGB: Int) {
+        let clamped = min(max(limitGB, 5), 100)
+        storageLimitBytes = Int64(clamped) * 1_000_000_000
+        evictAutomaticCacheIfNeeded()
+    }
+
+    func configureEvictionProtection(
+        currentTrackID: @escaping () -> String?
+    ) {
+        protectedTrackIDProvider = currentTrackID
+    }
+
     func state(for track: Track) -> OfflineTrackState {
         if downloadingTrackIDs.contains(track.id) {
             return .downloading
@@ -106,15 +132,31 @@ final class OfflineTrackStore: ObservableObject {
         records.values.reduce(0) { $0 + $1.byteCount }
     }
 
+    var automaticCacheByteCount: Int64 {
+        records.values
+            .filter { $0.resolvedRetention == .automaticCache }
+            .reduce(0) { $0 + $1.byteCount }
+    }
+
     func download(
         _ track: Track,
-        userAgent: String?
+        userAgent: String?,
+        retention: OfflineTrackRetention = .manual
     ) async throws {
         guard let accountID = activeAccountID else {
             throw APIError.unauthorized
         }
         guard !downloadingTrackIDs.contains(track.id) else { return }
-        if contains(track) { return }
+        if contains(track) {
+            if retention == .manual,
+               var record = records[track.id],
+               record.resolvedRetention == .automaticCache {
+                record.retention = .manual
+                records[track.id] = record
+                try saveManifest()
+            }
+            return
+        }
 
         downloadingTrackIDs.insert(track.id)
         defer { downloadingTrackIDs.remove(track.id) }
@@ -123,13 +165,15 @@ final class OfflineTrackStore: ObservableObject {
             try await downloadHLS(
                 track,
                 accountID: accountID,
-                userAgent: userAgent
+                userAgent: userAgent,
+                retention: retention
             )
         } else {
             try await downloadDirectFile(
                 track,
                 accountID: accountID,
-                userAgent: userAgent
+                userAgent: userAgent,
+                retention: retention
             )
         }
     }
@@ -137,7 +181,8 @@ final class OfflineTrackStore: ObservableObject {
     private func downloadDirectFile(
         _ track: Track,
         accountID: Int,
-        userAgent: String?
+        userAgent: String?,
+        retention: OfflineTrackRetention
     ) async throws {
         let payload = try await downloadService.preparePayload(
             for: track,
@@ -158,12 +203,7 @@ final class OfflineTrackStore: ObservableObject {
               byteCount <= Self.maximumTrackSize else {
             throw offlineError("Файл слишком большой для офлайн-загрузки.")
         }
-        guard totalByteCount + byteCount <= Self.maximumLibrarySize else {
-            throw offlineError(
-                "Для офлайн-музыки занято больше 5 ГБ. "
-                    + "Удалите часть загрузок."
-            )
-        }
+        try makeSpace(for: byteCount)
         try createProtectedDirectory(rootURL)
         try ensureFreeSpace(for: byteCount)
 
@@ -216,6 +256,7 @@ final class OfflineTrackStore: ObservableObject {
             track: storedTrack,
             relativePath: relativePath,
             storage: .directFile,
+            retention: retention,
             byteCount: byteCount,
             downloadedAt: now,
             lastPlayedAt: now
@@ -226,7 +267,8 @@ final class OfflineTrackStore: ObservableObject {
     private func downloadHLS(
         _ track: Track,
         accountID: Int,
-        userAgent: String?
+        userAgent: String?,
+        retention: OfflineTrackRetention
     ) async throws {
         try createProtectedDirectory(rootURL)
         let estimatedSize = min(
@@ -252,12 +294,11 @@ final class OfflineTrackStore: ObservableObject {
             try? fileManager.removeItem(at: location)
             throw offlineError("Файл слишком большой для офлайн-загрузки.")
         }
-        guard totalByteCount + byteCount <= Self.maximumLibrarySize else {
+        do {
+            try makeSpace(for: byteCount)
+        } catch {
             try? fileManager.removeItem(at: location)
-            throw offlineError(
-                "Для офлайн-музыки занято больше 5 ГБ. "
-                    + "Удалите часть загрузок."
-            )
+            throw error
         }
         let storedTrack = Track(
             trackID: track.trackID,
@@ -275,6 +316,7 @@ final class OfflineTrackStore: ObservableObject {
             track: storedTrack,
             relativePath: relativePathFromHome(for: location),
             storage: .hlsPackage,
+            retention: retention,
             byteCount: byteCount,
             downloadedAt: Date(),
             lastPlayedAt: Date()
@@ -319,6 +361,15 @@ final class OfflineTrackStore: ObservableObject {
         record.lastPlayedAt = Date()
         records[track.id] = record
         try? saveManifest()
+    }
+
+    func removeAutomaticCache() {
+        let tracks = records.values
+            .filter { $0.resolvedRetention == .automaticCache }
+            .map(\.track)
+        for track in tracks {
+            remove(track)
+        }
     }
 
     private var accountDirectory: URL? {
@@ -412,6 +463,45 @@ final class OfflineTrackStore: ObservableObject {
         if let capacity = values.volumeAvailableCapacityForImportantUsage,
            capacity < byteCount + 100_000_000 {
             throw offlineError("На устройстве недостаточно свободного места.")
+        }
+    }
+
+    private func makeSpace(for incomingByteCount: Int64) throws {
+        let required = totalByteCount + incomingByteCount - storageLimitBytes
+        if required > 0 {
+            var released: Int64 = 0
+            let candidates = records.values
+                .filter {
+                    $0.resolvedRetention == .automaticCache
+                        && $0.id != protectedTrackIDProvider?()
+                }
+                .sorted { $0.lastPlayedAt < $1.lastPlayedAt }
+            for record in candidates {
+                remove(record.track)
+                released += record.byteCount
+                if released >= required { break }
+            }
+        }
+        guard totalByteCount + incomingByteCount <= storageLimitBytes else {
+            throw offlineError(
+                "Достигнут выбранный лимит офлайн-хранилища."
+            )
+        }
+    }
+
+    private func evictAutomaticCacheIfNeeded() {
+        guard totalByteCount > storageLimitBytes else { return }
+        var overflow = totalByteCount - storageLimitBytes
+        let candidates = records.values
+            .filter {
+                $0.resolvedRetention == .automaticCache
+                    && $0.id != protectedTrackIDProvider?()
+            }
+            .sorted { $0.lastPlayedAt < $1.lastPlayedAt }
+        for record in candidates {
+            remove(record.track)
+            overflow -= record.byteCount
+            if overflow <= 0 { break }
         }
     }
 

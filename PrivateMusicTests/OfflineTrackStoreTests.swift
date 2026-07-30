@@ -75,6 +75,56 @@ final class OfflineTrackStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(records.first?.resolvedStorage, .directFile)
+        XCTAssertEqual(records.first?.resolvedRetention, .manual)
+    }
+
+    func testAutomaticCacheCanBePromotedAndClearedSafely() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = OfflineTrackStore(
+            rootURL: root,
+            downloadService: makeDownloadService()
+        )
+        let cached = makeTrack()
+        let manual = Track(
+            trackID: 8,
+            ownerID: -42,
+            title: "Manual",
+            artist: "Artist",
+            duration: 120,
+            streamURL: URL(string: "https://example.com/manual.mp3"),
+            artworkURL: nil
+        )
+        store.configure(accountID: 42)
+
+        try await store.download(
+            cached,
+            userAgent: nil,
+            retention: .automaticCache
+        )
+        try await store.download(manual, userAgent: nil)
+        XCTAssertGreaterThan(store.automaticCacheByteCount, 0)
+
+        try await store.download(cached, userAgent: nil)
+        XCTAssertEqual(
+            store.records[cached.id]?.resolvedRetention,
+            .manual
+        )
+
+        store.removeAutomaticCache()
+        XCTAssertTrue(store.contains(cached))
+        XCTAssertTrue(store.contains(manual))
+        XCTAssertEqual(store.automaticCacheByteCount, 0)
+    }
+
+    func testStorageLimitIsClampedToSupportedRange() {
+        let store = OfflineTrackStore(rootURL: temporaryRoot())
+
+        store.configureStorage(limitGB: 1)
+        XCTAssertEqual(store.storageLimitBytes, 5_000_000_000)
+
+        store.configureStorage(limitGB: 120)
+        XCTAssertEqual(store.storageLimitBytes, 100_000_000_000)
     }
 
     private func makeDownloadService() -> TrackShareService {

@@ -173,8 +173,31 @@ final class AppSettings: ObservableObject {
             )
         }
     }
+    @Published var offlineStorageLimitGB: Int {
+        didSet {
+            let normalized = Self.normalizedOfflineStorageLimit(
+                offlineStorageLimitGB
+            )
+            if offlineStorageLimitGB != normalized {
+                offlineStorageLimitGB = normalized
+            }
+            defaults.set(normalized, forKey: Keys.offlineStorageLimitGB)
+        }
+    }
+    @Published var automaticOfflineCacheEnabled: Bool {
+        didSet {
+            defaults.set(
+                automaticOfflineCacheEnabled,
+                forKey: Keys.automaticOfflineCacheEnabled
+            )
+        }
+    }
 
     private let defaults: UserDefaults
+
+    static let minimumOfflineStorageLimitGB = 5
+    static let maximumOfflineStorageLimitGB = 100
+    static let offlineStorageLimitStepGB = 5
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -222,6 +245,13 @@ final class AppSettings: ObservableObject {
         advanceOnPlaybackError = defaults.object(
             forKey: Keys.advanceOnPlaybackError
         ) as? Bool ?? true
+        offlineStorageLimitGB = Self.normalizedOfflineStorageLimit(
+            defaults.object(forKey: Keys.offlineStorageLimitGB) as? Int
+                ?? Self.minimumOfflineStorageLimitGB
+        )
+        automaticOfflineCacheEnabled = defaults.object(
+            forKey: Keys.automaticOfflineCacheEnabled
+        ) as? Bool ?? false
     }
 
     func selectPreset(_ preset: EqualizerPreset) {
@@ -242,6 +272,23 @@ final class AppSettings: ObservableObject {
         textScale = .system
     }
 
+    var offlineStorageLimitBytes: Int64 {
+        Int64(offlineStorageLimitGB) * 1_000_000_000
+    }
+
+    private static func normalizedOfflineStorageLimit(_ value: Int) -> Int {
+        let clamped = min(
+            max(value, minimumOfflineStorageLimitGB),
+            maximumOfflineStorageLimitGB
+        )
+        let offset = clamped - minimumOfflineStorageLimitGB
+        let steps = Int(
+            (Double(offset) / Double(offlineStorageLimitStepGB)).rounded()
+        )
+        return minimumOfflineStorageLimitGB
+            + steps * offlineStorageLimitStepGB
+    }
+
     private enum Keys {
         static let version = "settings.schema.version"
         static let theme = "appearance.theme"
@@ -257,6 +304,10 @@ final class AppSettings: ObservableObject {
             "audio.volume.pauseAtMinimum"
         static let advanceOnPlaybackError =
             "audio.playback.advanceOnError"
+        static let offlineStorageLimitGB =
+            "offline.storage.limitGB"
+        static let automaticOfflineCacheEnabled =
+            "offline.cache.automatic.enabled"
     }
 
     private enum LegacyKeys {

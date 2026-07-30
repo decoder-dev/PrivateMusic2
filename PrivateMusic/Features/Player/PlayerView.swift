@@ -827,7 +827,8 @@ struct PlayerView: View {
             if let localURL = offlineStore.localURL(for: track) {
                 let payload = try await shareService.payloadFromLocalFile(
                     localURL,
-                    track: track
+                    track: track,
+                    requiresMP3: false
                 )
                 guard !Task.isCancelled else {
                     await shareService.removeExportedFile(payload)
@@ -852,7 +853,7 @@ struct PlayerView: View {
             let payload = try await shareService.preparePayload(
                 for: refreshed,
                 userAgent: sessionStore.userAgent,
-                requiresMP3: true
+                requiresMP3: false
             )
             guard !Task.isCancelled else {
                 await shareService.removeExportedFile(payload)

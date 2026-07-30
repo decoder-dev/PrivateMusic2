@@ -27,6 +27,12 @@ final class EqualizerDSP: @unchecked Sendable {
     private var channelCount = 2
     private var supportsProcessing = false
 
+    var isEnabled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return enabled
+    }
+
     func update(enabled: Bool, gains: [Double], preamp: Double) {
         lock.lock()
         self.enabled = enabled
@@ -39,6 +45,7 @@ final class EqualizerDSP: @unchecked Sendable {
     }
 
     func makeTap() -> MTAudioProcessingTap? {
+        guard isEnabled else { return nil }
         let retained = Unmanaged.passRetained(self)
         var callbacks = MTAudioProcessingTapCallbacks(
             version: kMTAudioProcessingTapCallbacksVersion_0,
