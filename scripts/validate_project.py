@@ -43,6 +43,15 @@ all_source = "\n".join(path.read_text(encoding="utf-8") for path in swift_files)
 audio_player_source = (
     SOURCE / "Player" / "AudioPlayer.swift"
 ).read_text(encoding="utf-8")
+player_view_source = (
+    SOURCE / "Features" / "Player" / "PlayerView.swift"
+).read_text(encoding="utf-8")
+root_view_source = (
+    SOURCE / "Features" / "Root" / "RootView.swift"
+).read_text(encoding="utf-8")
+glass_source = (
+    SOURCE / "Features" / "Shared" / "AdaptiveGlass.swift"
+).read_text(encoding="utf-8")
 for forbidden in (
     "client_secret",
     "hHbZxrka2uZ6jB1inYsH",
@@ -78,6 +87,27 @@ configure_audio_session = audio_player_source.split(
 )[1].split("private func activateAudioSession()", 1)[0]
 if "setActive(true)" in configure_audio_session:
     fail("audio session must be activated only when playback starts")
+
+for required_fullscreen_symbol in (
+    ".fullScreenCover(isPresented: $player.isPlayerPresented)",
+    ".playerPresentationBackground()",
+):
+    if required_fullscreen_symbol not in root_view_source:
+        fail(
+            "player presentation is not full-screen: "
+            f"{required_fullscreen_symbol}"
+        )
+for required_player_symbol in (
+    ".background(playerBackground.ignoresSafeArea())",
+    ".buttonStyle(.glassProminent)",
+    "AdaptiveGlassContainer(spacing: 8)",
+):
+    if required_player_symbol not in player_view_source:
+        fail(f"player is missing full-bleed/glass symbol: {required_player_symbol}")
+if ".clipped()" in player_view_source:
+    fail("full-screen player must not clip its safe-area background")
+if ".clear.interactive" in glass_source:
+    fail("Liquid Glass variants must not be mixed in navigation controls")
 
 helper_path = ROOT / "scripts" / "vkpymusic_login.py"
 helper_source = helper_path.read_text(encoding="utf-8")
@@ -199,3 +229,4 @@ print("OK: Keychain, ephemeral URLSession and Now Playing are present")
 print("OK: non-persistent VK web login and direct token exchange")
 print("OK: Info.plist, HTTPS endpoints and release icons")
 print("OK: valid no-tracking privacy manifest")
+print("OK: edge-to-edge player and consistent Liquid Glass controls")

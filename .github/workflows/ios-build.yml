@@ -99,7 +99,7 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.13.0-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.14.0-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -107,18 +107,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.13.0-unsigned.ipa" \
-            --title "Private Music 3.13.0" \
+            "$PWD/artifacts/PrivateMusic-3.14.0-unsigned.ipa" \
+            --title "Private Music 3.14.0" \
             --notes-file - <<'EOF'
-          Private Music 3.13.0
+          Private Music 3.14.0
 
-          - проект и CI переведены на Xcode 26.5 и iOS 26.5 SDK;
-          - поиск получил системную роль Search Tab;
-          - выбор вкладки поиска активирует системную строку поиска;
-          - поисковая строка встроена в Liquid Glass-навигацию iOS 26.5;
-          - при смене вкладки системный поиск и клавиатура закрываются;
-          - сохранён совместимый пользовательский поиск на iOS 16–26.4;
-          - TabView, адаптивный мини-плеер и controls используют системные API;
+          - фон плеера теперь заполняет экран от верхнего до нижнего края;
+          - устранены чёрные полосы возле часов и домашнего индикатора;
+          - системные области остаются читаемыми поверх фона обложки;
+          - основная кнопка воспроизведения использует Glass Prominent;
+          - верхние действия объединены в GlassEffectContainer;
+          - стеклянные элементы используют один согласованный Regular-вариант;
+          - мини-плеер и системные сообщения получили адаптивный Liquid Glass;
           - сохранены fallback, VoiceOver, Reduce Motion и обе темы.
 
           IPA не подписан. Перед установкой подпишите его собственным
@@ -128,7 +128,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.13.0-unsigned
-          path: artifacts/PrivateMusic-3.13.0-unsigned.ipa
+          name: PrivateMusic-3.14.0-unsigned
+          path: artifacts/PrivateMusic-3.14.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
