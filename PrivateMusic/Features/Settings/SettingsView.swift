@@ -37,8 +37,11 @@ struct SettingsView: View {
                     isOn: $settings.liquidGlassEnabled
                 )
                 Text(
-                    "На iOS 26 используется системное интерактивное стекло. "
-                    + "На iOS 16–25 — совместимый material-эффект."
+                    L10n.text(
+                        "На iOS 26 используется системное интерактивное "
+                            + "стекло. На iOS 16–25 — совместимый эффект "
+                            + "системного материала."
+                    )
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -60,8 +63,11 @@ struct SettingsView: View {
                     )
                 }
                 Text(
-                    "Если в очереди есть текущий трек, воспроизведение "
-                        + "продолжится после подключения наушников или колонки."
+                    L10n.text(
+                        "Если в очереди есть текущий трек, приложение "
+                            + "возобновит воспроизведение после подключения "
+                            + "совместимых наушников или колонки."
+                    )
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -75,8 +81,28 @@ struct SettingsView: View {
                     )
                 }
                 Text(
-                    "При снижении системной громкости до нуля трек "
-                        + "останавливается на текущей позиции."
+                    L10n.text(
+                        "При снижении системной громкости до нуля "
+                            + "воспроизведение приостанавливается на текущей "
+                            + "позиции."
+                    )
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+                Toggle(
+                    isOn: $settings.advanceOnPlaybackError
+                ) {
+                    Label(
+                        "Пропускать недоступный трек",
+                        systemImage: "forward.end"
+                    )
+                }
+                Text(
+                    L10n.text(
+                        "Если VK не смог обновить аудиопоток, плеер продолжит "
+                            + "очередь со следующей песни."
+                    )
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -89,7 +115,7 @@ struct SettingsView: View {
                 )
 
                 Picker(
-                    "Профиль",
+                    "Профиль эквалайзера",
                     selection: Binding(
                         get: { settings.equalizerPreset },
                         set: { settings.selectPreset($0) }
@@ -122,7 +148,12 @@ struct SettingsView: View {
                 ForEach(frequencies.indices, id: \.self) { index in
                     VStack(spacing: 5) {
                         HStack {
-                            Text("\(frequencies[index]) Гц")
+                            Text(
+                                L10n.format(
+                                    "%@ Гц",
+                                    frequencies[index]
+                                )
+                            )
                             Spacer()
                             Text(
                                 settings.equalizerGains[index],
@@ -167,7 +198,7 @@ struct SettingsView: View {
                     Menu("Остановить воспроизведение через…") {
                         ForEach([15, 30, 45, 60, 90], id: \.self) {
                             minutes in
-                            Button("\(minutes) мин") {
+                            Button(L10n.minutes(minutes)) {
                                 player.scheduleSleepTimer(
                                     minutes: minutes
                                 )
@@ -192,7 +223,7 @@ struct SettingsView: View {
                 LabeledContent("Сессия VK", value: sessionTitle)
                 if let expiresAt = sessionStore.session?.expiresAt {
                     LabeledContent(
-                        "Обновление до",
+                        "Срок действия токена",
                         value: expiresAt.formatted(
                             date: .abbreviated,
                             time: .shortened
@@ -200,9 +231,12 @@ struct SettingsView: View {
                     )
                 }
                 Text(
-                    "При обрыве сети сессия не удаляется. "
-                        + "Подключение восстанавливается автоматически, "
-                        + "а данные входа остаются в системном Keychain."
+                    L10n.text(
+                        "При временном обрыве сети сохранённая сессия остаётся "
+                            + "в системном Keychain. Если VK принимает данные "
+                            + "веб-сессии, приложение попробует обновить "
+                            + "подключение автоматически."
+                    )
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -214,7 +248,7 @@ struct SettingsView: View {
                 LabeledContent("Разработчик", value: "decoder-dev")
                 LabeledContent(
                     "Аналитика",
-                    value: "Отключена"
+                    value: L10n.text("Не используется")
                 )
             }
         }
@@ -225,19 +259,19 @@ struct SettingsView: View {
 
     private var networkTitle: String {
         guard networkMonitor.state != .offline else {
-            return "Нет подключения"
+            return L10n.text("Нет подключения")
         }
         switch networkMonitor.transport {
         case .wifi:
-            return "Wi‑Fi доступен"
+            return L10n.text("Wi‑Fi доступен")
         case .cellular:
-            return "Мобильная сеть"
+            return L10n.text("Мобильная сеть")
         case .wired:
-            return "Проводная сеть"
+            return L10n.text("Проводная сеть")
         case .other:
-            return "Сеть доступна"
+            return L10n.text("Сеть доступна")
         case .unavailable:
-            return "Нет подключения"
+            return L10n.text("Нет подключения")
         }
     }
 
@@ -265,16 +299,16 @@ struct SettingsView: View {
 
     private var sessionTitle: String {
         guard let session = sessionStore.session else {
-            return "Не подключена"
+            return L10n.text("Не подключена")
         }
         if session.needsRefresh {
             return session.canRefresh
-                ? "Автовосстановление включено"
-                : "Требуется повторный вход"
+                ? L10n.text("Доступно автоматическое обновление")
+                : L10n.text("Для обновления потребуется повторный вход")
         }
         return session.canRefresh
-            ? "Подключена · автообновление"
-            : "Подключена"
+            ? L10n.text("Подключена · доступно автообновление")
+            : L10n.text("Подключена")
     }
 
     private var themePicker: some View {

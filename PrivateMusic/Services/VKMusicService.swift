@@ -88,6 +88,8 @@ struct VKMusicService: MusicService {
             throw CancellationError()
         } catch let error as APIError where error == .unauthorized {
             throw error
+        } catch let error as APIError where error.isConnectivityFailure {
+            throw error
         }
 
         // Some valid VK sessions do not expose getRecommendations, while the
@@ -134,6 +136,10 @@ struct VKMusicService: MusicService {
             discovered = envelope.response.musicMixes
         } catch is CancellationError {
             throw CancellationError()
+        } catch let error as APIError where error == .unauthorized {
+            throw error
+        } catch let error as APIError where error.isConnectivityFailure {
+            throw error
         } catch {
             // Some VK sessions only expose stream mixes through the section.
         }
@@ -152,6 +158,10 @@ struct VKMusicService: MusicService {
                 discovered = envelope.response.musicMixes
             } catch is CancellationError {
                 throw CancellationError()
+            } catch let error as APIError where error == .unauthorized {
+                throw error
+            } catch let error as APIError where error.isConnectivityFailure {
+                throw error
             } catch {
                 // The common mix is still a real VK stream endpoint.
             }

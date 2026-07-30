@@ -18,8 +18,12 @@ struct Session: Codable, Equatable, Sendable {
     }
 
     var canRefresh: Bool {
-        refreshCookie?.isEmpty == false
-            && webUserAgent?.isEmpty == false
+        refreshCookie?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty == false
+            && webUserAgent?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty == false
     }
 
     var needsRefresh: Bool {
@@ -36,5 +40,33 @@ struct Session: Codable, Equatable, Sendable {
     ) -> Bool {
         guard let expiresAt else { return false }
         return expiresAt <= date.addingTimeInterval(leeway)
+    }
+
+    func updatingUserID(_ value: Int) -> Session {
+        Session(
+            accessToken: accessToken,
+            userAgent: userAgent,
+            userID: value,
+            expiresAt: expiresAt,
+            refreshCookie: refreshCookie,
+            webUserAgent: webUserAgent
+        )
+    }
+
+    func maintenanceDelay(
+        at date: Date = Date(),
+        validationInterval: TimeInterval = 900
+    ) -> TimeInterval {
+        guard let expiresAt else { return validationInterval }
+        if needsRefresh(at: date) {
+            return validationInterval
+        }
+        return max(
+            min(
+                expiresAt.timeIntervalSince(date) - 90,
+                validationInterval
+            ),
+            1
+        )
     }
 }

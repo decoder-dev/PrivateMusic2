@@ -53,7 +53,7 @@ struct MixView: View {
                     Spacer()
                     Text("Слушать VK Микс")
                         .font(.title2.weight(.heavy))
-                    Text("Бесконечный персональный поток")
+                    Text("Персональный поток VK")
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.78))
                 }
@@ -213,15 +213,18 @@ struct MixView: View {
     }
 
     private func start(_ mix: MusicMix) {
-        guard let token = sessionStore.accessToken else { return }
+        guard sessionStore.accessToken != nil else { return }
         loadingMixID = mix.id
         Task {
             defer { loadingMixID = nil }
             do {
-                let queue = try await environment.musicService.mixTracks(
-                    mix,
-                    accessToken: token
-                )
+                let queue = try await environment.withAuthorizedToken {
+                    token in
+                    try await environment.musicService.mixTracks(
+                        mix,
+                        accessToken: token
+                    )
+                }
                 guard let first = queue.first else { return }
                 play(first, queue: queue, mix: mix)
             } catch is CancellationError {
@@ -237,17 +240,19 @@ struct MixView: View {
         queue: [Track],
         mix: MusicMix = .common
     ) {
-        guard let token = sessionStore.accessToken else { return }
+        guard sessionStore.accessToken != nil else { return }
         player.play(track, in: queue) {
-            try await environment.musicService.mixTracks(
-                mix,
-                accessToken: token
-            )
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.mixTracks(
+                    mix,
+                    accessToken: token
+                )
+            }
         }
     }
 
     private func load(force: Bool = false) async {
-        guard let token = sessionStore.accessToken,
+        guard sessionStore.accessToken != nil,
               force || tracks.isEmpty else {
             isLoading = false
             return
@@ -256,19 +261,23 @@ struct MixView: View {
         defer { isLoading = false }
         var failures: [String] = []
         do {
-            mixes = try await environment.musicService.mixes(
-                accessToken: token
-            )
+            mixes = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.mixes(
+                    accessToken: token
+                )
+            }
         } catch is CancellationError {
             return
         } catch {
             failures.append(error.localizedDescription)
         }
         do {
-            tracks = try await environment.musicService.mixTracks(
-                .common,
-                accessToken: token
-            )
+            tracks = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.mixTracks(
+                    .common,
+                    accessToken: token
+                )
+            }
         } catch is CancellationError {
             return
         } catch {

@@ -39,7 +39,7 @@ struct LRCLyricsService: Sendable {
               (200..<300).contains(http.statusCode) else {
             throw APIError.server(
                 code: 404,
-                message: "Текст для этого трека не найден."
+                message: L10n.text("Текст для этого трека не найден.")
             )
         }
 
@@ -56,7 +56,7 @@ struct LRCLyricsService: Sendable {
                     <= max(12, track.duration * 0.08) else {
             throw APIError.server(
                 code: 404,
-                message: "Текст для этого трека не найден."
+                message: L10n.text("Текст для этого трека не найден.")
             )
         }
 
@@ -70,7 +70,7 @@ struct LRCLyricsService: Sendable {
             .first(where: { !$0.isEmpty }) else {
             throw APIError.server(
                 code: 404,
-                message: "Текст для этого трека не найден."
+                message: L10n.text("Текст для этого трека не найден.")
             )
         }
         return Lyrics(

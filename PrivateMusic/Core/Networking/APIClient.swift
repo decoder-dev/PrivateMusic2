@@ -25,6 +25,13 @@ enum RequestRetryPolicy: Sendable, Equatable {
             .dataNotAllowed
         ].contains(code)
     }
+
+    func shouldRetry(statusCode: Int) -> Bool {
+        guard self == .transient else { return false }
+        return statusCode == 408
+            || statusCode == 429
+            || statusCode >= 500
+    }
 }
 
 actor APIClient {
@@ -46,6 +53,7 @@ actor APIClient {
         } else {
             let configuration = URLSessionConfiguration.ephemeral
             configuration.timeoutIntervalForRequest = 30
+            configuration.timeoutIntervalForResource = 45
             configuration.waitsForConnectivity = true
             configuration.allowsCellularAccess = true
             configuration.allowsExpensiveNetworkAccess = true
@@ -102,8 +110,9 @@ actor APIClient {
                 guard let http = response as? HTTPURLResponse else {
                     throw APIError.invalidResponse
                 }
-                if retryPolicy == .transient,
-                   (http.statusCode == 429 || http.statusCode >= 500),
+                if retryPolicy.shouldRetry(
+                    statusCode: http.statusCode
+                ),
                    attempt + 1 < retryPolicy.maximumAttempts {
                     try await retryDelay(
                         attempt: attempt,
@@ -113,20 +122,19 @@ actor APIClient {
                     )
                     continue
                 }
-                guard (200..<300).contains(http.statusCode) else {
-                    throw APIError.server(
-                        code: http.statusCode,
-                        message: "Сервер вернул HTTP \(http.statusCode)."
-                    )
-                }
-
-                if let envelope = try? decoder.decode(
+                let vkEnvelope = try? decoder.decode(
                     VKErrorEnvelope.self,
                     from: data
-                ), let error = envelope.error {
-                    if error.errorCode == 5 {
-                        throw APIError.unauthorized
-                    }
+                )
+                let vkError = vkEnvelope?.error
+                if http.statusCode == 401 || vkError?.errorCode == 5 {
+                    throw APIError.unauthorized
+                }
+                guard (200..<300).contains(http.statusCode) else {
+                    throw APIError.httpStatus(http.statusCode)
+                }
+
+                if let error = vkError {
                     if retryPolicy == .transient,
                        [6, 10].contains(error.errorCode),
                        attempt + 1 < retryPolicy.maximumAttempts {
