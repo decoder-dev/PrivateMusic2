@@ -34,7 +34,7 @@ struct MainTabView: View {
 
     var body: some View {
         Group {
-            if #available(iOS 26.1, *) {
+            if #available(iOS 26.5, *) {
                 SystemLiquidGlassTabView(selection: $selectedTab)
             } else {
                 ZStack {
@@ -108,7 +108,7 @@ struct MainTabView: View {
     }
 }
 
-@available(iOS 26.1, *)
+@available(iOS 26.5, *)
 private struct SystemLiquidGlassTabView: View {
     @EnvironmentObject private var player: AudioPlayer
     @Binding var selection: MainTab
@@ -134,7 +134,8 @@ private struct SystemLiquidGlassTabView: View {
             Tab(
                 MainTab.search.title,
                 systemImage: MainTab.search.image,
-                value: MainTab.search
+                value: MainTab.search,
+                role: .search
             ) {
                 NavigationStack {
                     SearchView(isActive: selection == .search)
@@ -150,6 +151,7 @@ private struct SystemLiquidGlassTabView: View {
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
+        .tabViewSearchActivation(.searchTabSelection)
         .tabViewBottomAccessory(
             isEnabled: player.currentTrack != nil
         ) {
@@ -158,7 +160,7 @@ private struct SystemLiquidGlassTabView: View {
     }
 }
 
-@available(iOS 26.1, *)
+@available(iOS 26.5, *)
 private struct SystemPlaybackAccessory: View {
     @EnvironmentObject private var player: AudioPlayer
     @Environment(
