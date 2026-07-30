@@ -5,6 +5,7 @@ struct CachedRemoteImage<
     Content: View,
     Placeholder: View
 >: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let url: URL?
     @ViewBuilder let content: (Image) -> Content
     @ViewBuilder let placeholder: () -> Placeholder
@@ -18,11 +19,12 @@ struct CachedRemoteImage<
                 .opacity(image == nil ? 1 : 0)
             if let image {
                 content(Image(uiImage: image))
-                    .id(loadedURL)
-                    .transition(.opacity)
             }
         }
-        .animation(.easeOut(duration: 0.22), value: loadedURL)
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.18),
+            value: loadedURL
+        )
         .task(id: url) {
             await load()
         }
@@ -36,10 +38,8 @@ struct CachedRemoteImage<
             return
         }
         if let cached = ArtworkImageCache.shared.image(for: url) {
-            withAnimation(.easeOut(duration: 0.18)) {
-                image = cached
-                loadedURL = url
-            }
+            image = cached
+            loadedURL = url
             return
         }
         do {
@@ -61,18 +61,14 @@ struct CachedRemoteImage<
                 return
             }
             ArtworkImageCache.shared.insert(loaded, for: url)
-            withAnimation(.easeOut(duration: 0.22)) {
-                image = loaded
-                loadedURL = url
-            }
+            image = loaded
+            loadedURL = url
         } catch is CancellationError {
             return
         } catch {
             guard self.url == url, loadedURL != url else { return }
-            withAnimation(.easeOut(duration: 0.16)) {
-                image = nil
-                loadedURL = nil
-            }
+            image = nil
+            loadedURL = nil
             return
         }
     }

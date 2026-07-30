@@ -11,13 +11,8 @@ struct PlayerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @GestureState private var artworkDrag: CGSize = .zero
-    @State private var showingQueue = false
-    @State private var showingLyrics = false
-    @State private var showingArtist = false
-    @State private var showingPlaylists = false
-    @State private var showingSettings = false
+    @State private var presentedSheet: PlayerSheet?
     @State private var showingActionPanel = false
-    @State private var shareFileURL: URL?
     @State private var shareCleanupURL: URL?
     @State private var shareTask: Task<Void, Never>?
     @State private var isPreparingShare = false
@@ -36,29 +31,34 @@ struct PlayerView: View {
                         size: proxy.size,
                         bottomInset: proxy.safeAreaInsets.bottom
                     )
-                    if showingActionPanel {
-                        Color.black.opacity(0.001)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                showingActionPanel = false
-                            }
-                        actionPanel(track)
-                            .frame(
-                                maxWidth: .infinity,
-                                maxHeight: .infinity,
-                                alignment: .topTrailing
-                            )
-                            .padding(.top, 56)
-                            .padding(.trailing, 22)
-                            .transition(
-                                .opacity.combined(
-                                    with: .scale(
-                                        scale: 0.96,
-                                        anchor: .topTrailing
-                                    )
-                                )
-                            )
-                    }
+                    Color.black
+                        .opacity(showingActionPanel ? 0.001 : 0)
+                        .contentShape(Rectangle())
+                        .allowsHitTesting(showingActionPanel)
+                        .onTapGesture {
+                            setActionPanelPresented(false)
+                        }
+                    actionPanel(track)
+                        .frame(
+                            maxWidth: .infinity,
+                            maxHeight: .infinity,
+                            alignment: .topTrailing
+                        )
+                        .padding(.top, 56)
+                        .padding(.trailing, 22)
+                        .opacity(showingActionPanel ? 1 : 0)
+                        .scaleEffect(
+                            showingActionPanel ? 1 : 0.985,
+                            anchor: .topTrailing
+                        )
+                        .allowsHitTesting(showingActionPanel)
+                        .accessibilityHidden(!showingActionPanel)
+                        .animation(
+                            reduceMotion
+                                ? nil
+                                : .easeOut(duration: 0.14),
+                            value: showingActionPanel
+                        )
                 } else {
                     EmptyStateView(
                         title: "Плеер",
@@ -78,37 +78,8 @@ struct PlayerView: View {
         .preferredColorScheme(.dark)
         .dynamicTypeSize(...DynamicTypeSize.large)
         .ignoresSafeArea(edges: .bottom)
-        .sheet(isPresented: $showingQueue) {
-            QueueView()
-        }
-        .sheet(isPresented: $showingLyrics) {
-            if let track = player.currentTrack {
-                LyricsView(track: track)
-            }
-        }
-        .sheet(isPresented: $showingArtist) {
-            if let track = player.currentTrack {
-                ArtistView(artist: track.artist)
-            }
-        }
-        .sheet(isPresented: $showingPlaylists) {
-            if let track = player.currentTrack {
-                AddToPlaylistView(track: track)
-            }
-        }
-        .sheet(isPresented: $showingSettings) {
-            NavigationStack { SettingsView() }
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { shareFileURL != nil },
-                set: { if !$0 { shareFileURL = nil } }
-            ),
-            onDismiss: cleanupSharedFile
-        ) {
-            if let shareFileURL {
-                TrackShareSheet(fileURL: shareFileURL)
-            }
+        .sheet(item: $presentedSheet, onDismiss: cleanupSharedFile) { sheet in
+            presentedSheetContent(sheet)
         }
         .onChange(of: player.currentTrack?.id) { _ in
             shareTask?.cancel()
@@ -126,7 +97,7 @@ struct PlayerView: View {
         .onDisappear {
             shareTask?.cancel()
             shareTask = nil
-            if shareFileURL == nil {
+            if !isPresentingShareSheet {
                 cleanupSharedFile()
             }
         }
@@ -222,19 +193,6 @@ struct PlayerView: View {
             .padding(.top, compact ? 6 : 10)
 
             AsyncArtwork(url: track.artworkURL, size: artworkSize)
-                .id(track.id)
-                .transition(
-                    .asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.96)),
-                        removal: .opacity.combined(with: .scale(scale: 1.02))
-                    )
-                )
-                .animation(
-                    reduceMotion
-                        ? nil
-                        : .spring(response: 0.42, dampingFraction: 0.86),
-                    value: track.id
-                )
                 .clipShape(
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
                 )
@@ -249,6 +207,12 @@ struct PlayerView: View {
                 )
                 .rotationEffect(
                     .degrees(reduceMotion ? 0 : artworkDrag.width / 65)
+                )
+                .animation(
+                    reduceMotion
+                        ? nil
+                        : .spring(response: 0.3, dampingFraction: 0.82),
+                    value: artworkDrag == .zero
                 )
                 .gesture(artworkGesture)
                 .accessibilityHint(
@@ -272,7 +236,7 @@ struct PlayerView: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Button {
-                        showingArtist = true
+                        present(.artist)
                     } label: {
                         Text(track.artist)
                             .font(.system(size: compact ? 14 : 15))
@@ -359,9 +323,7 @@ struct PlayerView: View {
 
     private var actionMenuButton: some View {
         Button {
-            withAnimation(.easeOut(duration: 0.16)) {
-                showingActionPanel.toggle()
-            }
+            setActionPanelPresented(!showingActionPanel)
         } label: {
             Image(systemName: "ellipsis")
                 .font(.headline)
@@ -382,22 +344,22 @@ struct PlayerView: View {
                 isInLibrary ? "Удалить из медиатеки" : "В медиатеку",
                 systemImage: isInLibrary ? "heart.slash" : "heart"
             ) {
-                showingActionPanel = false
+                setActionPanelPresented(false)
                 toggleLibrary(track)
             }
             panelAction("Исполнитель", systemImage: "person.wave.2") {
-                showingActionPanel = false
-                showingArtist = true
+                setActionPanelPresented(false)
+                present(.artist)
             }
             panelAction(
                 "Добавить в плейлист",
                 systemImage: "rectangle.stack.badge.plus"
             ) {
-                showingActionPanel = false
-                showingPlaylists = true
+                setActionPanelPresented(false)
+                present(.playlists)
             }
             panelAction("Поделиться", systemImage: "square.and.arrow.up") {
-                showingActionPanel = false
+                setActionPanelPresented(false)
                 startShare(track)
             }
             .disabled(isPreparingShare)
@@ -412,8 +374,8 @@ struct PlayerView: View {
                 "Настройки звука",
                 systemImage: "slider.horizontal.3"
             ) {
-                showingActionPanel = false
-                showingSettings = true
+                setActionPanelPresented(false)
+                present(.settings)
             }
             Text("Качество: автоматически VK")
                 .font(.caption)
@@ -507,16 +469,16 @@ struct PlayerView: View {
     private func quickActions(_ track: Track) -> some View {
         HStack(spacing: 0) {
             quickAction("quote.bubble", title: "Текст") {
-                showingLyrics = true
+                present(.lyrics)
             }
             quickAction("list.bullet", title: "Очередь") {
-                showingQueue = true
+                present(.queue)
             }
             quickAction(
                 "rectangle.stack.badge.plus",
                 title: "Плейлист"
             ) {
-                showingPlaylists = true
+                present(.playlists)
             }
             quickAction(
                 isPreparingShare
@@ -573,6 +535,51 @@ struct PlayerView: View {
         max(player.duration - player.elapsedTime, 0)
     }
 
+    @ViewBuilder
+    private func presentedSheetContent(_ sheet: PlayerSheet) -> some View {
+        switch sheet {
+        case .queue:
+            QueueView()
+        case .lyrics:
+            if let track = player.currentTrack {
+                LyricsView(track: track)
+            }
+        case .artist:
+            if let track = player.currentTrack {
+                ArtistView(artist: track.artist)
+            }
+        case .playlists:
+            if let track = player.currentTrack {
+                AddToPlaylistView(track: track)
+            }
+        case .settings:
+            NavigationStack { SettingsView() }
+        case let .share(fileURL):
+            TrackShareSheet(fileURL: fileURL)
+        }
+    }
+
+    @discardableResult
+    private func present(_ sheet: PlayerSheet) -> Bool {
+        guard presentedSheet == nil else { return false }
+        setActionPanelPresented(false)
+        presentedSheet = sheet
+        return true
+    }
+
+    private func setActionPanelPresented(_ presented: Bool) {
+        guard showingActionPanel != presented else { return }
+        showingActionPanel = presented
+    }
+
+    private var isPresentingShareSheet: Bool {
+        guard let presentedSheet else { return false }
+        if case .share = presentedSheet {
+            return true
+        }
+        return false
+    }
+
     private var queuePosition: String {
         guard let currentIndex = player.currentIndex,
               !player.queue.isEmpty else {
@@ -598,7 +605,7 @@ struct PlayerView: View {
                         player.previous()
                     }
                 } else if vertical < -60 {
-                    showingQueue = true
+                    present(.queue)
                 } else if vertical > 72 {
                     dismiss()
                 }
@@ -631,7 +638,10 @@ struct PlayerView: View {
                 return
             }
             shareCleanupURL = fileURL
-            shareFileURL = fileURL
+            guard present(.share(fileURL)) else {
+                cleanupSharedFile()
+                return
+            }
             Haptics.selection()
         } catch is CancellationError {
             return
@@ -707,6 +717,32 @@ struct PlayerView: View {
         }
         isInLibrary = libraryStore.contains(track)
             || track.ownerID == sessionStore.session?.userID
+    }
+}
+
+private enum PlayerSheet: Identifiable {
+    case queue
+    case lyrics
+    case artist
+    case playlists
+    case settings
+    case share(URL)
+
+    var id: String {
+        switch self {
+        case .queue:
+            return "queue"
+        case .lyrics:
+            return "lyrics"
+        case .artist:
+            return "artist"
+        case .playlists:
+            return "playlists"
+        case .settings:
+            return "settings"
+        case let .share(url):
+            return "share-\(url.absoluteString)"
+        }
     }
 }
 
@@ -805,12 +841,16 @@ private struct PlayerControlStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
-            .scaleEffect(configuration.isPressed ? 0.9 : 1)
-            .opacity(configuration.isPressed ? 0.72 : 1)
+            .scaleEffect(
+                reduceMotion
+                    ? 1
+                    : (configuration.isPressed ? 0.96 : 1)
+            )
+            .opacity(configuration.isPressed ? 0.78 : 1)
             .animation(
                 reduceMotion
                     ? nil
-                    : .spring(response: 0.2, dampingFraction: 0.7),
+                    : .easeOut(duration: 0.1),
                 value: configuration.isPressed
             )
     }
