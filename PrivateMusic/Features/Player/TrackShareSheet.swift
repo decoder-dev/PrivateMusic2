@@ -1,142 +1,156 @@
 import SwiftUI
 import UIKit
-import AVFoundation
 
-actor TrackShareService {
-    private let session: URLSession
+enum TrackSharePayload: Equatable, Sendable {
+    case audioFile(URL)
+    case vkLink(url: URL, description: String)
 
-    init() {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 60
-        configuration.timeoutIntervalForResource = 180
-        configuration.httpCookieStorage = nil
-        configuration.urlCache = nil
-        session = URLSession(configuration: configuration)
+    var exportedFileURL: URL? {
+        guard case let .audioFile(url) = self else { return nil }
+        return url
     }
 
-    func prepareFile(
+    var identifier: String {
+        switch self {
+        case let .audioFile(url):
+            return "file-\(url.absoluteString)"
+        case let .vkLink(url, _):
+            return "link-\(url.absoluteString)"
+        }
+    }
+}
+
+actor TrackShareService {
+    static let maximumFileSize: Int64 = 150_000_000
+
+    private let session: URLSession
+    private let fileManager: FileManager
+
+    init(
+        session: URLSession? = nil,
+        fileManager: FileManager = .default
+    ) {
+        if let session {
+            self.session = session
+        } else {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.timeoutIntervalForRequest = 60
+            configuration.timeoutIntervalForResource = 180
+            configuration.httpCookieStorage = nil
+            configuration.urlCache = nil
+            self.session = URLSession(configuration: configuration)
+        }
+        self.fileManager = fileManager
+    }
+
+    /// Creates a real audio attachment when VK exposes a direct audio file.
+    /// HLS addresses are temporary playlists, so they are shared as a stable
+    /// VK page instead of exposing signed segment URLs or attempting DRM bypass.
+    func preparePayload(
         for track: Track,
         userAgent: String?
-    ) async throws -> URL {
+    ) async throws -> TrackSharePayload {
         guard let streamURL = track.streamURL else {
-            throw APIError.invalidRequest
+            return linkPayload(for: track)
         }
-        let headers = requestHeaders(userAgent: userAgent)
-        if streamURL.pathExtension.lowercased() == "m3u8" {
-            return try await exportHLS(
-                track: track,
-                streamURL: streamURL,
-                headers: headers
-            )
+        guard !isHLS(streamURL) else {
+            return linkPayload(for: track)
         }
+
         var request = URLRequest(url: streamURL)
         request.timeoutInterval = 60
-        for (field, value) in headers {
+        for (field, value) in requestHeaders(userAgent: userAgent) {
             request.setValue(value, forHTTPHeaderField: field)
         }
+
         let (temporaryURL, response) = try await session.download(for: request)
         guard let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode) else {
             throw APIError.invalidResponse
         }
-        if http.expectedContentLength > 150_000_000 {
-            throw APIError.server(
-                code: 413,
-                message: L10n.text("Файл больше 150 МБ.")
-            )
+        guard !isHLS(response: http) else {
+            return linkPayload(for: track)
         }
-        let mime = http.mimeType?.lowercased() ?? ""
-        if mime.contains("mpegurl") || mime.contains("m3u") {
-            return try await exportHLS(
-                track: track,
-                streamURL: streamURL,
-                headers: headers
-            )
+        guard isAudioResponse(http, sourceURL: streamURL) else {
+            throw APIError.invalidResponse
         }
-
-        let attributes = try FileManager.default.attributesOfItem(
-            atPath: temporaryURL.path
-        )
-        let size = attributes[.size] as? NSNumber
-        guard size?.int64Value ?? 0 <= 150_000_000 else {
-            throw APIError.server(
-                code: 413,
-                message: L10n.text("Файл больше 150 МБ.")
-            )
+        guard http.expectedContentLength <= Self.maximumFileSize
+                || http.expectedContentLength < 0 else {
+            throw fileTooLargeError
+        }
+        guard try fileSize(at: temporaryURL) <= Self.maximumFileSize else {
+            throw fileTooLargeError
         }
 
-        let extensionName = fileExtension(
-            response: http,
-            sourceURL: streamURL
+        let destination = exportDestination(
+            for: track,
+            extensionName: fileExtension(
+                response: http,
+                sourceURL: streamURL
+            )
         )
-        let name = safeFilename("\(track.artist) — \(track.title)")
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString + "-" + name)
-            .appendingPathExtension(extensionName)
-        try FileManager.default.copyItem(
-            at: temporaryURL,
-            to: destination
-        )
-        return destination
+        do {
+            try fileManager.moveItem(at: temporaryURL, to: destination)
+        } catch {
+            try fileManager.copyItem(at: temporaryURL, to: destination)
+        }
+        return .audioFile(destination)
     }
 
-    private func exportHLS(
-        track: Track,
-        streamURL: URL,
-        headers: [String: String]
-    ) async throws -> URL {
-        let destination = exportDestination(for: track, extensionName: "m4a")
-        let asset = AVURLAsset(
-            url: streamURL,
-            options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
+    func linkPayload(for track: Track) -> TrackSharePayload {
+        let url = URL(
+            string: "https://vk.com/audio\(track.ownerID)_\(track.trackID)"
+        )!
+        let description = [track.artist, track.title]
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            .joined(separator: " — ")
+        return .vkLink(
+            url: url,
+            description: description.isEmpty
+                ? "Private Music"
+                : description
         )
-        guard let exporter = AVAssetExportSession(
-            asset: asset,
-            presetName: AVAssetExportPresetAppleM4A
-        ) else {
-            throw APIError.server(
-                code: 415,
-                message: L10n.text("Не удалось подготовить аудиопоток.")
-            )
-        }
-        exporter.outputURL = destination
-        exporter.outputFileType = .m4a
-        exporter.shouldOptimizeForNetworkUse = false
+    }
 
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<Void, Error>) in
-                exporter.exportAsynchronously {
-                    switch exporter.status {
-                    case .completed:
-                        continuation.resume()
-                    case .cancelled:
-                        continuation.resume(throwing: CancellationError())
-                    default:
-                        continuation.resume(
-                            throwing: exporter.error
-                                ?? APIError.server(
-                                    code: 415,
-                                    message: L10n.text(
-                                        "Не удалось собрать аудиофайл."
-                                    )
-                                )
-                        )
-                    }
-                }
-            }
-        } onCancel: {
-            exporter.cancelExport()
+    func removeExportedFile(_ payload: TrackSharePayload) {
+        guard let url = payload.exportedFileURL,
+              url.isFileURL,
+              url.deletingLastPathComponent().standardizedFileURL
+                == fileManager.temporaryDirectory.standardizedFileURL else {
+            return
         }
+        try? fileManager.removeItem(at: url)
+    }
 
-        guard try fileSize(at: destination) <= 150_000_000 else {
-            try? FileManager.default.removeItem(at: destination)
-            throw APIError.server(
-                code: 413,
-                message: L10n.text("Файл больше 150 МБ.")
-            )
+    private var fileTooLargeError: APIError {
+        APIError.server(
+            code: 413,
+            message: L10n.text("Файл больше 150 МБ.")
+        )
+    }
+
+    private func isHLS(_ url: URL) -> Bool {
+        url.pathExtension.caseInsensitiveCompare("m3u8") == .orderedSame
+    }
+
+    private func isHLS(response: HTTPURLResponse) -> Bool {
+        let mime = response.mimeType?.lowercased() ?? ""
+        return mime.contains("mpegurl")
+            || mime.contains("m3u")
+            || response.url.map(isHLS) == true
+    }
+
+    private func isAudioResponse(
+        _ response: HTTPURLResponse,
+        sourceURL: URL
+    ) -> Bool {
+        let mime = response.mimeType?.lowercased() ?? ""
+        if mime.hasPrefix("audio/") {
+            return true
         }
-        return destination
+        let fileExtension = sourceURL.pathExtension.lowercased()
+        return mime == "application/octet-stream"
+            && ["mp3", "m4a", "aac", "wav", "flac"].contains(fileExtension)
     }
 
     private func requestHeaders(userAgent: String?) -> [String: String] {
@@ -155,15 +169,13 @@ actor TrackShareService {
         extensionName: String
     ) -> URL {
         let name = safeFilename("\(track.artist) — \(track.title)")
-        return FileManager.default.temporaryDirectory
+        return fileManager.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + "-" + name)
             .appendingPathExtension(extensionName)
     }
 
     private func fileSize(at url: URL) throws -> Int64 {
-        let attributes = try FileManager.default.attributesOfItem(
-            atPath: url.path
-        )
+        let attributes = try fileManager.attributesOfItem(atPath: url.path)
         return (attributes[.size] as? NSNumber)?.int64Value ?? 0
     }
 
@@ -187,22 +199,29 @@ actor TrackShareService {
 
     private func safeFilename(_ value: String) -> String {
         let invalid = CharacterSet(charactersIn: "/\\:*?\"<>|")
+            .union(.controlCharacters)
         let cleaned = value.components(separatedBy: invalid).joined()
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return String(cleaned.prefix(90)).isEmpty
-            ? "Private Music"
-            : String(cleaned.prefix(90))
+        let shortened = String(cleaned.prefix(90))
+        return shortened.isEmpty ? "Private Music" : shortened
     }
 }
 
 struct TrackShareSheet: UIViewControllerRepresentable {
-    let fileURL: URL
+    let payload: TrackSharePayload
 
     func makeUIViewController(
         context: Context
     ) -> UIActivityViewController {
-        UIActivityViewController(
-            activityItems: [fileURL],
+        let activityItems: [Any]
+        switch payload {
+        case let .audioFile(fileURL):
+            activityItems = [fileURL]
+        case let .vkLink(url, description):
+            activityItems = [description, url]
+        }
+        return UIActivityViewController(
+            activityItems: activityItems,
             applicationActivities: nil
         )
     }
