@@ -61,6 +61,25 @@ final class PlaybackQueueBuilderTests: XCTestCase {
 
 @MainActor
 final class AudioPlayerTransitionTests: XCTestCase {
+    func testPlayerPresentationIsIdempotentAndStopAlwaysDismisses() {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+
+        context.player.presentPlayer()
+        context.player.presentPlayer()
+        XCTAssertTrue(context.player.isPlayerPresented)
+
+        context.player.dismissPlayer()
+        context.player.dismissPlayer()
+        XCTAssertFalse(context.player.isPlayerPresented)
+
+        context.player.presentPlayer()
+        context.player.stop()
+        XCTAssertFalse(context.player.isPlayerPresented)
+    }
+
     func testChangingTrackResetsElapsedTimeAndDurationImmediately() {
         let suite = "AudioPlayerTransitionTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

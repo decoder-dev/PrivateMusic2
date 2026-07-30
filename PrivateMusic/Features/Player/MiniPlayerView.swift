@@ -12,7 +12,7 @@ struct MiniPlayerView: View {
                 HStack(spacing: 10) {
                     Button {
                         Haptics.open()
-                        player.isPlayerPresented = true
+                        player.presentPlayer()
                     } label: {
                         HStack(spacing: 10) {
                             AsyncArtwork(url: track.artworkURL, size: 42)
@@ -139,7 +139,7 @@ struct MiniPlayerView: View {
                 let vertical = value.translation.height
                 if abs(vertical) > abs(horizontal), vertical < -42 {
                     Haptics.open()
-                    player.isPlayerPresented = true
+                    player.presentPlayer()
                 } else if horizontal < -58 {
                     Haptics.trackChange()
                     player.next()
