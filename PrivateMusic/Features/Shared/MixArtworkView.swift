@@ -51,7 +51,10 @@ struct MixArtworkView: View {
         }
         .frame(width: size, height: size)
         .clipShape(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(
+                cornerRadius: PremiumLayout.artworkRadius(for: size),
+                style: .continuous
+            )
         )
     }
 

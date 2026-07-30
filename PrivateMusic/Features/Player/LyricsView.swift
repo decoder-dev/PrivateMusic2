@@ -51,6 +51,7 @@ struct LyricsView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .task { await load() }
+        .presentationDragIndicator(.visible)
     }
 
     private func syncedLyrics(_ lyrics: Lyrics) -> some View {
