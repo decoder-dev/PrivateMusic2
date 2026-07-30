@@ -2,6 +2,8 @@ import SwiftUI
 
 @main
 struct PrivateMusicApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self)
+    private var appDelegate
     @StateObject private var environment = AppEnvironment()
 
     var body: some Scene {
