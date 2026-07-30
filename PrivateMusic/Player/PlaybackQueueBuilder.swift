@@ -18,4 +18,16 @@ enum PlaybackQueueBuilder {
         }
         return result
     }
+
+    static func uniqueAdditions(
+        existing: [Track],
+        candidates: [Track]
+    ) -> [Track] {
+        let existingIDs = Set(existing.map(\.id))
+        var discovered = Set<String>()
+        return candidates.filter {
+            !existingIDs.contains($0.id)
+                && discovered.insert($0.id).inserted
+        }
+    }
 }

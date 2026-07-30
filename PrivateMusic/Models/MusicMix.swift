@@ -8,8 +8,8 @@ struct MusicMix: Hashable, Identifiable, Sendable {
 
     static let common = MusicMix(
         id: "common",
-        title: "Мой микс",
-        subtitle: "Бесконечная персональная подборка VK",
+        title: L10n.text("Мой микс"),
+        subtitle: L10n.text("Бесконечная персональная подборка VK"),
         artworkURL: nil
     )
 }

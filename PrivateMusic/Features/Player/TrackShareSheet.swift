@@ -42,7 +42,7 @@ actor TrackShareService {
         if http.expectedContentLength > 150_000_000 {
             throw APIError.server(
                 code: 413,
-                message: "Файл больше 150 МБ."
+                message: L10n.text("Файл больше 150 МБ.")
             )
         }
         let mime = http.mimeType?.lowercased() ?? ""
@@ -61,7 +61,7 @@ actor TrackShareService {
         guard size?.int64Value ?? 0 <= 150_000_000 else {
             throw APIError.server(
                 code: 413,
-                message: "Файл больше 150 МБ."
+                message: L10n.text("Файл больше 150 МБ.")
             )
         }
 
@@ -96,7 +96,7 @@ actor TrackShareService {
         ) else {
             throw APIError.server(
                 code: 415,
-                message: "Не удалось подготовить аудиопоток."
+                message: L10n.text("Не удалось подготовить аудиопоток.")
             )
         }
         exporter.outputURL = destination
@@ -117,7 +117,9 @@ actor TrackShareService {
                             throwing: exporter.error
                                 ?? APIError.server(
                                     code: 415,
-                                    message: "Не удалось собрать аудиофайл."
+                                    message: L10n.text(
+                                        "Не удалось собрать аудиофайл."
+                                    )
                                 )
                         )
                     }
@@ -129,7 +131,10 @@ actor TrackShareService {
 
         guard try fileSize(at: destination) <= 150_000_000 else {
             try? FileManager.default.removeItem(at: destination)
-            throw APIError.server(code: 413, message: "Файл больше 150 МБ.")
+            throw APIError.server(
+                code: 413,
+                message: L10n.text("Файл больше 150 МБ.")
+            )
         }
         return destination
     }

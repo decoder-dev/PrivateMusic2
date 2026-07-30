@@ -2,6 +2,9 @@ import Foundation
 
 @MainActor
 final class SearchViewModel: ObservableObject {
+    typealias SearchOperation =
+        (String, Int, Int) async throws -> MusicPage<Track>
+
     @Published var query = ""
     @Published private(set) var tracks: [Track] = []
     @Published private(set) var isLoading = false
@@ -36,8 +39,7 @@ final class SearchViewModel: ObservableObject {
     }
 
     func schedule(
-        service: any MusicService,
-        accessToken: String
+        operation: @escaping SearchOperation
     ) {
         searchTask?.cancel()
         searchRevision += 1
@@ -58,8 +60,7 @@ final class SearchViewModel: ObservableObject {
             await search(
                 normalized,
                 revision: revision,
-                service: service,
-                accessToken: accessToken
+                operation: operation
             )
         }
     }
@@ -67,8 +68,7 @@ final class SearchViewModel: ObservableObject {
     private func search(
         _ query: String,
         revision: Int,
-        service: any MusicService,
-        accessToken: String
+        operation: SearchOperation
     ) async {
         guard revision == searchRevision else { return }
         isLoading = true
@@ -78,12 +78,7 @@ final class SearchViewModel: ObservableObject {
             }
         }
         do {
-            let page = try await service.search(
-                query: query,
-                accessToken: accessToken,
-                offset: 0,
-                count: 100
-            )
+            let page = try await operation(query, 0, 100)
             guard revision == searchRevision, !Task.isCancelled else {
                 return
             }
@@ -105,8 +100,7 @@ final class SearchViewModel: ObservableObject {
     }
 
     func loadMore(
-        service: any MusicService,
-        accessToken: String
+        operation: SearchOperation
     ) async {
         let normalized = query.trimmingCharacters(
             in: .whitespacesAndNewlines
@@ -125,12 +119,7 @@ final class SearchViewModel: ObservableObject {
             }
         }
         do {
-            let page = try await service.search(
-                query: normalized,
-                accessToken: accessToken,
-                offset: offset,
-                count: 100
-            )
+            let page = try await operation(normalized, offset, 100)
             guard revision == searchRevision, !Task.isCancelled else {
                 return
             }
