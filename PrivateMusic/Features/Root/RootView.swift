@@ -22,6 +22,7 @@ struct RootView: View {
                 MainTabView()
                     .fullScreenCover(isPresented: $player.isPlayerPresented) {
                         PlayerView()
+                            .playerPresentationBackground()
                     }
                     .safeAreaInset(edge: .top, spacing: 0) {
                         connectionBanner
@@ -323,12 +324,7 @@ private struct ConnectionBanner: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: bannerShape)
-        .overlay {
-            bannerShape.stroke(.primary.opacity(0.1), lineWidth: 0.7)
-        }
-        .clipShape(bannerShape)
-        .contentShape(bannerShape)
+        .adaptiveGlass(in: bannerShape)
         .shadow(
             color: .black.opacity(settings.theme == .dark ? 0.16 : 0.08),
             radius: 8,
@@ -344,5 +340,16 @@ private struct ConnectionBanner: View {
             cornerRadius: PremiumLayout.compactRadius,
             style: .continuous
         )
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func playerPresentationBackground() -> some View {
+        if #available(iOS 16.4, *) {
+            presentationBackground(.clear)
+        } else {
+            self
+        }
     }
 }

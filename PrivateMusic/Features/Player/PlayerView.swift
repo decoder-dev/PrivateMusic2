@@ -47,7 +47,6 @@ struct PlayerView: View {
                 width: proxy.size.width,
                 height: proxy.size.height
             )
-            .clipped()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(playerBackground.ignoresSafeArea())
@@ -221,57 +220,57 @@ struct PlayerView: View {
     }
 
     private func playerHeader(_ track: Track) -> some View {
-        ZStack {
-            VStack(spacing: 2) {
-                Text("СЕЙЧАС ИГРАЕТ")
-                    .font(.caption2.weight(.bold))
-                    .tracking(1.1)
-                    .foregroundStyle(playerSecondary)
-                Text(queuePosition)
-                    .font(.system(size: 10, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(playerSecondary)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilitySortPriority(1)
-
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 15, weight: .bold))
-                        .frame(width: 44, height: 44)
-                        .adaptiveGlass(
-                            in: Circle(),
-                            interactive: true,
-                            variant: .clear
-                        )
+        AdaptiveGlassContainer(spacing: 8) {
+            ZStack {
+                VStack(spacing: 2) {
+                    Text("СЕЙЧАС ИГРАЕТ")
+                        .font(.caption2.weight(.bold))
+                        .tracking(1.1)
+                        .foregroundStyle(playerSecondary)
+                    Text(queuePosition)
+                        .font(.system(size: 10, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(playerSecondary)
                 }
-                .buttonStyle(PlayerControlStyle())
-                .accessibilityLabel(L10n.text("Закрыть плеер"))
-                .accessibilitySortPriority(4)
+                .accessibilityElement(children: .combine)
+                .accessibilitySortPriority(1)
 
-                Spacer()
-
-                HStack(spacing: 8) {
-                    AirPlayRoutePicker(
-                        tintColor: UIColor(playerForeground)
-                    )
-                        .frame(width: 44, height: 44)
-                        .adaptiveGlass(
-                            in: Circle(),
-                            interactive: true,
-                            variant: .clear
-                        )
-                        .accessibilityLabel(
-                            L10n.text(
-                                "Выбрать устройство воспроизведения"
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 15, weight: .bold))
+                            .frame(width: 44, height: 44)
+                            .adaptiveGlass(
+                                in: Circle(),
+                                interactive: true
                             )
+                    }
+                    .buttonStyle(PlayerControlStyle())
+                    .accessibilityLabel(L10n.text("Закрыть плеер"))
+                    .accessibilitySortPriority(4)
+
+                    Spacer()
+
+                    HStack(spacing: 8) {
+                        AirPlayRoutePicker(
+                            tintColor: UIColor(playerForeground)
                         )
-                        .accessibilitySortPriority(3)
-                    actionMenuButton(track)
-                        .accessibilitySortPriority(2)
+                            .frame(width: 44, height: 44)
+                            .adaptiveGlass(
+                                in: Circle(),
+                                interactive: true
+                            )
+                            .accessibilityLabel(
+                                L10n.text(
+                                    "Выбрать устройство воспроизведения"
+                                )
+                            )
+                            .accessibilitySortPriority(3)
+                        actionMenuButton(track)
+                            .accessibilitySortPriority(2)
+                    }
                 }
             }
         }
@@ -382,8 +381,7 @@ struct PlayerView: View {
                 .frame(width: 44, height: 44)
                 .adaptiveGlass(
                     in: Circle(),
-                    interactive: true,
-                    variant: .clear
+                    interactive: true
                 )
             }
             .buttonStyle(PlayerControlStyle())
@@ -448,8 +446,7 @@ struct PlayerView: View {
                 .frame(width: 44, height: 44)
                 .adaptiveGlass(
                     in: Circle(),
-                    interactive: true,
-                    variant: .clear
+                    interactive: true
                 )
         }
         .buttonStyle(PlayerControlStyle())
@@ -480,24 +477,7 @@ struct PlayerView: View {
             }
             .accessibilityLabel(L10n.text("Предыдущий трек"))
             Spacer()
-            Button {
-                Haptics.selection()
-                player.playPause()
-            } label: {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 29, weight: .bold))
-                    .frame(width: 60, height: 60)
-                    .background(playerForeground, in: Circle())
-                    .foregroundStyle(playerBackground)
-                    .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
-            }
-            .accessibilityLabel(
-                L10n.text(
-                    player.isPlaying
-                        ? "Приостановить"
-                        : "Продолжить воспроизведение"
-                )
-            )
+            playPauseButton
             Spacer()
             Button {
                 Haptics.trackChange()
@@ -520,6 +500,49 @@ struct PlayerView: View {
             }
         }
         .buttonStyle(PlayerControlStyle())
+    }
+
+    @ViewBuilder
+    private var playPauseButton: some View {
+        if #available(iOS 26.0, *) {
+            Button {
+                Haptics.selection()
+                player.playPause()
+            } label: {
+                playPauseLabel
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.circle)
+            .tint(playerForeground)
+            .foregroundStyle(playerBackground)
+            .accessibilityLabel(playPauseAccessibilityLabel)
+        } else {
+            Button {
+                Haptics.selection()
+                player.playPause()
+            } label: {
+                playPauseLabel
+                    .background(playerForeground, in: Circle())
+                    .foregroundStyle(playerBackground)
+                    .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
+            }
+            .buttonStyle(PlayerControlStyle())
+            .accessibilityLabel(playPauseAccessibilityLabel)
+        }
+    }
+
+    private var playPauseLabel: some View {
+        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+            .font(.system(size: 29, weight: .bold))
+            .frame(width: 60, height: 60)
+    }
+
+    private var playPauseAccessibilityLabel: String {
+        L10n.text(
+            player.isPlaying
+                ? "Приостановить"
+                : "Продолжить воспроизведение"
+        )
     }
 
     private func quickActions(_ track: Track) -> some View {
@@ -1313,10 +1336,7 @@ private struct PlayerActionsSheet: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .bold))
                     .frame(width: 44, height: 44)
-                    .background(
-                        Color(uiColor: .tertiarySystemFill),
-                        in: Circle()
-                    )
+                    .adaptiveGlass(in: Circle(), interactive: true)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(L10n.text("Закрыть"))
