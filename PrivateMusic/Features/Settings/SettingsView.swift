@@ -5,6 +5,7 @@ struct SettingsView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var networkMonitor: NetworkMonitor
+    @EnvironmentObject private var offlineStore: OfflineTrackStore
 
     private let frequencies = [
         "31", "62", "125", "250", "500",
@@ -92,6 +93,122 @@ struct SettingsView: View {
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            }
+
+            Section("Офлайн и хранилище") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label("Использовано", systemImage: "externaldrive")
+                        Spacer()
+                        Text(storageUsage)
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    ProgressView(
+                        value: min(
+                            Double(offlineStore.totalByteCount)
+                                / Double(max(offlineStore.storageLimitBytes, 1)),
+                            1
+                        )
+                    )
+                    if offlineStore.automaticCacheByteCount > 0 {
+                        Text(
+                            L10n.format(
+                                "Автокэш: %@",
+                                formattedBytes(
+                                    offlineStore.automaticCacheByteCount
+                                )
+                            )
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Label(
+                            "Лимит офлайн-музыки",
+                            systemImage: "internaldrive"
+                        )
+                        Spacer()
+                        Text(
+                            L10n.format(
+                                "%d ГБ",
+                                settings.offlineStorageLimitGB
+                            )
+                        )
+                        .font(.subheadline.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    }
+
+                    Slider(
+                        value: Binding(
+                            get: {
+                                Double(settings.offlineStorageLimitGB)
+                            },
+                            set: {
+                                settings.offlineStorageLimitGB = Int($0)
+                            }
+                        ),
+                        in: Double(
+                            AppSettings.minimumOfflineStorageLimitGB
+                        )...Double(
+                            AppSettings.maximumOfflineStorageLimitGB
+                        ),
+                        step: Double(AppSettings.offlineStorageLimitStepGB)
+                    )
+                    .accessibilityValue(
+                        L10n.format(
+                            "%d ГБ",
+                            settings.offlineStorageLimitGB
+                        )
+                    )
+
+                    HStack {
+                        Text(
+                            L10n.format(
+                                "%d ГБ",
+                                AppSettings.minimumOfflineStorageLimitGB
+                            )
+                        )
+                        Spacer()
+                        Text(
+                            L10n.format(
+                                "%d ГБ",
+                                AppSettings.maximumOfflineStorageLimitGB
+                            )
+                        )
+                    }
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                }
+
+                Toggle(
+                    isOn: $settings.automaticOfflineCacheEnabled
+                ) {
+                    Label(
+                        "Автокэширование",
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                }
+
+                Text(
+                    L10n.text(
+                        "Прослушанные треки автоматически сохраняются для "
+                            + "повторного воспроизведения без интернета. "
+                            + "При заполнении хранилища старый автокэш "
+                            + "очищается первым; ручные загрузки сохраняются."
+                    )
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+                if offlineStore.automaticCacheByteCount > 0 {
+                    Button("Очистить автокэш", role: .destructive) {
+                        offlineStore.removeAutomaticCache()
+                    }
+                }
             }
 
             Section("Эквалайзер") {
@@ -259,6 +376,21 @@ struct SettingsView: View {
         case .unavailable:
             return L10n.text("Нет подключения")
         }
+    }
+
+    private var storageUsage: String {
+        L10n.format(
+            "%@ из %d ГБ",
+            formattedBytes(offlineStore.totalByteCount),
+            settings.offlineStorageLimitGB
+        )
+    }
+
+    private func formattedBytes(_ value: Int64) -> String {
+        ByteCountFormatter.string(
+            fromByteCount: value,
+            countStyle: .file
+        )
     }
 
     private var networkIcon: String {

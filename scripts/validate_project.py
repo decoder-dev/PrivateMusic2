@@ -127,8 +127,27 @@ for forbidden_share_symbol in (
 ):
     if forbidden_share_symbol in all_source:
         fail(f"share must never fall back to a link: {forbidden_share_symbol}")
-if "requiresMP3: true" not in player_view_source:
-    fail("player sharing must require a real MP3 attachment")
+for required_share_symbol in (
+    "requiresMP3: false",
+    "AVAssetExportPresetAppleM4A",
+    "AudioFileActivityItemSource",
+):
+    if required_share_symbol not in all_source:
+        fail(f"audio file sharing is missing: {required_share_symbol}")
+for required_playlist_symbol in (
+    "OfflinePlaylistStore",
+    "maximumConcurrentDownloads",
+    "downloadArtwork",
+):
+    if required_playlist_symbol not in all_source:
+        fail(f"offline playlists are missing: {required_playlist_symbol}")
+for required_cache_symbol in (
+    "automaticOfflineCacheEnabled",
+    "OfflineTrackRetention",
+    "configureStorage",
+):
+    if required_cache_symbol not in all_source:
+        fail(f"automatic offline cache is missing: {required_cache_symbol}")
 if ".clipped()" in player_view_source:
     fail("full-screen player must not clip its safe-area background")
 if ".clear.interactive" in glass_source:
