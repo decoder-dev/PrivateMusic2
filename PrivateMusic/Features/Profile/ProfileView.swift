@@ -128,7 +128,7 @@ struct ProfileView: View {
             HStack(spacing: 14) {
                 Image(systemName: icon)
                     .frame(width: 28)
-                    .foregroundStyle(Brand.accent)
+                    .foregroundStyle(.primary)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L10n.text(title))
                         .foregroundStyle(.primary)
