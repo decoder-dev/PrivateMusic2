@@ -81,7 +81,7 @@ struct TrackRow: View {
             Button {
                 Haptics.open()
                 player.play(track, in: queue)
-                player.isPlayerPresented = true
+                player.presentPlayer()
             } label: {
                 Label("Открыть плеер", systemImage: "play.circle")
             }

@@ -173,7 +173,7 @@ private struct SystemPlaybackAccessory: View {
                 HStack(spacing: 10) {
                     Button {
                         Haptics.open()
-                        player.isPlayerPresented = true
+                        player.presentPlayer()
                     } label: {
                         HStack(spacing: 10) {
                             AsyncArtwork(

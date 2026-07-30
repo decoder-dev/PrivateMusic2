@@ -85,6 +85,16 @@ final class AudioPlayer: ObservableObject {
         return queue[currentIndex]
     }
 
+    func presentPlayer() {
+        guard !isPlayerPresented else { return }
+        isPlayerPresented = true
+    }
+
+    func dismissPlayer() {
+        guard isPlayerPresented else { return }
+        isPlayerPresented = false
+    }
+
     init(
         settings: AppSettings,
         historyStore: ListeningHistoryStore,
@@ -341,6 +351,7 @@ final class AudioPlayer: ObservableObject {
 
     func stop() {
         playbackGeneration += 1
+        dismissPlayer()
         sleepTask?.cancel()
         sleepTask = nil
         sleepTimerEndDate = nil
