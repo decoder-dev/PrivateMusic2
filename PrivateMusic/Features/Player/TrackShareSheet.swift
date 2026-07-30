@@ -363,9 +363,8 @@ actor TrackShareService {
         defer { try? handle.close() }
         let prefix = (try? handle.read(upToCount: 12)) ?? Data()
         guard prefix.count >= 12 else { return false }
-        let typeRange = prefix.index(prefix.startIndex, offsetBy: 4)
-            ..<prefix.index(prefix.startIndex, offsetBy: 8)
-        return String(data: prefix[typeRange], encoding: .ascii) == "ftyp"
+        let typeData = prefix.subdata(in: 4..<8)
+        return String(data: typeData, encoding: .ascii) == "ftyp"
     }
 
     private var audioExportUnavailableError: APIError {
