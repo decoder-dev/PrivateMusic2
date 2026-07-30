@@ -30,6 +30,7 @@ struct RootView: View {
             }
         }
         .task(id: sessionStore.sessionRevision) {
+            environment.configureOfflineAccount()
             await maintainSession()
         }
         .onChange(of: sessionStore.session == nil) { isLoggedOut in
