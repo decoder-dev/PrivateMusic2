@@ -554,7 +554,7 @@ final class AudioPlayer: ObservableObject {
             try session.setCategory(
                 .playback,
                 mode: .default,
-                routeSharingPolicy: .longFormAudio,
+                policy: .longFormAudio,
                 options: []
             )
             audioSessionConfigured = true
