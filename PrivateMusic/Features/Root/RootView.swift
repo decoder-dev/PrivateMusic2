@@ -7,7 +7,6 @@ struct RootView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var networkMonitor: NetworkMonitor
     @Environment(\.scenePhase) private var scenePhase
-    @State private var isRefreshingSession = false
     @State private var refreshError: String?
     @State private var automaticRetryTask: Task<Void, Never>?
     @State private var automaticRetryAttempt = 0
@@ -36,6 +35,7 @@ struct RootView: View {
                 automaticRetryTask?.cancel()
                 automaticRetryTask = nil
                 automaticRetryAttempt = 0
+                environment.cancelSessionRecovery()
                 player.stop()
                 refreshError = nil
             }
@@ -91,7 +91,7 @@ struct RootView: View {
                 message: "Нет сети — сессия сохранена",
                 tint: .orange
             )
-        } else if isRefreshingSession {
+        } else if environment.isRecoveringSession {
             ConnectionBanner(
                 icon: nil,
                 message: "Обновляем подключение VK…",
@@ -105,9 +105,6 @@ struct RootView: View {
                 tint: .orange,
                 retry: {
                     Task { await refreshWebSession() }
-                },
-                loginAgain: {
-                    sessionStore.logout()
                 }
             )
         }
@@ -153,42 +150,26 @@ struct RootView: View {
     private func refreshWebSession(
         tokenWasRejected: Bool = false
     ) async {
-        guard !isRefreshingSession else { return }
         guard networkMonitor.isReachable else {
             refreshError = nil
             return
         }
         guard let session = sessionStore.session,
-              let cookie = session.refreshCookie,
-              let webUserAgent = session.webUserAgent else {
-            refreshError = "Нужно один раз войти заново"
+              session.canRefresh else {
+            refreshError =
+                "Автовосстановление VK недоступно — откройте профиль"
             return
         }
         let mustReplaceToken =
             tokenWasRejected || refreshRequiresReplacement
 
-        isRefreshingSession = true
         if mustReplaceToken {
             refreshError = "Восстанавливаем сессию VK…"
         } else {
             refreshError = nil
         }
-        defer { isRefreshingSession = false }
         do {
-            let result = try await environment.webAuthService.exchange(
-                cookieHeader: cookie,
-                webUserAgent: webUserAgent
-            )
-            await environment.musicService.configure(
-                userAgent: result.apiUserAgent
-            )
-            environment.player.configureNetwork(
-                userAgent: result.apiUserAgent
-            )
-            let profile = try await environment.musicService.profile(
-                accessToken: result.accessToken
-            )
-            try sessionStore.updateWebSession(result, profile: profile)
+            _ = try await environment.recoverSession()
             automaticRetryTask?.cancel()
             automaticRetryTask = nil
             automaticRetryAttempt = 0
@@ -197,19 +178,19 @@ struct RootView: View {
         } catch is CancellationError {
             return
         } catch let error as APIError where error.isConnectivityFailure {
-            refreshError = "VK временно недоступен"
+            refreshError = "VK пока не отвечает — сессия сохранена"
             scheduleAutomaticRetry()
         } catch let error as APIError where error == .unauthorized {
             refreshRequiresReplacement = mustReplaceToken
-            refreshError = mustReplaceToken
-                ? "Восстанавливаем сессию VK…"
-                : nil
+            refreshError = sessionStore.session?.canRefresh == true
+                ? "Восстанавливаем подключение VK…"
+                : "Автовосстановление VK недоступно — откройте профиль"
             scheduleAutomaticRetry()
         } catch {
             refreshRequiresReplacement = mustReplaceToken
             refreshError = mustReplaceToken
-                ? "Восстанавливаем сессию VK…"
-                : "Не удалось обновить подключение"
+                ? "Восстанавливаем подключение VK…"
+                : "VK пока не отвечает — сессия сохранена"
             scheduleAutomaticRetry()
         }
     }
@@ -247,15 +228,17 @@ struct RootView: View {
             return
         }
         guard !isValidatingSession,
-              let token = sessionStore.accessToken else {
+              sessionStore.accessToken != nil else {
             return
         }
         isValidatingSession = true
         defer { isValidatingSession = false }
         do {
-            let profile = try await environment.musicService.profile(
-                accessToken: token
-            )
+            let profile = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.profile(
+                    accessToken: token
+                )
+            }
             sessionStore.setProfile(profile)
             automaticRetryTask?.cancel()
             automaticRetryTask = nil
@@ -269,15 +252,17 @@ struct RootView: View {
                apiError == .unauthorized {
                 if sessionStore.session?.canRefresh == true {
                     refreshRequiresReplacement = true
-                    await refreshWebSession(tokenWasRejected: true)
+                    refreshError = "Восстанавливаем подключение VK…"
+                    scheduleAutomaticRetry()
                 } else {
-                    refreshError = "Сессия VK истекла"
+                    refreshError =
+                        "Автовосстановление VK недоступно — откройте профиль"
                 }
             } else if let apiError = error as? APIError,
                       apiError.isConnectivityFailure {
-                refreshError = "VK временно недоступен"
+                refreshError = "VK пока не отвечает — сессия сохранена"
             } else {
-                refreshError = "Не удалось проверить подключение"
+                refreshError = "VK пока не отвечает — сессия сохранена"
             }
         }
     }
@@ -289,7 +274,6 @@ private struct ConnectionBanner: View {
     let tint: Color
     var showsProgress = false
     var retry: (() -> Void)?
-    var loginAgain: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 10) {
@@ -307,18 +291,6 @@ private struct ConnectionBanner: View {
             if let retry {
                 Button("Повторить", action: retry)
                     .font(.footnote.weight(.bold))
-            }
-            if let loginAgain {
-                Menu {
-                    Button(
-                        "Войти заново",
-                        role: .destructive,
-                        action: loginAgain
-                    )
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(width: 28, height: 28)
-                }
             }
         }
         .padding(.horizontal, 14)
