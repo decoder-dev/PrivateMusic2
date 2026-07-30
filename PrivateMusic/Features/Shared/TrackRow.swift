@@ -2,8 +2,10 @@ import SwiftUI
 import Foundation
 
 struct TrackRow: View {
+    @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var offlineStore: OfflineTrackStore
     let track: Track
     let queue: [Track]
 
@@ -31,6 +33,17 @@ struct TrackRow: View {
                 }
 
                 Spacer()
+
+                if offlineStore.contains(track) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(L10n.text("Доступно офлайн"))
+                } else if offlineStore.downloadingTrackIDs.contains(track.id) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel(L10n.text("Загрузка"))
+                }
 
                 Text(track.duration.formattedDuration)
                     .font(.caption.monospacedDigit())
@@ -85,6 +98,21 @@ struct TrackRow: View {
             } label: {
                 Label("Открыть плеер", systemImage: "play.circle")
             }
+            Button(
+                role: offlineStore.contains(track) ? .destructive : nil
+            ) {
+                toggleOffline()
+            } label: {
+                Label(
+                    offlineStore.contains(track)
+                        ? "Удалить загрузку"
+                        : "Скачать офлайн",
+                    systemImage: offlineStore.contains(track)
+                        ? "trash"
+                        : "arrow.down.circle"
+                )
+            }
+            .disabled(offlineStore.downloadingTrackIDs.contains(track.id))
         }
     }
 
@@ -116,6 +144,26 @@ struct TrackRow: View {
             L10n.minutes(minutes),
             L10n.seconds(seconds)
         )
+    }
+
+    private func toggleOffline() {
+        Task {
+            do {
+                if offlineStore.contains(track) {
+                    offlineStore.remove(track)
+                } else {
+                    try await environment.downloadForOffline(track)
+                }
+                Haptics.selection()
+            } catch is CancellationError {
+                return
+            } catch {
+                player.errorMessage = L10n.format(
+                    "Не удалось сохранить трек офлайн: %@",
+                    error.localizedDescription
+                )
+            }
+        }
     }
 }
 

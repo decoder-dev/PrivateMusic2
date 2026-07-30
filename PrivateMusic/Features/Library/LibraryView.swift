@@ -5,6 +5,7 @@ struct LibraryView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var libraryStore: MusicLibraryStore
+    @EnvironmentObject private var offlineStore: OfflineTrackStore
     @StateObject private var tracks = TrackCollectionViewModel(source: .library)
     @StateObject private var playlists = PlaylistLibraryViewModel()
     @State private var showingEditor = false
@@ -60,6 +61,12 @@ struct LibraryView: View {
         .dynamicTypeSize(...DynamicTypeSize.large)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                NavigationLink {
+                    OfflineDownloadsView()
+                } label: {
+                    Image(systemName: "arrow.down.circle")
+                }
+                .accessibilityLabel(L10n.text("Загрузки"))
                 NavigationLink {
                     ListeningHistoryView()
                 } label: {
@@ -187,6 +194,23 @@ struct LibraryView: View {
                 } label: {
                     Label("Играть следующим", systemImage: "text.badge.plus")
                 }
+                Button(
+                    role: offlineStore.contains(track) ? .destructive : nil
+                ) {
+                    toggleOffline(track)
+                } label: {
+                    Label(
+                        offlineStore.contains(track)
+                            ? "Удалить загрузку"
+                            : "Скачать офлайн",
+                        systemImage: offlineStore.contains(track)
+                            ? "trash"
+                            : "arrow.down.circle"
+                    )
+                }
+                .disabled(
+                    offlineStore.downloadingTrackIDs.contains(track.id)
+                )
                 Button(role: .destructive) {
                     guard let token = sessionStore.accessToken else { return }
                     Task {
@@ -207,6 +231,26 @@ struct LibraryView: View {
             }
         }
         .padding(.vertical, 8)
+    }
+
+    private func toggleOffline(_ track: Track) {
+        Task {
+            do {
+                if offlineStore.contains(track) {
+                    offlineStore.remove(track)
+                } else {
+                    try await environment.downloadForOffline(track)
+                }
+                Haptics.selection()
+            } catch is CancellationError {
+                return
+            } catch {
+                player.errorMessage = L10n.format(
+                    "Не удалось сохранить трек офлайн: %@",
+                    error.localizedDescription
+                )
+            }
+        }
     }
 
     private var playlistSkeleton: some View {

@@ -21,10 +21,10 @@ final class TrackShareServiceTests: XCTestCase {
                 httpVersion: nil,
                 headerFields: [
                     "Content-Type": "audio/mpeg",
-                    "Content-Length": "5"
+                    "Content-Length": "8"
                 ]
             )!
-            return (response, Data("audio".utf8))
+            return (response, Data("ID3audio".utf8))
         }
         let service = TrackShareService(
             session: URLSession(configuration: configuration)
@@ -32,19 +32,20 @@ final class TrackShareServiceTests: XCTestCase {
 
         let payload = try await service.preparePayload(
             for: makeTrack(streamURL: sourceURL),
-            userAgent: "PrivateMusicTests"
+            userAgent: "PrivateMusicTests",
+            requiresMP3: true
         )
 
         guard case let .audioFile(fileURL) = payload else {
             return XCTFail("Direct audio must be exported as an attachment")
         }
         XCTAssertEqual(fileURL.pathExtension, "mp3")
-        XCTAssertEqual(try Data(contentsOf: fileURL), Data("audio".utf8))
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data("ID3audio".utf8))
         await service.removeExportedFile(payload)
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
     }
 
-    func testHLSUsesStableVKLinkWithoutSignedStreamParameters() async throws {
+    func testHLSNeverFallsBackToAStreamingLink() async {
         let track = makeTrack(
             streamURL: URL(
                 string: "https://example.com/audio/index.m3u8?token=secret"
@@ -52,52 +53,83 @@ final class TrackShareServiceTests: XCTestCase {
         )
         let service = TrackShareService()
 
-        let payload = try await service.preparePayload(
-            for: track,
-            userAgent: "PrivateMusicTests"
-        )
-
-        XCTAssertEqual(
-            payload,
-            .vkLink(
-                url: URL(string: "https://vk.com/audio-42_7")!,
-                description: "Artist — Title"
+        do {
+            _ = try await service.preparePayload(
+                for: track,
+                userAgent: "PrivateMusicTests",
+                requiresMP3: true
             )
-        )
-        if case let .vkLink(url, _) = payload {
-            XCTAssertNil(url.query)
-            XCTAssertFalse(url.absoluteString.contains("secret"))
-        } else {
-            XCTFail("HLS must be shared as a stable VK link")
+            XCTFail("HLS must not be shared as an MP3 or a link")
+        } catch {
+            XCTAssertFalse(error.localizedDescription.contains("token=secret"))
         }
     }
 
-    func testMissingStreamStillProducesUsefulSharePayload() async {
-        let service = TrackShareService()
-
-        let payload = await service.linkPayload(
-            for: makeTrack(streamURL: nil)
-        )
-
-        XCTAssertEqual(
-            payload,
-            .vkLink(
-                url: URL(string: "https://vk.com/audio-42_7")!,
-                description: "Artist — Title"
+    func testDisguisedHLSBodyIsRejected() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ShareURLProtocol.self]
+        ShareURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "audio/mpeg"]
+            )!
+            return (
+                response,
+                Data("#EXTM3U\n#EXT-X-VERSION:3".utf8)
             )
+        }
+        let service = TrackShareService(
+            session: URLSession(configuration: configuration)
         )
+
+        do {
+            _ = try await service.preparePayload(
+                for: makeTrack(
+                    streamURL: URL(
+                        string: "https://example.com/audio.mp3"
+                    )
+                ),
+                userAgent: nil,
+                requiresMP3: true
+            )
+            XCTFail("A playlist must never be exported as MP3")
+        } catch {
+            XCTAssertNotNil(error as? APIError)
+        }
+    }
+
+    func testMissingStreamFailsInsteadOfSharingVKLink() async {
+        let service = TrackShareService()
+        do {
+            _ = try await service.preparePayload(
+                for: makeTrack(streamURL: nil),
+                userAgent: nil,
+                requiresMP3: true
+            )
+            XCTFail("A missing stream must fail")
+        } catch {
+            XCTAssertFalse(error.localizedDescription.isEmpty)
+        }
     }
 
     func testOnlyTemporaryExportCanBeCleanedUp() async throws {
         let service = TrackShareService()
-        let temporaryURL = FileManager.default.temporaryDirectory
+        let sourceURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("mp3")
-        try Data("audio".utf8).write(to: temporaryURL)
+        try Data("ID3audio".utf8).write(to: sourceURL)
+        let payload = try await service.payloadFromLocalFile(
+            sourceURL,
+            track: makeTrack(streamURL: nil)
+        )
+        let temporaryURL = payload.fileURL
 
-        await service.removeExportedFile(.audioFile(temporaryURL))
+        await service.removeExportedFile(payload)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: temporaryURL.path))
+        try? FileManager.default.removeItem(at: sourceURL)
     }
 
     private func makeTrack(streamURL: URL?) -> Track {

@@ -1,0 +1,130 @@
+import XCTest
+@testable import PrivateMusic
+
+@MainActor
+final class OfflineTrackStoreTests: XCTestCase {
+    func testDownloadPersistsAndRestoresForSameAccount() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let service = makeDownloadService()
+        let store = OfflineTrackStore(
+            rootURL: root,
+            downloadService: service
+        )
+        let track = makeTrack()
+        store.configure(accountID: 42)
+
+        try await store.download(track, userAgent: "PrivateMusicTests")
+
+        XCTAssertTrue(store.contains(track))
+        XCTAssertEqual(store.downloadedTracks.map(\.id), [track.id])
+        XCTAssertGreaterThan(store.totalByteCount, 0)
+
+        let restored = OfflineTrackStore(
+            rootURL: root,
+            downloadService: service
+        )
+        restored.configure(accountID: 42)
+        XCTAssertTrue(restored.contains(track))
+        XCTAssertNotNil(restored.localURL(for: track))
+    }
+
+    func testAccountsAreIsolatedAndRemovalDeletesFile() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = OfflineTrackStore(
+            rootURL: root,
+            downloadService: makeDownloadService()
+        )
+        let track = makeTrack()
+        store.configure(accountID: 42)
+        try await store.download(track, userAgent: nil)
+        let localURL = try XCTUnwrap(store.localURL(for: track))
+
+        store.configure(accountID: 7)
+        XCTAssertFalse(store.contains(track))
+
+        store.configure(accountID: 42)
+        store.remove(track)
+        XCTAssertFalse(store.contains(track))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: localURL.path))
+    }
+
+    private func makeDownloadService() -> TrackShareService {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [OfflineURLProtocol.self]
+        OfflineURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: [
+                    "Content-Type": "audio/mpeg",
+                    "Content-Length": "8"
+                ]
+            )!
+            return (response, Data("ID3audio".utf8))
+        }
+        return TrackShareService(
+            session: URLSession(configuration: configuration)
+        )
+    }
+
+    private func temporaryRoot() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "OfflineTrackStoreTests-\(UUID().uuidString)",
+                isDirectory: true
+            )
+    }
+
+    private func makeTrack() -> Track {
+        Track(
+            trackID: 7,
+            ownerID: -42,
+            title: "Title",
+            artist: "Artist",
+            duration: 120,
+            streamURL: URL(string: "https://example.com/track.mp3"),
+            artworkURL: nil
+        )
+    }
+}
+
+private final class OfflineURLProtocol: URLProtocol {
+    static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(
+        for request: URLRequest
+    ) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let handler = Self.handler else {
+            client?.urlProtocol(
+                self,
+                didFailWithError: URLError(.unknown)
+            )
+            return
+        }
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(
+                self,
+                didReceive: response,
+                cacheStoragePolicy: .notAllowed
+            )
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}

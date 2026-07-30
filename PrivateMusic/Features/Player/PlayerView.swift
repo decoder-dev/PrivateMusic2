@@ -8,6 +8,7 @@ struct PlayerView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var libraryStore: MusicLibraryStore
+    @EnvironmentObject private var offlineStore: OfflineTrackStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @GestureState private var artworkDrag: CGSize = .zero
@@ -681,11 +682,15 @@ struct PlayerView: View {
         case .settings:
             NavigationStack { SettingsView() }
         case let .share(payload):
-            TrackShareSheet(payload: payload)
+            TrackShareSheet(payload: payload) {
+                cleanupSharedFile()
+                presentedSheet = nil
+            }
         case let .actions(track):
             PlayerActionsSheet(
                 track: track,
                 isInLibrary: isInLibrary,
+                offlineState: offlineStore.state(for: track),
                 availability: PlayerActionAvailability(
                     hasSession: sessionStore.accessToken != nil,
                     isUpdatingLibrary: isUpdatingLibrary,
@@ -711,6 +716,10 @@ struct PlayerView: View {
                 },
                 onShare: {
                     deferFromActionSheet(.share(track))
+                },
+                onOffline: {
+                    presentedSheet = nil
+                    toggleOffline(track)
                 },
                 onSettings: {
                     deferFromActionSheet(.sheet(.settings))
@@ -815,62 +824,68 @@ struct PlayerView: View {
         isPreparingShare = true
         defer { isPreparingShare = false }
         do {
-            let refreshed: Track
-            if sessionStore.accessToken != nil {
-                refreshed = try await environment.withAuthorizedToken { token in
-                    try await environment.musicService.refreshedTrack(
-                        track,
-                        accessToken: token
-                    )
+            if let localURL = offlineStore.localURL(for: track) {
+                let payload = try await shareService.payloadFromLocalFile(
+                    localURL,
+                    track: track
+                )
+                guard !Task.isCancelled else {
+                    await shareService.removeExportedFile(payload)
+                    return
                 }
-            } else {
-                refreshed = track
+                presentSharePayload(payload)
+                return
+            }
+
+            let refreshed: Track
+            refreshed = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.refreshedTrack(
+                    track,
+                    accessToken: token
+                )
             }
             guard !Task.isCancelled,
                   player.currentTrack?.id == track.id else {
                 return
             }
             cleanupSharedFile()
-            let payload: TrackSharePayload
-            if sessionStore.accessToken == nil {
-                payload = await shareService.linkPayload(for: refreshed)
-            } else {
-                do {
-                    payload = try await shareService.preparePayload(
-                        for: refreshed,
-                        userAgent: sessionStore.userAgent
-                    )
-                } catch {
-                    payload = await shareService.linkPayload(for: refreshed)
-                }
-            }
+            let payload = try await shareService.preparePayload(
+                for: refreshed,
+                userAgent: sessionStore.userAgent,
+                requiresMP3: true
+            )
             guard !Task.isCancelled else {
                 await shareService.removeExportedFile(payload)
                 return
             }
-            shareCleanupPayload = payload
-            if isActionSheetPresented {
-                deferFromActionSheet(.sheet(.share(payload)))
-                Haptics.selection()
-                return
-            }
-            if case .some = deferredPlayerAction {
-                cleanupSharedFile()
-                return
-            }
-            guard present(.share(payload)) else {
-                cleanupSharedFile()
-                return
-            }
-            Haptics.selection()
+            presentSharePayload(payload)
         } catch is CancellationError {
             return
         } catch {
-            let payload = await shareService.linkPayload(for: track)
             guard !Task.isCancelled else { return }
-            shareCleanupPayload = payload
-            _ = present(.share(payload))
+            player.errorMessage = L10n.format(
+                "Не удалось подготовить аудиофайл: %@",
+                error.localizedDescription
+            )
         }
+    }
+
+    private func presentSharePayload(_ payload: TrackSharePayload) {
+        shareCleanupPayload = payload
+        if isActionSheetPresented {
+            deferFromActionSheet(.sheet(.share(payload)))
+            Haptics.selection()
+            return
+        }
+        if case .some = deferredPlayerAction {
+            cleanupSharedFile()
+            return
+        }
+        guard present(.share(payload)) else {
+            cleanupSharedFile()
+            return
+        }
+        Haptics.selection()
     }
 
     private func startShare(_ track: Track) {
@@ -948,6 +963,26 @@ struct PlayerView: View {
         }
         isInLibrary = libraryStore.contains(track)
             || track.ownerID == sessionStore.session?.userID
+    }
+
+    private func toggleOffline(_ track: Track) {
+        Task {
+            do {
+                if offlineStore.contains(track) {
+                    offlineStore.remove(track)
+                } else {
+                    try await environment.downloadForOffline(track)
+                }
+                Haptics.selection()
+            } catch is CancellationError {
+                return
+            } catch {
+                player.errorMessage = L10n.format(
+                    "Не удалось сохранить трек офлайн: %@",
+                    error.localizedDescription
+                )
+            }
+        }
     }
 }
 
@@ -1222,6 +1257,7 @@ enum PlayerActionSheetMetrics {
 private struct PlayerActionsSheet: View {
     let track: Track
     let isInLibrary: Bool
+    let offlineState: OfflineTrackState
     let availability: PlayerActionAvailability
     @Binding var equalizerEnabled: Bool
     let onDismiss: () -> Void
@@ -1229,6 +1265,7 @@ private struct PlayerActionsSheet: View {
     let onArtist: () -> Void
     let onPlaylist: () -> Void
     let onShare: () -> Void
+    let onOffline: () -> Void
     let onSettings: () -> Void
 
     private let columns = [
@@ -1263,6 +1300,12 @@ private struct PlayerActionsSheet: View {
                             systemImage: "square.and.arrow.up",
                             enabled: availability.canShare,
                             action: onShare
+                        )
+                        actionTile(
+                            offlineTitle,
+                            systemImage: offlineImage,
+                            enabled: offlineState != .downloading,
+                            action: onOffline
                         )
                         actionTile(
                             "Настройки звука",
@@ -1312,6 +1355,28 @@ private struct PlayerActionsSheet: View {
             .large
         ])
         .presentationDragIndicator(.visible)
+    }
+
+    private var offlineTitle: String {
+        switch offlineState {
+        case .remote:
+            return "Скачать офлайн"
+        case .downloading:
+            return "Загрузка…"
+        case .available:
+            return "Удалить загрузку"
+        }
+    }
+
+    private var offlineImage: String {
+        switch offlineState {
+        case .remote:
+            return "arrow.down.circle"
+        case .downloading:
+            return "arrow.triangle.2.circlepath"
+        case .available:
+            return "checkmark.circle.fill"
+        }
     }
 
     private var header: some View {

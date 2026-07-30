@@ -8,6 +8,7 @@ final class AppEnvironment: ObservableObject {
     let networkMonitor: NetworkMonitor
     let historyStore: ListeningHistoryStore
     let libraryStore: MusicLibraryStore
+    let offlineStore: OfflineTrackStore
     let player: AudioPlayer
     let musicService: any MusicService
     let webAuthService: VKWebAuthService
@@ -28,6 +29,12 @@ final class AppEnvironment: ObservableObject {
         self.networkMonitor = NetworkMonitor()
         self.historyStore = ListeningHistoryStore()
         self.libraryStore = MusicLibraryStore()
+        let offlineStore = OfflineTrackStore()
+        self.offlineStore = offlineStore
+        offlineStore.configure(
+            accountID: sessionStore.session?.userID
+                ?? sessionStore.profile?.id
+        )
         self.player = AudioPlayer(
             settings: settings,
             historyStore: historyStore,
@@ -61,6 +68,37 @@ final class AppEnvironment: ObservableObject {
                 )
             }
         }
+        player.configureOfflinePlayback(
+            lookup: { [weak offlineStore] track in
+                offlineStore?.localURL(for: track)
+            },
+            invalidate: { [weak offlineStore] track in
+                offlineStore?.remove(track)
+            },
+            markPlayed: { [weak offlineStore] track in
+                offlineStore?.markPlayed(track)
+            }
+        )
+    }
+
+    func configureOfflineAccount() {
+        offlineStore.configure(
+            accountID: sessionStore.session?.userID
+                ?? sessionStore.profile?.id
+        )
+    }
+
+    func downloadForOffline(_ track: Track) async throws {
+        let refreshed = try await withAuthorizedToken { token in
+            try await musicService.refreshedTrack(
+                track,
+                accessToken: token
+            )
+        }
+        try await offlineStore.download(
+            refreshed,
+            userAgent: sessionStore.userAgent
+        )
     }
 
     func withAuthorizedToken<Value>(
