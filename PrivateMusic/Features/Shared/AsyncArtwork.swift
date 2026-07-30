@@ -26,6 +26,11 @@ struct AsyncArtwork: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.2))
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: PremiumLayout.artworkRadius(for: size),
+                style: .continuous
+            )
+        )
     }
 }

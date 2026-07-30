@@ -286,14 +286,14 @@
 "Действия с треком" = "Track Actions";
 "Поделиться" = "Share";
 "Настройки звука" = "Audio Settings";
-"Качество выбирает VK автоматически" = "Audio quality is selected automatically by VK";
+"Качество выбирает VK автоматически" = "Quality depends on the available VK stream";
 "Перемешать" = "Shuffle";
 "Повтор" = "Repeat";
 "Текст" = "Lyrics";
 "Экспорт" = "Share";
 "Свайп влево или вправо меняет трек, вверх открывает очередь, вниз закрывает плеер" = "Swipe left or right to change tracks, up to open the queue, or down to close the player";
 "Свайп в стороны меняет трек, вверх открывает очередь, вниз закрывает плеер" = "Swipe sideways to change tracks, up to open the queue, or down to close the player";
-"Качество: автоматически VK" = "Audio quality is selected automatically by VK";
+"Качество: автоматически VK" = "Quality depends on the available VK stream";
 "%d ИЗ %d" = "%d OF %d";
 "Войдите во VK, чтобы экспортировать песню." = "Sign in to VK to prepare this track for sharing.";
 "Не удалось экспортировать песню. Проверьте подключение и попробуйте ещё раз." = "Could not prepare the track for sharing. Check your connection and try again.";
