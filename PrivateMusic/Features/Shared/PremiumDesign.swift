@@ -26,7 +26,7 @@ struct PremiumCardModifier: ViewModifier {
         content
             .background(
                 Color(uiColor: .secondarySystemBackground)
-                    .opacity(settings.liquidGlassEnabled ? 0.72 : 0.96),
+                    .opacity(0.82),
                 in: shape
             )
             .overlay {

@@ -16,6 +16,11 @@ struct SearchView: View {
     @State private var scope: Scope = .tracks
     @State private var pendingLibraryTrackIDs = Set<String>()
     @FocusState private var isSearchFocused: Bool
+    let isActive: Bool
+
+    init(isActive: Bool = true) {
+        self.isActive = isActive
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,6 +37,10 @@ struct SearchView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: model.query) { _ in
             scheduleSearch()
+        }
+        .onChange(of: isActive) { active in
+            guard !active else { return }
+            isSearchFocused = false
         }
         .alert(
             "Не удалось изменить медиатеку",
@@ -92,6 +101,10 @@ struct SearchView: View {
         }
         .clipShape(searchFieldShape)
         .contentShape(searchFieldShape)
+        .onTapGesture {
+            guard isActive else { return }
+            isSearchFocused = true
+        }
     }
 
     @ViewBuilder

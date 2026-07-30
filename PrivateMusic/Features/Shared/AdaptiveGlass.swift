@@ -14,13 +14,12 @@ struct ThemeBackground: View {
 }
 
 private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
-    @EnvironmentObject private var settings: AppSettings
     let shape: S
     let interactive: Bool
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *), settings.liquidGlassEnabled {
+        if #available(iOS 26.0, *) {
             content
                 .clipShape(shape)
                 .glassEffect(
@@ -30,7 +29,7 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                     in: shape
                 )
                 .contentShape(shape)
-        } else if settings.liquidGlassEnabled {
+        } else {
             content
                 .clipShape(shape)
                 .background(.ultraThinMaterial, in: shape)
@@ -41,17 +40,30 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                     )
                 }
                 .contentShape(shape)
+        }
+    }
+}
+
+struct AdaptiveGlassContainer<Content: View>: View {
+    let spacing: CGFloat?
+    private let content: Content
+
+    init(
+        spacing: CGFloat? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.spacing = spacing
+        self.content = content()
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: spacing) {
+                content
+            }
         } else {
             content
-                .clipShape(shape)
-                .background(
-                    settings.theme.surface,
-                    in: shape
-                )
-                .overlay {
-                    shape.stroke(.primary.opacity(0.08), lineWidth: 0.7)
-                }
-                .contentShape(shape)
         }
     }
 }

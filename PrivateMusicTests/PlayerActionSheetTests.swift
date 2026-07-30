@@ -59,7 +59,7 @@ final class PlayerActionSheetTests: XCTestCase {
         XCTAssertFalse(state.showsLibraryProgress)
     }
 
-    func testSessionActionsAreDisabledWithoutCredentials() {
+    func testMetadataShareRemainsAvailableWithoutCredentials() {
         let state = PlayerActionAvailability(
             hasSession: false,
             isUpdatingLibrary: false,
@@ -68,7 +68,7 @@ final class PlayerActionSheetTests: XCTestCase {
 
         XCTAssertFalse(state.canModifyLibrary)
         XCTAssertFalse(state.canAddToPlaylist)
-        XCTAssertFalse(state.canShare)
+        XCTAssertTrue(state.canShare)
         XCTAssertFalse(state.showsLibraryProgress)
     }
 }

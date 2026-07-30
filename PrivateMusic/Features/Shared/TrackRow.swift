@@ -95,7 +95,7 @@ struct TrackRow: View {
     private var currentTrackColor: Color {
         settings.theme == .dark
             ? settings.theme.accent
-            : Color(red: 0, green: 0.30, blue: 0.68)
+            : .black
     }
 
     private var spokenDuration: String {

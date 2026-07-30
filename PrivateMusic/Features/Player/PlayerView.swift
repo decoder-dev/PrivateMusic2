@@ -14,7 +14,7 @@ struct PlayerView: View {
     @GestureState private var artworkDrag: CGSize = .zero
     @State private var presentedSheet: PlayerSheet?
     @State private var deferredPlayerAction: DeferredPlayerAction?
-    @State private var shareCleanupURL: URL?
+    @State private var shareCleanupPayload: TrackSharePayload?
     @State private var shareTask: Task<Void, Never>?
     @State private var isPreparingShare = false
     @State private var isInLibrary = false
@@ -39,7 +39,7 @@ struct PlayerView: View {
                         systemImage: "play.circle",
                         description: "Выберите трек в медиатеке или миксе."
                     )
-                    .foregroundStyle(.white)
+                    .foregroundStyle(playerForeground)
                     .padding()
                 }
             }
@@ -49,7 +49,9 @@ struct PlayerView: View {
             )
             .clipped()
         }
-        .preferredColorScheme(.dark)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(playerBackground.ignoresSafeArea())
+        .preferredColorScheme(settings.theme.colorScheme)
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .sheet(
             item: $presentedSheet,
@@ -85,7 +87,7 @@ struct PlayerView: View {
 
     private var artworkBackground: some View {
         ZStack {
-            Color.black
+            playerBackground
             if let artworkURL = player.currentTrack?.artworkURL {
                 CachedRemoteImage(url: artworkURL) { image in
                     image
@@ -94,17 +96,14 @@ struct PlayerView: View {
                         .scaleEffect(1.28)
                         .blur(radius: 78)
                         .saturation(1.12)
+                        .opacity(settings.theme == .light ? 0.18 : 1)
                 } placeholder: {
                     Color.clear
                 }
             }
-            Color.black.opacity(0.56)
+            playerBackground.opacity(settings.theme == .light ? 0.72 : 0.56)
             LinearGradient(
-                colors: [
-                    .black.opacity(0.18),
-                    .black.opacity(0.42),
-                    .black.opacity(0.92)
-                ],
+                colors: backgroundGradient,
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -140,7 +139,7 @@ struct PlayerView: View {
         )
         .padding(.leading, metrics.leadingPadding)
         .padding(.trailing, metrics.trailingPadding)
-        .foregroundStyle(.white)
+        .foregroundStyle(playerForeground)
     }
 
     private func portraitPlayerContent(
@@ -227,11 +226,11 @@ struct PlayerView: View {
                 Text("СЕЙЧАС ИГРАЕТ")
                     .font(.caption2.weight(.bold))
                     .tracking(1.1)
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(playerSecondary)
                 Text(queuePosition)
                     .font(.system(size: 10, weight: .medium))
                     .monospacedDigit()
-                    .foregroundStyle(.white.opacity(0.56))
+                    .foregroundStyle(playerSecondary)
             }
             .accessibilityElement(children: .combine)
             .accessibilitySortPriority(1)
@@ -243,10 +242,10 @@ struct PlayerView: View {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 15, weight: .bold))
                         .frame(width: 44, height: 44)
-                        .background(.white.opacity(0.08), in: Circle())
+                        .background(controlSurface, in: Circle())
                         .overlay {
                             Circle().stroke(
-                                .white.opacity(0.08),
+                                playerForeground.opacity(0.08),
                                 lineWidth: 0.5
                             )
                         }
@@ -258,12 +257,14 @@ struct PlayerView: View {
                 Spacer()
 
                 HStack(spacing: 8) {
-                    AirPlayRoutePicker()
+                    AirPlayRoutePicker(
+                        tintColor: UIColor(playerForeground)
+                    )
                         .frame(width: 44, height: 44)
-                        .background(.white.opacity(0.08), in: Circle())
+                        .background(controlSurface, in: Circle())
                         .overlay {
                             Circle().stroke(
-                                .white.opacity(0.08),
+                                playerForeground.opacity(0.08),
                                 lineWidth: 0.5
                             )
                         }
@@ -290,7 +291,7 @@ struct PlayerView: View {
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(.white.opacity(0.08), lineWidth: 0.7)
+                    .stroke(playerForeground.opacity(0.08), lineWidth: 0.7)
             }
             .shadow(color: .black.opacity(0.42), radius: 26, y: 14)
             .offset(
@@ -349,7 +350,7 @@ struct PlayerView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(track.title)
                     .font(.title3.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(playerForeground)
                     .lineLimit(1)
                 Button {
                     present(.artist(track.artist))
@@ -359,11 +360,11 @@ struct PlayerView: View {
                         .lineLimit(1)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.white.opacity(0.58))
+                .foregroundStyle(playerSecondary)
                 if let album = track.albumTitle, !album.isEmpty {
                     Text(album)
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.52))
+                        .foregroundStyle(playerSecondary)
                         .lineLimit(1)
                 }
             }
@@ -378,10 +379,12 @@ struct PlayerView: View {
                 )
                 .font(.system(size: 19, weight: .semibold))
                 .foregroundStyle(
-                    isInLibrary ? .white : .white.opacity(0.72)
+                    isInLibrary
+                        ? playerForeground
+                        : playerForeground.opacity(0.72)
                 )
                 .frame(width: 44, height: 44)
-                .background(.white.opacity(0.08), in: Circle())
+                .background(controlSurface, in: Circle())
             }
             .buttonStyle(PlayerControlStyle())
             .disabled(isUpdatingLibrary)
@@ -410,6 +413,7 @@ struct PlayerView: View {
                     set: { scrubPosition = $0 }
                 ),
                 range: 0...max(player.duration, 1),
+                tintColor: UIColor(playerForeground),
                 onEditingBegan: {
                     scrubPosition = player.elapsedTime
                 },
@@ -430,7 +434,7 @@ struct PlayerView: View {
                 Text("-\(remainingTime.formattedDuration)")
             }
             .font(.system(size: 11, weight: .medium).monospacedDigit())
-            .foregroundStyle(.white.opacity(0.52))
+            .foregroundStyle(playerSecondary)
         }
     }
 
@@ -440,11 +444,14 @@ struct PlayerView: View {
         } label: {
             Image(systemName: "ellipsis")
                 .font(.headline)
-                .foregroundStyle(.white)
+                .foregroundStyle(playerForeground)
                 .frame(width: 44, height: 44)
-                .background(.white.opacity(0.08), in: Circle())
+                .background(controlSurface, in: Circle())
                 .overlay {
-                    Circle().stroke(.white.opacity(0.08), lineWidth: 0.5)
+                    Circle().stroke(
+                        playerForeground.opacity(0.08),
+                        lineWidth: 0.5
+                    )
                 }
         }
         .buttonStyle(PlayerControlStyle())
@@ -482,8 +489,8 @@ struct PlayerView: View {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 29, weight: .bold))
                     .frame(width: 60, height: 60)
-                    .background(.white, in: Circle())
-                    .foregroundStyle(.black)
+                    .background(playerForeground, in: Circle())
+                    .foregroundStyle(playerBackground)
                     .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
             }
             .accessibilityLabel(
@@ -548,7 +555,7 @@ struct PlayerView: View {
         )
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(.white.opacity(0.09), lineWidth: 0.7)
+                .stroke(playerForeground.opacity(0.09), lineWidth: 0.7)
         }
     }
 
@@ -562,12 +569,12 @@ struct PlayerView: View {
                 Image(systemName: image)
                     .font(.system(size: 16, weight: .semibold))
                     .frame(width: 36, height: 34)
-                    .background(.white.opacity(0.07), in: Circle())
+                    .background(controlSurface, in: Circle())
                 Text(L10n.text(title))
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
             }
-            .foregroundStyle(.white.opacity(0.66))
+            .foregroundStyle(playerForeground.opacity(0.66))
             .frame(maxWidth: .infinity)
             .frame(minHeight: 52)
         }
@@ -585,7 +592,9 @@ struct PlayerView: View {
             Image(systemName: image)
                 .font(.system(size: 19, weight: .semibold))
                 .foregroundStyle(
-                    active ? Color.white : Color.white.opacity(0.58)
+                    active
+                        ? playerForeground
+                        : playerForeground.opacity(0.58)
                 )
                 .frame(width: 44, height: 44)
         }
@@ -607,6 +616,37 @@ struct PlayerView: View {
 
     private var remainingTime: TimeInterval {
         max(player.duration - displayedElapsedTime, 0)
+    }
+
+    private var playerForeground: Color {
+        settings.theme == .light ? .black : .white
+    }
+
+    private var playerSecondary: Color {
+        playerForeground.opacity(settings.theme == .light ? 0.62 : 0.56)
+    }
+
+    private var playerBackground: Color {
+        settings.theme == .light ? .white : .black
+    }
+
+    private var controlSurface: Color {
+        playerForeground.opacity(settings.theme == .light ? 0.07 : 0.08)
+    }
+
+    private var backgroundGradient: [Color] {
+        if settings.theme == .light {
+            return [
+                .white.opacity(0.28),
+                .white.opacity(0.72),
+                .white.opacity(0.98),
+            ]
+        }
+        return [
+            .black.opacity(0.18),
+            .black.opacity(0.42),
+            .black.opacity(0.92),
+        ]
     }
 
     private var displayedElapsedTime: TimeInterval {
@@ -631,8 +671,8 @@ struct PlayerView: View {
             AddToPlaylistView(track: track)
         case .settings:
             NavigationStack { SettingsView() }
-        case let .share(fileURL):
-            TrackShareSheet(fileURL: fileURL)
+        case let .share(payload):
+            TrackShareSheet(payload: payload)
         case let .actions(track):
             PlayerActionsSheet(
                 track: track,
@@ -753,37 +793,45 @@ struct PlayerView: View {
     }
 
     private func prepareShare(_ track: Track) async {
-        guard sessionStore.accessToken != nil else {
-            player.errorMessage = L10n.text(
-                "Войдите во VK, чтобы экспортировать песню."
-            )
-            return
-        }
         isPreparingShare = true
         defer { isPreparingShare = false }
         do {
-            let refreshed = try await environment.withAuthorizedToken { token in
-                try await environment.musicService.refreshedTrack(
-                    track,
-                    accessToken: token
-                )
+            let refreshed: Track
+            if sessionStore.accessToken != nil {
+                refreshed = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.refreshedTrack(
+                        track,
+                        accessToken: token
+                    )
+                }
+            } else {
+                refreshed = track
             }
             guard !Task.isCancelled,
                   player.currentTrack?.id == track.id else {
                 return
             }
             cleanupSharedFile()
-            let fileURL = try await shareService.prepareFile(
-                for: refreshed,
-                userAgent: sessionStore.userAgent
-            )
+            let payload: TrackSharePayload
+            if sessionStore.accessToken == nil {
+                payload = await shareService.linkPayload(for: refreshed)
+            } else {
+                do {
+                    payload = try await shareService.preparePayload(
+                        for: refreshed,
+                        userAgent: sessionStore.userAgent
+                    )
+                } catch {
+                    payload = await shareService.linkPayload(for: refreshed)
+                }
+            }
             guard !Task.isCancelled else {
-                try? FileManager.default.removeItem(at: fileURL)
+                await shareService.removeExportedFile(payload)
                 return
             }
-            shareCleanupURL = fileURL
+            shareCleanupPayload = payload
             if isActionSheetPresented {
-                deferFromActionSheet(.sheet(.share(fileURL)))
+                deferFromActionSheet(.sheet(.share(payload)))
                 Haptics.selection()
                 return
             }
@@ -791,7 +839,7 @@ struct PlayerView: View {
                 cleanupSharedFile()
                 return
             }
-            guard present(.share(fileURL)) else {
+            guard present(.share(payload)) else {
                 cleanupSharedFile()
                 return
             }
@@ -799,10 +847,10 @@ struct PlayerView: View {
         } catch is CancellationError {
             return
         } catch {
-            player.errorMessage = L10n.text(
-                "Не удалось экспортировать песню. Обновите сессию VK "
-                    + "или попробуйте ещё раз."
-            )
+            let payload = await shareService.linkPayload(for: track)
+            guard !Task.isCancelled else { return }
+            shareCleanupPayload = payload
+            _ = present(.share(payload))
         }
     }
 
@@ -815,9 +863,11 @@ struct PlayerView: View {
     }
 
     private func cleanupSharedFile() {
-        guard let url = shareCleanupURL else { return }
-        try? FileManager.default.removeItem(at: url)
-        shareCleanupURL = nil
+        guard let payload = shareCleanupPayload else { return }
+        shareCleanupPayload = nil
+        Task {
+            await shareService.removeExportedFile(payload)
+        }
     }
 
     private func toggleLibrary(_ track: Track) {
@@ -1099,7 +1149,7 @@ private enum PlayerSheet: Identifiable {
     case artist(String)
     case playlists(Track)
     case settings
-    case share(URL)
+    case share(TrackSharePayload)
     case actions(Track)
 
     var id: String {
@@ -1114,8 +1164,8 @@ private enum PlayerSheet: Identifiable {
             return "playlists-\(track.id)"
         case .settings:
             return "settings"
-        case let .share(url):
-            return "share-\(url.absoluteString)"
+        case let .share(payload):
+            return "share-\(payload.identifier)"
         case let .actions(track):
             return "actions-\(track.id)"
         }
@@ -1140,7 +1190,7 @@ struct PlayerActionAvailability: Equatable {
     ) {
         canModifyLibrary = hasSession && !isUpdatingLibrary
         canAddToPlaylist = hasSession
-        canShare = hasSession && !isPreparingShare
+        canShare = !isPreparingShare
         showsLibraryProgress = isUpdatingLibrary
     }
 }
@@ -1369,10 +1419,12 @@ private struct PlayerActionsSheet: View {
 }
 
 private struct AirPlayRoutePicker: UIViewRepresentable {
+    let tintColor: UIColor
+
     func makeUIView(context: Context) -> AVRoutePickerView {
         let picker = AVRoutePickerView(frame: .zero)
-        picker.tintColor = .white
-        picker.activeTintColor = .white
+        picker.tintColor = tintColor
+        picker.activeTintColor = tintColor
         picker.prioritizesVideoDevices = false
         return picker
     }
@@ -1381,14 +1433,15 @@ private struct AirPlayRoutePicker: UIViewRepresentable {
         _ picker: AVRoutePickerView,
         context: Context
     ) {
-        picker.tintColor = .white
-        picker.activeTintColor = .white
+        picker.tintColor = tintColor
+        picker.activeTintColor = tintColor
     }
 }
 
 private struct CompactPlayerSlider: UIViewRepresentable {
     @Binding var value: TimeInterval
     let range: ClosedRange<TimeInterval>
+    let tintColor: UIColor
     let onEditingBegan: () -> Void
     let onCommit: (TimeInterval) -> Void
 
@@ -1399,10 +1452,7 @@ private struct CompactPlayerSlider: UIViewRepresentable {
     func makeUIView(context: Context) -> UISlider {
         let slider = UISlider(frame: .zero)
         slider.isContinuous = true
-        slider.minimumTrackTintColor = .white
-        slider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.18)
-        slider.setThumbImage(Self.thumbImage, for: .normal)
-        slider.setThumbImage(Self.highlightedThumbImage, for: .highlighted)
+        configureColors(slider)
         slider.addTarget(
             context.coordinator,
             action: #selector(Coordinator.valueChanged(_:)),
@@ -1423,6 +1473,7 @@ private struct CompactPlayerSlider: UIViewRepresentable {
 
     func updateUIView(_ slider: UISlider, context: Context) {
         context.coordinator.parent = self
+        configureColors(slider)
         slider.minimumValue = Float(range.lowerBound)
         slider.maximumValue = Float(max(range.upperBound, range.lowerBound + 1))
         guard !slider.isTracking else { return }
@@ -1433,10 +1484,20 @@ private struct CompactPlayerSlider: UIViewRepresentable {
         )
     }
 
-    private static let thumbImage = makeThumb(diameter: 12)
-    private static let highlightedThumbImage = makeThumb(diameter: 15)
+    private func configureColors(_ slider: UISlider) {
+        slider.minimumTrackTintColor = tintColor
+        slider.maximumTrackTintColor = tintColor.withAlphaComponent(0.18)
+        slider.setThumbImage(
+            makeThumb(diameter: 12),
+            for: .normal
+        )
+        slider.setThumbImage(
+            makeThumb(diameter: 15),
+            for: .highlighted
+        )
+    }
 
-    private static func makeThumb(diameter: CGFloat) -> UIImage {
+    private func makeThumb(diameter: CGFloat) -> UIImage {
         let size = CGSize(width: diameter, height: diameter)
         return UIGraphicsImageRenderer(size: size).image { context in
             context.cgContext.setShadow(
@@ -1444,7 +1505,7 @@ private struct CompactPlayerSlider: UIViewRepresentable {
                 blur: 3,
                 color: UIColor.black.withAlphaComponent(0.28).cgColor
             )
-            UIColor.white.setFill()
+            tintColor.setFill()
             UIBezierPath(
                 ovalIn: CGRect(origin: .zero, size: size).insetBy(
                     dx: 0.5,
@@ -1488,10 +1549,11 @@ private struct CompactPlayerSlider: UIViewRepresentable {
 
 private struct PlayerControlStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var settings: AppSettings
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(.white)
+            .foregroundStyle(settings.theme == .light ? .black : .white)
             .scaleEffect(
                 reduceMotion
                     ? 1
