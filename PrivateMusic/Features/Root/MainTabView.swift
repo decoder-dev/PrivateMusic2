@@ -34,7 +34,7 @@ struct MainTabView: View {
 
     var body: some View {
         Group {
-            if #available(iOS 26.0, *) {
+            if #available(iOS 26.1, *) {
                 SystemLiquidGlassTabView(selection: $selectedTab)
             } else {
                 ZStack {
@@ -108,7 +108,7 @@ struct MainTabView: View {
     }
 }
 
-@available(iOS 26.0, *)
+@available(iOS 26.1, *)
 private struct SystemLiquidGlassTabView: View {
     @EnvironmentObject private var player: AudioPlayer
     @Binding var selection: MainTab
@@ -158,7 +158,7 @@ private struct SystemLiquidGlassTabView: View {
     }
 }
 
-@available(iOS 26.0, *)
+@available(iOS 26.1, *)
 private struct SystemPlaybackAccessory: View {
     @EnvironmentObject private var player: AudioPlayer
     @Environment(
