@@ -135,6 +135,7 @@ final class AudioPlayer: ObservableObject {
     func configureContinuation(
         _ provider: @escaping () async throws -> [Track]
     ) {
+        cancelContinuation()
         defaultContinuationProvider = provider
         activeContinuationProvider = provider
     }
@@ -188,6 +189,7 @@ final class AudioPlayer: ObservableObject {
             play(track, in: [track])
             return
         }
+        cancelContinuation()
         queue.removeAll { $0.id == track.id }
         queue.insert(track, at: min(currentIndex + 1, queue.count))
         persistPlayback()
@@ -206,6 +208,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     func toggleShuffle() {
+        cancelContinuation()
         shuffleEnabled.toggle()
         defaults.set(shuffleEnabled, forKey: "player.shuffle")
         guard let currentTrack else { return }
@@ -282,17 +285,7 @@ final class AudioPlayer: ObservableObject {
         guard let currentIndex, !queue.isEmpty else { return }
         let nextIndex = queue.index(after: currentIndex)
         if nextIndex >= queue.endIndex, repeatMode == .off {
-            guard continuationTask == nil else { return }
-            continuationGeneration += 1
-            let generation = continuationGeneration
-            continuationTask = Task { [weak self] in
-                await self?.continueQueueIfPossible()
-                guard let self,
-                      generation == self.continuationGeneration else {
-                    return
-                }
-                self.continuationTask = nil
-            }
+            startContinuationIfNeeded()
             return
         }
         cancelContinuation()
@@ -799,7 +792,28 @@ final class AudioPlayer: ObservableObject {
         streamRefreshTask = nil
     }
 
-    private func continueQueueIfPossible() async {
+    private func startContinuationIfNeeded() {
+        guard continuationTask == nil else { return }
+        continuationGeneration += 1
+        let generation = continuationGeneration
+        let sourceIndex = currentIndex
+        continuationTask = Task { [weak self] in
+            guard let self else { return }
+            await self.continueQueueIfPossible(
+                generation: generation,
+                sourceIndex: sourceIndex
+            )
+            guard generation == self.continuationGeneration else {
+                return
+            }
+            self.continuationTask = nil
+        }
+    }
+
+    private func continueQueueIfPossible(
+        generation: Int,
+        sourceIndex: Int?
+    ) async {
         guard let continuationProvider = activeContinuationProvider else {
             pause()
             return
@@ -807,11 +821,18 @@ final class AudioPlayer: ObservableObject {
         do {
             let existing = Set(queue.map(\.id))
             var discovered = Set<String>()
-            let additions = try await continuationProvider().filter {
+            let proposed = try await continuationTracks(
+                from: continuationProvider
+            )
+            guard !Task.isCancelled,
+                  generation == continuationGeneration,
+                  currentIndex == sourceIndex else {
+                return
+            }
+            let additions = proposed.filter {
                 !existing.contains($0.id)
                     && discovered.insert($0.id).inserted
             }
-            guard !Task.isCancelled else { return }
             guard !additions.isEmpty else {
                 pause()
                 return
@@ -825,10 +846,32 @@ final class AudioPlayer: ObservableObject {
             loadCurrentAndPlay()
         } catch is CancellationError {
             return
+        } catch let error as APIError
+            where error == .unauthorized || error.isConnectivityFailure {
+            pause()
+            return
         } catch {
             pause()
-            errorMessage = "Не удалось продолжить очередь: "
-                + error.localizedDescription
+            return
+        }
+    }
+
+    private func continuationTracks(
+        from provider: () async throws -> [Track]
+    ) async throws -> [Track] {
+        do {
+            return try await provider()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as APIError where error == .unauthorized {
+            // Authorization recovery belongs to AppEnvironment. Repeating it
+            // here would start a second cookie exchange after the centralized
+            // recovery has already been exhausted.
+            throw error
+        } catch {
+            try await Task.sleep(for: .milliseconds(350))
+            try Task.checkCancellation()
+            return try await provider()
         }
     }
 
