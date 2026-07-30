@@ -8,10 +8,10 @@ private enum MainTab: CaseIterable, Hashable {
 
     var title: String {
         switch self {
-        case .home: "Главная"
-        case .library: "Медиатека"
-        case .search: "Поиск"
-        case .profile: "Профиль"
+        case .home: L10n.text("Главная")
+        case .library: L10n.text("Медиатека")
+        case .search: L10n.text("Поиск")
+        case .profile: L10n.text("Профиль")
         }
     }
 
@@ -71,17 +71,20 @@ struct MainTabView: View {
     }
 
     private func refreshLibraryIndex() async {
-        guard let token = sessionStore.accessToken else { return }
+        guard sessionStore.accessToken != nil else { return }
         var collected: [Track] = []
         var offset = 0
         var pageCount = 0
         do {
             while pageCount < 10 {
-                let page = try await environment.musicService.library(
-                    accessToken: token,
-                    offset: offset,
-                    count: 100
-                )
+                let page = try await environment.withAuthorizedToken {
+                    token in
+                    try await environment.musicService.library(
+                        accessToken: token,
+                        offset: offset,
+                        count: 100
+                    )
+                }
                 collected.append(contentsOf: page.items)
                 pageCount += 1
                 guard let next = page.nextOffset else { break }

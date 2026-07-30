@@ -71,12 +71,15 @@ struct PlaylistDetailView: View {
                     .font(.headline)
                     .lineLimit(2)
                 Label(
-                    "Импортировано из \(playlist.source.title)",
+                    L10n.format(
+                        "Импортировано из %@",
+                        playlist.source.title
+                    ),
                     systemImage: "arrow.down.circle"
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                Text("\(playlist.count) треков")
+                Text(L10n.trackCount(playlist.count))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -99,22 +102,31 @@ struct PlaylistDetailView: View {
     }
 
     private func load(force: Bool = false) async {
-        guard let token = sessionStore.accessToken else { return }
-        await model.load(
-            playlist: playlist,
-            service: environment.musicService,
-            accessToken: token,
-            force: force
-        )
+        guard sessionStore.accessToken != nil else { return }
+        await model.load(force: force) {
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.playlistTracks(
+                    playlist,
+                    accessToken: token,
+                    offset: 0,
+                    count: 100
+                )
+            }
+        }
     }
 
     private func loadMore() async {
-        guard let token = sessionStore.accessToken else { return }
-        await model.loadMore(
-            playlist: playlist,
-            service: environment.musicService,
-            accessToken: token
-        )
+        guard sessionStore.accessToken != nil else { return }
+        await model.loadMore { offset in
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.playlistTracks(
+                    playlist,
+                    accessToken: token,
+                    offset: offset,
+                    count: 100
+                )
+            }
+        }
     }
 }
 
@@ -127,21 +139,14 @@ private final class PlaylistDetailViewModel: ObservableObject {
     private var nextOffset: Int?
 
     func load(
-        playlist: Playlist,
-        service: any MusicService,
-        accessToken: String,
-        force: Bool = false
+        force: Bool = false,
+        operation: () async throws -> MusicPage<Track>
     ) async {
         guard !isLoading, force || tracks.isEmpty else { return }
         isLoading = true
         defer { isLoading = false }
         do {
-            let page = try await service.playlistTracks(
-                playlist,
-                accessToken: accessToken,
-                offset: 0,
-                count: 100
-            )
+            let page = try await operation()
             tracks = page.items
             nextOffset = page.nextOffset
             errorMessage = nil
@@ -153,9 +158,7 @@ private final class PlaylistDetailViewModel: ObservableObject {
     }
 
     func loadMore(
-        playlist: Playlist,
-        service: any MusicService,
-        accessToken: String
+        operation: (Int) async throws -> MusicPage<Track>
     ) async {
         guard !isLoading,
               !isLoadingMore,
@@ -165,12 +168,7 @@ private final class PlaylistDetailViewModel: ObservableObject {
         isLoadingMore = true
         defer { isLoadingMore = false }
         do {
-            let page = try await service.playlistTracks(
-                playlist,
-                accessToken: accessToken,
-                offset: offset,
-                count: 100
-            )
+            let page = try await operation(offset)
             var known = Set(tracks.map(\.id))
             tracks.append(contentsOf: page.items.filter {
                 known.insert($0.id).inserted

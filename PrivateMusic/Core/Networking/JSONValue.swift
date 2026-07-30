@@ -89,9 +89,9 @@ enum JSONValue: Codable, Sendable {
                !id.isEmpty {
                 let title = object["title"]?.stringValue
                     ?? object["name"]?.stringValue
-                    ?? "VK Микс"
+                    ?? L10n.text("VK Микс")
                 let subtitle = object["subtitle"]?.stringValue
-                    ?? "Персональная подборка VK"
+                    ?? L10n.text("Персональная подборка VK")
                 result.append(
                     MusicMix(
                         id: id,

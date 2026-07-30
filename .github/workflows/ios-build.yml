@@ -16,7 +16,9 @@ jobs:
       - name: Select Xcode 26
         run: sudo xcode-select -s /Applications/Xcode_26.3.app
       - name: Validate source package
-        run: python3 scripts/validate_project.py
+        run: |
+          python3 scripts/validate_project.py
+          python3 scripts/validate_localizations.py
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate Xcode project
@@ -94,18 +96,36 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.7.0-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.8.0-unsigned.ipa"
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.7.0-unsigned.ipa" \
-            --title "Private Music 3.7.0" \
+            "$PWD/artifacts/PrivateMusic-3.8.0-unsigned.ipa" \
+            --title "Private Music 3.8.0" \
             --notes-file - <<'EOF'
-          Private Music 3.7.0
+          Private Music 3.8.0
 
+          - добавлена полная системная локализация на русский и английский;
+          - переведены интерфейс, ошибки, accessibility и динамические подписи;
+          - добавлены корректные формы множественного числа для обоих языков;
+          - тексты вычитаны и больше не обещают недоступные гарантии VK;
+          - все безопасные чтения используют единое восстановление токена;
+          - HTTP 401 и VK error 5 корректно запускают восстановление сессии;
+          - временные HTTP-сбои повторяются только для безопасных чтений;
+          - мутации не повторяются после неоднозначной сетевой ошибки;
+          - обслуживание сессии выполняется постоянно, а не один раз;
+          - старый refresh не может перезаписать новый вход или выход;
+          - восстановленные старые сессии получают корректный owner ID;
+          - скраббинг больше не отправляет seek на каждый пиксель движения;
+          - очередь запрашивает новую выдачу, если первая состоит из дублей;
+          - добавлен настраиваемый автопропуск недоступных треков;
+          - удаление трека очищает все алиасы состояния медиатеки;
+          - сокращены лишние обновления системного Now Playing;
+          - улучшены полный парсинг Genius и выбор точного результата;
+          - добавлены валидатор локализаций и регрессионные тесты функций;
           - все запросы используют единый центр восстановления VK-сессии;
           - параллельные ошибки авторизации запускают только один cookie refresh;
           - новый вход и выход защищены от результата устаревшего refresh;
@@ -248,7 +268,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.7.0-unsigned
-          path: artifacts/PrivateMusic-3.7.0-unsigned.ipa
+          name: PrivateMusic-3.8.0-unsigned
+          path: artifacts/PrivateMusic-3.8.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

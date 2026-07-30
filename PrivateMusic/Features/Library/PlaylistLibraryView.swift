@@ -22,7 +22,9 @@ struct PlaylistLibraryView: View {
                 EmptyStateView(
                     title: "Плейлистов пока нет",
                     systemImage: "rectangle.stack",
-                    description: "Созданные во VK плейлисты появятся здесь."
+                    description:
+                        "Созданные или сохранённые во VK плейлисты "
+                        + "появятся здесь."
                 )
             } else {
                 List(model.playlists) { playlist in
@@ -38,10 +40,15 @@ struct PlaylistLibraryView: View {
                                 Text(playlist.title)
                                     .font(.headline)
                                     .lineLimit(2)
-                                Text("\(playlist.count) треков")
+                                Text(L10n.trackCount(playlist.count))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                Text("Из \(playlist.source.title)")
+                                Text(
+                                    L10n.format(
+                                        "Из %@",
+                                        playlist.source.title
+                                    )
+                                )
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -110,20 +117,29 @@ struct PlaylistLibraryView: View {
     }
 
     private func load(force: Bool = false) async {
-        guard let token = sessionStore.accessToken else { return }
-        await model.load(
-            service: environment.musicService,
-            accessToken: token,
-            force: force
-        )
+        guard sessionStore.accessToken != nil else { return }
+        await model.load(force: force) {
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.playlists(
+                    accessToken: token,
+                    offset: 0,
+                    count: 100
+                )
+            }
+        }
     }
 
     private func loadMore() async {
-        guard let token = sessionStore.accessToken else { return }
-        await model.loadMore(
-            service: environment.musicService,
-            accessToken: token
-        )
+        guard sessionStore.accessToken != nil else { return }
+        await model.loadMore { offset in
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.playlists(
+                    accessToken: token,
+                    offset: offset,
+                    count: 100
+                )
+            }
+        }
     }
 }
 
@@ -136,19 +152,14 @@ final class PlaylistLibraryViewModel: ObservableObject {
     private var nextOffset: Int?
 
     func load(
-        service: any MusicService,
-        accessToken: String,
-        force: Bool = false
+        force: Bool = false,
+        operation: () async throws -> MusicPage<Playlist>
     ) async {
         guard !isLoading, force || playlists.isEmpty else { return }
         isLoading = true
         defer { isLoading = false }
         do {
-            let page = try await service.playlists(
-                accessToken: accessToken,
-                offset: 0,
-                count: 100
-            )
+            let page = try await operation()
             playlists = page.items
             nextOffset = page.nextOffset
             errorMessage = nil
@@ -160,8 +171,7 @@ final class PlaylistLibraryViewModel: ObservableObject {
     }
 
     func loadMore(
-        service: any MusicService,
-        accessToken: String
+        operation: (Int) async throws -> MusicPage<Playlist>
     ) async {
         guard !isLoading,
               !isLoadingMore,
@@ -171,11 +181,7 @@ final class PlaylistLibraryViewModel: ObservableObject {
         isLoadingMore = true
         defer { isLoadingMore = false }
         do {
-            let page = try await service.playlists(
-                accessToken: accessToken,
-                offset: offset,
-                count: 100
-            )
+            let page = try await operation(offset)
             var known = Set(playlists.map(\.id))
             playlists.append(contentsOf: page.items.filter {
                 known.insert($0.id).inserted

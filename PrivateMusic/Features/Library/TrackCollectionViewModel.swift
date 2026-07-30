@@ -25,33 +25,19 @@ final class TrackCollectionViewModel: ObservableObject {
         self.service = service
     }
 
-    func load(accessToken: String, force: Bool = false) async {
+    func load(
+        force: Bool = false,
+        operation: () async throws -> MusicPage<Track>
+    ) async {
         guard !isLoading, force || tracks.isEmpty else { return }
-        guard let service else {
-            errorMessage = "Музыкальный сервис ещё не готов."
-            return
-        }
         isLoading = true
         defer { isLoading = false }
 
         do {
-            switch source {
-            case .library:
-                let page = try await service.library(
-                    accessToken: accessToken,
-                    offset: 0,
-                    count: 100
-                )
-                tracks = page.items
-                totalCount = page.totalCount
-                nextOffset = page.nextOffset
-            case .recommendations:
-                tracks = try await service.recommendations(
-                    accessToken: accessToken
-                )
-                totalCount = tracks.count
-                nextOffset = nil
-            }
+            let page = try await operation()
+            tracks = page.items
+            totalCount = page.totalCount
+            nextOffset = page.nextOffset
             errorMessage = nil
         } catch is CancellationError {
             return
@@ -60,22 +46,19 @@ final class TrackCollectionViewModel: ObservableObject {
         }
     }
 
-    func loadMore(accessToken: String) async {
+    func loadMore(
+        operation: (Int) async throws -> MusicPage<Track>
+    ) async {
         guard source == .library,
               !isLoading,
               !isLoadingMore,
-              let offset = nextOffset,
-              let service else {
+              let offset = nextOffset else {
             return
         }
         isLoadingMore = true
         defer { isLoadingMore = false }
         do {
-            let page = try await service.library(
-                accessToken: accessToken,
-                offset: offset,
-                count: 100
-            )
+            let page = try await operation(offset)
             appendUnique(page.items)
             totalCount = page.totalCount
             nextOffset = page.nextOffset
