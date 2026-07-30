@@ -72,6 +72,7 @@ final class AudioPlayer: ObservableObject {
     private var didAttemptStreamRefresh = false
     private var audioSessionConfigured = false
     private var restoredTrackIDs = Set<String>()
+    private var loadedTrackID: String?
     private var resumeOnBluetoothConnection = true
     private var pauseAtMinimumVolume = true
 
@@ -177,6 +178,7 @@ final class AudioPlayer: ObservableObject {
                 $0.id == track.id
             } ?? 0
         }
+        resetProgressForTrackTransition()
         persistPlayback()
         loadCurrentAndPlay()
     }
@@ -198,6 +200,7 @@ final class AudioPlayer: ObservableObject {
         requiresStreamRefresh = false
         didAttemptStreamRefresh = false
         currentIndex = index
+        resetProgressForTrackTransition()
         persistPlayback()
         loadCurrentAndPlay()
     }
@@ -297,6 +300,7 @@ final class AudioPlayer: ObservableObject {
         requiresStreamRefresh = false
         didAttemptStreamRefresh = false
         self.currentIndex = nextIndex < queue.endIndex ? nextIndex : 0
+        resetProgressForTrackTransition()
         persistPlayback()
         loadCurrentAndPlay()
     }
@@ -316,6 +320,7 @@ final class AudioPlayer: ObservableObject {
         } else {
             self.currentIndex = repeatMode == .all ? queue.count - 1 : 0
         }
+        resetProgressForTrackTransition()
         persistPlayback()
         loadCurrentAndPlay()
     }
@@ -343,6 +348,7 @@ final class AudioPlayer: ObservableObject {
         itemStatusObservation = nil
         queue = []
         currentIndex = nil
+        loadedTrackID = nil
         elapsedTime = 0
         duration = 0
         isPlaying = false
@@ -375,6 +381,9 @@ final class AudioPlayer: ObservableObject {
     ) {
         guard let track = currentTrack else { return }
         guard let url = track.streamURL else {
+            loadedTrackID = track.id
+            elapsedTime = 0
+            duration = track.duration
             errorMessage = "Для этого трека отсутствует доступный аудиопоток."
             isPlaying = false
             nowPlaying.update(track: track, elapsedTime: 0, rate: 0)
@@ -433,6 +442,7 @@ final class AudioPlayer: ObservableObject {
         }
         item.preferredForwardBufferDuration = 8
         player.replaceCurrentItem(with: item)
+        loadedTrackID = track.id
         elapsedTime = position
         duration = track.duration
         let shouldAutoplay = autoplay && activateAudioSession()
@@ -537,7 +547,11 @@ final class AudioPlayer: ObservableObject {
             queue: .main
         ) { [weak self] time in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self,
+                      self.loadedTrackID == self.currentTrack?.id,
+                      self.player.currentItem != nil else {
+                    return
+                }
                 self.elapsedTime = max(
                     0,
                     time.seconds.isFinite ? time.seconds : 0
@@ -806,6 +820,7 @@ final class AudioPlayer: ObservableObject {
             if let currentIndex {
                 self.currentIndex = currentIndex + 1
             }
+            resetProgressForTrackTransition()
             persistPlayback()
             loadCurrentAndPlay()
         } catch is CancellationError {
@@ -828,6 +843,13 @@ final class AudioPlayer: ObservableObject {
         defaults.set(data, forKey: PlaybackSnapshot.key)
     }
 
+    private func resetProgressForTrackTransition() {
+        loadedTrackID = nil
+        elapsedTime = 0
+        duration = currentTrack?.duration ?? 0
+        lastPersistedSecond = -1
+    }
+
     private func restorePlayback() {
         guard let data = defaults.data(forKey: PlaybackSnapshot.key),
               let snapshot = try? JSONDecoder().decode(
@@ -840,6 +862,7 @@ final class AudioPlayer: ObservableObject {
         queue = snapshot.queue
         restoredTrackIDs = Set(snapshot.queue.map(\.id))
         currentIndex = snapshot.currentIndex
+        loadedTrackID = nil
         elapsedTime = max(snapshot.elapsedTime, 0)
         duration = currentTrack?.duration ?? 0
         requiresStreamRefresh = true

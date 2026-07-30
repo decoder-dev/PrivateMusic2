@@ -33,7 +33,8 @@ struct PlayerView: View {
                 if let track = player.currentTrack {
                     playerContent(
                         track,
-                        size: proxy.size
+                        size: proxy.size,
+                        bottomInset: proxy.safeAreaInsets.bottom
                     )
                     if showingActionPanel {
                         Color.black.opacity(0.001)
@@ -162,7 +163,8 @@ struct PlayerView: View {
 
     private func playerContent(
         _ track: Track,
-        size: CGSize
+        size: CGSize,
+        bottomInset: CGFloat
     ) -> some View {
         let compact = size.height < 740
         let spacious = size.height >= 820
@@ -341,13 +343,10 @@ struct PlayerView: View {
                     compact ? 5 : (spacious ? 14 : 9)
                 )
 
-            quickActions(track)
-                .padding(
-                    .top,
-                    compact ? 9 : (spacious ? 28 : 16)
-                )
+            Spacer(minLength: compact ? 8 : 16)
 
-            Spacer(minLength: compact ? 6 : 12)
+            quickActions(track)
+                .padding(.bottom, max(bottomInset, compact ? 10 : 20))
         }
         .frame(
             width: contentWidth,
