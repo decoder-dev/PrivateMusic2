@@ -85,12 +85,13 @@ struct SearchView: View {
         .frame(minHeight: 48)
         .background(
             settings.theme.surface,
-            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+            in: searchFieldShape
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(.primary.opacity(0.1), lineWidth: 0.7)
+            searchFieldShape.stroke(.primary.opacity(0.1), lineWidth: 0.7)
         }
+        .clipShape(searchFieldShape)
+        .contentShape(searchFieldShape)
     }
 
     @ViewBuilder
@@ -248,6 +249,8 @@ struct SearchView: View {
 
             if let error = model.errorMessage {
                 inlineRetry(message: error, action: submitSearch)
+                    .padding(.horizontal, PremiumLayout.screenPadding)
+                    .padding(.bottom, 8)
             }
 
             if scope == .tracks {
@@ -302,6 +305,7 @@ struct SearchView: View {
             } else if let message = model.paginationErrorMessage {
                 inlineRetry(message: message, action: loadMore)
                     .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
@@ -335,6 +339,7 @@ struct SearchView: View {
             } else if let message = model.paginationErrorMessage {
                 inlineRetry(message: message, action: loadMore)
                     .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
@@ -359,7 +364,32 @@ struct SearchView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.orange.opacity(0.08))
+        .background(
+            Color.orange.opacity(settings.theme == .dark ? 0.12 : 0.09),
+            in: inlineMessageShape
+        )
+        .overlay {
+            inlineMessageShape.stroke(
+                Color.orange.opacity(settings.theme == .dark ? 0.28 : 0.2),
+                lineWidth: 0.7
+            )
+        }
+        .clipShape(inlineMessageShape)
+        .contentShape(inlineMessageShape)
+    }
+
+    private var searchFieldShape: RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: PremiumLayout.controlRadius,
+            style: .continuous
+        )
+    }
+
+    private var inlineMessageShape: RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: PremiumLayout.compactRadius,
+            style: .continuous
+        )
     }
 
     private func scheduleSearch() {
