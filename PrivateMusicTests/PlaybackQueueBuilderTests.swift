@@ -43,3 +43,46 @@ final class PlaybackQueueBuilderTests: XCTestCase {
         )
     }
 }
+
+@MainActor
+final class AudioPlayerTransitionTests: XCTestCase {
+    func testChangingTrackResetsElapsedTimeAndDurationImmediately() {
+        let suite = "AudioPlayerTransitionTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults)
+        let history = ListeningHistoryStore(defaults: defaults)
+        let player = AudioPlayer(
+            settings: settings,
+            historyStore: history,
+            defaults: defaults
+        )
+        let first = track(id: 1, duration: 180)
+        let second = track(id: 2, duration: 245)
+
+        player.play(first, in: [first, second])
+        player.seek(to: 73)
+        XCTAssertEqual(player.elapsedTime, 73)
+
+        player.next()
+
+        XCTAssertEqual(player.currentTrack?.id, second.id)
+        XCTAssertEqual(player.elapsedTime, 0)
+        XCTAssertEqual(player.duration, second.duration)
+    }
+
+    private func track(
+        id: Int,
+        duration: TimeInterval
+    ) -> Track {
+        Track(
+            trackID: id,
+            ownerID: 10,
+            title: "Track \(id)",
+            artist: "Artist",
+            duration: duration,
+            streamURL: nil,
+            artworkURL: nil
+        )
+    }
+}
