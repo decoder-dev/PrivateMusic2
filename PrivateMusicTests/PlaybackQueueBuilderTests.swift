@@ -28,6 +28,21 @@ final class PlaybackQueueBuilderTests: XCTestCase {
         XCTAssertEqual(result.first?.title, "Fresh")
     }
 
+    func testUniqueAdditionsExcludeQueueAndCandidateDuplicates() {
+        let existing = [track(id: 1), track(id: 2)]
+        let result = PlaybackQueueBuilder.uniqueAdditions(
+            existing: existing,
+            candidates: [
+                track(id: 2),
+                track(id: 3),
+                track(id: 3),
+                track(id: 4)
+            ]
+        )
+
+        XCTAssertEqual(result.map(\.id), ["10_3", "10_4"])
+    }
+
     private func track(
         id: Int,
         title: String = "Track"
@@ -126,6 +141,53 @@ final class AudioPlayerTransitionTests: XCTestCase {
         }
         XCTAssertEqual(requestCount, 2)
         XCTAssertNil(context.player.errorMessage)
+    }
+
+    func testContinuationRequestsAnotherBatchWhenFirstHasOnlyDuplicates()
+        async {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        let first = track(id: 1, duration: 180)
+        let second = track(id: 2, duration: 245)
+        var requestCount = 0
+        context.player.configureContinuation {
+            requestCount += 1
+            return requestCount == 1 ? [first, first] : [first, second]
+        }
+        context.player.play(first, in: [first])
+
+        context.player.next()
+
+        await waitUntil {
+            context.player.currentTrack?.id == second.id
+        }
+        XCTAssertEqual(requestCount, 2)
+        XCTAssertEqual(context.player.queue.map(\.id), [first.id, second.id])
+        XCTAssertNil(context.player.errorMessage)
+    }
+
+    func testFailedStreamRefreshAdvancesWhenPolicyIsEnabled() async {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        let first = track(id: 1, duration: 180)
+        let second = track(id: 2, duration: 245)
+        var refreshedIDs: [String] = []
+        context.player.configureStreamRefresh { track in
+            refreshedIDs.append(track.id)
+            throw APIError.invalidResponse
+        }
+
+        context.player.play(first, in: [first, second])
+
+        await waitUntil {
+            context.player.currentTrack?.id == second.id
+        }
+        XCTAssertEqual(refreshedIDs.first, first.id)
+        XCTAssertEqual(context.player.currentTrack?.id, second.id)
     }
 
     func testPreviousCancelsPendingContinuation() async {
