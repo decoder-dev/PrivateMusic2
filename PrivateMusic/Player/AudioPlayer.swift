@@ -62,6 +62,10 @@ final class AudioPlayer: ObservableObject {
     private var defaultContinuationProvider: (() async throws -> [Track])?
     private var activeContinuationProvider: (() async throws -> [Track])?
     private var streamRefreshProvider: ((Track) async throws -> Track)?
+    private var offlineURLProvider: ((Track) -> URL?)?
+    private var offlineInvalidationHandler: ((Track) -> Void)?
+    private var offlinePlayedHandler: ((Track) -> Void)?
+    private var loadedOfflineTrackID: String?
     private var continuationTask: Task<Void, Never>?
     private var streamRefreshTask: Task<Void, Never>?
     private var lastPersistedSecond = -1
@@ -162,6 +166,16 @@ final class AudioPlayer: ObservableObject {
         _ provider: @escaping (Track) async throws -> Track
     ) {
         streamRefreshProvider = provider
+    }
+
+    func configureOfflinePlayback(
+        lookup: @escaping (Track) -> URL?,
+        invalidate: @escaping (Track) -> Void,
+        markPlayed: @escaping (Track) -> Void
+    ) {
+        offlineURLProvider = lookup
+        offlineInvalidationHandler = invalidate
+        offlinePlayedHandler = markPlayed
     }
 
     func configureNetwork(userAgent: String?) {
@@ -364,6 +378,7 @@ final class AudioPlayer: ObservableObject {
         queue = []
         currentIndex = nil
         loadedTrackID = nil
+        loadedOfflineTrackID = nil
         elapsedTime = 0
         duration = 0
         isPlaying = false
@@ -382,7 +397,8 @@ final class AudioPlayer: ObservableObject {
 
     private func loadCurrentAndPlay() {
         if let track = currentTrack,
-           restoredTrackIDs.contains(track.id) {
+           restoredTrackIDs.contains(track.id),
+           offlineURLProvider?(track) == nil {
             requiresStreamRefresh = true
             didAttemptStreamRefresh = false
             refreshCurrentStream(autoplay: true)
@@ -396,7 +412,8 @@ final class AudioPlayer: ObservableObject {
         startAt position: TimeInterval
     ) {
         guard let track = currentTrack else { return }
-        guard let url = track.streamURL else {
+        let offlineURL = offlineURLProvider?(track)
+        guard let url = offlineURL ?? track.streamURL else {
             if streamRefreshProvider != nil {
                 if !didAttemptStreamRefresh {
                     requiresStreamRefresh = true
@@ -421,17 +438,23 @@ final class AudioPlayer: ObservableObject {
 
         playbackGeneration += 1
         let generation = playbackGeneration
-        var headers = [
-            "Referer": "https://vk.com/",
-            "Origin": "https://vk.com"
-        ]
-        if let streamUserAgent {
-            headers["User-Agent"] = streamUserAgent
+        let isOffline = offlineURL != nil
+        let asset: AVURLAsset
+        if isOffline {
+            asset = AVURLAsset(url: url)
+        } else {
+            var headers = [
+                "Referer": "https://vk.com/",
+                "Origin": "https://vk.com"
+            ]
+            if let streamUserAgent {
+                headers["User-Agent"] = streamUserAgent
+            }
+            asset = AVURLAsset(
+                url: url,
+                options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
+            )
         }
-        let asset = AVURLAsset(
-            url: url,
-            options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
-        )
         let item = AVPlayerItem(asset: asset)
         itemStatusObservation?.invalidate()
         itemStatusObservation = item.observe(
@@ -447,6 +470,9 @@ final class AudioPlayer: ObservableObject {
                 switch item.status {
                 case .readyToPlay:
                     self.isBuffering = false
+                    if isOffline {
+                        self.offlinePlayedHandler?(track)
+                    }
                     if position > 0 {
                         self.seek(to: min(position, self.duration))
                     }
@@ -471,6 +497,7 @@ final class AudioPlayer: ObservableObject {
         item.preferredForwardBufferDuration = 8
         player.replaceCurrentItem(with: item)
         loadedTrackID = track.id
+        loadedOfflineTrackID = isOffline ? track.id : nil
         elapsedTime = position
         duration = track.duration
         let shouldAutoplay = autoplay && activateAudioSession()
@@ -756,6 +783,18 @@ final class AudioPlayer: ObservableObject {
 
     private func handleItemFailure(_ error: Error?) {
         publishPlaybackState(force: true)
+        if let track = currentTrack,
+           loadedOfflineTrackID == track.id {
+            loadedOfflineTrackID = nil
+            offlineInvalidationHandler?(track)
+            didAttemptStreamRefresh = false
+            if track.streamURL != nil {
+                loadCurrent(autoplay: true, startAt: elapsedTime)
+            } else if streamRefreshProvider != nil {
+                refreshCurrentStream(autoplay: true)
+            }
+            return
+        }
         if !didAttemptStreamRefresh, streamRefreshProvider != nil {
             refreshCurrentStream(autoplay: true)
             return
@@ -988,6 +1027,7 @@ final class AudioPlayer: ObservableObject {
 
     private func resetProgressForTrackTransition() {
         loadedTrackID = nil
+        loadedOfflineTrackID = nil
         elapsedTime = 0
         duration = currentTrack?.duration ?? 0
         lastPersistedSecond = -1

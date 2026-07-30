@@ -13,6 +13,7 @@ struct PrivateMusicApp: App {
                 .environmentObject(environment.networkMonitor)
                 .environmentObject(environment.historyStore)
                 .environmentObject(environment.libraryStore)
+                .environmentObject(environment.offlineStore)
                 .environmentObject(environment.player)
         }
     }
