@@ -75,6 +75,9 @@
 "Загружаем исполнителя…" = "Loading artist…";
 "Исполнитель недоступен" = "Artist Unavailable";
 "Популярные треки" = "Popular Tracks";
+"Треки исполнителя" = "Artist Tracks";
+"Для этого исполнителя VK не вернул доступных треков." = "VK did not return any available tracks for this artist.";
+"Подключите VK, чтобы открыть страницу исполнителя." = "Connect VK to open the artist page.";
 "Играть следующим" = "Play Next";
 "Открыть плеер" = "Open Player";
 "Музыка" = "Music";

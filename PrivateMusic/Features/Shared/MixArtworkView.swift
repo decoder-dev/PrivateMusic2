@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MixArtworkView: View {
+    @EnvironmentObject private var settings: AppSettings
     let mix: MusicMix
     let tracks: [Track]
     let size: CGFloat
@@ -36,8 +37,8 @@ struct MixArtworkView: View {
                 ZStack {
                     LinearGradient(
                         colors: [
-                            Color(white: 0.24),
-                            Color(white: 0.08)
+                            settings.theme.accent.opacity(0.78),
+                            settings.theme.surface
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -71,7 +72,14 @@ struct MixArtworkView: View {
                 .resizable()
                 .scaledToFill()
         } placeholder: {
-            Color(white: 0.18)
+            LinearGradient(
+                colors: [
+                    settings.theme.surface,
+                    settings.theme.secondaryAccent.opacity(0.42)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
         .frame(width: dimension, height: dimension)
         .clipped()

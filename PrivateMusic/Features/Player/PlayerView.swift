@@ -39,14 +39,35 @@ struct PlayerView: View {
                         .onTapGesture {
                             setActionPanelPresented(false)
                         }
-                    actionPanel(track)
+                    actionPanel(
+                        track,
+                        width: PlayerLayoutMetrics.actionPanelWidth(
+                            containerWidth: proxy.size.width,
+                            safeLeading: proxy.safeAreaInsets.leading,
+                            safeTrailing: proxy.safeAreaInsets.trailing
+                        )
+                    )
                         .frame(
                             maxWidth: .infinity,
                             maxHeight: .infinity,
                             alignment: .topTrailing
                         )
-                        .padding(.top, 56)
-                        .padding(.trailing, 22)
+                        .padding(
+                            .top,
+                            PlayerLayoutMetrics.actionPanelTopInset(
+                                safeTop: proxy.safeAreaInsets.top
+                            )
+                        )
+                        .padding(
+                            .trailing,
+                            PlayerLayoutMetrics.actionPanelTrailingInset(
+                                safeTrailing: proxy.safeAreaInsets.trailing
+                            )
+                        )
+                        .padding(
+                            .leading,
+                            max(proxy.safeAreaInsets.leading, 14)
+                        )
                         .opacity(showingActionPanel ? 1 : 0)
                         .scaleEffect(
                             showingActionPanel ? 1 : 0.985,
@@ -309,16 +330,18 @@ struct PlayerView: View {
                 compact ? 8 : (spacious ? 16 : 12)
             )
 
-            primaryControls
-                .padding(
-                    .top,
-                    compact ? 5 : (spacious ? 14 : 9)
+            VStack(spacing: compact ? 7 : 11) {
+                primaryControls
+                quickActions(track)
+            }
+            .padding(.top, compact ? 5 : (spacious ? 14 : 9))
+
+            Spacer(
+                minLength: max(
+                    bottomInset,
+                    compact ? 8 : 16
                 )
-
-            Spacer(minLength: compact ? 8 : 16)
-
-            quickActions(track)
-                .padding(.bottom, max(bottomInset, compact ? 10 : 20))
+            )
         }
         .frame(
             width: contentWidth,
@@ -346,7 +369,10 @@ struct PlayerView: View {
         .accessibilityLabel("Действия с треком")
     }
 
-    private func actionPanel(_ track: Track) -> some View {
+    private func actionPanel(
+        _ track: Track,
+        width: CGFloat
+    ) -> some View {
         VStack(spacing: 0) {
             panelAction(
                 isInLibrary ? "Удалить из медиатеки" : "В медиатеку",
@@ -376,8 +402,8 @@ struct PlayerView: View {
                 Label("Эквалайзер", systemImage: "waveform")
             }
             .tint(.white)
-            .padding(.horizontal, 16)
-            .frame(height: 48)
+            .padding(.horizontal, 14)
+            .frame(height: 40)
             panelAction(
                 "Настройки звука",
                 systemImage: "slider.horizontal.3"
@@ -386,24 +412,25 @@ struct PlayerView: View {
                 present(.settings)
             }
             Text(L10n.text("Качество: автоматически VK"))
-                .font(.caption)
+                .font(.caption2)
                 .foregroundStyle(.white.opacity(0.42))
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .lineLimit(1)
+                .padding(.horizontal, 14)
+                .frame(height: 26)
         }
-        .font(.subheadline.weight(.semibold))
+        .font(.footnote.weight(.semibold))
         .foregroundStyle(.white)
-        .frame(width: 258)
+        .frame(width: width)
         .background(
             Color(white: 0.105).opacity(0.99),
-            in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(.white.opacity(0.1), lineWidth: 0.7)
         }
-        .shadow(color: .black.opacity(0.55), radius: 24, y: 12)
+        .shadow(color: .black.opacity(0.48), radius: 18, y: 9)
     }
 
     private func panelAction(
@@ -418,8 +445,10 @@ struct PlayerView: View {
                 Image(systemName: systemImage)
             }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .frame(height: 48)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .padding(.horizontal, 14)
+                .frame(height: 40)
                 .contentShape(Rectangle())
         }
         .buttonStyle(PlayerControlStyle())
@@ -755,6 +784,34 @@ struct PlayerView: View {
         }
         isInLibrary = libraryStore.contains(track)
             || track.ownerID == sessionStore.session?.userID
+    }
+}
+
+enum PlayerLayoutMetrics {
+    static func actionPanelWidth(
+        containerWidth: CGFloat,
+        safeLeading: CGFloat,
+        safeTrailing: CGFloat
+    ) -> CGFloat {
+        let leadingInset = max(safeLeading, 14)
+        let trailingInset = actionPanelTrailingInset(
+            safeTrailing: safeTrailing
+        )
+        let availableWidth = max(
+            containerWidth - leadingInset - trailingInset,
+            0
+        )
+        return min(224, availableWidth)
+    }
+
+    static func actionPanelTrailingInset(
+        safeTrailing: CGFloat
+    ) -> CGFloat {
+        max(safeTrailing, 14)
+    }
+
+    static func actionPanelTopInset(safeTop: CGFloat) -> CGFloat {
+        max(safeTop + 8, 54)
     }
 }
 
