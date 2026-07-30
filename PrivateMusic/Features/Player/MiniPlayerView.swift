@@ -29,6 +29,17 @@ struct MiniPlayerView: View {
                     }
                     .buttonStyle(.plain)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(
+                        L10n.format(
+                            "%@ — %@",
+                            track.title,
+                            track.artist
+                        )
+                    )
+                    .accessibilityHint(
+                        L10n.text("Открыть полноэкранный плеер")
+                    )
 
                     HStack(spacing: 0) {
                         Button {
@@ -37,8 +48,9 @@ struct MiniPlayerView: View {
                         } label: {
                             Image(systemName: "backward.fill")
                                 .font(.subheadline.weight(.semibold))
-                                .frame(width: 32, height: 40)
+                                .frame(width: 44, height: 44)
                         }
+                        .accessibilityLabel(L10n.text("Предыдущий трек"))
 
                         Button {
                             Haptics.selection()
@@ -50,8 +62,15 @@ struct MiniPlayerView: View {
                                     : "play.fill"
                             )
                             .font(.headline)
-                            .frame(width: 34, height: 40)
+                            .frame(width: 44, height: 44)
                         }
+                        .accessibilityLabel(
+                            L10n.text(
+                                player.isPlaying
+                                    ? "Приостановить"
+                                    : "Продолжить воспроизведение"
+                            )
+                        )
 
                         Button {
                             Haptics.trackChange()
@@ -59,8 +78,9 @@ struct MiniPlayerView: View {
                         } label: {
                             Image(systemName: "forward.fill")
                                 .font(.subheadline.weight(.semibold))
-                                .frame(width: 32, height: 40)
+                                .frame(width: 44, height: 44)
                         }
+                        .accessibilityLabel(L10n.text("Следующий трек"))
                     }
                     .buttonStyle(PremiumPressStyle())
                 }
@@ -96,7 +116,7 @@ struct MiniPlayerView: View {
                 .stroke(.primary.opacity(0.13), lineWidth: 0.8)
             }
             .shadow(color: .black.opacity(0.24), radius: 12, y: 6)
-            .frame(height: 58)
+            .frame(minHeight: 58)
             .transition(
                 .asymmetric(
                     insertion: .opacity.combined(
@@ -107,7 +127,6 @@ struct MiniPlayerView: View {
                     )
                 )
             )
-            .dynamicTypeSize(...DynamicTypeSize.large)
             .offset(
                 x: reduceMotion ? 0 : dragOffset.width * 0.12,
                 y: reduceMotion ? 0 : min(dragOffset.height * 0.08, 0)

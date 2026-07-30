@@ -45,4 +45,11 @@ enum L10n {
             count
         )
     }
+
+    static func seconds(_ count: Int) -> String {
+        String.localizedStringWithFormat(
+            text("seconds.count"),
+            count
+        )
+    }
 }

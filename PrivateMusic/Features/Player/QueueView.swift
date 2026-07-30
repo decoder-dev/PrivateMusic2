@@ -34,6 +34,7 @@ struct QueueView: View {
                                         Text(track.artist)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
+                                            .lineLimit(1)
                                     }
                                     Spacer()
                                     if index == player.currentIndex {
@@ -43,6 +44,27 @@ struct QueueView: View {
                                 }
                             }
                             .buttonStyle(.plain)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(
+                                L10n.format(
+                                    "%@ — %@",
+                                    track.title,
+                                    track.artist
+                                )
+                            )
+                            .accessibilityValue(
+                                index == player.currentIndex
+                                    ? L10n.text("Сейчас играет")
+                                    : ""
+                            )
+                            .accessibilityHint(
+                                L10n.text("Воспроизвести из очереди")
+                            )
+                            .accessibilityAddTraits(
+                                index == player.currentIndex
+                                    ? .isSelected
+                                    : []
+                            )
                         }
                     }
                     .listStyle(.plain)

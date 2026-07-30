@@ -20,7 +20,7 @@ struct TrackRow: View {
                         .font(.headline)
                         .foregroundStyle(
                             isCurrent
-                                ? settings.theme.accent
+                                ? currentTrackColor
                                 : Color.primary
                         )
                         .lineLimit(1)
@@ -44,7 +44,7 @@ struct TrackRow: View {
                     .font(.caption)
                     .foregroundStyle(
                         isCurrent
-                            ? settings.theme.accent
+                            ? currentTrackColor
                             : Color.secondary
                     )
                     .frame(width: 22, height: 22)
@@ -56,6 +56,19 @@ struct TrackRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PremiumPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            L10n.format(
+                "%@ — %@, %@",
+                track.title,
+                track.artist,
+                spokenDuration
+            )
+        )
+        .accessibilityValue(
+            isCurrent ? L10n.text("Сейчас играет") : ""
+        )
+        .accessibilityHint(L10n.text("Воспроизвести трек"))
         .contextMenu {
             Button {
                 player.playNext(track)
@@ -77,6 +90,32 @@ struct TrackRow: View {
 
     private var isCurrent: Bool {
         player.currentTrack?.id == track.id
+    }
+
+    private var currentTrackColor: Color {
+        settings.theme == .dark
+            ? settings.theme.accent
+            : Color(red: 0, green: 0.30, blue: 0.68)
+    }
+
+    private var spokenDuration: String {
+        guard track.duration.isFinite, track.duration >= 0 else {
+            return L10n.seconds(0)
+        }
+        let total = Int(track.duration)
+        let minutes = total / 60
+        let seconds = total % 60
+        if minutes == 0 {
+            return L10n.seconds(seconds)
+        }
+        if seconds == 0 {
+            return L10n.minutes(minutes)
+        }
+        return L10n.format(
+            "%@ %@",
+            L10n.minutes(minutes),
+            L10n.seconds(seconds)
+        )
     }
 }
 

@@ -12,7 +12,7 @@ struct PlayerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @GestureState private var artworkDrag: CGSize = .zero
     @State private var presentedSheet: PlayerSheet?
-    @State private var showingActionPanel = false
+    @State private var deferredPlayerAction: DeferredPlayerAction?
     @State private var shareCleanupURL: URL?
     @State private var shareTask: Task<Void, Never>?
     @State private var isPreparingShare = false
@@ -32,55 +32,6 @@ struct PlayerView: View {
                         size: proxy.size,
                         bottomInset: proxy.safeAreaInsets.bottom
                     )
-                    Color.black
-                        .opacity(showingActionPanel ? 0.001 : 0)
-                        .contentShape(Rectangle())
-                        .allowsHitTesting(showingActionPanel)
-                        .onTapGesture {
-                            setActionPanelPresented(false)
-                        }
-                    actionPanel(
-                        track,
-                        width: PlayerLayoutMetrics.actionPanelWidth(
-                            containerWidth: proxy.size.width,
-                            safeLeading: proxy.safeAreaInsets.leading,
-                            safeTrailing: proxy.safeAreaInsets.trailing
-                        )
-                    )
-                        .frame(
-                            maxWidth: .infinity,
-                            maxHeight: .infinity,
-                            alignment: .topTrailing
-                        )
-                        .padding(
-                            .top,
-                            PlayerLayoutMetrics.actionPanelTopInset(
-                                safeTop: proxy.safeAreaInsets.top
-                            )
-                        )
-                        .padding(
-                            .trailing,
-                            PlayerLayoutMetrics.actionPanelTrailingInset(
-                                safeTrailing: proxy.safeAreaInsets.trailing
-                            )
-                        )
-                        .padding(
-                            .leading,
-                            max(proxy.safeAreaInsets.leading, 14)
-                        )
-                        .opacity(showingActionPanel ? 1 : 0)
-                        .scaleEffect(
-                            showingActionPanel ? 1 : 0.985,
-                            anchor: .topTrailing
-                        )
-                        .allowsHitTesting(showingActionPanel)
-                        .accessibilityHidden(!showingActionPanel)
-                        .animation(
-                            reduceMotion
-                                ? nil
-                                : .easeOut(duration: 0.14),
-                            value: showingActionPanel
-                        )
                 } else {
                     EmptyStateView(
                         title: "Плеер",
@@ -100,16 +51,22 @@ struct PlayerView: View {
         .preferredColorScheme(.dark)
         .dynamicTypeSize(...DynamicTypeSize.large)
         .ignoresSafeArea(edges: .bottom)
-        .sheet(item: $presentedSheet, onDismiss: cleanupSharedFile) { sheet in
+        .sheet(
+            item: $presentedSheet,
+            onDismiss: handleSheetDismissal
+        ) { sheet in
             presentedSheetContent(sheet)
         }
         .onChange(of: player.currentTrack?.id) { _ in
             shareTask?.cancel()
             shareTask = nil
+            deferredPlayerAction = nil
             scrubPosition = nil
             updateLibraryState()
             isUpdatingLibrary = false
-            showingActionPanel = false
+            if isActionSheetPresented {
+                presentedSheet = nil
+            }
         }
         .task(id: player.currentTrack?.id) {
             updateLibraryState()
@@ -187,7 +144,7 @@ struct PlayerView: View {
                     } label: {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 15, weight: .bold))
-                            .frame(width: 36, height: 36)
+                            .frame(width: 44, height: 44)
                             .background(.white.opacity(0.08), in: Circle())
                             .overlay {
                                 Circle().stroke(
@@ -197,10 +154,11 @@ struct PlayerView: View {
                             }
                     }
                     .buttonStyle(PlayerControlStyle())
+                    .accessibilityLabel(L10n.text("Закрыть плеер"))
                     Spacer()
                     HStack(spacing: 8) {
                         AirPlayRoutePicker()
-                            .frame(width: 36, height: 36)
+                            .frame(width: 44, height: 44)
                             .background(.white.opacity(0.08), in: Circle())
                             .overlay {
                                 Circle().stroke(
@@ -208,11 +166,16 @@ struct PlayerView: View {
                                     lineWidth: 0.5
                                 )
                             }
-                        actionMenuButton
+                            .accessibilityLabel(
+                                L10n.text(
+                                    "Выбрать устройство воспроизведения"
+                                )
+                            )
+                        actionMenuButton(track)
                     }
                 }
             }
-            .frame(height: 40)
+            .frame(height: 44)
             .padding(.top, compact ? 6 : 10)
 
             AsyncArtwork(url: track.artworkURL, size: artworkSize)
@@ -238,6 +201,13 @@ struct PlayerView: View {
                     value: artworkDrag == .zero
                 )
                 .gesture(artworkGesture)
+                .accessibilityLabel(
+                    L10n.format(
+                        "Обложка: %@ — %@",
+                        track.title,
+                        track.artist
+                    )
+                )
                 .accessibilityHint(
                     L10n.text(
                         "Свайп в стороны меняет трек, вверх открывает очередь, "
@@ -261,7 +231,7 @@ struct PlayerView: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Button {
-                        present(.artist)
+                        present(.artist(track.artist))
                     } label: {
                         Text(track.artist)
                             .font(.system(size: compact ? 14 : 15))
@@ -272,7 +242,7 @@ struct PlayerView: View {
                     if let album = track.albumTitle, !album.isEmpty {
                         Text(album)
                             .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.36))
+                            .foregroundStyle(.white.opacity(0.52))
                             .lineLimit(1)
                     }
                 }
@@ -287,15 +257,24 @@ struct PlayerView: View {
                     .foregroundStyle(
                         isInLibrary ? .white : .white.opacity(0.72)
                     )
-                    .frame(width: 38, height: 38)
+                    .frame(width: 44, height: 44)
                     .background(.white.opacity(0.08), in: Circle())
                 }
                 .buttonStyle(PlayerControlStyle())
                 .disabled(isUpdatingLibrary)
                 .accessibilityLabel(
-                    isInLibrary
-                        ? "Удалить из медиатеки"
-                        : "Добавить в медиатеку"
+                    L10n.text(
+                        isInLibrary
+                            ? "Удалить из медиатеки"
+                            : "Добавить в медиатеку"
+                    )
+                )
+                .accessibilityValue(
+                    L10n.text(
+                        isInLibrary
+                            ? "Трек добавлен в медиатеку"
+                            : "Трек не добавлен в медиатеку"
+                    )
                 )
             }
             .padding(
@@ -316,7 +295,13 @@ struct PlayerView: View {
                     onCommit: commitScrubbing
                 )
                 .frame(height: 20)
-                .accessibilityLabel("Позиция воспроизведения")
+                .accessibilityLabel(
+                    L10n.text("Позиция воспроизведения")
+                )
+                .accessibilityValue(
+                    "\(displayedElapsedTime.formattedDuration) / "
+                        + player.duration.formattedDuration
+                )
                 HStack {
                     Text(displayedElapsedTime.formattedDuration)
                     Spacer()
@@ -352,106 +337,21 @@ struct PlayerView: View {
         .foregroundStyle(.white)
     }
 
-    private var actionMenuButton: some View {
+    private func actionMenuButton(_ track: Track) -> some View {
         Button {
-            setActionPanelPresented(!showingActionPanel)
+            present(.actions(track))
         } label: {
             Image(systemName: "ellipsis")
                 .font(.headline)
                 .foregroundStyle(.white)
-                .frame(width: 36, height: 36)
+                .frame(width: 44, height: 44)
                 .background(.white.opacity(0.08), in: Circle())
                 .overlay {
                     Circle().stroke(.white.opacity(0.08), lineWidth: 0.5)
                 }
         }
         .buttonStyle(PlayerControlStyle())
-        .accessibilityLabel("Действия с треком")
-    }
-
-    private func actionPanel(
-        _ track: Track,
-        width: CGFloat
-    ) -> some View {
-        VStack(spacing: 0) {
-            panelAction(
-                isInLibrary ? "Удалить из медиатеки" : "В медиатеку",
-                systemImage: isInLibrary ? "heart.slash" : "heart"
-            ) {
-                setActionPanelPresented(false)
-                toggleLibrary(track)
-            }
-            panelAction("Исполнитель", systemImage: "person.wave.2") {
-                setActionPanelPresented(false)
-                present(.artist)
-            }
-            panelAction(
-                "Добавить в плейлист",
-                systemImage: "rectangle.stack.badge.plus"
-            ) {
-                setActionPanelPresented(false)
-                present(.playlists)
-            }
-            panelAction("Поделиться", systemImage: "square.and.arrow.up") {
-                setActionPanelPresented(false)
-                startShare(track)
-            }
-            .disabled(isPreparingShare)
-            Divider().overlay(.white.opacity(0.08))
-            Toggle(isOn: $settings.equalizerEnabled) {
-                Label("Эквалайзер", systemImage: "waveform")
-            }
-            .tint(.white)
-            .padding(.horizontal, 14)
-            .frame(height: 40)
-            panelAction(
-                "Настройки звука",
-                systemImage: "slider.horizontal.3"
-            ) {
-                setActionPanelPresented(false)
-                present(.settings)
-            }
-            Text(L10n.text("Качество: автоматически VK"))
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.42))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(1)
-                .padding(.horizontal, 14)
-                .frame(height: 26)
-        }
-        .font(.footnote.weight(.semibold))
-        .foregroundStyle(.white)
-        .frame(width: width)
-        .background(
-            Color(white: 0.105).opacity(0.99),
-            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(.white.opacity(0.1), lineWidth: 0.7)
-        }
-        .shadow(color: .black.opacity(0.48), radius: 18, y: 9)
-    }
-
-    private func panelAction(
-        _ title: String,
-        systemImage: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Label {
-                Text(L10n.text(title))
-            } icon: {
-                Image(systemName: systemImage)
-            }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-                .padding(.horizontal, 14)
-                .frame(height: 40)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(PlayerControlStyle())
+        .accessibilityLabel(L10n.text("Действия с треком"))
     }
 
     private var primaryControls: some View {
@@ -459,7 +359,10 @@ struct PlayerView: View {
             secondaryButton(
                 "shuffle",
                 active: player.shuffleEnabled,
-                label: "Перемешать"
+                label: "Перемешать",
+                accessibilityValue: player.shuffleEnabled
+                    ? "Перемешивание включено"
+                    : "Перемешивание выключено"
             ) {
                 Haptics.selection()
                 player.toggleShuffle()
@@ -473,6 +376,7 @@ struct PlayerView: View {
                     .font(.system(size: 25, weight: .semibold))
                     .frame(width: 48, height: 52)
             }
+            .accessibilityLabel(L10n.text("Предыдущий трек"))
             Spacer()
             Button {
                 Haptics.selection()
@@ -485,6 +389,13 @@ struct PlayerView: View {
                     .foregroundStyle(.black)
                     .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
             }
+            .accessibilityLabel(
+                L10n.text(
+                    player.isPlaying
+                        ? "Приостановить"
+                        : "Продолжить воспроизведение"
+                )
+            )
             Spacer()
             Button {
                 Haptics.trackChange()
@@ -494,11 +405,13 @@ struct PlayerView: View {
                     .font(.system(size: 25, weight: .semibold))
                     .frame(width: 48, height: 52)
             }
+            .accessibilityLabel(L10n.text("Следующий трек"))
             Spacer()
             secondaryButton(
                 player.repeatMode.systemImage,
                 active: player.repeatMode != .off,
-                label: "Повтор"
+                label: "Повтор",
+                accessibilityValue: repeatAccessibilityValue
             ) {
                 Haptics.selection()
                 player.cycleRepeatMode()
@@ -510,7 +423,7 @@ struct PlayerView: View {
     private func quickActions(_ track: Track) -> some View {
         HStack(spacing: 0) {
             quickAction("quote.bubble", title: "Текст") {
-                present(.lyrics)
+                present(.lyrics(track))
             }
             quickAction("list.bullet", title: "Очередь") {
                 present(.queue)
@@ -519,7 +432,7 @@ struct PlayerView: View {
                 "rectangle.stack.badge.plus",
                 title: "Плейлист"
             ) {
-                present(.playlists)
+                present(.playlists(track))
             }
             quickAction(
                 isPreparingShare
@@ -558,6 +471,7 @@ struct PlayerView: View {
         _ image: String,
         active: Bool,
         label: String,
+        accessibilityValue: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -570,6 +484,18 @@ struct PlayerView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(L10n.text(label))
+        .accessibilityValue(L10n.text(accessibilityValue))
+    }
+
+    private var repeatAccessibilityValue: String {
+        switch player.repeatMode {
+        case .off:
+            return "Повтор выключен"
+        case .all:
+            return "Повтор всей очереди"
+        case .one:
+            return "Повтор одного трека"
+        }
     }
 
     private var remainingTime: TimeInterval {
@@ -590,36 +516,89 @@ struct PlayerView: View {
         switch sheet {
         case .queue:
             QueueView()
-        case .lyrics:
-            if let track = player.currentTrack {
-                LyricsView(track: track)
-            }
-        case .artist:
-            if let track = player.currentTrack {
-                ArtistView(artist: track.artist)
-            }
-        case .playlists:
-            if let track = player.currentTrack {
-                AddToPlaylistView(track: track)
-            }
+        case let .lyrics(track):
+            LyricsView(track: track)
+        case let .artist(artist):
+            ArtistView(artist: artist)
+        case let .playlists(track):
+            AddToPlaylistView(track: track)
         case .settings:
             NavigationStack { SettingsView() }
         case let .share(fileURL):
             TrackShareSheet(fileURL: fileURL)
+        case let .actions(track):
+            PlayerActionsSheet(
+                track: track,
+                isInLibrary: isInLibrary,
+                availability: PlayerActionAvailability(
+                    hasSession: sessionStore.accessToken != nil,
+                    isUpdatingLibrary: isUpdatingLibrary,
+                    isPreparingShare: isPreparingShare
+                ),
+                equalizerEnabled: $settings.equalizerEnabled,
+                onDismiss: {
+                    presentedSheet = nil
+                },
+                onLibrary: {
+                    presentedSheet = nil
+                    toggleLibrary(track)
+                },
+                onArtist: {
+                    deferFromActionSheet(
+                        .sheet(.artist(track.artist))
+                    )
+                },
+                onPlaylist: {
+                    deferFromActionSheet(
+                        .sheet(.playlists(track))
+                    )
+                },
+                onShare: {
+                    deferFromActionSheet(.share(track))
+                },
+                onSettings: {
+                    deferFromActionSheet(.sheet(.settings))
+                }
+            )
         }
     }
 
     @discardableResult
     private func present(_ sheet: PlayerSheet) -> Bool {
         guard presentedSheet == nil else { return false }
-        setActionPanelPresented(false)
         presentedSheet = sheet
         return true
     }
 
-    private func setActionPanelPresented(_ presented: Bool) {
-        guard showingActionPanel != presented else { return }
-        showingActionPanel = presented
+    private func deferFromActionSheet(_ action: DeferredPlayerAction) {
+        deferredPlayerAction = action
+        presentedSheet = nil
+    }
+
+    private func handleSheetDismissal() {
+        guard let deferredPlayerAction else {
+            cleanupSharedFile()
+            return
+        }
+        self.deferredPlayerAction = nil
+
+        Task { @MainActor in
+            await Task.yield()
+            switch deferredPlayerAction {
+            case let .sheet(sheet):
+                _ = present(sheet)
+            case let .share(track):
+                startShare(track)
+            }
+        }
+    }
+
+    private var isActionSheetPresented: Bool {
+        guard let presentedSheet else { return false }
+        if case .actions = presentedSheet {
+            return true
+        }
+        return false
     }
 
     private var isPresentingShareSheet: Bool {
@@ -696,6 +675,15 @@ struct PlayerView: View {
                 return
             }
             shareCleanupURL = fileURL
+            if isActionSheetPresented {
+                deferFromActionSheet(.sheet(.share(fileURL)))
+                Haptics.selection()
+                return
+            }
+            if case .some = deferredPlayerAction {
+                cleanupSharedFile()
+                return
+            }
             guard present(.share(fileURL)) else {
                 cleanupSharedFile()
                 return
@@ -787,57 +775,278 @@ struct PlayerView: View {
     }
 }
 
-enum PlayerLayoutMetrics {
-    static func actionPanelWidth(
-        containerWidth: CGFloat,
-        safeLeading: CGFloat,
-        safeTrailing: CGFloat
-    ) -> CGFloat {
-        let leadingInset = max(safeLeading, 14)
-        let trailingInset = actionPanelTrailingInset(
-            safeTrailing: safeTrailing
-        )
-        let availableWidth = max(
-            containerWidth - leadingInset - trailingInset,
-            0
-        )
-        return min(224, availableWidth)
-    }
-
-    static func actionPanelTrailingInset(
-        safeTrailing: CGFloat
-    ) -> CGFloat {
-        max(safeTrailing, 14)
-    }
-
-    static func actionPanelTopInset(safeTop: CGFloat) -> CGFloat {
-        max(safeTop + 8, 54)
-    }
-}
-
 private enum PlayerSheet: Identifiable {
     case queue
-    case lyrics
-    case artist
-    case playlists
+    case lyrics(Track)
+    case artist(String)
+    case playlists(Track)
     case settings
     case share(URL)
+    case actions(Track)
 
     var id: String {
         switch self {
         case .queue:
             return "queue"
-        case .lyrics:
-            return "lyrics"
-        case .artist:
-            return "artist"
-        case .playlists:
-            return "playlists"
+        case let .lyrics(track):
+            return "lyrics-\(track.id)"
+        case let .artist(artist):
+            return "artist-\(artist)"
+        case let .playlists(track):
+            return "playlists-\(track.id)"
         case .settings:
             return "settings"
         case let .share(url):
             return "share-\(url.absoluteString)"
+        case let .actions(track):
+            return "actions-\(track.id)"
         }
+    }
+}
+
+private enum DeferredPlayerAction {
+    case sheet(PlayerSheet)
+    case share(Track)
+}
+
+struct PlayerActionAvailability: Equatable {
+    let canModifyLibrary: Bool
+    let canAddToPlaylist: Bool
+    let canShare: Bool
+    let showsLibraryProgress: Bool
+
+    init(
+        hasSession: Bool,
+        isUpdatingLibrary: Bool,
+        isPreparingShare: Bool
+    ) {
+        canModifyLibrary = hasSession && !isUpdatingLibrary
+        canAddToPlaylist = hasSession
+        canShare = hasSession && !isPreparingShare
+        showsLibraryProgress = isUpdatingLibrary
+    }
+}
+
+enum PlayerActionSheetMetrics {
+    static let preferredHeight: CGFloat = 520
+    static let minimumTapTarget: CGFloat = 52
+}
+
+private struct PlayerActionsSheet: View {
+    let track: Track
+    let isInLibrary: Bool
+    let availability: PlayerActionAvailability
+    @Binding var equalizerEnabled: Bool
+    let onDismiss: () -> Void
+    let onLibrary: () -> Void
+    let onArtist: () -> Void
+    let onPlaylist: () -> Void
+    let onShare: () -> Void
+    let onSettings: () -> Void
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    libraryAction
+
+                    sectionTitle("Действия с треком")
+                    LazyVGrid(columns: columns, spacing: 10) {
+                        actionTile(
+                            "Исполнитель",
+                            systemImage: "person.wave.2",
+                            action: onArtist
+                        )
+                        actionTile(
+                            "Добавить в плейлист",
+                            systemImage: "rectangle.stack.badge.plus",
+                            enabled: availability.canAddToPlaylist,
+                            action: onPlaylist
+                        )
+                        actionTile(
+                            "Поделиться",
+                            systemImage: "square.and.arrow.up",
+                            enabled: availability.canShare,
+                            action: onShare
+                        )
+                        actionTile(
+                            "Настройки звука",
+                            systemImage: "slider.horizontal.3",
+                            action: onSettings
+                        )
+                    }
+
+                    sectionTitle("Плеер и аудио")
+                    Toggle(isOn: $equalizerEnabled) {
+                        Label {
+                            Text(L10n.text("Эквалайзер"))
+                                .font(.body.weight(.semibold))
+                        } icon: {
+                            Image(systemName: "waveform")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .tint(.accentColor)
+                    .padding(.horizontal, 16)
+                    .frame(
+                        minHeight: PlayerActionSheetMetrics.minimumTapTarget
+                    )
+                    .background(
+                        Color(uiColor: .secondarySystemBackground),
+                        in: RoundedRectangle(
+                            cornerRadius: 16,
+                            style: .continuous
+                        )
+                    )
+
+                    Text(L10n.text("Качество: автоматически VK"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 12)
+                        .padding(.horizontal, 4)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemBackground))
+        .presentationDetents([
+            .height(PlayerActionSheetMetrics.preferredHeight),
+            .large
+        ])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            AsyncArtwork(url: track.artworkURL, size: 48)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(track.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(track.artist)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 10)
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .frame(width: 44, height: 44)
+                    .background(
+                        Color(uiColor: .tertiarySystemFill),
+                        in: Circle()
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.text("Закрыть"))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var libraryAction: some View {
+        Button(
+            role: isInLibrary ? .destructive : nil,
+            action: onLibrary
+        ) {
+            HStack(spacing: 12) {
+                Image(
+                    systemName: isInLibrary
+                        ? "heart.slash"
+                        : "heart"
+                )
+                .font(.system(size: 18, weight: .semibold))
+                .frame(width: 28)
+
+                Text(
+                    L10n.text(
+                        isInLibrary
+                            ? "Удалить из медиатеки"
+                            : "Добавить в медиатеку"
+                    )
+                )
+                .font(.body.weight(.semibold))
+
+                Spacer()
+
+                if availability.showsLibraryProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            .padding(.horizontal, 16)
+            .frame(
+                minHeight: PlayerActionSheetMetrics.minimumTapTarget
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isInLibrary ? Color.red : Color.primary)
+        .background(
+            Color(uiColor: .secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .disabled(!availability.canModifyLibrary)
+        .padding(.top, 14)
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(L10n.text(title))
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .textCase(.uppercase)
+            .padding(.horizontal, 4)
+            .padding(.top, 18)
+            .padding(.bottom, 8)
+    }
+
+    private func actionTile(
+        _ title: String,
+        systemImage: String,
+        enabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 9) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 19, weight: .semibold))
+                Text(L10n.text(title))
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: 54, alignment: .topLeading)
+            .padding(12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.primary)
+        .background(
+            Color(uiColor: .secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.45)
+        .accessibilityLabel(L10n.text(title))
     }
 }
 
