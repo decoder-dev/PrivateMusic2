@@ -3,19 +3,18 @@ import UIKit
 
 enum TrackSharePayload: Equatable, Sendable {
     case audioFile(URL)
-    case vkLink(url: URL, description: String)
 
-    var exportedFileURL: URL? {
-        guard case let .audioFile(url) = self else { return nil }
-        return url
+    var fileURL: URL {
+        switch self {
+        case let .audioFile(url):
+            return url
+        }
     }
 
     var identifier: String {
         switch self {
         case let .audioFile(url):
             return "file-\(url.absoluteString)"
-        case let .vkLink(url, _):
-            return "link-\(url.absoluteString)"
         }
     }
 }
@@ -44,17 +43,18 @@ actor TrackShareService {
     }
 
     /// Creates a real audio attachment when VK exposes a direct audio file.
-    /// HLS addresses are temporary playlists, so they are shared as a stable
-    /// VK page instead of exposing signed segment URLs or attempting DRM bypass.
+    /// HLS playlists are deliberately rejected: renaming or linking a playlist
+    /// does not create an MP3 and would expose a temporary signed address.
     func preparePayload(
         for track: Track,
-        userAgent: String?
+        userAgent: String?,
+        requiresMP3: Bool = false
     ) async throws -> TrackSharePayload {
         guard let streamURL = track.streamURL else {
-            return linkPayload(for: track)
+            throw directAudioUnavailableError
         }
         guard !isHLS(streamURL) else {
-            return linkPayload(for: track)
+            throw directAudioUnavailableError
         }
 
         var request = URLRequest(url: streamURL)
@@ -69,7 +69,7 @@ actor TrackShareService {
             throw APIError.invalidResponse
         }
         guard !isHLS(response: http) else {
-            return linkPayload(for: track)
+            throw directAudioUnavailableError
         }
         guard isAudioResponse(http, sourceURL: streamURL) else {
             throw APIError.invalidResponse
@@ -81,10 +81,19 @@ actor TrackShareService {
         guard try fileSize(at: temporaryURL) <= Self.maximumFileSize else {
             throw fileTooLargeError
         }
+        guard !isHLSFile(at: temporaryURL) else {
+            throw directAudioUnavailableError
+        }
+        if requiresMP3 {
+            guard http.mimeType?.lowercased() == "audio/mpeg",
+                  isLikelyMP3(at: temporaryURL) else {
+                throw directMP3UnavailableError
+            }
+        }
 
         let destination = exportDestination(
             for: track,
-            extensionName: fileExtension(
+            extensionName: try fileExtension(
                 response: http,
                 sourceURL: streamURL
             )
@@ -97,35 +106,70 @@ actor TrackShareService {
         return .audioFile(destination)
     }
 
-    func linkPayload(for track: Track) -> TrackSharePayload {
-        let url = URL(
-            string: "https://vk.com/audio\(track.ownerID)_\(track.trackID)"
-        )!
-        let description = [track.artist, track.title]
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            .joined(separator: " — ")
-        return .vkLink(
-            url: url,
-            description: description.isEmpty
-                ? "Private Music"
-                : description
+    func payloadFromLocalFile(
+        _ sourceURL: URL,
+        track: Track,
+        requiresMP3: Bool = true
+    ) throws -> TrackSharePayload {
+        guard sourceURL.isFileURL,
+              fileManager.fileExists(atPath: sourceURL.path) else {
+            throw directAudioUnavailableError
+        }
+        if requiresMP3 {
+            guard sourceURL.pathExtension.lowercased() == "mp3",
+                  isLikelyMP3(at: sourceURL) else {
+                throw directMP3UnavailableError
+            }
+        }
+        let destination = exportDestination(
+            for: track,
+            extensionName: sourceURL.pathExtension.isEmpty
+                ? "mp3"
+                : sourceURL.pathExtension
         )
+        do {
+            try fileManager.linkItem(at: sourceURL, to: destination)
+        } catch {
+            try fileManager.copyItem(at: sourceURL, to: destination)
+        }
+        return .audioFile(destination)
     }
 
     func removeExportedFile(_ payload: TrackSharePayload) {
-        guard let url = payload.exportedFileURL,
-              url.isFileURL,
-              url.deletingLastPathComponent().standardizedFileURL
-                == fileManager.temporaryDirectory.standardizedFileURL else {
+        let url = payload.fileURL
+        let exportRoot = fileManager.temporaryDirectory
+            .appendingPathComponent("PrivateMusicShare", isDirectory: true)
+            .standardizedFileURL
+        let parent = url.deletingLastPathComponent().standardizedFileURL
+        guard url.isFileURL,
+              parent.path.hasPrefix(exportRoot.path + "/") else {
             return
         }
-        try? fileManager.removeItem(at: url)
+        try? fileManager.removeItem(at: parent)
     }
 
     private var fileTooLargeError: APIError {
         APIError.server(
             code: 413,
             message: L10n.text("Файл больше 150 МБ.")
+        )
+    }
+
+    private var directAudioUnavailableError: APIError {
+        APIError.server(
+            code: 415,
+            message: L10n.text(
+                "VK не предоставил прямой аудиофайл для этого трека."
+            )
+        )
+    }
+
+    private var directMP3UnavailableError: APIError {
+        APIError.server(
+            code: 415,
+            message: L10n.text(
+                "Этот трек нельзя экспортировать в MP3."
+            )
         )
     }
 
@@ -169,8 +213,15 @@ actor TrackShareService {
         extensionName: String
     ) -> URL {
         let name = safeFilename("\(track.artist) — \(track.title)")
-        return fileManager.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString + "-" + name)
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("PrivateMusicShare", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? fileManager.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        return directory
+            .appendingPathComponent(name)
             .appendingPathExtension(extensionName)
     }
 
@@ -182,19 +233,45 @@ actor TrackShareService {
     private func fileExtension(
         response: HTTPURLResponse,
         sourceURL: URL
-    ) -> String {
-        let sourceExtension = sourceURL.pathExtension.lowercased()
-        if ["mp3", "m4a", "aac", "wav", "flac"].contains(sourceExtension) {
-            return sourceExtension
-        }
+    ) throws -> String {
         switch response.mimeType?.lowercased() {
-        case "audio/mpeg": return "mp3"
+        case "audio/mpeg", "audio/mp3": return "mp3"
         case "audio/mp4", "audio/x-m4a": return "m4a"
         case "audio/aac": return "aac"
         case "audio/wav", "audio/x-wav": return "wav"
         case "audio/flac": return "flac"
-        default: return "m4a"
+        default: break
         }
+        let sourceExtension = sourceURL.pathExtension.lowercased()
+        if ["mp3", "m4a", "aac", "wav", "flac"].contains(sourceExtension) {
+            return sourceExtension
+        }
+        throw directAudioUnavailableError
+    }
+
+    private func isLikelyMP3(at url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return false
+        }
+        defer { try? handle.close() }
+        let prefix = (try? handle.read(upToCount: 3)) ?? Data()
+        if prefix.starts(with: Data("ID3".utf8)) {
+            return true
+        }
+        guard prefix.count >= 2 else { return false }
+        return prefix[prefix.startIndex] == 0xFF
+            && prefix[prefix.index(after: prefix.startIndex)] & 0xE0 == 0xE0
+    }
+
+    private func isHLSFile(at url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return false
+        }
+        defer { try? handle.close() }
+        let prefix = (try? handle.read(upToCount: 16)) ?? Data()
+        return String(data: prefix, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .hasPrefix("#EXTM3U") == true
     }
 
     private func safeFilename(_ value: String) -> String {
@@ -209,6 +286,7 @@ actor TrackShareService {
 
 struct TrackShareSheet: UIViewControllerRepresentable {
     let payload: TrackSharePayload
+    let onCompletion: () -> Void
 
     func makeUIViewController(
         context: Context
@@ -217,13 +295,17 @@ struct TrackShareSheet: UIViewControllerRepresentable {
         switch payload {
         case let .audioFile(fileURL):
             activityItems = [fileURL]
-        case let .vkLink(url, description):
-            activityItems = [description, url]
         }
-        return UIActivityViewController(
+        let controller = UIActivityViewController(
             activityItems: activityItems,
             applicationActivities: nil
         )
+        controller.completionWithItemsHandler = { _, _, _, _ in
+            DispatchQueue.main.async {
+                onCompletion()
+            }
+        }
+        return controller
     }
 
     func updateUIViewController(
