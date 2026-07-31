@@ -93,6 +93,7 @@ final class AppEnvironment: ObservableObject {
         player.configurePlaybackReady { [weak self] track, isOffline in
             guard !isOffline else { return }
             self?.scheduleAutomaticCache(for: track)
+            self?.schedulePredictivePreDownload()
         }
         settings.$offlineStorageLimitGB
             .removeDuplicates()
@@ -176,6 +177,49 @@ final class AppEnvironment: ObservableObject {
                 }
             }
             automaticCacheTask = nil
+        }
+    }
+
+    private var predictivePreDownloadTask: Task<Void, Never>?
+
+    private func schedulePredictivePreDownload() {
+        guard settings.automaticOfflineCacheEnabled,
+              networkMonitor.state == .online,
+              (networkMonitor.transport == .wifi
+                || networkMonitor.transport == .wired),
+              !ProcessInfo.processInfo.isLowPowerModeEnabled
+        else { return }
+        guard let currentIndex = player.currentIndex,
+              player.queue.count > 1 else { return }
+        predictivePreDownloadTask?.cancel()
+        predictivePreDownloadTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            guard let self else { return }
+            let upcoming = player.queue
+                .suffix(from: currentIndex + 1)
+                .prefix(5)
+            for track in upcoming {
+                guard !Task.isCancelled else { break }
+                guard !offlineStore.contains(track) else { continue }
+                let remaining = offlineStore.storageLimitBytes
+                    - offlineStore.totalByteCount
+                let est = min(
+                    OfflineTrackStore.maximumTrackSize,
+                    max(5_000_000, Int64(track.duration * 40_000))
+                )
+                guard est <= remaining else { break }
+                do {
+                    try await downloadForOffline(
+                        track,
+                        retention: .automaticCache
+                    )
+                } catch is CancellationError {
+                    break
+                } catch {
+                    // Opportunistic — never interrupt playback.
+                }
+            }
         }
     }
 
