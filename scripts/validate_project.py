@@ -129,7 +129,7 @@ for forbidden_share_symbol in (
         fail(f"share must never fall back to a link: {forbidden_share_symbol}")
 for required_share_symbol in (
     "requiresMP3: false",
-    "AVAssetExportPresetAppleM4A",
+    "HLSSegmentExporter",
     "AudioFileActivityItemSource",
 ):
     if required_share_symbol not in all_source:
