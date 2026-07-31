@@ -181,9 +181,9 @@ final class OfflinePlaylistStore: ObservableObject {
             try? saveManifest()
             return
         }
-        if let artworkDir = directory
+        let artworkDir = directory
             .appendingPathComponent("artwork", isDirectory: true)
-            , fileManager.fileExists(atPath: artworkDir.path) {
+        if fileManager.fileExists(atPath: artworkDir.path) {
             try? fileManager.removeItem(at: artworkDir)
         }
         records.removeAll()
