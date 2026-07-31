@@ -476,7 +476,6 @@ actor HLSSegmentExporter {
             throw HLSExportError.remuxFailed
         }
         let formatDescriptions = track.formatDescriptions
-            .compactMap { $0 as? CMAudioFormatDescription }
         let writerInput = AVAssetWriterInput(
             mediaType: .audio,
             outputSettings: nil,
