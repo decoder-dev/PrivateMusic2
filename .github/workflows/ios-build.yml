@@ -86,7 +86,7 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.20.0-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.21.0-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -94,30 +94,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.20.0-unsigned.ipa" \
-            --title "Private Music 3.20.0" \
+            "$PWD/artifacts/PrivateMusic-3.21.0-unsigned.ipa" \
+            --title "Private Music 3.21.0" \
             --notes-file - <<'EOF'
-          Private Music 3.20.0
+          Private Music 3.21.0
 
-          - «Загрузки» полностью переработаны: треки теперь сгруппированы
-            по плейлистам, внутри каждого плейлиста треки доступны для
-            воспроизведения. Секции «Мои загрузки» и «Автокэш» заменены
-            на единый список по плейлистам.
-          - В настройках добавлена кнопка «Удалить все загрузки» для
-            полной очистки офлайн-хранилища.
-          - Исправлен режим мультивыбора: кнопка «Отмена» теперь
-            заменяет кнопку «Назад» в панели навигации.
-          - Исправлен «Поделиться»: убрана блокировка куки в сегментных
-            запросах, что восстанавливает скачивание HLS-потоков VK.
-
-          IPA не подписан. Перед установкой подпишите его собственным
-          сертификатом.
+          - Настройки переработаны: основной экран разделён на
+            подразделы (Оформление, Плеер и аудио, Эквалайзер,
+            Офлайн-хранилище, Таймер сна, Соединение) с
+            навигацией через NavigationLink.
+          - Эквалайзер расширен: добавлены «Выравнивание громкости»
+            (目标 -14 LUFS) и «Динамическое сжатие диапазона»
+            для стабильной громкости на любых колонках.
+          - IPA не подписан. Перед установкой подпишите его собственным
+            сертификатом.
           EOF
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.20.0-unsigned
-          path: artifacts/PrivateMusic-3.20.0-unsigned.ipa
+          name: PrivateMusic-3.21.0-unsigned
+          path: artifacts/PrivateMusic-3.21.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

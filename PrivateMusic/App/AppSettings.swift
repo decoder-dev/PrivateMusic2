@@ -149,6 +149,22 @@ final class AppSettings: ObservableObject {
     @Published var equalizerPreamp: Double {
         didSet { defaults.set(equalizerPreamp, forKey: Keys.preamp) }
     }
+    @Published var loudnessNormalization: Bool {
+        didSet {
+            defaults.set(
+                loudnessNormalization,
+                forKey: Keys.loudnessNormalization
+            )
+        }
+    }
+    @Published var dynamicRangeCompression: Bool {
+        didSet {
+            defaults.set(
+                dynamicRangeCompression,
+                forKey: Keys.dynamicRangeCompression
+            )
+        }
+    }
     @Published var resumeOnBluetoothConnection: Bool {
         didSet {
             defaults.set(
@@ -236,6 +252,12 @@ final class AppSettings: ObservableObject {
             equalizerGains = EqualizerPreset.flat.gains
         }
         equalizerPreamp = defaults.object(forKey: Keys.preamp) as? Double ?? 0
+        loudnessNormalization = defaults.object(
+            forKey: Keys.loudnessNormalization
+        ) as? Bool ?? false
+        dynamicRangeCompression = defaults.object(
+            forKey: Keys.dynamicRangeCompression
+        ) as? Bool ?? false
         resumeOnBluetoothConnection = defaults.object(
             forKey: Keys.resumeOnBluetoothConnection
         ) as? Bool ?? true
@@ -308,6 +330,10 @@ final class AppSettings: ObservableObject {
             "offline.storage.limitGB"
         static let automaticOfflineCacheEnabled =
             "offline.cache.automatic.enabled"
+        static let loudnessNormalization =
+            "audio.equalizer.loudnessNormalization"
+        static let dynamicRangeCompression =
+            "audio.equalizer.dynamicRangeCompression"
     }
 
     private enum LegacyKeys {
