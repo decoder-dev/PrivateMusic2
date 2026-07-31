@@ -24,7 +24,7 @@ struct OfflinePlaylistRecord: Codable, Identifiable, Equatable, Sendable {
     }
 
     var totalCount: Int {
-        tracks.count
+        max(tracks.count, playlist.count)
     }
 
     var progress: Double {
