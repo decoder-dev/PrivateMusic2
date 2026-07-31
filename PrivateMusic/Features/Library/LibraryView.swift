@@ -302,10 +302,11 @@ struct LibraryView: View {
         Task {
             do {
                 try await environment.downloadForOffline(track)
-                Haptics.selection()
+                Haptics.success()
             } catch is CancellationError {
                 return
             } catch {
+                Haptics.error()
                 player.errorMessage = L10n.format(
                     "Не удалось сохранить трек офлайн: %@",
                     error.localizedDescription

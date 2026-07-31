@@ -8,6 +8,7 @@ struct OfflineTrackRecord: Codable, Identifiable, Equatable, Sendable {
     let byteCount: Int64
     let downloadedAt: Date
     var lastPlayedAt: Date
+    var playCount: Int
 
     var id: String { track.id }
 
@@ -323,7 +324,8 @@ final class OfflineTrackStore: ObservableObject {
             retention: retention,
             byteCount: byteCount,
             downloadedAt: now,
-            lastPlayedAt: now
+            lastPlayedAt: now,
+            playCount: 0
         )
         try saveManifest()
     }
@@ -383,7 +385,8 @@ final class OfflineTrackStore: ObservableObject {
             retention: retention,
             byteCount: byteCount,
             downloadedAt: Date(),
-            lastPlayedAt: Date()
+            lastPlayedAt: Date(),
+            playCount: 0
         )
         records[track.id] = record
         do {
@@ -423,6 +426,7 @@ final class OfflineTrackStore: ObservableObject {
     func markPlayed(_ track: Track) {
         guard var record = records[track.id] else { return }
         record.lastPlayedAt = Date()
+        record.playCount += 1
         records[track.id] = record
         try? saveManifest()
     }
