@@ -26,6 +26,13 @@ final class EqualizerDSP: @unchecked Sendable {
     private var sampleRate = 44_100.0
     private var channelCount = 2
     private var supportsProcessing = false
+    private var loudnessNormEnabled = false
+    private var drcEnabled = false
+    private var loudnessGain: Float = 1.0
+    private var compressorThreshold: Float = 0.5
+    private var compressorRatio: Float = 4.0
+    private var compressorMakeupGain: Float = 1.0
+    private var envelope: Float = 0
 
     var isEnabled: Bool {
         lock.lock()
@@ -33,13 +40,21 @@ final class EqualizerDSP: @unchecked Sendable {
         return enabled
     }
 
-    func update(enabled: Bool, gains: [Double], preamp: Double) {
+    func update(
+        enabled: Bool,
+        gains: [Double],
+        preamp: Double,
+        loudnessNorm: Bool = false,
+        dynamicRangeCompression: Bool = false
+    ) {
         lock.lock()
         self.enabled = enabled
         if gains.count == Self.frequencies.count {
             self.gains = gains
         }
         preampDB = min(max(preamp, -12), 6)
+        loudnessNormEnabled = loudnessNorm
+        drcEnabled = dynamicRangeCompression
         rebuildCoefficients()
         lock.unlock()
     }
@@ -129,6 +144,7 @@ final class EqualizerDSP: @unchecked Sendable {
 
                 for _ in 0..<frameCount {
                     var value = samples[sampleIndex] * preamp
+
                     for band in coefficients.indices {
                         let stateIndex = (channel * coefficients.count + band)
                             * 4
@@ -148,6 +164,25 @@ final class EqualizerDSP: @unchecked Sendable {
                         states[stateIndex + 3] = y1
                         value = output
                     }
+
+                    if drcEnabled {
+                        let absVal = abs(value)
+                        let target = absVal > compressorThreshold
+                            ? compressorThreshold
+                                + (absVal - compressorThreshold)
+                                / compressorRatio
+                            : absVal
+                        let peakGain = absVal > 0.001
+                            ? target / absVal
+                            : 1
+                        envelope += (peakGain - envelope) * 0.01
+                        value *= envelope * compressorMakeupGain
+                    }
+
+                    if loudnessNormEnabled {
+                        value *= loudnessGain
+                    }
+
                     samples[sampleIndex] = min(max(value, -1), 1)
                     sampleIndex += stride
                 }
@@ -165,6 +200,15 @@ final class EqualizerDSP: @unchecked Sendable {
                 sampleRate: sampleRate
             )
         }
+        // Target: -14 LUFS (Spotify/streaming standard)
+        // Simple gain offset assuming typical VK stream at ~-10 LUFS
+        loudnessNormEnabled
+            ? { loudnessGain = Float(pow(10, -4.0 / 20)) }()
+            : { loudnessGain = 1.0 }()
+        compressorThreshold = 0.6
+        compressorRatio = 3.0
+        compressorMakeupGain = loudnessNormEnabled ? 1.5 : 1.2
+        envelope = 0
     }
 
     private func peakingCoefficients(

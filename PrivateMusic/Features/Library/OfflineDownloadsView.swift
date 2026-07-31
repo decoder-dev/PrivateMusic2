@@ -235,9 +235,17 @@ struct OfflineDownloadsView: View {
                     .font(.footnote.weight(.semibold))
                     .textCase(nil)
                 Spacer()
-                Text("\(section.tracks.count)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                if let record = section.record,
+                   record.state == .downloading
+                    || record.state == .queued {
+                    AnimatedProgressView(
+                        progress: record.progress
+                    )
+                } else {
+                    Text("\(section.tracks.count)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
             }
             .contentShape(Rectangle())
             .onTapGesture {
@@ -298,5 +306,49 @@ struct OfflineDownloadsView: View {
             offlineStore.remove(track)
         }
         exitSelection()
+    }
+}
+
+// MARK: - Animated Progress
+
+private struct AnimatedProgressView: View {
+    let progress: Double
+
+    @State private var animatedProgress: Double = 0
+
+    var body: some View {
+        HStack(spacing: 6) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.2))
+                        .frame(height: 4)
+                    Capsule()
+                        .fill(Color.accentColor)
+                        .frame(
+                            width: proxy.size.width
+                                * animatedProgress,
+                            height: 4
+                        )
+                        .animation(
+                            .easeInOut(duration: 0.4),
+                            value: animatedProgress
+                        )
+                }
+            }
+            .frame(width: 50, height: 4)
+            Text("\(Int(animatedProgress * 100))%")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 32, alignment: .trailing)
+        }
+        .onAppear {
+            animatedProgress = progress
+        }
+        .onChange(of: progress) { newProgress in
+            withAnimation(.easeInOut(duration: 0.4)) {
+                animatedProgress = newProgress
+            }
+        }
     }
 }
