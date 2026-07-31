@@ -44,6 +44,7 @@ struct LibraryView: View {
                         ForEach(Array(tracks.tracks.enumerated()), id: \.element.id) {
                             index, track in
                             libraryRow(track)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
                                 .onAppear {
                                     loadMoreIfNeeded(after: track)
                                 }
@@ -52,6 +53,7 @@ struct LibraryView: View {
                             }
                         }
                     }
+                    .animation(.easeInOut(duration: 0.3), value: tracks.tracks.map(\.id))
                 }
             }
             .padding(.horizontal, 16)
@@ -303,6 +305,9 @@ struct LibraryView: View {
             do {
                 try await environment.downloadForOffline(track)
                 Haptics.success()
+                DownloadNotifications.notifyDownloadComplete(
+                    title: "\(track.artist) — \(track.title)"
+                )
             } catch is CancellationError {
                 return
             } catch {
@@ -310,6 +315,9 @@ struct LibraryView: View {
                 player.errorMessage = L10n.format(
                     "Не удалось сохранить трек офлайн: %@",
                     error.localizedDescription
+                )
+                DownloadNotifications.notifyDownloadError(
+                    title: "\(track.artist) — \(track.title)"
                 )
             }
         }

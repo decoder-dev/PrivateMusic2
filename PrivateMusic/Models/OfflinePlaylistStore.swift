@@ -254,12 +254,28 @@ final class OfflinePlaylistStore: ObservableObject {
             }
             finalRecord.completedCount = counts.completed
             finalRecord.failedCount = counts.failed
+            let name = finalRecord.playlist.title
             if tracks.isEmpty || counts.failed == 0 {
                 finalRecord.state = .available
+                await MainActor.run {
+                    DownloadNotifications.notifyDownloadComplete(
+                        title: name
+                    )
+                }
             } else if counts.completed > 0 {
                 finalRecord.state = .partial
+                await MainActor.run {
+                    DownloadNotifications.notifyDownloadComplete(
+                        title: "\(name) (\(counts.failed) ошибок)"
+                    )
+                }
             } else {
                 finalRecord.state = .failed
+                await MainActor.run {
+                    DownloadNotifications.notifyDownloadError(
+                        title: name
+                    )
+                }
             }
             finalRecord.updatedAt = Date()
             records[identifier] = finalRecord
@@ -337,7 +353,7 @@ final class OfflinePlaylistStore: ObservableObject {
                 } else {
                     failed += 1
                 }
-                await progress(completed, failed)
+                progress(completed, failed)
                 if let track = iterator.next() {
                     group.addTask {
                         guard !Task.isCancelled else { return false }
