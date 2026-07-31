@@ -6,6 +6,7 @@ struct SettingsView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var networkMonitor: NetworkMonitor
     @EnvironmentObject private var offlineStore: OfflineTrackStore
+    @ObservedObject private var offlinePlaylists = OfflinePlaylistStore.shared
 
     private let frequencies = [
         "31", "62", "125", "250", "500",
@@ -207,6 +208,14 @@ struct SettingsView: View {
                 if offlineStore.automaticCacheByteCount > 0 {
                     Button("Очистить автокэш", role: .destructive) {
                         offlineStore.removeAutomaticCache()
+                    }
+                }
+
+                if offlineStore.totalByteCount > 0
+                    || !offlinePlaylists.records.isEmpty {
+                    Button("Удалить все загрузки", role: .destructive) {
+                        offlineStore.removeAll()
+                        offlinePlaylists.removeAll()
                     }
                 }
             }

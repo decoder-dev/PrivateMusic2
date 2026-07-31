@@ -359,3 +359,5 @@
 "VK вернул неполный HLS-плейлист." = "VK returned an incomplete HLS playlist.";
 "Не удалось скачать сегменты потока." = "Could not download the stream segments.";
 "Не удалось расшифровать сегменты потока." = "Could not decrypt the stream segments.";
+"Другие загрузки" = "Other downloads";
+"Удалить все загрузки" = "Delete all downloads";

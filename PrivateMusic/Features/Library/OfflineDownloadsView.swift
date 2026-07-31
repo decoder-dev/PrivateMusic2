@@ -9,6 +9,10 @@ struct OfflineDownloadsView: View {
     @State private var selection: Set<String>?
     @State private var showsDeleteConfirmation = false
 
+    private var allDownloadedTrackIDs: Set<String> {
+        Set(offlineStore.records.keys)
+    }
+
     var body: some View {
         Group {
             if offlineStore.downloadedTracks.isEmpty
@@ -24,80 +28,35 @@ struct OfflineDownloadsView: View {
                 .padding()
             } else {
                 List {
-                    if !offlinePlaylists.records.isEmpty {
-                        Section("Плейлисты") {
-                            ForEach(
-                                offlinePlaylists.records.values.sorted {
-                                    $0.updatedAt > $1.updatedAt
-                                }
-                            ) { record in
-                                NavigationLink {
-                                    OfflinePlaylistDetailView(record: record)
-                                } label: {
-                                    OfflinePlaylistRow(record: record)
-                                }
-                                .swipeActions {
-                                    Button(role: .destructive) {
-                                        offlinePlaylists.remove(
-                                            record.playlist
-                                        )
-                                    } label: {
-                                        Label(
-                                            "Удалить",
-                                            systemImage: "trash"
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if !offlineStore.manualDownloads.isEmpty {
+                    ForEach(
+                        playlistSections,
+                        id: \.id
+                    ) { section in
                         Section {
-                            ForEach(
-                                offlineStore.manualDownloads,
-                                id: \.id
-                            ) { record in
-                                downloadRow(for: record.track)
+                            ForEach(section.tracks) { track in
+                                trackRow(
+                                    track,
+                                    playlistTracks: section.allTracks,
+                                    inPlaylist: section.id
+                                )
                             }
                         } header: {
-                            Text(
-                                L10n.format(
-                                    "Мои загрузки · %@",
-                                    formattedManualSize
-                                )
-                            )
-                        } footer: {
-                            Text(
-                                L10n.text(
-                                    "Сохранены вами. Удаляются только вручную."
-                                )
-                            )
+                            playlistHeader(section)
                         }
                     }
-                    if !offlineStore.automaticCacheTracks.isEmpty {
+
+                    let orphans = orphanTracks
+                    if !orphans.isEmpty {
                         Section {
-                            ForEach(
-                                offlineStore.automaticCacheTracks,
-                                id: \.id
-                            ) { record in
-                                downloadRow(for: record.track)
+                            ForEach(orphans) { track in
+                                trackRow(
+                                    track,
+                                    playlistTracks: orphans,
+                                    inPlaylist: nil
+                                )
                             }
                         } header: {
-                            Text(
-                                L10n.format(
-                                    "Автокэш · %@",
-                                    formattedCacheSize
-                                )
-                            )
-                        } footer: {
-                            Text(
-                                L10n.text(
-                                    "Сохраняется автоматически после "
-                                        + "прослушивания. Старые записи "
-                                        + "удаляются первыми при заполнении "
-                                        + "хранилища."
-                                )
-                            )
+                            Text(L10n.text("Другие загрузки"))
                         }
                     }
                 }
@@ -107,6 +66,7 @@ struct OfflineDownloadsView: View {
         .background(ThemeBackground())
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(selection != nil)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 if selection != nil {
@@ -116,7 +76,7 @@ struct OfflineDownloadsView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                if offlineStore.downloadedTracks.isEmpty {
+                if hasAnyContent {
                     EmptyView()
                 } else if selection != nil {
                     Button(role: .destructive) {
@@ -160,27 +120,64 @@ struct OfflineDownloadsView: View {
         }
     }
 
-    private var formattedManualSize: String {
-        ByteCountFormatter.string(
-            fromByteCount: offlineStore.manualDownloadsByteCount,
-            countStyle: .file
-        )
+    // MARK: - Data
+
+    private struct PlaylistSection: Identifiable {
+        let id: String
+        let title: String
+        let artwork: Playlist?
+        var tracks: [Track]
+        var allTracks: [Track]
+        var record: OfflinePlaylistRecord?
     }
 
-    private var formattedCacheSize: String {
-        ByteCountFormatter.string(
-            fromByteCount: offlineStore.automaticCacheByteCount,
-            countStyle: .file
-        )
+    private var playlistSections: [PlaylistSection] {
+        offlinePlaylists.records.values
+            .sorted { $0.updatedAt > $1.updatedAt }
+            .map { record in
+                let downloadedTracks = record.tracks.filter {
+                    offlineStore.contains($0)
+                }
+                return PlaylistSection(
+                    id: record.id,
+                    title: record.playlist.title,
+                    artwork: record.playlist,
+                    tracks: downloadedTracks,
+                    allTracks: record.tracks,
+                    record: record
+                )
+            }
+            .filter { !$0.tracks.isEmpty }
     }
+
+    private var orphanTracks: [Track] {
+        let playlistTrackIDs = Set(
+            offlinePlaylists.records.values
+                .flatMap { $0.tracks }
+                .map(\.id)
+        )
+        return offlineStore.downloadedTracks.filter {
+            !playlistTrackIDs.contains($0.id)
+        }
+    }
+
+    private var hasAnyContent: Bool {
+        !playlistSections.isEmpty || !orphanTracks.isEmpty
+    }
+
+    // MARK: - Rows
 
     @ViewBuilder
-    private func downloadRow(for track: Track) -> some View {
+    private func trackRow(
+        _ track: Track,
+        playlistTracks: [Track],
+        inPlaylist playlistID: String?
+    ) -> some View {
         Button {
             if selection != nil {
                 toggleSelection(track)
             } else {
-                player.play(track, in: offlineStore.downloadedTracks)
+                player.play(track, in: playlistTracks)
             }
         } label: {
             HStack(spacing: 12) {
@@ -200,7 +197,7 @@ struct OfflineDownloadsView: View {
                 }
                 Spacer()
                 if selection == nil {
-                    Image(systemName: "arrow.down.circle.fill")
+                    Image(systemName: "play.circle")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -225,8 +222,36 @@ struct OfflineDownloadsView: View {
         }
     }
 
+    @ViewBuilder
+    private func playlistHeader(_ section: PlaylistSection) -> some View {
+        if let playlist = section.artwork {
+            HStack(spacing: 8) {
+                PlaylistArtworkView(
+                    playlist: playlist,
+                    size: 28,
+                    showsSource: false
+                )
+                Text(section.title)
+                    .font(.footnote.weight(.semibold))
+                    .textCase(nil)
+                Spacer()
+                Text("\(section.tracks.count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard selection == nil else { return }
+            }
+        } else {
+            Text(section.title)
+        }
+    }
+
+    // MARK: - Selection
+
     private var navigationTitle: String {
-        guard let selection, !offlineStore.downloadedTracks.isEmpty else {
+        guard let selection else {
             return L10n.text("Загрузки")
         }
         return L10n.format("Выбрано: %d", selection.count)
@@ -234,9 +259,15 @@ struct OfflineDownloadsView: View {
 
     private func selectionIndicator(for track: Track) -> some View {
         let isSelected = selection?.contains(track.id) == true
-        return Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-            .font(.title3)
-            .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+        return Image(
+            systemName: isSelected
+                ? "checkmark.circle.fill"
+                : "circle"
+        )
+        .font(.title3)
+        .foregroundStyle(
+            isSelected ? Color.accentColor : Color.secondary
+        )
     }
 
     private func toggleSelection(_ track: Track) {
@@ -267,119 +298,5 @@ struct OfflineDownloadsView: View {
             offlineStore.remove(track)
         }
         exitSelection()
-    }
-}
-
-private struct OfflinePlaylistRow: View {
-    let record: OfflinePlaylistRecord
-
-    var body: some View {
-        HStack(spacing: 12) {
-            PlaylistArtworkView(
-                playlist: record.playlist,
-                size: 52,
-                showsSource: false
-            )
-            VStack(alignment: .leading, spacing: 3) {
-                Text(record.playlist.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                Text(status)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if record.state == .downloading || record.state == .queued {
-                ProgressView(value: record.progress)
-                    .frame(width: 54)
-            } else {
-                Image(systemName: stateIcon)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var status: String {
-        switch record.state {
-        case .queued:
-            return L10n.text("В очереди")
-        case .downloading:
-            return L10n.format(
-                "%d из %d",
-                record.completedCount,
-                record.totalCount
-            )
-        case .available:
-            return L10n.trackCount(record.totalCount)
-        case .partial:
-            return L10n.format(
-                "Скачано %d из %d",
-                record.completedCount,
-                record.totalCount
-            )
-        case .cancelled:
-            return L10n.text("Загрузка отменена")
-        case .failed:
-            return L10n.text("Не удалось скачать")
-        }
-    }
-
-    private var stateIcon: String {
-        switch record.state {
-        case .available:
-            return "arrow.down.circle.fill"
-        case .partial:
-            return "exclamationmark.circle"
-        case .cancelled:
-            return "xmark.circle"
-        case .failed:
-            return "exclamationmark.triangle"
-        case .queued, .downloading:
-            return "arrow.down.circle"
-        }
-    }
-}
-
-private struct OfflinePlaylistDetailView: View {
-    @EnvironmentObject private var player: AudioPlayer
-    @EnvironmentObject private var offlineStore: OfflineTrackStore
-    let record: OfflinePlaylistRecord
-
-    var body: some View {
-        List(record.tracks) { track in
-            Button {
-                let playable = availableTracks
-                guard !playable.isEmpty else { return }
-                player.play(track, in: playable)
-            } label: {
-                HStack(spacing: 12) {
-                    AsyncArtwork(url: track.artworkURL, size: 46)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(track.title)
-                            .foregroundStyle(.primary)
-                        Text(track.artist)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if offlineStore.contains(track) {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Image(systemName: "arrow.down.circle")
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-        }
-        .scrollContentBackground(.hidden)
-        .background(ThemeBackground())
-        .navigationTitle(record.playlist.title)
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var availableTracks: [Track] {
-        record.tracks.filter(offlineStore.contains)
     }
 }
