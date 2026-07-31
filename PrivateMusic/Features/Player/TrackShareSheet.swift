@@ -1,8 +1,5 @@
 import SwiftUI
 import UIKit
-import AVFoundation
-import LinkPresentation
-import UniformTypeIdentifiers
 
 enum TrackSharePayload: Equatable, Sendable {
     case audioFile(URL)
@@ -371,92 +368,5 @@ actor TrackShareService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let shortened = String(cleaned.prefix(90))
         return shortened.isEmpty ? "Private Music" : shortened
-    }
-}
-
-struct TrackShareSheet: UIViewControllerRepresentable {
-    let payload: TrackSharePayload
-    let onCompletion: () -> Void
-
-    func makeUIViewController(
-        context: Context
-    ) -> UIActivityViewController {
-        let activityItems: [Any]
-        switch payload {
-        case let .audioFile(fileURL):
-            activityItems = [
-                AudioFileActivityItemSource(fileURL: fileURL)
-            ]
-        }
-        let controller = UIActivityViewController(
-            activityItems: activityItems,
-            applicationActivities: nil
-        )
-        controller.completionWithItemsHandler = { _, _, _, _ in
-            DispatchQueue.main.async {
-                onCompletion()
-            }
-        }
-        return controller
-    }
-
-    func updateUIViewController(
-        _ uiViewController: UIActivityViewController,
-        context: Context
-    ) {}
-}
-
-private final class AudioFileActivityItemSource:
-    NSObject,
-    UIActivityItemSource {
-    private let fileURL: URL
-
-    init(fileURL: URL) {
-        self.fileURL = fileURL
-    }
-
-    func activityViewControllerPlaceholderItem(
-        _ activityViewController: UIActivityViewController
-    ) -> Any {
-        fileURL
-    }
-
-    func activityViewController(
-        _ activityViewController: UIActivityViewController,
-        itemForActivityType activityType: UIActivity.ActivityType?
-    ) -> Any? {
-        fileURL
-    }
-
-    func activityViewController(
-        _ activityViewController: UIActivityViewController,
-        dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?
-    ) -> String {
-        contentType.identifier
-    }
-
-    func activityViewControllerLinkMetadata(
-        _ activityViewController: UIActivityViewController
-    ) -> LPLinkMetadata? {
-        let metadata = LPLinkMetadata()
-        metadata.title = fileURL.deletingPathExtension().lastPathComponent
-        metadata.originalURL = fileURL
-        metadata.url = fileURL
-        return metadata
-    }
-
-    private var contentType: UTType {
-        switch fileURL.pathExtension.lowercased() {
-        case "mp3":
-            return .mp3
-        case "m4a":
-            return .mpeg4Audio
-        case "aac":
-            return .mpeg4Audio
-        case "wav":
-            return .wav
-        default:
-            return .audio
-        }
     }
 }
