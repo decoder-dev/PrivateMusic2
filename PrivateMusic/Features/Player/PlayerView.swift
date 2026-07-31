@@ -724,15 +724,12 @@ struct PlayerView: View {
         guard let deferredPlayerAction else {
             return
         }
-        self.deferredPlayerAction = nil
-
         Task { @MainActor in
             await Task.yield()
-            if let deferredPlayerAction {
-                if case let .sheet(sheet) = deferredPlayerAction {
-                    _ = present(sheet)
-                }
+            if case let .sheet(sheet) = self.deferredPlayerAction {
+                _ = present(sheet)
             }
+            self.deferredPlayerAction = nil
         }
     }
 
