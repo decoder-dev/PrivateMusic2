@@ -351,6 +351,11 @@
 "Выбрать" = "Select";
 "Выбрано: %d" = "Selected: %d";
 "Удалить выбранные (%d)?" = "Delete selected (%d)?";
+"Мои загрузки · %@" = "My Downloads · %@";
+"Автокэш · %@" = "Automatic Cache · %@";
+"Сохранены вами. Удаляются только вручную." = "Saved by you. Removed only manually.";
+"Сохраняется автоматически после прослушивания. Старые записи удаляются первыми при заполнении хранилища." = "Saved automatically after playback. Oldest entries are removed first when storage fills up.";
+"Скачайте треки самостоятельно — они останутся навсегда, или включите автокэш в Настройках, и прослушанное будет сохраняться само." = "Download tracks yourself to keep them forever, or enable automatic cache in Settings to have listened tracks saved for you.";
 "VK вернул неполный HLS-плейлист." = "VK returned an incomplete HLS playlist.";
 "Не удалось скачать сегменты потока." = "Could not download the stream segments.";
 "Не удалось расшифровать сегменты потока." = "Could not decrypt the stream segments.";
