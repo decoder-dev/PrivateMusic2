@@ -336,7 +336,6 @@ actor HLSSegmentExporter {
         for attempt in 0...retries {
             var request = URLRequest(url: url)
             request.timeoutInterval = 60
-            request.httpShouldHandleCookies = false
             for (field, value) in headers {
                 request.setValue(value, forHTTPHeaderField: field)
             }
