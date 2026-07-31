@@ -393,6 +393,13 @@ final class OfflineTrackStore: ObservableObject {
         }
     }
 
+    func removeAll() {
+        let all = records.values.map(\.track)
+        for track in all {
+            remove(track)
+        }
+    }
+
     private var accountDirectory: URL? {
         guard let activeAccountID else { return nil }
         return rootURL
