@@ -128,6 +128,27 @@ final class OfflineTrackStore: ObservableObject {
             .map(\.track)
     }
 
+    /// Tracks the user explicitly saved. They are never evicted
+    /// automatically and stay until the user removes them.
+    var manualDownloads: [OfflineTrackRecord] {
+        records.values
+            .filter { $0.resolvedRetention == .manual }
+            .sorted { $0.downloadedAt > $1.downloadedAt }
+    }
+
+    /// Tracks cached automatically after playback. They are evicted
+    /// least-recently-played first when the cache needs space and can be
+    /// cleared independently of manual downloads.
+    var automaticCacheTracks: [OfflineTrackRecord] {
+        records.values
+            .filter { $0.resolvedRetention == .automaticCache }
+            .sorted { $0.lastPlayedAt > $1.lastPlayedAt }
+    }
+
+    var manualDownloadsByteCount: Int64 {
+        manualDownloads.reduce(0) { $0 + $1.byteCount }
+    }
+
     var totalByteCount: Int64 {
         records.values.reduce(0) { $0 + $1.byteCount }
     }
