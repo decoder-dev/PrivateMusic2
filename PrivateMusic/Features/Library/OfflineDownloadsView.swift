@@ -6,6 +6,8 @@ struct OfflineDownloadsView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @ObservedObject private var offlinePlaylists =
         OfflinePlaylistStore.shared
+    @State private var selection: Set<String>?
+    @State private var showsDeleteConfirmation = false
 
     var body: some View {
         Group {
@@ -50,12 +52,19 @@ struct OfflineDownloadsView: View {
                     Section {
                         ForEach(offlineStore.downloadedTracks) { track in
                             Button {
-                                player.play(
-                                    track,
-                                    in: offlineStore.downloadedTracks
-                                )
+                                if selection != nil {
+                                    toggleSelection(track)
+                                } else {
+                                    player.play(
+                                        track,
+                                        in: offlineStore.downloadedTracks
+                                    )
+                                }
                             } label: {
                                 HStack(spacing: 12) {
+                                    if selection != nil {
+                                        selectionIndicator(for: track)
+                                    }
                                     AsyncArtwork(
                                         url: track.artworkURL,
                                         size: 48
@@ -71,18 +80,30 @@ struct OfflineDownloadsView: View {
                                             .lineLimit(1)
                                     }
                                     Spacer()
-                                    Image(
-                                        systemName: "arrow.down.circle.fill"
-                                    )
-                                    .foregroundStyle(.secondary)
+                                    if selection == nil {
+                                        Image(
+                                            systemName: "arrow.down.circle.fill"
+                                        )
+                                        .foregroundStyle(.secondary)
+                                    }
                                 }
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .onLongPressGesture {
+                                guard selection == nil else { return }
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    selection = [track.id]
+                                }
+                                Haptics.selection()
+                            }
                             .swipeActions {
-                                Button(role: .destructive) {
-                                    offlineStore.remove(track)
-                                } label: {
-                                    Label("Удалить", systemImage: "trash")
+                                if selection == nil {
+                                    Button(role: .destructive) {
+                                        offlineStore.remove(track)
+                                    } label: {
+                                        Label("Удалить", systemImage: "trash")
+                                    }
                                 }
                             }
                         }
@@ -102,8 +123,51 @@ struct OfflineDownloadsView: View {
             }
         }
         .background(ThemeBackground())
-        .navigationTitle("Загрузки")
+        .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                if selection != nil {
+                    Button(L10n.text("Отмена")) {
+                        exitSelection()
+                    }
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                if offlineStore.downloadedTracks.isEmpty {
+                    EmptyView()
+                } else if selection != nil {
+                    Button(role: .destructive) {
+                        showsDeleteConfirmation = true
+                    } label: {
+                        Label(
+                            "Удалить",
+                            systemImage: "trash"
+                        )
+                    }
+                    .disabled(selection?.isEmpty != false)
+                } else {
+                    Button(L10n.text("Выбрать")) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selection = []
+                        }
+                    }
+                }
+            }
+        }
+        .confirmationDialog(
+            L10n.format(
+                "Удалить выбранные (%d)?",
+                selection?.count ?? 0
+            ),
+            isPresented: $showsDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.text("Удалить"), role: .destructive) {
+                removeSelectedTracks()
+            }
+            Button(L10n.text("Отмена"), role: .cancel) {}
+        }
         .task(id: sessionStore.session?.userID) {
             offlinePlaylists.configure(
                 accountID: sessionStore.session?.userID
@@ -116,6 +180,50 @@ struct OfflineDownloadsView: View {
             fromByteCount: offlineStore.totalByteCount,
             countStyle: .file
         )
+    }
+
+    private var navigationTitle: String {
+        guard let selection, !offlineStore.downloadedTracks.isEmpty else {
+            return L10n.text("Загрузки")
+        }
+        return L10n.format("Выбрано: %d", selection.count)
+    }
+
+    private func selectionIndicator(for track: Track) -> some View {
+        let isSelected = selection?.contains(track.id) == true
+        return Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+            .font(.title3)
+            .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+    }
+
+    private func toggleSelection(_ track: Track) {
+        guard var current = selection else { return }
+        if current.contains(track.id) {
+            current.remove(track.id)
+        } else {
+            current.insert(track.id)
+        }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selection = current
+        }
+        Haptics.selection()
+    }
+
+    private func exitSelection() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selection = nil
+        }
+    }
+
+    private func removeSelectedTracks() {
+        guard let selected = selection, !selected.isEmpty else { return }
+        let tracks = offlineStore.downloadedTracks.filter {
+            selected.contains($0.id)
+        }
+        for track in tracks {
+            offlineStore.remove(track)
+        }
+        exitSelection()
     }
 }
 
