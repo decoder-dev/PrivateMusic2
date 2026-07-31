@@ -188,9 +188,15 @@ actor HLSSegmentExporter {
             if let explicitIV {
                 return explicitIV
             }
-            var bigEndian = UInt64(segmentNumber).bigEndian
-            let highBytes = withUnsafeBytes(of: &bigEndian) { Data($0) }
-            return Data(repeating: 0, count: 8) + highBytes
+            // RFC 8216 §5.2: default IV is the media sequence as a
+            // 128-bit big-endian integer (8 zero bytes + 8 sequence bytes).
+            var iv = Data(repeating: 0, count: 16)
+            var sequence = UInt64(segmentNumber)
+            for byteIndex in stride(from: 15, through: 8, by: -1) {
+                iv[byteIndex] = UInt8(sequence & 0xff)
+                sequence >>= 8
+            }
+            return iv
         }
     }
 
@@ -454,39 +460,35 @@ actor HLSSegmentExporter {
 
     private func remuxToM4A(source: URL, destination: URL) async throws {
         let asset = AVURLAsset(url: source)
-        guard let track = try await asset.loadTracks(withMediaType: .audio).first
-        else {
+        let tracks = try await asset.loadTracks(withMediaType: .audio)
+        guard let track = tracks.first else {
             throw HLSExportError.noAudioTrack
         }
-        guard let reader = try? AVAssetReader(asset: asset) else {
-            throw HLSExportError.remuxFailed
+        let trackDuration = try await asset.load(.duration)
+        guard trackDuration.seconds > 0 else {
+            throw HLSExportError.noAudioTrack
         }
+
+        let reader = try AVAssetReader(asset: asset)
         let readerOutput = AVAssetReaderTrackOutput(
             track: track,
             outputSettings: nil
         )
+        readerOutput.alwaysCopiesSampleData = false
         guard reader.canAdd(readerOutput) else {
             throw HLSExportError.remuxFailed
         }
         reader.add(readerOutput)
 
-        guard let writer = try? AVAssetWriter(
+        let writer = try AVAssetWriter(
             outputURL: destination,
             fileType: .m4a
-        ) else {
-            throw HLSExportError.remuxFailed
-        }
-        let formatHint: CMFormatDescription? =
-            track.formatDescriptions.first.flatMap { description in
-                unsafeDowncast(
-                    description as AnyObject,
-                    to: CMFormatDescription.self
-                )
-            }
+        )
+        // Do NOT pass the ADTS-wrapped TS format hint: the writer must
+        // build a proper AAC-in-MP4 (esds) description from the samples.
         let writerInput = AVAssetWriterInput(
             mediaType: .audio,
-            outputSettings: nil,
-            sourceFormatHint: formatHint
+            outputSettings: nil
         )
         writerInput.expectsMediaDataInRealTime = false
         guard writer.canAdd(writerInput) else {
@@ -494,8 +496,11 @@ actor HLSSegmentExporter {
         }
         writer.add(writerInput)
 
-        guard reader.startReading(), writer.startWriting() else {
-            throw HLSExportError.remuxFailed
+        guard reader.startReading() else {
+            throw reader.error ?? HLSExportError.remuxFailed
+        }
+        guard writer.startWriting() else {
+            throw writer.error ?? HLSExportError.remuxFailed
         }
         writer.startSession(atSourceTime: .zero)
 
@@ -503,38 +508,55 @@ actor HLSSegmentExporter {
             try await withCheckedThrowingContinuation {
                 (continuation: CheckedContinuation<Void, Error>) in
                 let queue = DispatchQueue(label: "PrivateMusic.HLSRemux")
+                var didFinish = false
+                let finishOnce: (Result<Void, Error>) -> Void = { result in
+                    queue.sync {
+                        guard !didFinish else { return }
+                        didFinish = true
+                        switch result {
+                        case .success:
+                            continuation.resume(returning: ())
+                        case .failure(let error):
+                            continuation.resume(throwing: error)
+                        }
+                    }
+                }
                 writerInput.requestMediaDataWhenReady(on: queue) {
                     while writerInput.isReadyForMoreMediaData {
                         if Task.isCancelled {
                             writerInput.markAsFinished()
                             writer.cancelWriting()
                             reader.cancelReading()
-                            continuation.resume(throwing: CancellationError())
+                            finishOnce(.failure(CancellationError()))
                             return
                         }
-                        guard let sample = readerOutput.copyNextSampleBuffer() else {
+                        if let sample = readerOutput.copyNextSampleBuffer() {
+                            if !writerInput.append(sample) {
+                                writerInput.markAsFinished()
+                                writer.cancelWriting()
+                                reader.cancelReading()
+                                finishOnce(.failure(
+                                    writer.error ?? HLSExportError.remuxFailed
+                                ))
+                                return
+                            }
+                        } else {
                             writerInput.markAsFinished()
+                            if let readerError = reader.error {
+                                writer.cancelWriting()
+                                finishOnce(.failure(readerError))
+                                return
+                            }
                             writer.finishWriting {
-                                switch writer.status {
-                                case .completed:
-                                    continuation.resume(returning: ())
-                                default:
-                                    continuation.resume(
-                                        throwing: writer.error
+                                if writer.status == .completed {
+                                    finishOnce(.success(()))
+                                } else {
+                                    finishOnce(.failure(
+                                        writer.error
                                             ?? HLSExportError.remuxFailed
-                                    )
+                                    ))
                                 }
                             }
-                            return
-                        }
-                        if !writerInput.append(sample) {
-                            writerInput.markAsFinished()
-                            writer.cancelWriting()
-                            reader.cancelReading()
-                            continuation.resume(
-                                throwing: writer.error
-                                    ?? HLSExportError.remuxFailed
-                            )
                             return
                         }
                     }
