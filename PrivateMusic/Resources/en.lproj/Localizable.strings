@@ -361,3 +361,8 @@
 "Не удалось расшифровать сегменты потока." = "Could not decrypt the stream segments.";
 "Другие загрузки" = "Other downloads";
 "Удалить все загрузки" = "Delete all downloads";
+"Скачать через мобильную сеть?" = "Download over cellular?";
+"Сейчас используется мобильная сеть. Загрузка может потребовать трафик." = "You are on a cellular network. Downloading may use mobile data.";
+"Слишком много одновременных загрузок. Подождите завершения текущих." = "Too many concurrent downloads. Wait for current ones to finish.";
+"Пусто" = "Empty";
+"Лимит" = "Limit";

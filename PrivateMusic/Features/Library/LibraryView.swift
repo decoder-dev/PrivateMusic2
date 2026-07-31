@@ -6,9 +6,11 @@ struct LibraryView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var libraryStore: MusicLibraryStore
     @EnvironmentObject private var offlineStore: OfflineTrackStore
+    @EnvironmentObject private var networkMonitor: NetworkMonitor
     @StateObject private var tracks = TrackCollectionViewModel(source: .library)
     @StateObject private var playlists = PlaylistLibraryViewModel()
     @State private var showingEditor = false
+    @State private var pendingCellularDownload: Track?
 
     var body: some View {
         ScrollView {
@@ -65,6 +67,32 @@ struct LibraryView: View {
                     OfflineDownloadsView()
                 } label: {
                     Image(systemName: "arrow.down.circle")
+                        .overlay {
+                            if !offlineStore.downloadingTrackIDs
+                                .isEmpty {
+                                let progress = Double(
+                                    offlineStore.downloadingTrackIDs
+                                        .count
+                                )
+                                ProgressView()
+                                    .controlSize(.mini)
+                                    .offset(x: 10, y: -10)
+                            } else if offlineStore
+                                .downloadedTracks.count > 0 {
+                                Text(
+                                    "\(min(offlineStore.downloadedTracks.count, 99))"
+                                )
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.accentColor)
+                                )
+                                .offset(x: 12, y: -12)
+                            }
+                        }
                 }
                 .accessibilityLabel(L10n.text("Загрузки"))
                 NavigationLink {
@@ -83,6 +111,30 @@ struct LibraryView: View {
             PlaylistEditorView(playlist: nil) {
                 Task { await load(force: true) }
             }
+        }
+        .alert(
+            L10n.text("Скачать через мобильную сеть?"),
+            isPresented: Binding(
+                get: { pendingCellularDownload != nil },
+                set: { if !$0 { pendingCellularDownload = nil } }
+            )
+        ) {
+            Button(L10n.text("Скачать")) {
+                if let track = pendingCellularDownload {
+                    pendingCellularDownload = nil
+                    performDownload(track)
+                }
+            }
+            Button(L10n.text("Отмена"), role: .cancel) {
+                pendingCellularDownload = nil
+            }
+        } message: {
+            Text(
+                L10n.text(
+                    "Сейчас используется мобильная сеть. "
+                        + "Загрузка может потребовать трафик."
+                )
+            )
         }
         .task(id: sessionStore.accessToken) {
             await load(force: true)
@@ -234,13 +286,22 @@ struct LibraryView: View {
     }
 
     private func toggleOffline(_ track: Track) {
+        if offlineStore.contains(track) {
+            offlineStore.remove(track)
+            Haptics.selection()
+            return
+        }
+        if networkMonitor.transport == .cellular {
+            pendingCellularDownload = track
+        } else {
+            performDownload(track)
+        }
+    }
+
+    private func performDownload(_ track: Track) {
         Task {
             do {
-                if offlineStore.contains(track) {
-                    offlineStore.remove(track)
-                } else {
-                    try await environment.downloadForOffline(track)
-                }
+                try await environment.downloadForOffline(track)
                 Haptics.selection()
             } catch is CancellationError {
                 return
