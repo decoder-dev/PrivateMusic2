@@ -27,6 +27,7 @@ actor TrackShareService {
 
     private let session: URLSession
     private let fileManager: FileManager
+    private let hlsExporter: HLSSegmentExporter
 
     init(
         session: URLSession? = nil,
@@ -43,6 +44,7 @@ actor TrackShareService {
             self.session = URLSession(configuration: configuration)
         }
         self.fileManager = fileManager
+        self.hlsExporter = HLSSegmentExporter(fileManager: fileManager)
     }
 
     /// Creates a real audio attachment when VK exposes a direct audio file.
@@ -281,58 +283,33 @@ actor TrackShareService {
         throw directAudioUnavailableError
     }
 
+    /// VK HLS streams (and offline `.movpkg` packages) cannot be passed to
+    /// `AVAssetExportSession` — AVFoundation reports them as non-exportable.
+    /// Instead the segments are stitched manually and remuxed into M4A,
+    /// following the approach of the open-source VKpyMusic converter
+    /// (https://github.com/issamansur/vkpymusic).
     private func exportM4A(
         from sourceURL: URL,
         track: Track,
         userAgent: String?
     ) async throws -> TrackSharePayload {
-        let asset: AVURLAsset
-        if sourceURL.isFileURL {
-            asset = AVURLAsset(url: sourceURL)
-        } else {
-            asset = AVURLAsset(
-                url: sourceURL,
-                options: [
-                    "AVURLAssetHTTPHeaderFieldsKey":
-                        requestHeaders(userAgent: userAgent)
-                ]
-            )
-        }
-        let isExportable = try await asset.load(.isExportable)
-        guard isExportable,
-              let exporter = AVAssetExportSession(
-                asset: asset,
-                presetName: AVAssetExportPresetAppleM4A
-              ) else {
-            throw audioExportUnavailableError
-        }
         let destination = exportDestination(
             for: track,
             extensionName: "m4a"
         )
-        exporter.outputURL = destination
-        exporter.outputFileType = .m4a
-        exporter.shouldOptimizeForNetworkUse = false
-        let fallbackError = audioExportUnavailableError
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<Void, Error>) in
-                exporter.exportAsynchronously {
-                    switch exporter.status {
-                    case .completed:
-                        continuation.resume(returning: ())
-                    case .cancelled:
-                        continuation.resume(throwing: CancellationError())
-                    default:
-                        continuation.resume(
-                            throwing: exporter.error
-                                ?? fallbackError
-                        )
-                    }
-                }
-            }
-        } onCancel: {
-            exporter.cancelExport()
+        if sourceURL.isFileURL {
+            try await hlsExporter.exportMovpkgToM4A(
+                packageURL: sourceURL,
+                destination: destination,
+                fileSizeLimit: Self.maximumFileSize
+            )
+        } else {
+            try await hlsExporter.exportToM4A(
+                streamURL: sourceURL,
+                headers: requestHeaders(userAgent: userAgent),
+                destination: destination,
+                fileSizeLimit: Self.maximumFileSize
+            )
         }
         guard isLikelyM4A(at: destination),
               (try? fileSize(at: destination)) ?? 0 > 0 else {

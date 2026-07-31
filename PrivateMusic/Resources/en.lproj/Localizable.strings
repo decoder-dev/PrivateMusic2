@@ -348,3 +348,9 @@
 "Скачать плейлист" = "Download Playlist";
 "Этот поток нельзя экспортировать в аудиофайл." = "This stream cannot be exported as an audio file.";
 "Не удалось восстановить аудиовыход." = "The audio output could not be restored.";
+"Выбрать" = "Select";
+"Выбрано: %d" = "Selected: %d";
+"Удалить выбранные (%d)?" = "Delete selected (%d)?";
+"VK вернул неполный HLS-плейлист." = "VK returned an incomplete HLS playlist.";
+"Не удалось скачать сегменты потока." = "Could not download the stream segments.";
+"Не удалось расшифровать сегменты потока." = "Could not decrypt the stream segments.";
