@@ -86,7 +86,7 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.19.1-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.19.2-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -94,24 +94,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.19.1-unsigned.ipa" \
-            --title "Private Music 3.19.1" \
+            "$PWD/artifacts/PrivateMusic-3.19.2-unsigned.ipa" \
+            --title "Private Music 3.19.2" \
             --notes-file - <<'EOF'
-          Private Music 3.19.1
+          Private Music 3.19.2
 
-          - «Поделиться» полностью переписано: вместо remux сэмплов
-            (AVAssetWriter не умел писать ADTS-фреймы из TS в MP4) теперь
-            идёт перекодирование PCM → AAC — эталонный путь, который
-            гарантированно работает с любыми VK HLS-потоками:
-            живые index.m3u8, зашифрованные AES-128, и офлайн-пакеты
-            .movpkg (они открываются через AVURLAsset и транскодятся тем
-            же конвейером).
-          - «Загрузки» разведены на две отдельные секции:
-            «Мои загрузки» — ручные скачивания, остаются навсегда;
-            «Автокэш» — LRU-кэш после прослушивания, сам очищается
-            при заполнении. Пустой экран объясняет, как включить автокэш.
-          - мультивыбор по долгому нажатию и массовое удаление работает
-            в обеих секциях.
+          - Исправлена ошибка «Не удалось скачать сегменты потока»:
+            теперь относительные URL в HLS-плейлисте разрешаются по
+            RFC 3986 (URL(string:relativeTo:)), что корректно обрабатывает
+            ../ и другие относительные компоненты. Добавлен повтор
+            при ошибках сети.
+          - Детали плейлиста теперь показывают все треки со статусом
+            скачивания, даже если часть не была загружена.
+          - Секции «Мои загрузки» и «Автокэш» теперь появляются
+            корректно: добавлена инициализация offlineStore при
+            входе в экран загрузок.
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом.
@@ -120,7 +117,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.19.1-unsigned
-          path: artifacts/PrivateMusic-3.19.1-unsigned.ipa
+          name: PrivateMusic-3.19.2-unsigned
+          path: artifacts/PrivateMusic-3.19.2-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
