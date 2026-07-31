@@ -358,50 +358,125 @@ private struct OfflineStorageSettingsView: View {
         OfflinePlaylistStore.shared
 
     var body: some View {
+        let usage = offlineStore.storageUsage
         Form {
             Section("Хранилище") {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         Label(
                             "Использовано",
                             systemImage: "externaldrive"
                         )
                         Spacer()
-                        Text(storageUsage)
-                            .font(.subheadline.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                    ProgressView(
-                        value: min(
-                            Double(offlineStore.totalByteCount)
-                                / Double(
-                                    max(
-                                        offlineStore.storageLimitBytes,
-                                        1
-                                    )
-                                ),
-                            1
-                        )
-                    )
-                    if offlineStore.automaticCacheByteCount > 0 {
                         Text(
                             L10n.format(
-                                "Автокэш: %@",
-                                formattedBytes(
-                                    offlineStore
-                                        .automaticCacheByteCount
-                                )
+                                "%@ / %d ГБ",
+                                formattedBytes(usage.totalBytes),
+                                settings.offlineStorageLimitGB
                             )
                         )
-                        .font(.caption)
+                        .font(.subheadline.monospacedDigit())
                         .foregroundStyle(.secondary)
                     }
+
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(
+                                    Color.secondary.opacity(0.15)
+                                )
+                            if usage.totalBytes > 0 {
+                                HStack(spacing: 0) {
+                                    RoundedRectangle(
+                                        cornerRadius: 4
+                                    )
+                                    .fill(
+                                        usageColor(usage: usage)
+                                    )
+                                    .frame(
+                                        width: max(
+                                            4,
+                                            geo.size.width
+                                                * usage.manualRatio
+                                                * usage.usageRatio
+                                        )
+                                    )
+                                    if usage.automaticBytes > 0 {
+                                        RoundedRectangle(
+                                            cornerRadius: 4
+                                        )
+                                        .fill(
+                                            Color.orange.opacity(0.7)
+                                        )
+                                        .frame(
+                                            width: max(
+                                                2,
+                                                geo.size.width
+                                                    * (1 - usage
+                                                        .manualRatio)
+                                                    * usage
+                                                        .usageRatio
+                                            )
+                                        )
+                                    }
+                                }
+                                .animation(
+                                    .easeInOut(duration: 0.4),
+                                    value: usage.totalBytes
+                                )
+                            }
+                        }
+                    }
+                    .frame(height: 8)
+
+                    HStack(spacing: 16) {
+                        if usage.manualCount > 0 {
+                            Label {
+                                Text(
+                                    L10n.format(
+                                        "%d треков",
+                                        usage.manualCount
+                                    )
+                                )
+                            } icon: {
+                                Circle()
+                                    .fill(
+                                        usageColor(usage: usage)
+                                    )
+                                    .frame(width: 8, height: 8)
+                            }
+                        }
+                        if usage.automaticCount > 0 {
+                            Label {
+                                Text(
+                                    L10n.format(
+                                        "%d треков",
+                                        usage.automaticCount
+                                    )
+                                )
+                            } icon: {
+                                Circle()
+                                    .fill(
+                                        Color.orange.opacity(0.7)
+                                    )
+                                    .frame(width: 8, height: 8)
+                            }
+                        }
+                        if usage.totalCount == 0 {
+                            Label(
+                                "Пусто",
+                                systemImage: "tray"
+                            )
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         Label(
-                            "Лимит офлайн-музыки",
+                            "Лимит",
                             systemImage: "internaldrive"
                         )
                         Spacer()
@@ -516,19 +591,20 @@ private struct OfflineStorageSettingsView: View {
         .navigationTitle("Офлайн и хранилище")
     }
 
-    private var storageUsage: String {
-        L10n.format(
-            "%@ из %d ГБ",
-            formattedBytes(offlineStore.totalByteCount),
-            settings.offlineStorageLimitGB
-        )
-    }
-
     private func formattedBytes(_ value: Int64) -> String {
         ByteCountFormatter.string(
             fromByteCount: value,
             countStyle: .file
         )
+    }
+
+    private func usageColor(usage: StorageUsage) -> Color {
+        if usage.usageRatio > 0.8 {
+            return .red
+        } else if usage.usageRatio > 0.5 {
+            return .orange
+        }
+        return .green
     }
 }
 

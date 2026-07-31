@@ -36,11 +36,33 @@ enum OfflineTrackState: Equatable {
     case available
 }
 
+struct StorageUsage: Sendable {
+    let manualBytes: Int64
+    let automaticBytes: Int64
+    let manualCount: Int
+    let automaticCount: Int
+    let totalCount: Int
+    let limitBytes: Int64
+
+    var totalBytes: Int64 { manualBytes + automaticBytes }
+
+    var usageRatio: Double {
+        guard limitBytes > 0 else { return 0 }
+        return min(1, Double(totalBytes) / Double(limitBytes))
+    }
+
+    var manualRatio: Double {
+        guard totalBytes > 0 else { return 0 }
+        return Double(manualBytes) / Double(totalBytes)
+    }
+}
+
 @MainActor
 final class OfflineTrackStore: ObservableObject {
     static let maximumTrackSize: Int64 = 150_000_000
     static let minimumLibrarySize: Int64 = 5_000_000_000
     static let maximumLibrarySize: Int64 = 100_000_000_000
+    static let maximumConcurrentDownloads = 3
 
     @Published private(set) var records: [String: OfflineTrackRecord] = [:]
     @Published private(set) var downloadingTrackIDs: Set<String> = []
@@ -159,6 +181,17 @@ final class OfflineTrackStore: ObservableObject {
             .reduce(0) { $0 + $1.byteCount }
     }
 
+    var storageUsage: StorageUsage {
+        StorageUsage(
+            manualBytes: manualDownloadsByteCount,
+            automaticBytes: automaticCacheByteCount,
+            manualCount: manualDownloads.count,
+            automaticCount: automaticCacheTracks.count,
+            totalCount: records.count,
+            limitBytes: storageLimitBytes
+        )
+    }
+
     func download(
         _ track: Track,
         userAgent: String?,
@@ -177,6 +210,16 @@ final class OfflineTrackStore: ObservableObject {
                 try saveManifest()
             }
             return
+        }
+        guard downloadingTrackIDs.count
+            < Self.maximumConcurrentDownloads else {
+            throw APIError.server(
+                code: 429,
+                message: L10n.text(
+                    "Слишком много одновременных загрузок. "
+                        + "Подождите завершения текущих."
+                )
+            )
         }
 
         downloadingTrackIDs.insert(track.id)
