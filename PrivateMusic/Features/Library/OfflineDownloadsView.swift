@@ -17,7 +17,9 @@ struct OfflineDownloadsView: View {
                     title: "Нет загрузок",
                     systemImage: "arrow.down.circle",
                     description:
-                        "Скачайте треки, чтобы слушать их без интернета."
+                        "Скачайте треки самостоятельно — они останутся "
+                            + "навсегда, или включите автокэш в Настройках, "
+                            + "и прослушанное будет сохраняться само."
                 )
                 .padding()
             } else {
@@ -49,74 +51,54 @@ struct OfflineDownloadsView: View {
                             }
                         }
                     }
-                    Section {
-                        ForEach(offlineStore.downloadedTracks) { track in
-                            Button {
-                                if selection != nil {
-                                    toggleSelection(track)
-                                } else {
-                                    player.play(
-                                        track,
-                                        in: offlineStore.downloadedTracks
-                                    )
-                                }
-                            } label: {
-                                HStack(spacing: 12) {
-                                    if selection != nil {
-                                        selectionIndicator(for: track)
-                                    }
-                                    AsyncArtwork(
-                                        url: track.artworkURL,
-                                        size: 48
-                                    )
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(track.title)
-                                            .font(.headline)
-                                            .foregroundStyle(.primary)
-                                            .lineLimit(1)
-                                        Text(track.artist)
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                    Spacer()
-                                    if selection == nil {
-                                        Image(
-                                            systemName: "arrow.down.circle.fill"
-                                        )
-                                        .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .contentShape(Rectangle())
+                    if !offlineStore.manualDownloads.isEmpty {
+                        Section {
+                            ForEach(
+                                offlineStore.manualDownloads,
+                                id: \.id
+                            ) { record in
+                                downloadRow(for: record.track)
                             }
-                            .buttonStyle(.plain)
-                            .onLongPressGesture {
-                                guard selection == nil else { return }
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    selection = [track.id]
-                                }
-                                Haptics.selection()
-                            }
-                            .swipeActions {
-                                if selection == nil {
-                                    Button(role: .destructive) {
-                                        offlineStore.remove(track)
-                                    } label: {
-                                        Label("Удалить", systemImage: "trash")
-                                    }
-                                }
-                            }
-                        }
-                    } header: {
-                        Text(
-                            L10n.format(
-                                "%@ · %@",
-                                L10n.trackCount(
-                                    offlineStore.downloadedTracks.count
-                                ),
-                                formattedSize
+                        } header: {
+                            Text(
+                                L10n.format(
+                                    "Мои загрузки · %@",
+                                    formattedManualSize
+                                )
                             )
-                        )
+                        } footer: {
+                            Text(
+                                L10n.text(
+                                    "Сохранены вами. Удаляются только вручную."
+                                )
+                            )
+                        }
+                    }
+                    if !offlineStore.automaticCacheTracks.isEmpty {
+                        Section {
+                            ForEach(
+                                offlineStore.automaticCacheTracks,
+                                id: \.id
+                            ) { record in
+                                downloadRow(for: record.track)
+                            }
+                        } header: {
+                            Text(
+                                L10n.format(
+                                    "Автокэш · %@",
+                                    formattedCacheSize
+                                )
+                            )
+                        } footer: {
+                            Text(
+                                L10n.text(
+                                    "Сохраняется автоматически после "
+                                        + "прослушивания. Старые записи "
+                                        + "удаляются первыми при заполнении "
+                                        + "хранилища."
+                                )
+                            )
+                        }
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -175,11 +157,69 @@ struct OfflineDownloadsView: View {
         }
     }
 
-    private var formattedSize: String {
+    private var formattedManualSize: String {
         ByteCountFormatter.string(
-            fromByteCount: offlineStore.totalByteCount,
+            fromByteCount: offlineStore.manualDownloadsByteCount,
             countStyle: .file
         )
+    }
+
+    private var formattedCacheSize: String {
+        ByteCountFormatter.string(
+            fromByteCount: offlineStore.automaticCacheByteCount,
+            countStyle: .file
+        )
+    }
+
+    @ViewBuilder
+    private func downloadRow(for track: Track) -> some View {
+        Button {
+            if selection != nil {
+                toggleSelection(track)
+            } else {
+                player.play(track, in: offlineStore.downloadedTracks)
+            }
+        } label: {
+            HStack(spacing: 12) {
+                if selection != nil {
+                    selectionIndicator(for: track)
+                }
+                AsyncArtwork(url: track.artworkURL, size: 48)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(track.title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(track.artist)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                if selection == nil {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onLongPressGesture {
+            guard selection == nil else { return }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                selection = [track.id]
+            }
+            Haptics.selection()
+        }
+        .swipeActions {
+            if selection == nil {
+                Button(role: .destructive) {
+                    offlineStore.remove(track)
+                } label: {
+                    Label("Удалить", systemImage: "trash")
+                }
+            }
+        }
     }
 
     private var navigationTitle: String {
