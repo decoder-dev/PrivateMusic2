@@ -18,6 +18,7 @@ struct PlayerView: View {
     @State private var isUpdatingLibrary = false
     @State private var scrubPosition: TimeInterval?
     @State private var isDismissing = false
+    @State private var showCopiedToast = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -70,6 +71,18 @@ struct PlayerView: View {
         .onChange(of: libraryStore.signatures) { _ in
             updateLibraryState()
         }
+        .overlay(alignment: .bottom) {
+            if showCopiedToast {
+                Text(L10n.text("Ссылка скопирована"))
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 40)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: showCopiedToast)
     }
 
     private var artworkBackground: some View {
@@ -572,6 +585,7 @@ struct PlayerView: View {
                 Text(L10n.text(title))
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             .foregroundStyle(playerForeground.opacity(0.72))
             .frame(maxWidth: .infinity)
@@ -789,6 +803,20 @@ struct PlayerView: View {
         let url = "https://vk.com/audio\(track.ownerID)_\(track.trackID)"
         UIPasteboard.general.string = url
         Haptics.selection()
+        showCopiedToast = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            showCopiedToast = false
+        }
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene }).first,
+              let root = scene.windows.first?.rootViewController
+        else { return }
+        let activityVC = UIActivityViewController(
+            activityItems: [url],
+            applicationActivities: nil
+        )
+        root.present(activityVC, animated: true)
     }
 
     private func toggleLibrary(_ track: Track) {
@@ -1142,6 +1170,7 @@ private struct PlayerActionsSheet: View {
     let offlineState: OfflineTrackState
     let availability: PlayerActionAvailability
     @Binding var equalizerEnabled: Bool
+    @EnvironmentObject private var settings: AppSettings
     let onDismiss: () -> Void
     let onLibrary: () -> Void
     let onArtist: () -> Void
@@ -1212,7 +1241,9 @@ private struct PlayerActionsSheet: View {
                         minHeight: PlayerActionSheetMetrics.minimumTapTarget
                     )
                     .background(
-                        Color(uiColor: .secondarySystemBackground),
+                        settings.theme == .light
+                            ? Color(.secondarySystemBackground)
+                            : Color(.tertiarySystemBackground),
                         in: RoundedRectangle(
                             cornerRadius: 16,
                             style: .continuous
@@ -1231,7 +1262,7 @@ private struct PlayerActionsSheet: View {
             .scrollIndicators(.hidden)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .systemBackground))
+        .background(settings.theme == .light ? Color.white : Color.black)
         .presentationDetents([
             .height(PlayerActionSheetMetrics.preferredHeight),
             .large
