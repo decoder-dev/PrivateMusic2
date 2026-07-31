@@ -69,26 +69,27 @@ struct LibraryView: View {
                     OfflineDownloadsView()
                 } label: {
                     Image(systemName: "arrow.down.circle")
+                        .frame(width: 24, height: 24)
                         .overlay(alignment: .topTrailing) {
                             if !offlineStore.downloadingTrackIDs
                                 .isEmpty {
                                 ProgressView()
                                     .controlSize(.mini)
-                                    .offset(x: 2, y: -2)
+                                    .offset(x: 3, y: -3)
                             } else if offlineStore
                                 .downloadedTracks.count > 0 {
                                 Text(
                                     "\(min(offlineStore.downloadedTracks.count, 99))"
                                 )
-                                .font(.caption2.weight(.bold))
+                                .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
+                                .padding(.horizontal, 3)
+                                .padding(.vertical, 1)
                                 .background(
                                     Capsule()
                                         .fill(Color.accentColor)
                                 )
-                                .offset(x: 4, y: -4)
+                                .offset(x: 3, y: -3)
                             }
                         }
                 }
