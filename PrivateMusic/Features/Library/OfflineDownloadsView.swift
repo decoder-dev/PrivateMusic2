@@ -154,6 +154,9 @@ struct OfflineDownloadsView: View {
             offlinePlaylists.configure(
                 accountID: sessionStore.session?.userID
             )
+            offlineStore.configure(
+                accountID: sessionStore.session?.userID
+            )
         }
     }
 
@@ -343,9 +346,11 @@ private struct OfflinePlaylistDetailView: View {
     let record: OfflinePlaylistRecord
 
     var body: some View {
-        List(availableTracks) { track in
+        List(record.tracks) { track in
             Button {
-                player.play(track, in: availableTracks)
+                let playable = availableTracks
+                guard !playable.isEmpty else { return }
+                player.play(track, in: playable)
             } label: {
                 HStack(spacing: 12) {
                     AsyncArtwork(url: track.artworkURL, size: 46)
@@ -355,6 +360,14 @@ private struct OfflinePlaylistDetailView: View {
                         Text(track.artist)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if offlineStore.contains(track) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(.tertiary)
                     }
                 }
             }
