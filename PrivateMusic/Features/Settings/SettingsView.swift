@@ -6,19 +6,107 @@ struct SettingsView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var networkMonitor: NetworkMonitor
     @EnvironmentObject private var offlineStore: OfflineTrackStore
-    @ObservedObject private var offlinePlaylists = OfflinePlaylistStore.shared
-
-    private let frequencies = [
-        "31", "62", "125", "250", "500",
-        "1K", "2K", "4K", "8K", "16K"
-    ]
 
     var body: some View {
         Form {
-            Section("Оформление") {
-                themePicker
+            Section {
+                NavigationLink {
+                    AppearanceSettingsView()
+                } label: {
+                    Label(
+                        "Оформление",
+                        systemImage: "paintpalette"
+                    )
+                }
 
-                Picker("Масштаб текста", selection: $settings.textScale) {
+                NavigationLink {
+                    PlayerAudioSettingsView()
+                } label: {
+                    Label(
+                        "Плеер и аудио",
+                        systemImage: "waveform"
+                    )
+                }
+
+                NavigationLink {
+                    EqualizerSettingsView()
+                } label: {
+                    Label(
+                        "Эквалайзер",
+                        systemImage: "slider.horizontal.3"
+                    )
+                }
+
+                NavigationLink {
+                    OfflineStorageSettingsView()
+                } label: {
+                    Label(
+                        "Офлайн и хранилище",
+                        systemImage: "externaldrive"
+                    )
+                }
+
+                NavigationLink {
+                    SleepTimerSettingsView()
+                } label: {
+                    Label(
+                        "Таймер сна",
+                        systemImage: "moon.zzz"
+                    )
+                }
+
+                NavigationLink {
+                    ConnectionSettingsView()
+                } label: {
+                    Label(
+                        "Подключение",
+                        systemImage: "network"
+                    )
+                }
+            }
+
+            Section("О приложении") {
+                LabeledContent("Приложение", value: "Private Music")
+                LabeledContent("Версия", value: version)
+                LabeledContent("Разработчик", value: "decoder-dev")
+                LabeledContent(
+                    "Аналитика",
+                    value: L10n.text("Не используется")
+                )
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(ThemeBackground())
+        .navigationTitle("Настройки")
+    }
+
+    private var version: String {
+        let short = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "—"
+        let build = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleVersion"
+        ) as? String ?? "—"
+        return "\(short) (\(build))"
+    }
+}
+
+// MARK: - Appearance
+
+private struct AppearanceSettingsView: View {
+    @EnvironmentObject private var settings: AppSettings
+
+    var body: some View {
+        Form {
+            Section("Тема") {
+                themePicker
+            }
+
+            Section("Масштаб текста") {
+                Picker(
+                    "Масштаб",
+                    selection: $settings.textScale
+                ) {
                     ForEach(AppTextScale.allCases) { scale in
                         Text("\(scale.title) · \(scale.subtitle)")
                             .tag(scale)
@@ -40,8 +128,67 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+        .scrollContentBackground(.hidden)
+        .background(ThemeBackground())
+        .navigationTitle("Оформление")
+    }
 
-            Section("Плеер и аудио") {
+    private var themePicker: some View {
+        LazyVGrid(
+            columns: [
+                GridItem(.adaptive(minimum: 72), spacing: 12)
+            ],
+            spacing: 12
+        ) {
+            ForEach(AppTheme.allCases) { theme in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        settings.theme = theme
+                        settings.appearance =
+                            theme == .dark ? .dark : .light
+                    }
+                } label: {
+                    VStack(spacing: 7) {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: theme.colors,
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 44, height: 44)
+                            .overlay {
+                                if settings.theme == theme {
+                                    Image(systemName: "checkmark")
+                                        .font(.headline)
+                                        .foregroundStyle(
+                                            theme.buttonForeground
+                                        )
+                                }
+                            }
+                        Text(theme.title)
+                            .font(.caption2)
+                            .foregroundStyle(.primary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(theme.title)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Player & Audio
+
+private struct PlayerAudioSettingsView: View {
+    @EnvironmentObject private var settings: AppSettings
+
+    var body: some View {
+        Form {
+            Section {
                 Toggle(
                     isOn: $settings.resumeOnBluetoothConnection
                 ) {
@@ -95,139 +242,35 @@ struct SettingsView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             }
+        }
+        .scrollContentBackground(.hidden)
+        .background(ThemeBackground())
+        .navigationTitle("Плеер и аудио")
+    }
+}
 
-            Section("Офлайн и хранилище") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Label("Использовано", systemImage: "externaldrive")
-                        Spacer()
-                        Text(storageUsage)
-                            .font(.subheadline.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                    ProgressView(
-                        value: min(
-                            Double(offlineStore.totalByteCount)
-                                / Double(max(offlineStore.storageLimitBytes, 1)),
-                            1
-                        )
-                    )
-                    if offlineStore.automaticCacheByteCount > 0 {
-                        Text(
-                            L10n.format(
-                                "Автокэш: %@",
-                                formattedBytes(
-                                    offlineStore.automaticCacheByteCount
-                                )
-                            )
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
-                }
+// MARK: - Equalizer
 
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Label(
-                            "Лимит офлайн-музыки",
-                            systemImage: "internaldrive"
-                        )
-                        Spacer()
-                        Text(
-                            L10n.format(
-                                "%d ГБ",
-                                settings.offlineStorageLimitGB
-                            )
-                        )
-                        .font(.subheadline.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    }
+private struct EqualizerSettingsView: View {
+    @EnvironmentObject private var settings: AppSettings
 
-                    Slider(
-                        value: Binding(
-                            get: {
-                                Double(settings.offlineStorageLimitGB)
-                            },
-                            set: {
-                                settings.offlineStorageLimitGB = Int($0)
-                            }
-                        ),
-                        in: Double(
-                            AppSettings.minimumOfflineStorageLimitGB
-                        )...Double(
-                            AppSettings.maximumOfflineStorageLimitGB
-                        ),
-                        step: Double(AppSettings.offlineStorageLimitStepGB)
-                    )
-                    .accessibilityValue(
-                        L10n.format(
-                            "%d ГБ",
-                            settings.offlineStorageLimitGB
-                        )
-                    )
+    private let frequencies = [
+        "31", "62", "125", "250", "500",
+        "1K", "2K", "4K", "8K", "16K"
+    ]
 
-                    HStack {
-                        Text(
-                            L10n.format(
-                                "%d ГБ",
-                                AppSettings.minimumOfflineStorageLimitGB
-                            )
-                        )
-                        Spacer()
-                        Text(
-                            L10n.format(
-                                "%d ГБ",
-                                AppSettings.maximumOfflineStorageLimitGB
-                            )
-                        )
-                    }
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-                }
-
-                Toggle(
-                    isOn: $settings.automaticOfflineCacheEnabled
-                ) {
-                    Label(
-                        "Автокэширование",
-                        systemImage: "arrow.triangle.2.circlepath"
-                    )
-                }
-
-                Text(
-                    L10n.text(
-                        "Прослушанные треки автоматически сохраняются для "
-                            + "повторного воспроизведения без интернета. "
-                            + "При заполнении хранилища старый автокэш "
-                            + "очищается первым; ручные загрузки сохраняются."
-                    )
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
-                if offlineStore.automaticCacheByteCount > 0 {
-                    Button("Очистить автокэш", role: .destructive) {
-                        offlineStore.removeAutomaticCache()
-                    }
-                }
-
-                if offlineStore.totalByteCount > 0
-                    || !offlinePlaylists.records.isEmpty {
-                    Button("Удалить все загрузки", role: .destructive) {
-                        offlineStore.removeAll()
-                        offlinePlaylists.removeAll()
-                    }
-                }
-            }
-
-            Section("Эквалайзер") {
+    var body: some View {
+        Form {
+            Section {
                 Toggle(
                     "Обработка звука",
                     isOn: $settings.equalizerEnabled
                 )
+            }
 
+            Section("Профиль") {
                 Picker(
-                    "Профиль эквалайзера",
+                    "Профиль",
                     selection: Binding(
                         get: { settings.equalizerPreset },
                         set: { settings.selectPreset($0) }
@@ -237,14 +280,18 @@ struct SettingsView: View {
                         Text(preset.title).tag(preset)
                     }
                 }
+            }
 
+            Section("Предусилитель") {
                 VStack(spacing: 5) {
                     HStack {
-                        Text("Предусилитель")
+                        Text("Уровень")
                         Spacer()
                         Text(
                             settings.equalizerPreamp,
-                            format: .number.precision(.fractionLength(1))
+                            format: .number.precision(
+                                .fractionLength(1)
+                            )
                         )
                         Text("дБ")
                     }
@@ -256,7 +303,9 @@ struct SettingsView: View {
                     )
                 }
                 .disabled(!settings.equalizerEnabled)
+            }
 
+            Section("Полосы частот") {
                 ForEach(frequencies.indices, id: \.self) { index in
                     VStack(spacing: 5) {
                         HStack {
@@ -293,8 +342,204 @@ struct SettingsView: View {
                     .disabled(!settings.equalizerEnabled)
                 }
             }
+        }
+        .scrollContentBackground(.hidden)
+        .background(ThemeBackground())
+        .navigationTitle("Эквалайзер")
+    }
+}
 
-            Section("Таймер сна") {
+// MARK: - Offline & Storage
+
+private struct OfflineStorageSettingsView: View {
+    @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var offlineStore: OfflineTrackStore
+    @ObservedObject private var offlinePlaylists =
+        OfflinePlaylistStore.shared
+
+    var body: some View {
+        Form {
+            Section("Хранилище") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label(
+                            "Использовано",
+                            systemImage: "externaldrive"
+                        )
+                        Spacer()
+                        Text(storageUsage)
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    ProgressView(
+                        value: min(
+                            Double(offlineStore.totalByteCount)
+                                / Double(
+                                    max(
+                                        offlineStore.storageLimitBytes,
+                                        1
+                                    )
+                                ),
+                            1
+                        )
+                    )
+                    if offlineStore.automaticCacheByteCount > 0 {
+                        Text(
+                            L10n.format(
+                                "Автокэш: %@",
+                                formattedBytes(
+                                    offlineStore
+                                        .automaticCacheByteCount
+                                )
+                            )
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Label(
+                            "Лимит офлайн-музыки",
+                            systemImage: "internaldrive"
+                        )
+                        Spacer()
+                        Text(
+                            L10n.format(
+                                "%d ГБ",
+                                settings.offlineStorageLimitGB
+                            )
+                        )
+                        .font(
+                            .subheadline.monospacedDigit()
+                                .weight(.semibold)
+                        )
+                        .foregroundStyle(.secondary)
+                    }
+
+                    Slider(
+                        value: Binding(
+                            get: {
+                                Double(
+                                    settings.offlineStorageLimitGB
+                                )
+                            },
+                            set: {
+                                settings.offlineStorageLimitGB =
+                                    Int($0)
+                            }
+                        ),
+                        in: Double(
+                            AppSettings.minimumOfflineStorageLimitGB
+                        )...Double(
+                            AppSettings.maximumOfflineStorageLimitGB
+                        ),
+                        step: Double(
+                            AppSettings.offlineStorageLimitStepGB
+                        )
+                    )
+                    .accessibilityValue(
+                        L10n.format(
+                            "%d ГБ",
+                            settings.offlineStorageLimitGB
+                        )
+                    )
+
+                    HStack {
+                        Text(
+                            L10n.format(
+                                "%d ГБ",
+                                AppSettings
+                                    .minimumOfflineStorageLimitGB
+                            )
+                        )
+                        Spacer()
+                        Text(
+                            L10n.format(
+                                "%d ГБ",
+                                AppSettings
+                                    .maximumOfflineStorageLimitGB
+                            )
+                        )
+                    }
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                }
+            }
+
+            Section("Автокэширование") {
+                Toggle(
+                    isOn: $settings.automaticOfflineCacheEnabled
+                ) {
+                    Label(
+                        "Автокэширование",
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                }
+
+                Text(
+                    L10n.text(
+                        "Прослушанные треки автоматически "
+                            + "сохраняются для повторного "
+                            + "воспроизведения без интернета. "
+                            + "При заполнении хранилища старый "
+                            + "автокэш очищается первым; ручные "
+                            + "загрузки сохраняются."
+                    )
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
+            Section("Управление") {
+                if offlineStore.automaticCacheByteCount > 0 {
+                    Button("Очистить автокэш", role: .destructive) {
+                        offlineStore.removeAutomaticCache()
+                    }
+                }
+
+                if offlineStore.totalByteCount > 0
+                    || !offlinePlaylists.records.isEmpty {
+                    Button(
+                        "Удалить все загрузки",
+                        role: .destructive
+                    ) {
+                        offlineStore.removeAll()
+                        offlinePlaylists.removeAll()
+                    }
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(ThemeBackground())
+        .navigationTitle("Офлайн и хранилище")
+    }
+
+    private var storageUsage: String {
+        L10n.format(
+            "%@ из %d ГБ",
+            formattedBytes(offlineStore.totalByteCount),
+            settings.offlineStorageLimitGB
+        )
+    }
+
+    private func formattedBytes(_ value: Int64) -> String {
+        ByteCountFormatter.string(
+            fromByteCount: value,
+            countStyle: .file
+        )
+    }
+}
+
+// MARK: - Sleep Timer
+
+private struct SleepTimerSettingsView: View {
+    @EnvironmentObject private var player: AudioPlayer
+
+    var body: some View {
+        Form {
+            Section {
                 if let endDate = player.sleepTimerEndDate {
                     LabeledContent(
                         "Остановка",
@@ -303,13 +548,18 @@ struct SettingsView: View {
                             time: .shortened
                         )
                     )
-                    Button("Отключить таймер", role: .destructive) {
+                    Button(
+                        "Отключить таймер",
+                        role: .destructive
+                    ) {
                         player.cancelSleepTimer()
                     }
                 } else {
                     Menu("Остановить воспроизведение через…") {
-                        ForEach([15, 30, 45, 60, 90], id: \.self) {
-                            minutes in
+                        ForEach(
+                            [15, 30, 45, 60, 90],
+                            id: \.self
+                        ) { minutes in
                             Button(L10n.minutes(minutes)) {
                                 player.scheduleSleepTimer(
                                     minutes: minutes
@@ -319,10 +569,24 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+        .scrollContentBackground(.hidden)
+        .background(ThemeBackground())
+        .navigationTitle("Таймер сна")
+    }
+}
 
-            Section("Подключение") {
+// MARK: - Connection
+
+private struct ConnectionSettingsView: View {
+    @EnvironmentObject private var sessionStore: SessionStore
+    @EnvironmentObject private var networkMonitor: NetworkMonitor
+
+    var body: some View {
+        Form {
+            Section("Сеть") {
                 HStack(spacing: 12) {
-                    Text("Сеть")
+                    Text("Статус")
                     Spacer(minLength: 16)
                     Label(
                         networkTitle,
@@ -332,8 +596,15 @@ struct SettingsView: View {
                     .foregroundStyle(networkTint)
                 }
                 .padding(.vertical, 2)
-                LabeledContent("Сессия VK", value: sessionTitle)
-                if let expiresAt = sessionStore.session?.expiresAt {
+            }
+
+            Section("Сессия VK") {
+                LabeledContent(
+                    "Сессия",
+                    value: sessionTitle
+                )
+                if let expiresAt = sessionStore.session?
+                    .expiresAt {
                     LabeledContent(
                         "Срок действия токена",
                         value: expiresAt.formatted(
@@ -344,29 +615,20 @@ struct SettingsView: View {
                 }
                 Text(
                     L10n.text(
-                        "При временном обрыве сети сохранённая сессия остаётся "
-                            + "в системном Keychain. Если VK принимает данные "
-                            + "веб-сессии, приложение попробует обновить "
+                        "При временном обрыве сети сохранённая "
+                            + "сессия остаётся в системном Keychain. "
+                            + "Если VK принимает данные веб-сессии, "
+                            + "приложение попробует обновить "
                             + "подключение автоматически."
                     )
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             }
-
-            Section("О приложении") {
-                LabeledContent("Приложение", value: "Private Music")
-                LabeledContent("Версия", value: version)
-                LabeledContent("Разработчик", value: "decoder-dev")
-                LabeledContent(
-                    "Аналитика",
-                    value: L10n.text("Не используется")
-                )
-            }
         }
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
-        .navigationTitle("Настройки")
+        .navigationTitle("Подключение")
     }
 
     private var networkTitle: String {
@@ -385,21 +647,6 @@ struct SettingsView: View {
         case .unavailable:
             return L10n.text("Нет подключения")
         }
-    }
-
-    private var storageUsage: String {
-        L10n.format(
-            "%@ из %d ГБ",
-            formattedBytes(offlineStore.totalByteCount),
-            settings.offlineStorageLimitGB
-        )
-    }
-
-    private func formattedBytes(_ value: Int64) -> String {
-        ByteCountFormatter.string(
-            fromByteCount: value,
-            countStyle: .file
-        )
     }
 
     private var networkIcon: String {
@@ -430,70 +677,17 @@ struct SettingsView: View {
         }
         if session.needsRefresh {
             return session.canRefresh
-                ? L10n.text("Доступно автоматическое обновление")
-                : L10n.text("Для обновления потребуется повторный вход")
+                ? L10n.text(
+                    "Доступно автоматическое обновление"
+                )
+                : L10n.text(
+                    "Для обновления потребуется повторный вход"
+                )
         }
         return session.canRefresh
-            ? L10n.text("Подключена · доступно автообновление")
+            ? L10n.text(
+                "Подключена · доступно автообновление"
+            )
             : L10n.text("Подключена")
-    }
-
-    private var themePicker: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Тема")
-            LazyVGrid(
-                columns: [
-                    GridItem(.adaptive(minimum: 72), spacing: 12)
-                ],
-                spacing: 12
-            ) {
-                ForEach(AppTheme.allCases) { theme in
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            settings.theme = theme
-                            settings.appearance =
-                                theme == .dark ? .dark : .light
-                        }
-                    } label: {
-                        VStack(spacing: 7) {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: theme.colors,
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 44, height: 44)
-                                .overlay {
-                                    if settings.theme == theme {
-                                        Image(systemName: "checkmark")
-                                            .font(.headline)
-                                            .foregroundStyle(
-                                                theme.buttonForeground
-                                            )
-                                    }
-                                }
-                            Text(theme.title)
-                                .font(.caption2)
-                                .foregroundStyle(.primary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(theme.title)
-                }
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var version: String {
-        let short = Bundle.main.object(
-            forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String ?? "—"
-        let build = Bundle.main.object(
-            forInfoDictionaryKey: "CFBundleVersion"
-        ) as? String ?? "—"
-        return "\(short) (\(build))"
     }
 }
