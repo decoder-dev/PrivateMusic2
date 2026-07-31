@@ -318,7 +318,10 @@ actor HLSSegmentExporter {
         if let absolute = URL(string: string), absolute.scheme != nil {
             return absolute
         }
-        return base.appendingPathComponent(string)
+        // URL(string:relativeTo:) resolves per RFC 3986, handling ../
+        // and other relative components that appendPathComponent breaks.
+        return URL(string: string, relativeTo: base)
+            ?? base.appendingPathComponent(string)
     }
 
     // MARK: - Networking
@@ -326,25 +329,40 @@ actor HLSSegmentExporter {
     private func fetchData(
         from url: URL,
         headers: [String: String],
-        byteRange: Range<Int>? = nil
+        byteRange: Range<Int>? = nil,
+        retries: Int = 1
     ) async throws -> Data {
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 60
-        for (field, value) in headers {
-            request.setValue(value, forHTTPHeaderField: field)
+        var lastError: Error?
+        for attempt in 0...retries {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 60
+            request.httpShouldHandleCookies = false
+            for (field, value) in headers {
+                request.setValue(value, forHTTPHeaderField: field)
+            }
+            if let byteRange {
+                request.setValue(
+                    "bytes=\(byteRange.lowerBound)-\(byteRange.upperBound - 1)",
+                    forHTTPHeaderField: "Range"
+                )
+            }
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                lastError = HLSExportError.segmentFetchFailed(
+                    url: url.absoluteString,
+                    status: code
+                )
+                if attempt < retries {
+                    try await Task.sleep(nanoseconds: 200_000_000)
+                    continue
+                }
+                throw lastError!
+            }
+            return data
         }
-        if let byteRange {
-            request.setValue(
-                "bytes=\(byteRange.lowerBound)-\(byteRange.upperBound - 1)",
-                forHTTPHeaderField: "Range"
-            )
-        }
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode) else {
-            throw HLSExportError.network
-        }
-        return data
+        throw lastError ?? HLSExportError.network
     }
 
     // MARK: - Crypto (AES-128 CBC per RFC 8216)
@@ -595,6 +613,7 @@ enum HLSExportError: LocalizedError {
     case emptyPlaylist
     case tooManySegments
     case network
+    case segmentFetchFailed(url: String, status: Int)
     case fileTooLarge
     case decryptionFailed
     case noFragments
@@ -606,6 +625,8 @@ enum HLSExportError: LocalizedError {
         case .invalidPlaylist, .emptyPlaylist, .tooManySegments:
             return L10n.text("VK вернул неполный HLS-плейлист.")
         case .network:
+            return L10n.text("Не удалось скачать сегменты потока.")
+        case .segmentFetchFailed:
             return L10n.text("Не удалось скачать сегменты потока.")
         case .fileTooLarge:
             return L10n.text("Файл больше 150 МБ.")
