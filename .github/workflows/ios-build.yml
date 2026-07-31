@@ -86,7 +86,7 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.23.0-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.23.1-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -94,19 +94,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.23.0-unsigned.ipa" \
-            --title "Private Music 3.23.0" \
+            "$PWD/artifacts/PrivateMusic-3.23.1-unsigned.ipa" \
+            --title "Private Music 3.23.1" \
             --notes-file - <<'EOF'
-          Private Music 3.23.0
+          Private Music 3.23.1
 
-          Фаза 3–4: Предиктивное автокэширование и уведомления
-          - Предиктивное скачивание: при воспроизведении плейлиста
-            на WiFi автоматически скачиваются следующие 5 треков.
-          - Повтор попыток загрузки с экспоненциальной задержкой
-            (до 3 попыток при сетевых ошибках).
-          - Push-уведомления при завершении или ошибке загрузки
-            треков и плейлистов.
-          - Анимация появления треков в библиотеке и офлайн-списке.
+          Исправление визуальных ошибок и шера:
+          - Кнопка «Поделиться» теперь открывает UIActivityViewController
+            со ссылкой на трек и автоматически копирует в буфер.
+            Появляется тост «Ссылка скопирована».
+          - Бейдж загрузок: исправлено выравнивание (overlay alignment),
+            убрана неиспользуемая переменная progress, шрифт
+            сконвертирован в .caption2 (Dynamic Type).
+          - Шрифт названия трека в офлайн-загрузках приведён
+            к единому стилю (.subheadline.weight(.semibold)).
+          - Стилизация заголовков секций «Другие загрузки».
+          - Фон плеера в action sheet теперь учитывает тему.
+          - Чекбокс темы уменьшен до пропорционального размера.
+          - Метки быстрых действий получили minimumScaleFactor.
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом.
@@ -115,7 +120,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.23.0-unsigned
-          path: artifacts/PrivateMusic-3.23.0-unsigned.ipa
+          name: PrivateMusic-3.23.1-unsigned
+          path: artifacts/PrivateMusic-3.23.1-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

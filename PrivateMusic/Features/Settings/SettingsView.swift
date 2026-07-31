@@ -162,7 +162,7 @@ private struct AppearanceSettingsView: View {
                             .overlay {
                                 if settings.theme == theme {
                                     Image(systemName: "checkmark")
-                                        .font(.headline)
+                                        .font(.system(size: 14, weight: .bold))
                                         .foregroundStyle(
                                             theme.buttonForeground
                                         )
