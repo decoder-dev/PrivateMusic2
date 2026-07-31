@@ -189,7 +189,7 @@ struct OfflineDownloadsView: View {
                 AsyncArtwork(url: track.artworkURL, size: 48)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(track.title)
-                        .font(.headline)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     Text(track.artist)
@@ -255,6 +255,8 @@ struct OfflineDownloadsView: View {
             }
         } else {
             Text(section.title)
+                .font(.footnote.weight(.semibold))
+                .textCase(nil)
         }
     }
 
