@@ -147,7 +147,6 @@ struct OfflineDownloadsView: View {
                     record: record
                 )
             }
-            .filter { !$0.tracks.isEmpty }
     }
 
     private var orphanTracks: [Track] {
