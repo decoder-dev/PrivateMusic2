@@ -475,11 +475,17 @@ actor HLSSegmentExporter {
         ) else {
             throw HLSExportError.remuxFailed
         }
-        let formatDescriptions = track.formatDescriptions
+        let formatHint: CMFormatDescription? =
+            track.formatDescriptions.first.flatMap { description in
+                unsafeDowncast(
+                    description as AnyObject,
+                    to: CMFormatDescription.self
+                )
+            }
         let writerInput = AVAssetWriterInput(
             mediaType: .audio,
             outputSettings: nil,
-            sourceFormatHint: formatDescriptions.first
+            sourceFormatHint: formatHint
         )
         writerInput.expectsMediaDataInRealTime = false
         guard writer.canAdd(writerInput) else {
