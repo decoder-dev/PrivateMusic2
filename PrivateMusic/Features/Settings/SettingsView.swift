@@ -581,6 +581,9 @@ private struct SleepTimerSettingsView: View {
 private struct ConnectionSettingsView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var networkMonitor: NetworkMonitor
+    @EnvironmentObject private var environment: AppEnvironment
+    @State private var isRefreshing = false
+    @State private var refreshError: String?
 
     var body: some View {
         Form {
@@ -613,6 +616,26 @@ private struct ConnectionSettingsView: View {
                         )
                     )
                 }
+                Button {
+                    refreshSession()
+                } label: {
+                    HStack {
+                        Label(
+                            "Обновить",
+                            systemImage: "arrow.clockwise"
+                        )
+                        if isRefreshing {
+                            Spacer()
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(isRefreshing)
+                if let refreshError {
+                    Text(refreshError)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
                 Text(
                     L10n.text(
                         "При временном обрыве сети сохранённая "
@@ -629,6 +652,22 @@ private struct ConnectionSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle("Подключение")
+    }
+
+    private func refreshSession() {
+        guard !isRefreshing,
+              sessionStore.session?.canRefresh == true else { return }
+        isRefreshing = true
+        refreshError = nil
+        Task {
+            do {
+                _ = try await environment.recoverSession()
+                refreshError = nil
+            } catch {
+                refreshError = error.localizedDescription
+            }
+            isRefreshing = false
+        }
     }
 
     private var networkTitle: String {
