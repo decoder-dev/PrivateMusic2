@@ -122,18 +122,17 @@ for required_hls_symbol in (
     if required_hls_symbol not in all_source:
         fail(f"HLS offline support is missing: {required_hls_symbol}")
 for forbidden_share_symbol in (
-    "case vkLink",
-    "linkPayload(",
-):
-    if forbidden_share_symbol in all_source:
-        fail(f"share must never fall back to a link: {forbidden_share_symbol}")
-for required_share_symbol in (
-    "requiresMP3: false",
-    "HLSSegmentExporter",
+    "TrackShareSheet(",
     "AudioFileActivityItemSource",
 ):
+    if forbidden_share_symbol in all_source:
+        fail(f"share must not use audio file sharing: {forbidden_share_symbol}")
+for required_share_symbol in (
+    "vk.com/audio",
+    "UIPasteboard.general.string",
+):
     if required_share_symbol not in all_source:
-        fail(f"audio file sharing is missing: {required_share_symbol}")
+        fail(f"link share is missing: {required_share_symbol}")
 for required_playlist_symbol in (
     "OfflinePlaylistStore",
     "maximumConcurrentDownloads",
