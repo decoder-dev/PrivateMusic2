@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UserNotifications
 
 enum PremiumLayout {
     static let screenPadding: CGFloat = 16
@@ -135,6 +136,39 @@ enum Haptics {
 
     static func error() {
         UINotificationFeedbackGenerator().notificationOccurred(.error)
+    }
+}
+
+enum DownloadNotifications {
+    static func requestAuthorization() {
+        UNUserNotificationCenter.current()
+            .requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    static func notifyDownloadComplete(title: String) {
+        let content = UNMutableNotificationContent()
+        content.title = L10n.text("Загрузка завершена")
+        content.body = title
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: "dl-done-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    static func notifyDownloadError(title: String) {
+        let content = UNMutableNotificationContent()
+        content.title = L10n.text("Ошибка загрузки")
+        content.body = title
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: "dl-err-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
     }
 }
 

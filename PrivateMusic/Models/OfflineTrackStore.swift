@@ -226,21 +226,48 @@ final class OfflineTrackStore: ObservableObject {
         downloadingTrackIDs.insert(track.id)
         defer { downloadingTrackIDs.remove(track.id) }
 
-        if isHLS(track.streamURL) {
-            try await downloadHLS(
-                track,
-                accountID: accountID,
-                userAgent: userAgent,
-                retention: retention
-            )
-        } else {
-            try await downloadDirectFile(
-                track,
-                accountID: accountID,
-                userAgent: userAgent,
-                retention: retention
-            )
+        let maxRetries = 3
+        var lastError: Error?
+        for attempt in 0 ..< maxRetries {
+            do {
+                if isHLS(track.streamURL) {
+                    try await downloadHLS(
+                        track,
+                        accountID: accountID,
+                        userAgent: userAgent,
+                        retention: retention
+                    )
+                } else {
+                    try await downloadDirectFile(
+                        track,
+                        accountID: accountID,
+                        userAgent: userAgent,
+                        retention: retention
+                    )
+                }
+                return
+            } catch let error as APIError {
+                lastError = error
+                guard attempt + 1 < maxRetries,
+                      !Task.isCancelled else {
+                    throw error
+                }
+                try? await Task.sleep(
+                    for: .seconds(pow(2.0, Double(attempt)))
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                lastError = error
+                guard attempt + 1 < maxRetries else {
+                    throw error
+                }
+                try? await Task.sleep(
+                    for: .seconds(pow(2.0, Double(attempt)))
+                )
+            }
         }
+        throw lastError ?? APIError.invalidResponse
     }
 
     private func downloadDirectFile(

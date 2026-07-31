@@ -39,6 +39,7 @@ struct OfflineDownloadsView: View {
                                     playlistTracks: section.allTracks,
                                     inPlaylist: section.id
                                 )
+                                .transition(.opacity)
                             }
                         } header: {
                             playlistHeader(section)
@@ -54,12 +55,14 @@ struct OfflineDownloadsView: View {
                                     playlistTracks: orphans,
                                     inPlaylist: nil
                                 )
+                                .transition(.opacity)
                             }
                         } header: {
                             Text(L10n.text("Другие загрузки"))
                         }
                     }
                 }
+                .animation(.easeInOut(duration: 0.3), value: playlistSections.map(\.id))
                 .scrollContentBackground(.hidden)
             }
         }

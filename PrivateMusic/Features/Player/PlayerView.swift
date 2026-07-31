@@ -721,7 +721,7 @@ struct PlayerView: View {
     }
 
     private func handleSheetDismissal() {
-        guard let deferredPlayerAction else {
+        guard self.deferredPlayerAction != nil else {
             return
         }
         Task { @MainActor in
