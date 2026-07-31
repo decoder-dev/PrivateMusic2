@@ -14,14 +14,10 @@ struct PlayerView: View {
     @GestureState private var artworkDrag: CGSize = .zero
     @State private var presentedSheet: PlayerSheet?
     @State private var deferredPlayerAction: DeferredPlayerAction?
-    @State private var shareCleanupPayload: TrackSharePayload?
-    @State private var shareTask: Task<Void, Never>?
-    @State private var isPreparingShare = false
     @State private var isInLibrary = false
     @State private var isUpdatingLibrary = false
     @State private var scrubPosition: TimeInterval?
     @State private var isDismissing = false
-    private let shareService = TrackShareService()
 
     var body: some View {
         GeometryReader { proxy in
@@ -60,8 +56,6 @@ struct PlayerView: View {
             presentedSheetContent(sheet)
         }
         .onChange(of: player.currentTrack?.id) { _ in
-            shareTask?.cancel()
-            shareTask = nil
             deferredPlayerAction = nil
             scrubPosition = nil
             updateLibraryState()
@@ -75,13 +69,6 @@ struct PlayerView: View {
         }
         .onChange(of: libraryStore.signatures) { _ in
             updateLibraryState()
-        }
-        .onDisappear {
-            shareTask?.cancel()
-            shareTask = nil
-            if !isPresentingShareSheet {
-                cleanupSharedFile()
-            }
         }
     }
 
@@ -562,9 +549,7 @@ struct PlayerView: View {
                     present(.playlists(track))
                 }
                 quickAction(
-                    isPreparingShare
-                        ? "arrow.triangle.2.circlepath"
-                        : "square.and.arrow.up",
+                    "square.and.arrow.up",
                     title: "Поделиться"
                 ) {
                     startShare(track)
@@ -681,11 +666,6 @@ struct PlayerView: View {
             AddToPlaylistView(track: track)
         case .settings:
             NavigationStack { SettingsView() }
-        case let .share(payload):
-            TrackShareSheet(payload: payload) {
-                cleanupSharedFile()
-                presentedSheet = nil
-            }
         case let .actions(track):
             PlayerActionsSheet(
                 track: track,
@@ -693,8 +673,7 @@ struct PlayerView: View {
                 offlineState: offlineStore.state(for: track),
                 availability: PlayerActionAvailability(
                     hasSession: sessionStore.accessToken != nil,
-                    isUpdatingLibrary: isUpdatingLibrary,
-                    isPreparingShare: isPreparingShare
+                    isUpdatingLibrary: isUpdatingLibrary
                 ),
                 equalizerEnabled: $settings.equalizerEnabled,
                 onDismiss: {
@@ -715,7 +694,8 @@ struct PlayerView: View {
                     )
                 },
                 onShare: {
-                    deferFromActionSheet(.share(track))
+                    presentedSheet = nil
+                    startShare(track)
                 },
                 onOffline: {
                     presentedSheet = nil
@@ -742,18 +722,16 @@ struct PlayerView: View {
 
     private func handleSheetDismissal() {
         guard let deferredPlayerAction else {
-            cleanupSharedFile()
             return
         }
         self.deferredPlayerAction = nil
 
         Task { @MainActor in
             await Task.yield()
-            switch deferredPlayerAction {
-            case let .sheet(sheet):
-                _ = present(sheet)
-            case let .share(track):
-                startShare(track)
+            if let deferredPlayerAction {
+                if case let .sheet(sheet) = deferredPlayerAction {
+                    _ = present(sheet)
+                }
             }
         }
     }
@@ -761,14 +739,6 @@ struct PlayerView: View {
     private var isActionSheetPresented: Bool {
         guard let presentedSheet else { return false }
         if case .actions = presentedSheet {
-            return true
-        }
-        return false
-    }
-
-    private var isPresentingShareSheet: Bool {
-        guard let presentedSheet else { return false }
-        if case .share = presentedSheet {
             return true
         }
         return false
@@ -815,94 +785,13 @@ struct PlayerView: View {
         isDismissing = true
         presentedSheet = nil
         deferredPlayerAction = nil
-        shareTask?.cancel()
-        shareTask = nil
         player.dismissPlayer()
     }
 
-    private func prepareShare(_ track: Track) async {
-        isPreparingShare = true
-        defer { isPreparingShare = false }
-        do {
-            if let localURL = offlineStore.localURL(for: track) {
-                let payload = try await shareService.payloadFromLocalFile(
-                    localURL,
-                    track: track,
-                    requiresMP3: false
-                )
-                guard !Task.isCancelled else {
-                    await shareService.removeExportedFile(payload)
-                    return
-                }
-                presentSharePayload(payload)
-                return
-            }
-
-            let refreshed: Track
-            refreshed = try await environment.withAuthorizedToken { token in
-                try await environment.musicService.refreshedTrack(
-                    track,
-                    accessToken: token
-                )
-            }
-            guard !Task.isCancelled,
-                  player.currentTrack?.id == track.id else {
-                return
-            }
-            cleanupSharedFile()
-            let payload = try await shareService.preparePayload(
-                for: refreshed,
-                userAgent: sessionStore.userAgent,
-                requiresMP3: false
-            )
-            guard !Task.isCancelled else {
-                await shareService.removeExportedFile(payload)
-                return
-            }
-            presentSharePayload(payload)
-        } catch is CancellationError {
-            return
-        } catch {
-            guard !Task.isCancelled else { return }
-            player.errorMessage = L10n.format(
-                "Не удалось подготовить аудиофайл: %@",
-                error.localizedDescription
-            )
-        }
-    }
-
-    private func presentSharePayload(_ payload: TrackSharePayload) {
-        shareCleanupPayload = payload
-        if isActionSheetPresented {
-            deferFromActionSheet(.sheet(.share(payload)))
-            Haptics.selection()
-            return
-        }
-        if case .some = deferredPlayerAction {
-            cleanupSharedFile()
-            return
-        }
-        guard present(.share(payload)) else {
-            cleanupSharedFile()
-            return
-        }
-        Haptics.selection()
-    }
-
     private func startShare(_ track: Track) {
-        guard shareTask == nil else { return }
-        shareTask = Task {
-            await prepareShare(track)
-            shareTask = nil
-        }
-    }
-
-    private func cleanupSharedFile() {
-        guard let payload = shareCleanupPayload else { return }
-        shareCleanupPayload = nil
-        Task {
-            await shareService.removeExportedFile(payload)
-        }
+        let url = "https://vk.com/audio\(track.ownerID)_\(track.trackID)"
+        UIPasteboard.general.string = url
+        Haptics.selection()
     }
 
     private func toggleLibrary(_ track: Track) {
@@ -1204,7 +1093,6 @@ private enum PlayerSheet: Identifiable {
     case artist(String)
     case playlists(Track)
     case settings
-    case share(TrackSharePayload)
     case actions(Track)
 
     var id: String {
@@ -1219,8 +1107,6 @@ private enum PlayerSheet: Identifiable {
             return "playlists-\(track.id)"
         case .settings:
             return "settings"
-        case let .share(payload):
-            return "share-\(payload.identifier)"
         case let .actions(track):
             return "actions-\(track.id)"
         }
@@ -1229,7 +1115,6 @@ private enum PlayerSheet: Identifiable {
 
 private enum DeferredPlayerAction {
     case sheet(PlayerSheet)
-    case share(Track)
 }
 
 struct PlayerActionAvailability: Equatable {
@@ -1240,12 +1125,11 @@ struct PlayerActionAvailability: Equatable {
 
     init(
         hasSession: Bool,
-        isUpdatingLibrary: Bool,
-        isPreparingShare: Bool
+        isUpdatingLibrary: Bool
     ) {
         canModifyLibrary = hasSession && !isUpdatingLibrary
         canAddToPlaylist = hasSession
-        canShare = !isPreparingShare
+        canShare = true
         showsLibraryProgress = isUpdatingLibrary
     }
 }
