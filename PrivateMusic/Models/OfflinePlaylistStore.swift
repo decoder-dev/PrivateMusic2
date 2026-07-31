@@ -173,6 +173,23 @@ final class OfflinePlaylistStore: ObservableObject {
         try? saveManifest()
     }
 
+    func removeAll() {
+        activeTasks.values.forEach { $0.cancel() }
+        activeTasks.removeAll()
+        guard let directory = accountDirectory else {
+            records.removeAll()
+            try? saveManifest()
+            return
+        }
+        if let artworkDir = directory
+            .appendingPathComponent("artwork", isDirectory: true)
+            , fileManager.fileExists(atPath: artworkDir.path) {
+            try? fileManager.removeItem(at: artworkDir)
+        }
+        records.removeAll()
+        try? saveManifest()
+    }
+
     func waitForDownload(of playlist: Playlist) async {
         let identifier = OfflinePlaylistRecord.identifier(for: playlist)
         await activeTasks[identifier]?.value
