@@ -136,10 +136,11 @@ final class AudioPlayer: ObservableObject {
             .combineLatest(
                 settings.$equalizerGains,
                 settings.$equalizerPreamp,
-                settings.$loudnessNormalization,
-                settings.$dynamicRangeCompression
+                settings.$loudnessNormalization
             )
-            .sink { [weak self] enabled, gains, preamp, loudness, drc in
+            .combineLatest(settings.$dynamicRangeCompression)
+            .sink { [weak self] pair, drc in
+                let (enabled, gains, preamp, loudness) = pair
                 guard let self else { return }
                 let wasEnabled = self.equalizer.isEnabled
                 self.equalizer.update(
