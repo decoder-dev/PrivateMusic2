@@ -142,6 +142,13 @@ final class AppEnvironment: ObservableObject {
               !offlineStore.contains(track) else {
             return
         }
+        let estimatedSize = min(
+            OfflineTrackStore.maximumTrackSize,
+            max(5_000_000, Int64(track.duration * 40_000))
+        )
+        let remainingSpace = offlineStore.storageLimitBytes
+            - offlineStore.totalByteCount
+        guard estimatedSize <= remainingSpace else { return }
         pendingAutomaticCacheTrack = track
         guard automaticCacheTask == nil else { return }
         automaticCacheTask = Task { @MainActor [weak self] in
