@@ -122,7 +122,11 @@ actor HLSSegmentExporter {
         try handle.synchronize()
 
         do {
-            try await remuxToM4A(source: stitchedURL, destination: destination)
+            try await transcodeToM4A(
+                source: AVURLAsset(url: stitchedURL),
+                destination: destination
+            )
+            try enforceSizeLimit(destination, limit: fileSizeLimit)
         } catch {
             try? fileManager.removeItem(at: stagingDirectory)
             throw error
@@ -131,51 +135,27 @@ actor HLSSegmentExporter {
     }
 
     /// Exports an offline `.movpkg` HLS bundle produced by
-    /// `AVAssetDownloadTask` into an M4A file. Fragments inside the package
-    /// are already unencrypted MPEG-TS and only require stitching + remux.
+    /// `AVAssetDownloadTask` into an M4A file. The package is readable by
+    /// AVFoundation (it is how offline playback works), so audio is simply
+    /// transcoded to AAC — the well-trodden reverse-proxy-free approach.
     func exportMovpkgToM4A(
         packageURL: URL,
         destination: URL,
         fileSizeLimit: Int64
     ) async throws {
-        let fragmentURLs = try collectFragments(in: packageURL)
-        guard !fragmentURLs.isEmpty else {
-            throw HLSExportError.noFragments
-        }
+        let asset = AVURLAsset(url: packageURL)
+        try await transcodeToM4A(source: asset, destination: destination)
+        try enforceSizeLimit(destination, limit: fileSizeLimit)
+    }
 
-        let stagingDirectory = destination
-            .deletingLastPathComponent()
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try fileManager.createDirectory(
-            at: stagingDirectory,
-            withIntermediateDirectories: true
-        )
-        let stitchedURL = stagingDirectory
-            .appendingPathComponent("stream.ts")
-        fileManager.createFile(atPath: stitchedURL.path, contents: nil)
-        let handle = try FileHandle(forWritingTo: stitchedURL)
-        defer { try? handle.close() }
-
-        var written: Int64 = 0
-        for fragmentURL in fragmentURLs {
-            try Task.checkCancellation()
-            let data = try Data(contentsOf: fragmentURL)
-            written += Int64(data.count)
-            guard written <= Self.maximumStitchedSize,
-                  written <= fileSizeLimit else {
-                throw HLSExportError.fileTooLarge
-            }
-            try handle.write(contentsOf: data)
+    /// Removes a destination file that exceeded the size limit.
+    private func enforceSizeLimit(_ url: URL, limit: Int64) throws {
+        let attributes = try fileManager.attributesOfItem(atPath: url.path)
+        let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+        guard size > 0, size <= limit else {
+            try? fileManager.removeItem(at: url)
+            throw HLSExportError.fileTooLarge
         }
-        try handle.synchronize()
-
-        do {
-            try await remuxToM4A(source: stitchedURL, destination: destination)
-        } catch {
-            try? fileManager.removeItem(at: stagingDirectory)
-            throw error
-        }
-        try? fileManager.removeItem(at: stagingDirectory)
     }
 
     // MARK: - Playlist parsing
@@ -456,23 +436,57 @@ actor HLSSegmentExporter {
         return true
     }
 
-    // MARK: - Remux MPEG-TS → M4A
+    // MARK: - Transcode (any AVFoundation asset) → AAC M4A
 
-    private func remuxToM4A(source: URL, destination: URL) async throws {
-        let asset = AVURLAsset(url: source)
-        let tracks = try await asset.loadTracks(withMediaType: .audio)
+    /// Universal path: decode the source to linear PCM with AVAssetReader
+    /// and encode to AAC-in-MP4 with AVAssetWriter. Works for stitched
+    /// MPEG-TS, offline `.movpkg` bundles and direct MP3s, regardless of
+    /// whether the source codec is AAC/MP3/AC-3 — unlike a copy-remux,
+    /// which AVAssetWriter refuses for TS ADTS frames.
+    ///
+    /// Equivalent of `ffmpeg -i input -c:a aac -b:a 192k out.m4a`, but
+    /// with the hardware-accelerated iOS AAC encoder.
+    private func transcodeToM4A(
+        source: AVURLAsset,
+        destination: URL
+    ) async throws {
+        let tracks = try await source.loadTracks(withMediaType: .audio)
         guard let track = tracks.first else {
             throw HLSExportError.noAudioTrack
         }
-        let trackDuration = try await asset.load(.duration)
-        guard trackDuration.seconds > 0 else {
+
+        let asbd = track.formatDescriptions.first
+            .map { unsafeDowncast(
+                $0 as AnyObject,
+                to: CMAudioFormatDescription.self
+            ) }
+            .flatMap { $0.audioStreamBasicDescription }
+        let sampleRate = asbd?.mSampleRate ?? 44100
+        let sourceChannels = UInt32(asbd?.mChannelsPerFrame ?? 2)
+        let channels: UInt32 = min(2, max(1, sourceChannels))
+
+        guard let pcmFormat = AVAudioFormat(
+            commonFormat: .pcmFormatInt16,
+            sampleRate: sampleRate,
+            channels: AVAudioChannelCount(channels),
+            interleaved: true
+        ) else {
             throw HLSExportError.noAudioTrack
         }
+        let readerSettings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatLinearPCM),
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsNonInterleaved: false,
+            AVSampleRateKey: pcmFormat.sampleRate,
+            AVNumberOfChannelsKey: Int(pcmFormat.channelCount),
+        ]
 
-        let reader = try AVAssetReader(asset: asset)
+        let reader = try AVAssetReader(asset: source)
         let readerOutput = AVAssetReaderTrackOutput(
             track: track,
-            outputSettings: nil
+            outputSettings: readerSettings
         )
         readerOutput.alwaysCopiesSampleData = false
         guard reader.canAdd(readerOutput) else {
@@ -484,11 +498,16 @@ actor HLSSegmentExporter {
             outputURL: destination,
             fileType: .m4a
         )
-        // Do NOT pass the ADTS-wrapped TS format hint: the writer must
-        // build a proper AAC-in-MP4 (esds) description from the samples.
+        let bitRate = Int(min(192_000, max(96_000,
+            sampleRate * Double(channels) * 2)))
         let writerInput = AVAssetWriterInput(
             mediaType: .audio,
-            outputSettings: nil
+            outputSettings: [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: Int(pcmFormat.sampleRate),
+                AVNumberOfChannelsKey: Int(pcmFormat.channelCount),
+                AVEncoderBitRateKey: bitRate,
+            ]
         )
         writerInput.expectsMediaDataInRealTime = false
         guard writer.canAdd(writerInput) else {
@@ -507,18 +526,20 @@ actor HLSSegmentExporter {
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation {
                 (continuation: CheckedContinuation<Void, Error>) in
-                let queue = DispatchQueue(label: "PrivateMusic.HLSRemux")
+                let queue = DispatchQueue(label: "PrivateMusic.HLSTranscode")
+                let stateLock = NSLock()
                 var didFinish = false
                 let finishOnce: (Result<Void, Error>) -> Void = { result in
-                    queue.sync {
-                        guard !didFinish else { return }
-                        didFinish = true
-                        switch result {
-                        case .success:
-                            continuation.resume(returning: ())
-                        case .failure(let error):
-                            continuation.resume(throwing: error)
-                        }
+                    stateLock.lock()
+                    let shouldResume = !didFinish
+                    didFinish = true
+                    stateLock.unlock()
+                    guard shouldResume else { return }
+                    switch result {
+                    case .success:
+                        continuation.resume(returning: ())
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
                     }
                 }
                 writerInput.requestMediaDataWhenReady(on: queue) {
