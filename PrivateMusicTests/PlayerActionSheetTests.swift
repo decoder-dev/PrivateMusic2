@@ -23,8 +23,7 @@ final class PlayerActionSheetTests: XCTestCase {
     func testAllSessionActionsAreEnabledWhenIdle() {
         let state = PlayerActionAvailability(
             hasSession: true,
-            isUpdatingLibrary: false,
-            isPreparingShare: false
+            isUpdatingLibrary: false
         )
 
         XCTAssertTrue(state.canModifyLibrary)
@@ -36,8 +35,7 @@ final class PlayerActionSheetTests: XCTestCase {
     func testLibraryMutationDisablesOnlyLibraryAction() {
         let state = PlayerActionAvailability(
             hasSession: true,
-            isUpdatingLibrary: true,
-            isPreparingShare: false
+            isUpdatingLibrary: true
         )
 
         XCTAssertFalse(state.canModifyLibrary)
@@ -46,24 +44,10 @@ final class PlayerActionSheetTests: XCTestCase {
         XCTAssertTrue(state.showsLibraryProgress)
     }
 
-    func testSharePreparationDisablesOnlyShareAction() {
-        let state = PlayerActionAvailability(
-            hasSession: true,
-            isUpdatingLibrary: false,
-            isPreparingShare: true
-        )
-
-        XCTAssertTrue(state.canModifyLibrary)
-        XCTAssertTrue(state.canAddToPlaylist)
-        XCTAssertFalse(state.canShare)
-        XCTAssertFalse(state.showsLibraryProgress)
-    }
-
     func testMetadataShareRemainsAvailableWithoutCredentials() {
         let state = PlayerActionAvailability(
             hasSession: false,
-            isUpdatingLibrary: false,
-            isPreparingShare: false
+            isUpdatingLibrary: false
         )
 
         XCTAssertFalse(state.canModifyLibrary)
