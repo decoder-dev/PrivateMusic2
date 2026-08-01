@@ -44,7 +44,6 @@ struct CatalogView: View {
                 }
                 .padding(.horizontal, metrics.horizontalPadding)
                 .padding(.top, 4)
-                .padding(.bottom, 24)
             }
         }
         .background(ThemeBackground())
