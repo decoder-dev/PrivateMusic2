@@ -42,7 +42,10 @@ actor TrackShareService {
             self.session = URLSession(configuration: configuration)
         }
         self.fileManager = fileManager
-        self.hlsExporter = HLSSegmentExporter(fileManager: fileManager)
+        self.hlsExporter = HLSSegmentExporter(
+            session: session,
+            fileManager: fileManager
+        )
     }
 
     /// Creates a real audio attachment: direct streams are downloaded and
