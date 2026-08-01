@@ -442,3 +442,29 @@
 "Альбом" = "Album";
 
 "Длительность" = "Duration";
+
+"Удалить все сохранённые" = "Remove all saved files";
+
+"Удалить все сохранённые файлы?" = "Remove all saved files?";
+
+"Удаляем сохранённые файлы…" = "Removing saved files…";
+
+"Останавливаем загрузки и очищаем хранилище." = "Stopping downloads and clearing storage.";
+
+"Все сохранённые файлы удалены" = "All saved files have been removed";
+
+"Удалено не всё" = "Some files could not be removed";
+
+"Осталось: %d объектов · %@" = "Remaining: %d items · %@";
+
+"%d файлов · %@" = "%d files · %@";
+
+"Будут остановлены текущие загрузки и удалены скачанные треки, плейлисты и автокэш. Музыка в VK не изменится." = "Current downloads will be stopped, and downloaded tracks, playlists, and auto cache will be removed. Your VK music will not change.";
+
+"VK вернул неподдерживаемый аудиопоток." = "VK returned an unsupported audio stream.";
+
+"Не удалось скачать аудиопоток." = "Couldn’t download the audio stream.";
+
+"Не удалось расшифровать аудиопоток." = "Couldn’t decrypt the audio stream.";
+
+"Не удалось собрать аудиопоток." = "Couldn’t assemble the audio stream.";
