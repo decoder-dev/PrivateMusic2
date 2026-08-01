@@ -121,6 +121,28 @@ actor HLSSegmentExporter {
             "HLS export: container \(container.rawValue), magic \(Self.magicPrefix(firstSegmentData))"
         )
 
+        if container == .fragmentedMP4 {
+            guard let initializationData else {
+                throw HLSExportError.missingInitializationSection
+            }
+            try await exportCMAFToM4A(
+                initializationData: initializationData,
+                firstSegmentData: firstSegmentData,
+                segments: parsed.segments,
+                mediaSequence: parsed.mediaSequence,
+                headers: headers,
+                destination: destination,
+                fileSizeLimit: fileSizeLimit,
+                keyCache: &keyCache,
+                nextOffsetByURL: &nextOffsetByURL,
+                progress: progress
+            )
+            return
+        }
+
+        // Linear containers (MPEG-TS / ADTS / MP3) are stitched into one
+        // file and decoded with AVAssetReader/AVAssetWriter, which handles
+        // their loosely structured formats well.
         let stagingDirectory = destination
             .deletingLastPathComponent()
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -143,10 +165,6 @@ actor HLSSegmentExporter {
         let handle = try FileHandle(forWritingTo: sourceURL)
         defer { try? handle.close() }
 
-        if container == .fragmentedMP4, let initializationData {
-            try handle.write(contentsOf: initializationData)
-        }
-
         var written: Int64 = 0
         for (index, segment) in parsed.segments.enumerated() {
             try Task.checkCancellation()
@@ -164,18 +182,7 @@ actor HLSSegmentExporter {
                     nextOffsetByURL: &nextOffsetByURL
                 )
             }
-            if container == .fragmentedMP4 {
-                guard segment.initialization == firstInitialization else {
-                    throw HLSExportError.changingInitializationSection
-                }
-                guard Self.containsBox(
-                    data,
-                    types: ["moof", "mdat"]
-                ) || Self.containsBox(data, types: ["styp", "moof", "mdat"])
-                else {
-                    throw HLSExportError.containerChanged
-                }
-            } else if container == .mpegTransportStream {
+            if container == .mpegTransportStream {
                 guard Self.looksLikeMPEGTS(data) else {
                     throw HLSExportError.containerChanged
                 }
@@ -238,6 +245,371 @@ actor HLSSegmentExporter {
             try? fileManager.removeItem(at: destination)
             throw error
         }
+    }
+
+    // MARK: - CMAF pipeline
+
+    /// Writes a playable M4A from an HLS fragmented MP4 stream by parsing
+    /// `moof`/`mdat` fragments directly and feeding the compressed AAC
+    /// samples into an `AVAssetWriter`. This bypasses the "stitch boxes and
+    /// hope AVAssetReader accepts them" path that triggers `-11800`/`-17913`.
+    private func exportCMAFToM4A(
+        initializationData: Data,
+        firstSegmentData: Data,
+        segments: [HLSSegment],
+        mediaSequence: Int,
+        headers: [String: String],
+        destination: URL,
+        fileSizeLimit: Int64,
+        keyCache: inout [URL: Data],
+        nextOffsetByURL: inout [URL: Int],
+        progress: TrackExportProgressHandler?
+    ) async throws {
+        try Task.checkCancellation()
+        let demuxer = CMAFAudioDemuxer()
+        let initialization: CMAFAudioDemuxer.InitializationInfo
+        do {
+            initialization = try demuxer.parseInitialization(initializationData)
+        } catch let error as CMAFAudioDemuxer.CMAFError {
+            logger.info(
+                "HLS CMAF export: init parse failed \(String(describing: error))"
+            )
+            throw HLSDiagnosticError(
+                stage: .parsingInitialization,
+                publicCode: "HLS-CMAF-INIT",
+                underlyingDomain: "CMAF",
+                underlyingCode: nil,
+                safeDetail: String(describing: error)
+            )
+        }
+        guard initialization.codec == .aac else {
+            throw HLSDiagnosticError(
+                stage: .parsingInitialization,
+                publicCode: "HLS-CMAF-CODEC",
+                underlyingDomain: "CMAF",
+                underlyingCode: nil,
+                safeDetail: initialization.codec.rawValue
+            )
+        }
+
+        // Collect every fragment (the first one was already fetched for
+        // container detection) and demux it without materializing a single
+        // stitched MP4 in memory.
+        var allSamples: [CMAFAudioDemuxer.CompressedSample] = []
+        var nextDecodeTime: Int64? = nil
+        let totalSegments = segments.count
+
+        for (index, segment) in segments.enumerated() {
+            try Task.checkCancellation()
+            let data: Data
+            if index == 0 {
+                data = firstSegmentData
+            } else {
+                data = try await fetchSegment(
+                    segment,
+                    mediaSequence: mediaSequence,
+                    index: index,
+                    headers: headers,
+                    keyCache: &keyCache,
+                    nextOffsetByURL: &nextOffsetByURL
+                )
+            }
+            if let key = segment.key {
+                let keyData = try await fetchKeyData(
+                    key,
+                    headers: headers,
+                    cache: &keyCache
+                )
+                let decrypted = try decryptSegment(
+                    data,
+                    key: keyData,
+                    iv: key.iv(mediaSequence + index)
+                )
+                guard Self.containsBox(
+                    decrypted,
+                    types: ["moof", "mdat"]
+                ) else {
+                    throw HLSExportError.decryptedFragmentInvalid(index: index)
+                }
+                let fragmentSamples: [CMAFAudioDemuxer.CompressedSample]
+                do {
+                    fragmentSamples = try demuxer.parseFragment(
+                        decrypted,
+                        initialization: initialization,
+                        decodeTime: &nextDecodeTime
+                    )
+                } catch let error as CMAFAudioDemuxer.CMAFError {
+                    logger.info(
+                        "HLS CMAF export: fragment \(index) parse failed \(String(describing: error))"
+                    )
+                    throw HLSDiagnosticError(
+                        stage: .parsingFragment,
+                        publicCode: "HLS-CMAF-TRUN",
+                        underlyingDomain: "CMAF",
+                        underlyingCode: index,
+                        safeDetail: String(describing: error)
+                    )
+                }
+                allSamples.append(contentsOf: fragmentSamples)
+            } else {
+                let fragmentSamples: [CMAFAudioDemuxer.CompressedSample]
+                do {
+                    fragmentSamples = try demuxer.parseFragment(
+                        data,
+                        initialization: initialization,
+                        decodeTime: &nextDecodeTime
+                    )
+                } catch let error as CMAFAudioDemuxer.CMAFError {
+                    logger.info(
+                        "HLS CMAF export: fragment \(index) parse failed \(String(describing: error))"
+                    )
+                    throw HLSDiagnosticError(
+                        stage: .parsingFragment,
+                        publicCode: "HLS-CMAF-TRUN",
+                        underlyingDomain: "CMAF",
+                        underlyingCode: index,
+                        safeDetail: String(describing: error)
+                    )
+                }
+                allSamples.append(contentsOf: fragmentSamples)
+            }
+
+            try Task.checkCancellation()
+            let estimated = Int64(allSamples.reduce(0) { $0 + $1.data.count })
+            guard estimated <= fileSizeLimit else {
+                throw HLSExportError.fileTooLarge
+            }
+            await progress?(
+                .downloadingSegments(
+                    completed: index + 1,
+                    total: totalSegments
+                )
+            )
+        }
+        guard !allSamples.isEmpty else {
+            throw HLSExportError.noFragments
+        }
+
+        await progress?(.convertingToM4A)
+        try await writeCompressedAACToM4A(
+            samples: allSamples,
+            initialization: initialization,
+            destination: destination
+        )
+        try enforceSizeLimit(destination, limit: fileSizeLimit)
+    }
+
+    /// Feeds already-compressed AAC samples straight into an M4A container
+    /// via `AVAssetWriter` in passthrough mode (no PCM decode → no quality
+    /// loss and no `AVAssetReader` half-file problem).
+    private func writeCompressedAACToM4A(
+        samples: [CMAFAudioDemuxer.CompressedSample],
+        initialization: CMAFAudioDemuxer.InitializationInfo,
+        destination: URL
+    ) async throws {
+        try? fileManager.removeItem(at: destination)
+
+        let timescale = CMTimeScale(initialization.timescale)
+
+        var asbd = AudioStreamBasicDescription(
+            mSampleRate: initialization.sampleRate,
+            mFormatID: kAudioFormatMPEG4AAC,
+            mFormatFlags: 0,
+            mBytesPerPacket: 0,
+            mFramesPerPacket: 1024,
+            mBytesPerFrame: 0,
+            mChannelsPerFrame: initialization.channelCount,
+            mBitsPerChannel: 0,
+            mReserved: 0
+        )
+        let asc = initialization.audioSpecificConfig
+            ?? defaultAudioSpecificConfig(
+                sampleRate: initialization.sampleRate,
+                channels: initialization.channelCount
+            )
+        var activeFormat: CMAudioFormatDescription?
+        let creationStatus = asc.withUnsafeBytes { cookie in
+            CMAudioFormatDescriptionCreate(
+                allocator: nil,
+                asbd: &asbd,
+                layoutSize: 0,
+                layout: nil,
+                magicCookieSize: asc.count,
+                magicCookie: cookie.baseAddress,
+                extensions: nil,
+                formatDescriptionOut: &activeFormat
+            )
+        }
+        guard creationStatus == noErr, let format = activeFormat else {
+            throw HLSDiagnosticError(
+                stage: .creatingWriter,
+                publicCode: "HLS-WRITER-FORMAT",
+                underlyingDomain: "CoreMedia",
+                underlyingCode: Int(creationStatus),
+                safeDetail: nil
+            )
+        }
+
+        let writer: AVAssetWriter
+        do {
+            writer = try AVAssetWriter(
+                outputURL: destination,
+                fileType: .m4a
+            )
+        } catch let error as NSError {
+            logger.error(
+                "stage=creatingWriter domain=\(error.domain, privacy: .public) code=\(error.code)"
+            )
+            throw HLSDiagnosticError(
+                stage: .creatingWriter,
+                publicCode: "HLS-WRITER-\(abs(error.code))",
+                underlyingDomain: error.domain,
+                underlyingCode: error.code,
+                safeDetail: nil
+            )
+        }
+        let writerInput = AVAssetWriterInput(
+            mediaType: .audio,
+            outputSettings: nil,
+            sourceFormatHint: format
+        )
+        writerInput.expectsMediaDataInRealTime = false
+        guard writer.canAdd(writerInput) else {
+            throw HLSExportError.writerCannotAddInput
+        }
+        writer.add(writerInput)
+        guard writer.startWriting() else {
+            let code = writer.error?._code
+            logger.error(
+                "stage=startingWriter code=\(code ?? -1)"
+            )
+            throw HLSDiagnosticError(
+                stage: .startingWriter,
+                publicCode: "HLS-WRITER-START-\(code.map { abs($0) } ?? -1)",
+                underlyingDomain: "AVFoundation",
+                underlyingCode: code,
+                safeDetail: nil
+            )
+        }
+        writer.startSession(atSourceTime: .zero)
+
+        for (index, sample) in samples.enumerated() {
+            try Task.checkCancellation()
+            var blockBuffer: CMBlockBuffer?
+            let blockStatus = sample.data.withUnsafeBytes { bytes in
+                CMBlockBufferCreateWithMemoryBlock(
+                    allocator: nil,
+                    memoryBlock: UnsafeMutableRawPointer(
+                        mutating: bytes.baseAddress
+                    ),
+                    blockLength: sample.data.count,
+                    blockAllocator: nil,
+                    customBlockSource: nil,
+                    offsetToData: 0,
+                    dataLength: sample.data.count,
+                    flags: 0,
+                    blockBufferOut: &blockBuffer
+                )
+            }
+            guard blockStatus == noErr, let blockBuffer else {
+                throw HLSDiagnosticError(
+                    stage: .appendingSample,
+                    publicCode: "HLS-SAMPLE-BUFFER",
+                    underlyingDomain: "CoreMedia",
+                    underlyingCode: Int(blockStatus),
+                    safeDetail: "sample #\(index)"
+                )
+            }
+            var timingInfo = CMSampleTimingInfo(
+                duration: CMTime(
+                    value: sample.duration,
+                    timescale: timescale
+                ),
+                presentationTimeStamp: CMTime(
+                    value: sample.presentationTime,
+                    timescale: timescale
+                ),
+                decodeTimeStamp: .invalid
+            )
+            var sampleSize = sample.data.count
+            var sampleBuffer: CMSampleBuffer?
+            let status = CMSampleBufferCreate(
+                allocator: nil,
+                dataBuffer: blockBuffer,
+                dataReady: true,
+                makeDataReadyCallback: nil,
+                refcon: nil,
+                formatDescription: format,
+                sampleCount: 1,
+                sampleTimingEntryCount: 1,
+                sampleTimingArray: &timingInfo,
+                sampleSizeEntryCount: 1,
+                sampleSizeArray: &sampleSize,
+                sampleBufferOut: &sampleBuffer
+            )
+            guard status == noErr, let sampleBuffer else {
+                throw HLSDiagnosticError(
+                    stage: .appendingSample,
+                    publicCode: "HLS-SAMPLE-CREATE",
+                    underlyingDomain: "CoreMedia",
+                    underlyingCode: Int(status),
+                    safeDetail: "sample #\(index)"
+                )
+            }
+            guard writerInput.append(sampleBuffer) else {
+                let code = writer.error?._code
+                logger.error(
+                    "stage=appendingSample sample=\(index) code=\(code ?? -1)"
+                )
+                throw HLSDiagnosticError(
+                    stage: .appendingSample,
+                    publicCode: "HLS-SAMPLE-APPEND-\(index)",
+                    underlyingDomain: "AVFoundation",
+                    underlyingCode: code,
+                    safeDetail: nil
+                )
+            }
+        }
+        writerInput.markAsFinished()
+
+        try await withCheckedThrowingContinuation { continuation in
+            writer.finishWriting {
+                if writer.status == .completed {
+                    continuation.resume()
+                } else {
+                    let error = writer.error ?? HLSExportError.writerFinishFailed(code: nil)
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+        guard writer.status == .completed else {
+            let code = writer.error?._code
+            logger.error("stage=finishingWriter code=\(code ?? -1)")
+            throw HLSDiagnosticError(
+                stage: .finishingWriter,
+                publicCode: "HLS-WRITER-FINISH-\(code.map { abs($0) } ?? -1)",
+                underlyingDomain: "AVFoundation",
+                underlyingCode: code,
+                safeDetail: nil
+            )
+        }
+    }
+
+    private func defaultAudioSpecificConfig(
+        sampleRate: Double,
+        channels: UInt32
+    ) -> Data {
+        let rates: [Double] = [
+            96_000, 88_200, 64_000, 48_000, 44_100, 32_000,
+            24_000, 22_050, 16_000, 12_000, 11_025, 8_000, 7_350
+        ]
+        let objectType = 2
+        let rateIndex = rates.firstIndex(of: sampleRate) ?? 4
+        let channelIndex = Int(min(max(channels, 1), 7))
+        let bits = (objectType << 11)
+            | (rateIndex << 7)
+            | (channelIndex << 3)
+        return Data([UInt8((bits >> 8) & 0xFF), UInt8(bits & 0xFF)])
     }
 
     // MARK: - Models
@@ -783,6 +1155,9 @@ actor HLSSegmentExporter {
                 key: keyData,
                 iv: key.iv(0)
             )
+            guard Self.containsBox(data, types: ["ftyp", "moov"]) else {
+                throw HLSExportError.decryptedInitializationInvalid
+            }
         }
         cache[initialization.cacheKey] = data
         return data
@@ -890,7 +1265,17 @@ actor HLSSegmentExporter {
                 }
                 throw lastError!
             }
-            return data
+            let validatedData: Data
+            if let byteRange {
+                validatedData = try validateRangeResponse(
+                    data,
+                    http: http,
+                    expectedRange: byteRange
+                )
+            } else {
+                validatedData = data
+            }
+            return validatedData
         }
         throw lastError ?? HLSExportError.network
     }
@@ -1025,6 +1410,38 @@ actor HLSSegmentExporter {
 
     // MARK: - Crypto (AES-128 CBC per RFC 8216)
 
+    /// Validates a BYTERANGE response body: a 206 must be exactly the
+    /// requested length; a 200 (full resource) is sliced locally — some CDNs
+    /// ignore Range headers and RCF 9110 still allows it.
+    private func validateRangeResponse(
+        _ data: Data,
+        http: HTTPURLResponse,
+        expectedRange: Range<Int>
+    ) throws -> Data {
+        let expectedLength = expectedRange.count
+        if http.statusCode == 206 {
+            guard data.count == expectedLength else {
+                throw HLSExportError.invalidRangeResponse(
+                    expectedLength: expectedLength,
+                    actualLength: data.count,
+                    status: 206
+                )
+            }
+            return data
+        }
+        // 200 means the CDN ignored the Range header: slice the requested
+        // bytes out of the full resource.
+        guard data.count > expectedRange.lowerBound,
+              data.count >= expectedRange.upperBound else {
+            throw HLSExportError.invalidRangeResponse(
+                expectedLength: expectedLength,
+                actualLength: data.count,
+                status: http.statusCode
+            )
+        }
+        return data.subdata(in: expectedRange)
+    }
+
     private func decryptSegment(
         _ data: Data,
         key: Data,
@@ -1135,7 +1552,21 @@ actor HLSSegmentExporter {
         source: AVURLAsset,
         destination: URL
     ) async throws {
-        let tracks = try await source.loadTracks(withMediaType: .audio)
+        let tracks: [AVAssetTrack]
+        do {
+            tracks = try await source.loadTracks(withMediaType: .audio)
+        } catch let error as NSError {
+            logger.error(
+                "stage=openingLinearSource domain=\(error.domain, privacy: .public) code=\(error.code)"
+            )
+            throw HLSDiagnosticError(
+                stage: .openingLinearSource,
+                publicCode: "HLS-SOURCE-\(abs(error.code))",
+                underlyingDomain: error.domain,
+                underlyingCode: error.code,
+                safeDetail: nil
+            )
+        }
         guard let track = tracks.first else {
             logger.info("HLS transcode: no audio track in source")
             throw HLSExportError.noAudioTrack
@@ -1169,7 +1600,21 @@ actor HLSSegmentExporter {
             AVNumberOfChannelsKey: Int(pcmFormat.channelCount),
         ]
 
-        let reader = try AVAssetReader(asset: source)
+        let reader: AVAssetReader
+        do {
+            reader = try AVAssetReader(asset: source)
+        } catch let error as NSError {
+            logger.error(
+                "stage=creatingReader domain=\(error.domain, privacy: .public) code=\(error.code)"
+            )
+            throw HLSDiagnosticError(
+                stage: .creatingReader,
+                publicCode: "HLS-READER-\(abs(error.code))",
+                underlyingDomain: error.domain,
+                underlyingCode: error.code,
+                safeDetail: nil
+            )
+        }
         let readerOutput = AVAssetReaderTrackOutput(
             track: track,
             outputSettings: readerSettings
@@ -1204,19 +1649,29 @@ actor HLSSegmentExporter {
         writer.add(writerInput)
 
         guard reader.startReading() else {
-            logger.info(
-                "HLS transcode: reader start failed code \(reader.error?._code ?? -1)"
+            let code = reader.error?._code
+            logger.error(
+                "stage=startingReader code=\(code ?? -1)"
             )
-            throw HLSExportError.readerStartFailed(
-                code: reader.error?._code
+            throw HLSDiagnosticError(
+                stage: .startingReader,
+                publicCode: "HLS-READER-START-\(code.map { abs($0) } ?? -1)",
+                underlyingDomain: "AVFoundation",
+                underlyingCode: code,
+                safeDetail: nil
             )
         }
         guard writer.startWriting() else {
-            logger.info(
-                "HLS transcode: writer start failed code \(writer.error?._code ?? -1)"
+            let code = writer.error?._code
+            logger.error(
+                "stage=startingWriter code=\(code ?? -1)"
             )
-            throw HLSExportError.writerStartFailed(
-                code: writer.error?._code
+            throw HLSDiagnosticError(
+                stage: .startingWriter,
+                publicCode: "HLS-WRITER-START-\(code.map { abs($0) } ?? -1)",
+                underlyingDomain: "AVFoundation",
+                underlyingCode: code,
+                safeDetail: nil
             )
         }
         writer.startSession(atSourceTime: .zero)
@@ -1323,6 +1778,13 @@ enum HLSExportError: LocalizedError {
     case writerStartFailed(code: Int?)
     case writerAppendFailed(code: Int?)
     case writerFinishFailed(code: Int?)
+    case invalidRangeResponse(
+        expectedLength: Int,
+        actualLength: Int,
+        status: Int
+    )
+    case decryptedInitializationInvalid
+    case decryptedFragmentInvalid(index: Int)
 
     var errorDescription: String? {
         switch self {
@@ -1347,7 +1809,9 @@ enum HLSExportError: LocalizedError {
              .noFragments, .noAudioTrack,
              .readerCannotAddOutput, .readerStartFailed,
              .writerCannotAddInput, .writerStartFailed,
-             .writerAppendFailed, .writerFinishFailed:
+             .writerAppendFailed, .writerFinishFailed,
+             .invalidRangeResponse,
+             .decryptedInitializationInvalid, .decryptedFragmentInvalid:
             return L10n.text("Не удалось собрать аудиопоток.")
         }
     }
@@ -1362,3 +1826,54 @@ enum HLSExportErrorResourceKind: String, Sendable {
     case encryptionKey
     case mediaSegment
 }
+
+/// Stage where the HLS → M4A export failed. Downstream error presentation
+/// maps these to safe user-visible messages.
+enum HLSFailureStage: String, Sendable {
+    case resolvingManifest
+    case parsingManifest
+    case downloadingInitialization
+    case downloadingSegment
+    case decrypting
+    case parsingInitialization
+    case parsingFragment
+    case assemblingLinearSource
+    case openingLinearSource
+    case creatingReader
+    case startingReader
+    case creatingWriter
+    case startingWriter
+    case appendingSample
+    case finishingWriter
+    case validatingOutput
+}
+
+/// Diagnostic error that never leaks the underlying AVFoundation error
+/// string to the UI. `publicCode` is the safe value shown via "Copy error
+/// code"; the numeric fields stay in logs.
+struct HLSDiagnosticError: LocalizedError, Sendable {
+    let stage: HLSFailureStage
+    let publicCode: String
+    let underlyingDomain: String?
+    let underlyingCode: Int?
+    let safeDetail: String?
+
+    var errorDescription: String? {
+        switch stage {
+        case .resolvingManifest,
+             .downloadingInitialization,
+             .downloadingSegment:
+            return L10n.text("Не удалось скачать аудиопоток.")
+        case .decrypting:
+            return L10n.text("Не удалось расшифровать аудиопоток.")
+        case .openingLinearSource,
+             .creatingReader,
+             .startingReader,
+             .validatingOutput:
+            return L10n.text("Не удалось открыть собранный аудиопоток.")
+        default:
+            return L10n.text("Не удалось создать аудиофайл из этого потока.")
+        }
+    }
+}
+
