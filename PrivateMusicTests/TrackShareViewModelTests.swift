@@ -25,13 +25,14 @@ final class TrackShareViewModelTests: XCTestCase {
         vm.start(track: makeTrack(), environment: preparer)
         await vm.waitForCurrentOperation()
 
-        let failure = try XCTUnwrap({
-            guard case .failed(let value) = vm.state else { return nil }
-            return value
-        }())
-        XCTAssertEqual(failure.title, L10n.text("Не удалось подготовить аудиофайл."))
-        XCTAssertEqual(failure.message, L10n.text("Не удалось подготовить аудиофайл."))
-        XCTAssertNotNil(failure.diagnosticCode)
+        switch vm.state {
+        case .failed(let failure):
+            XCTAssertEqual(failure.title, L10n.text("Не удалось подготовить аудиофайл."))
+            XCTAssertEqual(failure.message, L10n.text("Не удалось подготовить аудиофайл."))
+            XCTAssertNotNil(failure.diagnosticCode)
+        default:
+            XCTFail("Expected failed state, got \(vm.state)")
+        }
     }
 
     func testCancellationErrorDoesNotBecomeFailed() async throws {
