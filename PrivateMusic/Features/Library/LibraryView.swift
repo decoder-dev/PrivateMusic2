@@ -14,6 +14,7 @@ struct LibraryView: View {
     @StateObject private var playlists = PlaylistLibraryViewModel()
     @State private var showingEditor = false
     @State private var pendingCellularDownload: Track?
+    @State private var sharingTrack: Track?
 
     var body: some View {
         ScrollView {
@@ -65,6 +66,7 @@ struct LibraryView: View {
         .navigationTitle("Медиатека")
         .navigationBarTitleDisplayMode(.inline)
         .dynamicTypeSize(...DynamicTypeSize.large)
+        .trackShareSheet(track: $sharingTrack)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 NavigationLink {
@@ -80,7 +82,7 @@ struct LibraryView: View {
                             } else if offlineStore
                                 .downloadedTrackCount > 0 {
                                 Text(
-                                    "\(min(offlineStore.downloadedTrackCount, 99))"
+                                    "\(min(validDownloadCount, 99))"
                                 )
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(.white)
@@ -188,6 +190,10 @@ struct LibraryView: View {
         }
     }
 
+    private var validDownloadCount: Int {
+        offlineStore.availableRecords.count
+    }
+
     private var currentTrackColor: Color {
         settings.theme == .dark
             ? settings.theme.accent
@@ -278,6 +284,15 @@ struct LibraryView: View {
                     player.playNext(track)
                 } label: {
                     Label("Играть следующим", systemImage: "text.badge.plus")
+                }
+                Button {
+                    Haptics.open()
+                    sharingTrack = track
+                } label: {
+                    Label(
+                        "Поделиться аудиофайлом",
+                        systemImage: "square.and.arrow.up"
+                    )
                 }
                 Button(
                     role: offlineStore.contains(track) ? .destructive : nil

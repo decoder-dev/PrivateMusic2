@@ -8,6 +8,7 @@ struct TrackRow: View {
     @EnvironmentObject private var offlineStore: OfflineTrackStore
     let track: Track
     let queue: [Track]
+    @State private var sharingTrack: Track?
 
     var body: some View {
         Button {
@@ -82,6 +83,7 @@ struct TrackRow: View {
             isCurrent ? L10n.text("Сейчас играет") : ""
         )
         .accessibilityHint(L10n.text("Воспроизвести трек"))
+        .trackShareSheet(track: $sharingTrack)
         .contextMenu {
             Button {
                 player.playNext(track)
@@ -97,6 +99,15 @@ struct TrackRow: View {
                 player.presentPlayer()
             } label: {
                 Label("Открыть плеер", systemImage: "play.circle")
+            }
+            Button {
+                Haptics.open()
+                sharingTrack = track
+            } label: {
+                Label(
+                    "Поделиться аудиофайлом",
+                    systemImage: "square.and.arrow.up"
+                )
             }
             Button(
                 role: offlineStore.contains(track) ? .destructive : nil

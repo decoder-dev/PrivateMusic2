@@ -224,8 +224,21 @@ final class OfflineTrackStore: ObservableObject {
         return url
     }
 
+    /// Records backed by an actual file on disk. Derived counts, byte totals
+    /// and lists must only ever reflect physically present files.
+    var availableRecords: [OfflineTrackRecord] {
+        records.values.filter {
+            localURL(for: $0.track) != nil
+        }
+    }
+
+    func record(for track: Track) -> OfflineTrackRecord? {
+        guard localURL(for: track) != nil else { return nil }
+        return records[track.id]
+    }
+
     var downloadedTracks: [Track] {
-        records.values
+        availableRecords
             .sorted { $0.downloadedAt > $1.downloadedAt }
             .map(\.track)
     }
@@ -233,21 +246,13 @@ final class OfflineTrackStore: ObservableObject {
     /// Number of tracks backed by an actual file on disk. The toolbar badge
     /// and the downloads list must count only these.
     var downloadedTrackCount: Int {
-        guard let directory = accountDirectory else { return 0 }
-        return records.values.filter { record in
-            fileManager.fileExists(
-                atPath: resolvedURL(
-                    for: record,
-                    accountDirectory: directory
-                ).path
-            )
-        }.count
+        availableRecords.count
     }
 
     /// Tracks the user explicitly saved. They are never evicted
     /// automatically and stay until the user removes them.
     var manualDownloads: [OfflineTrackRecord] {
-        records.values
+        availableRecords
             .filter { $0.resolvedRetention == .manual }
             .sorted { $0.downloadedAt > $1.downloadedAt }
     }
@@ -256,7 +261,7 @@ final class OfflineTrackStore: ObservableObject {
     /// least-recently-played first when the cache needs space and can be
     /// cleared independently of manual downloads.
     var automaticCacheTracks: [OfflineTrackRecord] {
-        records.values
+        availableRecords
             .filter { $0.resolvedRetention == .automaticCache }
             .sorted { $0.lastPlayedAt > $1.lastPlayedAt }
     }
@@ -266,13 +271,11 @@ final class OfflineTrackStore: ObservableObject {
     }
 
     var totalByteCount: Int64 {
-        records.values.reduce(0) { $0 + $1.byteCount }
+        availableRecords.reduce(0) { $0 + $1.byteCount }
     }
 
     var automaticCacheByteCount: Int64 {
-        records.values
-            .filter { $0.resolvedRetention == .automaticCache }
-            .reduce(0) { $0 + $1.byteCount }
+        automaticCacheTracks.reduce(0) { $0 + $1.byteCount }
     }
 
     var storageUsage: StorageUsage {
@@ -284,7 +287,7 @@ final class OfflineTrackStore: ObservableObject {
             orphanBytes: auxiliaryUsage.orphanBytes,
             manualCount: manualDownloads.count,
             automaticCount: automaticCacheTracks.count,
-            totalCount: records.count,
+            totalCount: availableRecords.count,
             limitBytes: storageLimitBytes
         )
     }
