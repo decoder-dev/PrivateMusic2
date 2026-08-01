@@ -134,7 +134,6 @@ final class OfflineTrackStore: ObservableObject {
     private let fileManager: FileManager
     private let rootURL: URL
     private let downloadService: TrackShareService
-    private let hlsDownloadService: HLSOfflineDownloadService?
     private let downloadCoordinator: DownloadCoordinator
     private let artworkByteCountProvider: () -> Int64
     private var activeAccountID: Int?
@@ -154,7 +153,6 @@ final class OfflineTrackStore: ObservableObject {
         fileManager: FileManager = .default,
         rootURL: URL? = nil,
         downloadService: TrackShareService = TrackShareService(),
-        hlsDownloadService: HLSOfflineDownloadService? = nil,
         downloadCoordinator: DownloadCoordinator = .shared,
         artworkByteCountProvider: @escaping () -> Int64 = {
             PlaylistArtworkBytesBox.shared.current()
@@ -162,7 +160,6 @@ final class OfflineTrackStore: ObservableObject {
     ) {
         self.fileManager = fileManager
         self.downloadService = downloadService
-        self.hlsDownloadService = hlsDownloadService
         self.downloadCoordinator = downloadCoordinator
         self.artworkByteCountProvider = artworkByteCountProvider
         if let rootURL {
@@ -331,52 +328,41 @@ final class OfflineTrackStore: ObservableObject {
     ) async throws {
         let maxRetries = 3
         var lastError: Error?
-        for attempt in 0 ..< maxRetries {
+
+        for attempt in 0..<maxRetries {
             try Task.checkCancellation()
             do {
                 guard activeAccountID == accountID else {
                     throw CancellationError()
                 }
-                if isHLS(track.streamURL) {
-                    try await downloadHLS(
-                        track,
-                        accountID: accountID,
-                        userAgent: userAgent,
-                        retention: retention
-                    )
-                } else {
-                    try await downloadDirectFile(
-                        track,
-                        accountID: accountID,
-                        userAgent: userAgent,
-                        retention: retention
-                    )
-                }
+                try await downloadPreparedAudioFile(
+                    track,
+                    accountID: accountID,
+                    userAgent: userAgent,
+                    retention: retention
+                )
                 return
             } catch is CancellationError {
                 throw CancellationError()
-            } catch let error as APIError {
-                lastError = error
-                guard attempt + 1 < maxRetries else {
-                    throw error
-                }
-                try await Task.sleep(
-                    for: .seconds(pow(2.0, Double(attempt)))
-                )
             } catch {
                 lastError = error
                 guard attempt + 1 < maxRetries else {
                     throw error
                 }
+                try Task.checkCancellation()
                 try await Task.sleep(
                     for: .seconds(pow(2.0, Double(attempt)))
                 )
             }
         }
+
         throw lastError ?? APIError.invalidResponse
     }
 
-    private func downloadDirectFile(
+    /// Single unified pipeline: `TrackShareService` resolves the payload
+    /// (direct stream in its original format, HLS converted to M4A), and the
+    /// resulting audio file is stored as a direct file.
+    private func downloadPreparedAudioFile(
         _ track: Track,
         accountID: Int,
         userAgent: String?,
@@ -384,12 +370,20 @@ final class OfflineTrackStore: ObservableObject {
     ) async throws {
         let payload = try await downloadService.preparePayload(
             for: track,
-            userAgent: userAgent
+            userAgent: userAgent,
+            requiresMP3: false
         )
         let temporaryURL = payload.fileURL
         defer { Task { await downloadService.removeExportedFile(payload) } }
         guard activeAccountID == accountID else {
             throw CancellationError()
+        }
+
+        let allowedExtensions = ["mp3", "m4a", "aac", "wav", "flac"]
+        guard allowedExtensions.contains(
+            temporaryURL.pathExtension.lowercased()
+        ) else {
+            throw offlineError("Файл слишком большой для офлайн-загрузки.")
         }
 
         let attributes = try fileManager.attributesOfItem(
@@ -468,75 +462,6 @@ final class OfflineTrackStore: ObservableObject {
             // Rollback: never leave a file without metadata.
             records.removeValue(forKey: track.id)
             try? fileManager.removeItem(at: trackDirectory)
-            throw error
-        }
-        refreshAuxiliaryUsage()
-    }
-
-    private func downloadHLS(
-        _ track: Track,
-        accountID: Int,
-        userAgent: String?,
-        retention: OfflineTrackRetention
-    ) async throws {
-        try createProtectedDirectory(rootURL)
-        let estimatedSize = min(
-            Self.maximumTrackSize,
-            max(20_000_000, Int64(track.duration * 40_000))
-        )
-        try ensureFreeSpace(for: estimatedSize)
-
-        let location = try await (
-            hlsDownloadService ?? HLSOfflineDownloadService.shared
-        ).download(
-            track: track,
-            userAgent: userAgent
-        )
-        guard activeAccountID == accountID else {
-            try? fileManager.removeItem(at: location)
-            throw CancellationError()
-        }
-
-        let byteCount = allocatedSize(at: location)
-        guard byteCount > 0,
-              byteCount <= Self.maximumTrackSize else {
-            try? fileManager.removeItem(at: location)
-            throw offlineError("Файл слишком большой для офлайн-загрузки.")
-        }
-        do {
-            try makeSpace(for: byteCount)
-        } catch {
-            try? fileManager.removeItem(at: location)
-            throw error
-        }
-        let storedTrack = Track(
-            trackID: track.trackID,
-            ownerID: track.ownerID,
-            title: track.title,
-            artist: track.artist,
-            albumTitle: track.albumTitle,
-            duration: track.duration,
-            streamURL: nil,
-            artworkURL: track.artworkURL,
-            accessKey: track.accessKey,
-            lyricsID: track.lyricsID
-        )
-        let record = OfflineTrackRecord(
-            track: storedTrack,
-            relativePath: relativePathFromHome(for: location),
-            storage: .hlsPackage,
-            retention: retention,
-            byteCount: byteCount,
-            downloadedAt: Date(),
-            lastPlayedAt: Date(),
-            playCount: 0
-        )
-        records[track.id] = record
-        do {
-            try await persistNow()
-        } catch {
-            records.removeValue(forKey: track.id)
-            try? fileManager.removeItem(at: location)
             throw error
         }
         refreshAuxiliaryUsage()
@@ -993,10 +918,6 @@ final class OfflineTrackStore: ObservableObject {
             )
         }
         return total
-    }
-
-    private func isHLS(_ url: URL?) -> Bool {
-        url?.pathExtension.caseInsensitiveCompare("m3u8") == .orderedSame
     }
 
     private func offlineError(_ message: String) -> APIError {
