@@ -297,6 +297,204 @@ final class TrackShareServiceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: looseFile.path))
     }
 
+    @MainActor
+    func testZeroByteLocalFileIsRejected() async throws {
+        let service = TrackShareService()
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mp3")
+        try Data().write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+
+        do {
+            _ = try await service.payloadFromLocalFile(
+                source,
+                track: makeTrack(streamURL: nil)
+            )
+            XCTFail("Zero-byte local files must be rejected")
+        } catch let error as APIError {
+            guard case let .server(code, _) = error else {
+                return XCTFail("Expected a server error, got \(error)")
+            }
+            XCTAssertEqual(code, 413)
+        } catch {
+            XCTFail("Expected an APIError, got \(error)")
+        }
+    }
+
+    func testZeroByteDirectDownloadIsRejected() async {
+        let sourceURL = URL(string: "https://example.com/audio/track.mp3")!
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ShareURLProtocol.self]
+        ShareURLProtocol.handler = { _ in
+            let response = HTTPURLResponse(
+                url: sourceURL,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: [
+                    "Content-Type": "audio/mpeg",
+                    "Content-Length": "0"
+                ]
+            )!
+            return (response, Data())
+        }
+        let service = TrackShareService(
+            session: URLSession(configuration: configuration)
+        )
+
+        do {
+            _ = try await service.preparePayload(
+                for: makeTrack(streamURL: sourceURL),
+                userAgent: nil
+            )
+            XCTFail("Zero-byte downloads must be rejected")
+        } catch let error as APIError {
+            guard case let .server(code, _) = error else {
+                return XCTFail("Expected a server error, got \(error)")
+            }
+            XCTAssertEqual(code, 413)
+        } catch {
+            XCTFail("Expected an APIError, got \(error)")
+        }
+    }
+
+    @MainActor
+    func testUnknownLocalFormatIsRejectedInsteadOfFakeM4A() async throws {
+        let service = TrackShareService()
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("bin")
+        try Data("not-an-audio-file".utf8).write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+
+        do {
+            _ = try await service.payloadFromLocalFile(
+                source,
+                track: makeTrack(streamURL: nil)
+            )
+            XCTFail("Unknown formats must not silently become .m4a")
+        } catch let error as APIError {
+            guard case let .server(code, _) = error else {
+                return XCTFail("Expected a server error, got \(error)")
+            }
+            XCTAssertEqual(code, 415)
+        } catch {
+            XCTFail("Expected an APIError, got \(error)")
+        }
+    }
+
+    @MainActor
+    func testMp3SignatureInUnknownExtensionKeepsMp3() async throws {
+        let service = TrackShareService()
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("bin")
+        let bytes = Data("ID3audio".utf8)
+        try bytes.write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+
+        let payload = try await service.payloadFromLocalFile(
+            source,
+            track: makeTrack(streamURL: nil)
+        )
+
+        XCTAssertEqual(payload.fileURL.pathExtension, "mp3")
+        XCTAssertEqual(try Data(contentsOf: payload.fileURL), bytes)
+        await service.removeExportedFile(payload)
+    }
+
+    @MainActor
+    func testCancellationAfterFinalCopyRemovesExportDirectory() async throws {
+        let service = TrackShareService()
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mp3")
+        try Data("ID3audio".utf8).write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PrivateMusicShare", isDirectory: true)
+        let before = Set(
+            (try? FileManager.default.contentsOfDirectory(atPath: root.path))
+                ?? []
+        )
+
+        let task = Task {
+            try await service.payloadFromLocalFile(
+                source,
+                track: makeTrack(streamURL: nil)
+            )
+        }
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("A cancelled share must throw")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+
+        let after = Set(
+            (try? FileManager.default.contentsOfDirectory(atPath: root.path))
+                ?? []
+        )
+        XCTAssertEqual(after, before)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+    }
+
+    @MainActor
+    func testLocalShareDoesNotTouchNetwork() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ShareURLProtocol.self]
+        ShareURLProtocol.handler = { _ in
+            XCTFail("Local file sharing must never reach the network")
+            throw URLError(.notConnectedToInternet)
+        }
+        let service = TrackShareService(
+            session: URLSession(configuration: configuration)
+        )
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mp3")
+        let bytes = Data("ID3audio".utf8)
+        try bytes.write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+
+        let payload = try await service.payloadFromLocalFile(
+            source,
+            track: makeTrack(streamURL: nil)
+        )
+
+        XCTAssertEqual(try Data(contentsOf: payload.fileURL), bytes)
+        await service.removeExportedFile(payload)
+    }
+
+    @MainActor
+    func testCleanupDoesNotTouchSourceDirectory() async throws {
+        let service = TrackShareService()
+        let packageDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: packageDirectory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: packageDirectory) }
+        let innerFile = packageDirectory
+            .appendingPathComponent("fragment.mp3")
+        let bytes = Data("ID3fragment".utf8)
+        try bytes.write(to: innerFile)
+
+        let payload = try await service.payloadFromLocalFile(
+            innerFile,
+            track: makeTrack(streamURL: nil)
+        )
+        await service.removeExportedFile(payload)
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: packageDirectory.path)
+        )
+        XCTAssertEqual(try Data(contentsOf: innerFile), bytes)
+    }
+
     private func makeTrack(streamURL: URL?) -> Track {
         Track(
             trackID: 7,
