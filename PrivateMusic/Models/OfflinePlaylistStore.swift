@@ -586,12 +586,13 @@ final class OfflinePlaylistStore: ObservableObject {
                     counts.failed,
                     storedTracks.count
                 )
+                let completedSubtitle = L10n.format(
+                    "Скачано %d из %d",
+                    counts.completed,
+                    storedTracks.count
+                )
                 DownloadNotifications.notifyDownloadComplete(
-                    title: "\(name) · \(L10n.format(
-                        "Скачано %d из %d",
-                        counts.completed,
-                        storedTracks.count
-                    ))"
+                    title: "\(name) · \(completedSubtitle)"
                 )
             } else {
                 finalRecord.state = .failed
