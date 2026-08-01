@@ -32,6 +32,8 @@ struct OfflineDownloadsView: View {
     @State private var showsDeleteConfirmation = false
     @State private var showsDeleteAllConfirmation = false
     @State private var showsClearCacheConfirmation = false
+    @State private var pendingPlaylistRemoval: PlaylistSection?
+    @State private var showsDeletePlaylistConfirmation = false
 
     var body: some View {
         Group {
@@ -194,6 +196,27 @@ struct OfflineDownloadsView: View {
                 clearAutomaticCache()
             }
             Button(L10n.text("Отмена"), role: .cancel) {}
+        }
+        .confirmationDialog(
+            L10n.text("Удалить плейлист?"),
+            isPresented: $showsDeletePlaylistConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.text("Удалить плейлист"), role: .destructive) {
+                removePlaylist(pendingPlaylistRemoval)
+            }
+            if let section = pendingPlaylistRemoval,
+               hasUnusedLocalFiles(in: section) {
+                Button(
+                    L10n.text("Удалить плейлист и аудиофайлы"),
+                    role: .destructive
+                ) {
+                    removePlaylistAndFiles(pendingPlaylistRemoval)
+                }
+            }
+            Button(L10n.text("Отмена"), role: .cancel) {
+                pendingPlaylistRemoval = nil
+            }
         }
         .task(id: sessionStore.resolvedOfflineAccountID) {
             offlinePlaylists.configure(
@@ -592,8 +615,8 @@ struct OfflineDownloadsView: View {
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
-                offlinePlaylists.remove(section.playlist)
-                offlinePlaylists.reconcileDownloads(with: offlineStore)
+                pendingPlaylistRemoval = section
+                showsDeletePlaylistConfirmation = true
             } label: {
                 Label("Удалить", systemImage: "trash")
             }
@@ -677,6 +700,50 @@ struct OfflineDownloadsView: View {
 
     private func deleteTrack(_ track: Track) {
         offlineStore.remove(track)
+        offlinePlaylists.reconcileDownloads(with: offlineStore)
+        Haptics.selection()
+    }
+
+    // MARK: - Playlist deletion
+
+    /// Local files of this playlist that no other playlist references. Only
+    /// these may be offered for deletion together with the playlist record.
+    private func unusedLocalFiles(
+        in section: PlaylistSection
+    ) -> [Track] {
+        let referencedByOthers = Set(
+            offlinePlaylists.records.values
+                .filter { $0.id != section.record.id }
+                .flatMap(\.tracks)
+                .map(\.id)
+        )
+        return section.tracks.filter {
+            offlineStore.contains($0)
+                && !referencedByOthers.contains($0.id)
+        }
+    }
+
+    private func hasUnusedLocalFiles(in section: PlaylistSection) -> Bool {
+        !unusedLocalFiles(in: section).isEmpty
+    }
+
+    private func removePlaylist(_ section: PlaylistSection?) {
+        guard let section else { return }
+        pendingPlaylistRemoval = nil
+        offlinePlaylists.remove(section.playlist)
+        offlinePlaylists.reconcileDownloads(with: offlineStore)
+        Haptics.selection()
+    }
+
+    /// Removes the playlist record and, separately, the audio files that no
+    /// other playlist references. Shared tracks are kept untouched.
+    private func removePlaylistAndFiles(_ section: PlaylistSection?) {
+        guard let section else { return }
+        pendingPlaylistRemoval = nil
+        for track in unusedLocalFiles(in: section) {
+            offlineStore.remove(track)
+        }
+        offlinePlaylists.remove(section.playlist)
         offlinePlaylists.reconcileDownloads(with: offlineStore)
         Haptics.selection()
     }
