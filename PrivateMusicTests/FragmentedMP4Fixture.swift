@@ -66,39 +66,41 @@ enum FragmentedMP4Fixture {
             throw FixtureError.audioFormat
         }
 
-        var emptyBuffer: CMBlockBuffer?
-        let emptyStatus = CMBlockBufferCreateEmpty(
-            allocator: nil,
-            capacity: 0,
-            flags: 0,
-            blockBufferOut: &emptyBuffer
+        var timing = CMSampleTimingInfo(
+            duration: CMTime(value: 1, timescale: Int32(sampleRate)),
+            presentationTimeStamp: .zero,
+            decodeTimeStamp: .invalid
         )
-        guard emptyStatus == noErr, let emptyBuffer else {
-            throw FixtureError.sampleBuffer
-        }
-
         var sampleBuffer: CMSampleBuffer?
-        let sampleStatus = CMAudioSampleBufferCreateReadyWithPacketDescriptions(
+        let createStatus = CMSampleBufferCreate(
             allocator: nil,
-            dataBuffer: emptyBuffer,
+            dataBuffer: nil,
+            dataReady: false,
+            makeDataReadyCallback: nil,
+            refcon: nil,
             formatDescription: formatDescription,
             sampleCount: frameCount,
-            presentationTimeStamp: .zero,
-            packetDescriptions: nil,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleSizeEntryCount: 0,
+            sampleSizeArray: nil,
             sampleBufferOut: &sampleBuffer
         )
-        guard sampleStatus == noErr, let sampleBuffer else {
+        guard createStatus == noErr, let sampleBuffer else {
             throw FixtureError.sampleBuffer
         }
         let attachStatus = CMSampleBufferSetDataBufferFromAudioBufferList(
             sampleBuffer,
             blockBufferAllocator: nil,
             blockBufferMemoryAllocator: nil,
-            flags: kCMBlockBufferAssureMemoryNowFlag,
+            flags: 0,
             bufferList: buffer.mutableAudioBufferList
         )
         guard attachStatus == noErr else {
             throw FixtureError.audioBufferList
+        }
+        guard CMSampleBufferSetDataReady(sampleBuffer) == noErr else {
+            throw FixtureError.sampleBuffer
         }
 
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
