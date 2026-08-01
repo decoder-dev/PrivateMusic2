@@ -31,11 +31,19 @@ actor HLSSegmentExporter {
     }
 
     /// Exports a remote HLS stream (`index.m3u8` URL) into an M4A file.
+    ///
+    /// Progress reports exact counters: `0/total` right after the media
+    /// playlist is parsed, `index + 1/total` after every segment write and
+    /// `.convertingToM4A` once the stitched stream is handed to the
+    /// transcode step. Every failure path — manifest, segment, key, decrypt,
+    /// write, size, cancellation and transcode — removes the staging
+    /// directory via `defer`.
     func exportToM4A(
         streamURL: URL,
         headers: [String: String],
         destination: URL,
-        fileSizeLimit: Int64
+        fileSizeLimit: Int64,
+        progress: TrackExportProgressHandler? = nil
     ) async throws {
         let playlistData = try await fetchData(
             from: streamURL,
@@ -72,6 +80,7 @@ actor HLSSegmentExporter {
         guard !parsed.segments.isEmpty else {
             throw HLSExportError.emptyPlaylist
         }
+        let totalSegments = parsed.segments.count
 
         let stagingDirectory = destination
             .deletingLastPathComponent()
@@ -80,11 +89,18 @@ actor HLSSegmentExporter {
             at: stagingDirectory,
             withIntermediateDirectories: true
         )
+        defer {
+            try? fileManager.removeItem(at: stagingDirectory)
+        }
         let stitchedURL = stagingDirectory
             .appendingPathComponent("stream.ts")
         fileManager.createFile(atPath: stitchedURL.path, contents: nil)
         let handle = try FileHandle(forWritingTo: stitchedURL)
         defer { try? handle.close() }
+
+        await progress?(
+            .downloadingSegments(completed: 0, total: totalSegments)
+        )
 
         var keyCache: [URL: Data] = [:]
         var written: Int64 = 0
@@ -118,9 +134,17 @@ actor HLSSegmentExporter {
                 throw HLSExportError.fileTooLarge
             }
             try handle.write(contentsOf: data)
+            await progress?(
+                .downloadingSegments(
+                    completed: index + 1,
+                    total: totalSegments
+                )
+            )
         }
         try handle.synchronize()
 
+        try Task.checkCancellation()
+        await progress?(.convertingToM4A)
         do {
             try await transcodeToM4A(
                 source: AVURLAsset(url: stitchedURL),
@@ -128,10 +152,9 @@ actor HLSSegmentExporter {
             )
             try enforceSizeLimit(destination, limit: fileSizeLimit)
         } catch {
-            try? fileManager.removeItem(at: stagingDirectory)
+            try? fileManager.removeItem(at: destination)
             throw error
         }
-        try? fileManager.removeItem(at: stagingDirectory)
     }
 
     /// Exports an offline `.movpkg` HLS bundle produced by
@@ -141,11 +164,19 @@ actor HLSSegmentExporter {
     func exportMovpkgToM4A(
         packageURL: URL,
         destination: URL,
-        fileSizeLimit: Int64
+        fileSizeLimit: Int64,
+        progress: TrackExportProgressHandler? = nil
     ) async throws {
-        let asset = AVURLAsset(url: packageURL)
-        try await transcodeToM4A(source: asset, destination: destination)
-        try enforceSizeLimit(destination, limit: fileSizeLimit)
+        try Task.checkCancellation()
+        await progress?(.convertingToM4A)
+        do {
+            let asset = AVURLAsset(url: packageURL)
+            try await transcodeToM4A(source: asset, destination: destination)
+            try enforceSizeLimit(destination, limit: fileSizeLimit)
+        } catch {
+            try? fileManager.removeItem(at: destination)
+            throw error
+        }
     }
 
     /// Removes a destination file that exceeded the size limit.
