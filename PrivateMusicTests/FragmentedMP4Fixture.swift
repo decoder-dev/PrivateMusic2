@@ -218,7 +218,7 @@ enum FragmentedMP4Fixture {
         let moovChildren = children(of: moov, in: data)
         if let mvhd = moovChildren.first(where: { $0.type == "mvhd" }) {
             let version = data[mvhd.range.lowerBound + 8]
-            let body = mvhd.range.lowerBound - moov.lowerBound + 8
+            let body = mvhd.range.lowerBound - moov.lowerBound
             let durationOffset = version == 1 ? 24 : 16
             payload.replaceSubrange(
                 body + durationOffset..<body + durationOffset + 4,
@@ -231,7 +231,7 @@ enum FragmentedMP4Fixture {
         let trakChildren = children(of: trak.range, in: data)
         if let tkhd = trakChildren.first(where: { $0.type == "tkhd" }) {
             let version = data[tkhd.range.lowerBound + 8]
-            let body = tkhd.range.lowerBound - moov.lowerBound + 8
+            let body = tkhd.range.lowerBound - moov.lowerBound
             let durationOffset = version == 1 ? 28 : 20
             payload.replaceSubrange(
                 body + durationOffset..<body + durationOffset + 4,
@@ -243,7 +243,7 @@ enum FragmentedMP4Fixture {
             guard let box = stbl.first(where: { $0.type == type }) else {
                 continue
             }
-            let body = box.range.lowerBound - moov.lowerBound + 8
+            let body = box.range.lowerBound - moov.lowerBound
             let end = type == "stsz" ? body + 12 : body + 8
             payload.replaceSubrange(
                 body + 4..<end,
@@ -387,7 +387,7 @@ enum FragmentedMP4Fixture {
 
     private static func children(of range: Range<Int>, in data: Data) -> [BoxInfo] {
         var boxes: [BoxInfo] = []
-        var offset = range.lowerBound
+        var offset = range.lowerBound + 8
         while offset + 8 <= range.upperBound {
             let size = Int(readUInt32(offset, in: data))
             guard size >= 8, offset + size <= range.upperBound else { break }
