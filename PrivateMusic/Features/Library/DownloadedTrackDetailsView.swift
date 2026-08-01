@@ -40,6 +40,18 @@ struct DownloadedTrackDetailsView: View {
                             title: "Формат",
                             value: formatDescription
                         )
+                        if record.track.albumTitle != nil {
+                            Divider()
+                            detailRow(
+                                title: "Альбом",
+                                value: record.track.albumTitle ?? ""
+                            )
+                        }
+                        Divider()
+                        detailRow(
+                            title: "Длительность",
+                            value: record.track.duration.formattedDuration
+                        )
                         Divider()
                         detailRow(
                             title: "Размер",
@@ -83,6 +95,7 @@ struct DownloadedTrackDetailsView: View {
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
+                        .disabled(localURL == nil)
 
                         Button {
                             onShare()
@@ -94,6 +107,7 @@ struct DownloadedTrackDetailsView: View {
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
+                        .disabled(localURL == nil)
 
                         Button(role: .destructive) {
                             showsDeleteConfirmation = true
@@ -150,7 +164,9 @@ struct DownloadedTrackDetailsView: View {
     private var formatDescription: String {
         switch record.resolvedStorage {
         case .hlsPackage:
-            return "M4A (из HLS)"
+            return L10n.text(
+                "Потоковое аудио · при отправке создаётся M4A"
+            )
         case .directFile:
             let ext = localURL?.pathExtension.uppercased() ?? "AUDIO"
             return ext.isEmpty ? "AUDIO" : ext

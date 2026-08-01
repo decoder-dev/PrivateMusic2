@@ -21,6 +21,7 @@ enum TrackSharePayload: Equatable, Sendable {
 
 actor TrackShareService {
     static let maximumFileSize: Int64 = 150_000_000
+    static let audioFileExtensions: Set<String> = ["mp3", "m4a", "aac", "wav", "flac"]
 
     private let session: URLSession
     private let fileManager: FileManager
@@ -93,7 +94,9 @@ actor TrackShareService {
                 || http.expectedContentLength < 0 else {
             throw fileTooLargeError
         }
-        guard try fileSize(at: temporaryURL) <= Self.maximumFileSize else {
+        let downloadedSize = try fileSize(at: temporaryURL)
+        guard downloadedSize > 0,
+              downloadedSize <= Self.maximumFileSize else {
             throw fileTooLargeError
         }
         guard !isHLSFile(at: temporaryURL) else {
@@ -116,11 +119,17 @@ actor TrackShareService {
                 )
         )
         do {
-            try fileManager.moveItem(at: temporaryURL, to: destination)
+            do {
+                try fileManager.moveItem(at: temporaryURL, to: destination)
+            } catch {
+                try fileManager.copyItem(at: temporaryURL, to: destination)
+            }
+            try Task.checkCancellation()
+            return .audioFile(destination)
         } catch {
-            try fileManager.copyItem(at: temporaryURL, to: destination)
+            removeExportDirectory(containing: destination)
+            throw error
         }
-        return .audioFile(destination)
     }
 
     func payloadFromLocalFile(
@@ -146,6 +155,11 @@ actor TrackShareService {
             )
         }
 
+        let localSize = try fileSize(at: sourceURL)
+        guard localSize > 0,
+              localSize <= Self.maximumFileSize else {
+            throw fileTooLargeError
+        }
         await progress?(.copyingLocalFile)
         if requiresMP3 {
             guard isLikelyMP3(at: sourceURL) else {
@@ -158,23 +172,33 @@ actor TrackShareService {
         } else if isLikelyM4A(at: sourceURL) {
             extensionName = "m4a"
         } else {
-            extensionName = sourceURL.pathExtension.lowercased()
+            let sourceExtension = sourceURL.pathExtension.lowercased()
+            guard Self.audioFileExtensions.contains(sourceExtension) else {
+                throw directAudioUnavailableError
+            }
+            extensionName = sourceExtension
         }
         let destination = exportDestination(
             for: track,
-            extensionName: extensionName.isEmpty ? "m4a" : extensionName
+            extensionName: extensionName
         )
         do {
-            try fileManager.linkItem(at: sourceURL, to: destination)
-        } catch {
             do {
-                try fileManager.copyItem(at: sourceURL, to: destination)
+                try fileManager.linkItem(at: sourceURL, to: destination)
             } catch {
-                removeExportDirectory(containing: destination)
-                throw error
+                do {
+                    try fileManager.copyItem(at: sourceURL, to: destination)
+                } catch {
+                    removeExportDirectory(containing: destination)
+                    throw error
+                }
             }
+            try Task.checkCancellation()
+            return .audioFile(destination)
+        } catch {
+            removeExportDirectory(containing: destination)
+            throw error
         }
-        return .audioFile(destination)
     }
 
     func removeExportedFile(_ payload: TrackSharePayload) {
@@ -352,9 +376,9 @@ actor TrackShareService {
 
     /// VK HLS streams (and offline `.movpkg` packages) cannot be passed to
     /// `AVAssetExportSession` — AVFoundation reports them as non-exportable.
-    /// Instead the segments are stitched manually and remuxed into M4A,
-    /// following the approach of the open-source VKpyMusic converter
-    /// (https://github.com/issamansur/vkpymusic).
+    /// Instead the segments are stitched manually and transcoded into M4A
+    /// (PCM → AAC), following the approach of the open-source VKpyMusic
+    /// converter (https://github.com/issamansur/vkpymusic).
     private func exportM4A(
         from sourceURL: URL,
         track: Track,
