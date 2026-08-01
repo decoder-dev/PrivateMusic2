@@ -45,6 +45,13 @@ final class SessionStore: ObservableObject {
         session?.userAgent
     }
 
+    /// Single source of truth for the offline account: the session user ID
+    /// wins, the restored profile is the fallback. Every offline store must
+    /// be configured with this value so account keys never diverge.
+    var resolvedOfflineAccountID: Int? {
+        session?.userID ?? profile?.id
+    }
+
     func connect(
         accessToken: String,
         userAgent: String?,

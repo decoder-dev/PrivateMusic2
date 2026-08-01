@@ -8,6 +8,8 @@ struct LibraryView: View {
     @EnvironmentObject private var offlineStore: OfflineTrackStore
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var networkMonitor: NetworkMonitor
+    @ObservedObject private var offlinePlaylists =
+        OfflinePlaylistStore.shared
     @StateObject private var tracks = TrackCollectionViewModel(source: .library)
     @StateObject private var playlists = PlaylistLibraryViewModel()
     @State private var showingEditor = false
@@ -58,7 +60,6 @@ struct LibraryView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 24)
         }
         .background(ThemeBackground())
         .navigationTitle("Медиатека")
@@ -72,15 +73,14 @@ struct LibraryView: View {
                     Image(systemName: "arrow.down.circle")
                         .frame(width: 24, height: 24)
                         .overlay(alignment: .topTrailing) {
-                            if !offlineStore.downloadingTrackIDs
-                                .isEmpty {
+                            if isOfflineActivityActive {
                                 ProgressView()
                                     .controlSize(.mini)
                                     .offset(x: 3, y: -3)
                             } else if offlineStore
-                                .downloadedTracks.count > 0 {
+                                .downloadedTrackCount > 0 {
                                 Text(
-                                    "\(min(offlineStore.downloadedTracks.count, 99))"
+                                    "\(min(offlineStore.downloadedTrackCount, 99))"
                                 )
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(.white)
@@ -175,6 +175,17 @@ struct LibraryView: View {
 
     private func isCurrent(_ track: Track) -> Bool {
         player.currentTrack?.id == track.id
+    }
+
+    /// Defect 12: the badge must reflect both in-flight track downloads and
+    /// active playlist batches, and the counter must be file-backed.
+    private var isOfflineActivityActive: Bool {
+        if !offlineStore.downloadingTrackIDs.isEmpty {
+            return true
+        }
+        return offlinePlaylists.records.values.contains {
+            OfflinePlaylistStatus.status(for: $0).isActive
+        }
     }
 
     private var currentTrackColor: Color {

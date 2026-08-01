@@ -570,8 +570,14 @@ private struct OfflineStorageSettingsView: View {
                         "Удалить все загрузки",
                         role: .destructive
                     ) {
-                        offlineStore.removeAll()
-                        offlinePlaylists.removeAll()
+                        Task {
+                            // Track files first, then playlist metadata and
+                            // artwork (defect 11): both stores share the
+                            // coordinator, so the queue must be drained
+                            // before reconciliation.
+                            await offlineStore.removeAll()
+                            offlinePlaylists.removeAll()
+                        }
                     }
                 }
             }
@@ -579,6 +585,7 @@ private struct OfflineStorageSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle("Офлайн и хранилище")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func formattedBytes(_ value: Int64) -> String {

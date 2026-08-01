@@ -40,21 +40,30 @@ enum OfflineTrackState: Equatable {
 struct StorageUsage: Sendable {
     let manualBytes: Int64
     let automaticBytes: Int64
+    let artworkBytes: Int64
+    let stagingBytes: Int64
+    let orphanBytes: Int64
     let manualCount: Int
     let automaticCount: Int
     let totalCount: Int
     let limitBytes: Int64
 
-    var totalBytes: Int64 { manualBytes + automaticBytes }
+    var audioBytes: Int64 { manualBytes + automaticBytes }
+
+    var totalBytes: Int64 {
+        manualBytes + automaticBytes + artworkBytes
+            + stagingBytes + orphanBytes
+    }
 
     var usageRatio: Double {
         guard limitBytes > 0 else { return 0 }
         return min(1, Double(totalBytes) / Double(limitBytes))
     }
 
+    /// Share of the *audio* bytes stored manually (used by the segment bar).
     var manualRatio: Double {
-        guard totalBytes > 0 else { return 0 }
-        return Double(manualBytes) / Double(totalBytes)
+        guard audioBytes > 0 else { return 0 }
+        return Double(manualBytes) / Double(audioBytes)
     }
 }
 
@@ -63,7 +72,6 @@ final class OfflineTrackStore: ObservableObject {
     static let maximumTrackSize: Int64 = 150_000_000
     static let minimumLibrarySize: Int64 = 5_000_000_000
     static let maximumLibrarySize: Int64 = 100_000_000_000
-    static let maximumConcurrentDownloads = 3
 
     @Published private(set) var records: [String: OfflineTrackRecord] = [:]
     @Published private(set) var downloadingTrackIDs: Set<String> = []
@@ -74,18 +82,36 @@ final class OfflineTrackStore: ObservableObject {
     private let rootURL: URL
     private let downloadService: TrackShareService
     private let hlsDownloadService: HLSOfflineDownloadService?
+    private let downloadCoordinator: DownloadCoordinator
+    private let artworkByteCountProvider: () -> Int64
     private var activeAccountID: Int?
     private var protectedTrackIDProvider: (() -> String?)?
+    private var isSaveScheduled = false
+    private var hasPendingSave = false
+
+    private struct AuxiliaryUsage {
+        var artworkBytes: Int64 = 0
+        var stagingBytes: Int64 = 0
+        var orphanBytes: Int64 = 0
+    }
+
+    private var auxiliaryUsage = AuxiliaryUsage()
 
     init(
         fileManager: FileManager = .default,
         rootURL: URL? = nil,
         downloadService: TrackShareService = TrackShareService(),
-        hlsDownloadService: HLSOfflineDownloadService? = nil
+        hlsDownloadService: HLSOfflineDownloadService? = nil,
+        downloadCoordinator: DownloadCoordinator = .shared,
+        artworkByteCountProvider: @escaping () -> Int64 = {
+            OfflinePlaylistStore.shared.artworkByteCount
+        }
     ) {
         self.fileManager = fileManager
         self.downloadService = downloadService
         self.hlsDownloadService = hlsDownloadService
+        self.downloadCoordinator = downloadCoordinator
+        self.artworkByteCountProvider = artworkByteCountProvider
         if let rootURL {
             self.rootURL = rootURL
         } else {
@@ -151,6 +177,20 @@ final class OfflineTrackStore: ObservableObject {
             .map(\.track)
     }
 
+    /// Number of tracks backed by an actual file on disk. The toolbar badge
+    /// and the downloads list must count only these.
+    var downloadedTrackCount: Int {
+        guard let directory = accountDirectory else { return 0 }
+        return records.values.filter { record in
+            fileManager.fileExists(
+                atPath: resolvedURL(
+                    for: record,
+                    accountDirectory: directory
+                ).path
+            )
+        }.count
+    }
+
     /// Tracks the user explicitly saved. They are never evicted
     /// automatically and stay until the user removes them.
     var manualDownloads: [OfflineTrackRecord] {
@@ -186,6 +226,9 @@ final class OfflineTrackStore: ObservableObject {
         StorageUsage(
             manualBytes: manualDownloadsByteCount,
             automaticBytes: automaticCacheByteCount,
+            artworkBytes: auxiliaryUsage.artworkBytes,
+            stagingBytes: auxiliaryUsage.stagingBytes,
+            orphanBytes: auxiliaryUsage.orphanBytes,
             manualCount: manualDownloads.count,
             automaticCount: automaticCacheTracks.count,
             totalCount: records.count,
@@ -201,35 +244,43 @@ final class OfflineTrackStore: ObservableObject {
         guard let accountID = activeAccountID else {
             throw APIError.unauthorized
         }
-        guard !downloadingTrackIDs.contains(track.id) else { return }
         if contains(track) {
             if retention == .manual,
                var record = records[track.id],
                record.resolvedRetention == .automaticCache {
                 record.retention = .manual
                 records[track.id] = record
-                try saveManifest()
+                requestSave()
             }
             return
         }
-        guard downloadingTrackIDs.count
-            < Self.maximumConcurrentDownloads else {
-            throw APIError.server(
-                code: 429,
-                message: L10n.text(
-                    "Слишком много одновременных загрузок. "
-                        + "Подождите завершения текущих."
-                )
-            )
-        }
-
         downloadingTrackIDs.insert(track.id)
         defer { downloadingTrackIDs.remove(track.id) }
+        try await downloadCoordinator.download(id: track.id) { [weak self] in
+            guard let self else { throw CancellationError() }
+            try await self.performDownload(
+                track,
+                accountID: accountID,
+                userAgent: userAgent,
+                retention: retention
+            )
+        }
+    }
 
+    private func performDownload(
+        _ track: Track,
+        accountID: Int,
+        userAgent: String?,
+        retention: OfflineTrackRetention
+    ) async throws {
         let maxRetries = 3
         var lastError: Error?
         for attempt in 0 ..< maxRetries {
+            try Task.checkCancellation()
             do {
+                guard activeAccountID == accountID else {
+                    throw CancellationError()
+                }
                 if isHLS(track.streamURL) {
                     try await downloadHLS(
                         track,
@@ -246,23 +297,22 @@ final class OfflineTrackStore: ObservableObject {
                     )
                 }
                 return
-            } catch let error as APIError {
-                lastError = error
-                guard attempt + 1 < maxRetries,
-                      !Task.isCancelled else {
-                    throw error
-                }
-                try? await Task.sleep(
-                    for: .seconds(pow(2.0, Double(attempt)))
-                )
             } catch is CancellationError {
                 throw CancellationError()
+            } catch let error as APIError {
+                lastError = error
+                guard attempt + 1 < maxRetries else {
+                    throw error
+                }
+                try await Task.sleep(
+                    for: .seconds(pow(2.0, Double(attempt)))
+                )
             } catch {
                 lastError = error
                 guard attempt + 1 < maxRetries else {
                     throw error
                 }
-                try? await Task.sleep(
+                try await Task.sleep(
                     for: .seconds(pow(2.0, Double(attempt)))
                 )
             }
@@ -313,6 +363,8 @@ final class OfflineTrackStore: ObservableObject {
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension(temporaryURL.pathExtension)
         try fileManager.copyItem(at: temporaryURL, to: stagingURL)
+        // Temporary staging files must never survive an error or cancel.
+        defer { try? fileManager.removeItem(at: stagingURL) }
 
         let trackDirectory = tracksDirectory
             .appendingPathComponent(track.id, isDirectory: true)
@@ -354,7 +406,15 @@ final class OfflineTrackStore: ObservableObject {
             lastPlayedAt: now,
             playCount: 0
         )
-        try saveManifest()
+        do {
+            try await persistNow()
+        } catch {
+            // Rollback: never leave a file without metadata.
+            records.removeValue(forKey: track.id)
+            try? fileManager.removeItem(at: trackDirectory)
+            throw error
+        }
+        refreshAuxiliaryUsage()
     }
 
     private func downloadHLS(
@@ -417,12 +477,13 @@ final class OfflineTrackStore: ObservableObject {
         )
         records[track.id] = record
         do {
-            try saveManifest()
+            try await persistNow()
         } catch {
             records.removeValue(forKey: track.id)
             try? fileManager.removeItem(at: location)
             throw error
         }
+        refreshAuxiliaryUsage()
     }
 
     func remove(_ track: Track) {
@@ -447,7 +508,8 @@ final class OfflineTrackStore: ObservableObject {
                 try? fileManager.removeItem(at: fileURL)
             }
         }
-        try? saveManifest()
+        refreshAuxiliaryUsage()
+        requestSave()
     }
 
     func markPlayed(_ track: Track) {
@@ -455,7 +517,7 @@ final class OfflineTrackStore: ObservableObject {
         record.lastPlayedAt = Date()
         record.playCount += 1
         records[track.id] = record
-        try? saveManifest()
+        requestSave()
     }
 
     func removeAutomaticCache() {
@@ -467,11 +529,134 @@ final class OfflineTrackStore: ObservableObject {
         }
     }
 
-    func removeAll() {
-        let all = records.values.map(\.track)
-        for track in all {
+    /// Deletes every offline download safely: blocks new work, cancels and
+    /// waits for in-flight downloads (playlist, manual and automatic all share
+    /// the coordinator), then removes files, reconciles and reopens the queue.
+    func removeAll() async {
+        downloadCoordinator.cancelAll()
+        await downloadCoordinator.waitUntilIdle()
+        let tracks = records.values.map(\.track)
+        for track in tracks {
             remove(track)
         }
+        reconcile()
+        downloadCoordinator.unblockQueue()
+    }
+
+    /// Reconciles records against the real file system: drops metadata whose
+    /// file is missing, validates HLS packages, removes safe orphan files,
+    /// recalculates byte counts and publishes one consistent snapshot.
+    func reconcile() {
+        guard let directory = accountDirectory else { return }
+        var reconciled = records
+        for (id, record) in records {
+            let url = resolvedURL(
+                for: record,
+                accountDirectory: directory
+            )
+            let isPresent: Bool
+            switch record.resolvedStorage {
+            case .directFile:
+                isPresent = fileManager.fileExists(atPath: url.path)
+            case .hlsPackage:
+                isPresent = isUsableHLSPackage(at: url)
+            }
+            guard isPresent else {
+                reconciled.removeValue(forKey: id)
+                continue
+            }
+            let actualSize = record.resolvedStorage == .directFile
+                ? actualFileSize(at: url)
+                : allocatedSize(at: url)
+            if actualSize > 0, actualSize != record.byteCount {
+                reconciled[id] = OfflineTrackRecord(
+                    track: record.track,
+                    relativePath: record.relativePath,
+                    storage: record.storage,
+                    retention: record.retention,
+                    byteCount: actualSize,
+                    downloadedAt: record.downloadedAt,
+                    lastPlayedAt: record.lastPlayedAt,
+                    playCount: record.playCount
+                )
+            }
+        }
+        removeSafeOrphans(
+            directory: directory,
+            referencedIDs: Set(reconciled.keys)
+        )
+        if let staging = accountDirectory?
+            .appendingPathComponent(".staging", isDirectory: true) {
+            try? fileManager.removeItem(at: staging)
+        }
+        records = reconciled
+        refreshAuxiliaryUsage()
+        try? saveManifestSync()
+    }
+
+    /// Throttled manifest persistence (defect 21): removes and play-count
+    /// updates never rewrite the full manifest per event on the main thread.
+    func flushPendingSave() async throws {
+        hasPendingSave = false
+        isSaveScheduled = false
+        try await persistNow()
+    }
+
+    private func requestSave() {
+        hasPendingSave = true
+        guard !isSaveScheduled else { return }
+        isSaveScheduled = true
+        Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(300))
+            } catch {
+                return
+            }
+            guard let self else { return }
+            self.isSaveScheduled = false
+            guard self.hasPendingSave else { return }
+            self.hasPendingSave = false
+            do {
+                try await self.persistNow()
+            } catch {
+                // The next request or a terminal flush retries the write.
+            }
+            if self.hasPendingSave {
+                self.requestSave()
+            }
+        }
+    }
+
+    /// Immediate off-main encode + write of the current snapshot. Throws so
+    /// callers can roll back a just-committed file (defect 19).
+    private func persistNow() async throws {
+        guard let directory = accountDirectory,
+              let manifestURL else {
+            throw APIError.unauthorized
+        }
+        try createProtectedDirectory(directory)
+        let values = records.values.sorted { $0.id < $1.id }
+        let writeURL = manifestURL
+        let data = try await Task.detached(priority: .utility) { () -> Data in
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            return try encoder.encode(values)
+        }.value
+        await Task.detached(priority: .utility) {
+            try data.write(to: writeURL, options: .atomic)
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            var mutable = writeURL
+            try? mutable.setResourceValues(values)
+            try? FileManager.default.setAttributes(
+                [
+                    .protectionKey:
+                        FileProtectionType
+                            .completeUntilFirstUserAuthentication
+                ],
+                ofItemAtPath: writeURL.path
+            )
+        }.value
     }
 
     private var accountDirectory: URL? {
@@ -498,7 +683,7 @@ final class OfflineTrackStore: ObservableObject {
         return Dictionary(uniqueKeysWithValues: values.map { ($0.id, $0) })
     }
 
-    private func saveManifest() throws {
+    private func saveManifestSync() throws {
         guard let directory = accountDirectory,
               let manifestURL else {
             throw APIError.unauthorized
@@ -512,24 +697,105 @@ final class OfflineTrackStore: ObservableObject {
         try setFileAttributes(manifestURL)
     }
 
-    private func reconcile() {
-        guard let directory = accountDirectory else { return }
-        var reconciled = records
-        for (id, record) in records {
-            let url = resolvedURL(
-                for: record,
-                accountDirectory: directory
+    /// Removes unreferenced directories inside `tracks/` (safe orphans: a
+    /// direct-file track owns exactly one directory named by its `Track.id`).
+    private func removeSafeOrphans(
+        directory: URL,
+        referencedIDs: Set<String>
+    ) {
+        let tracksDirectory = directory
+            .appendingPathComponent("tracks", isDirectory: true)
+        guard fileManager.fileExists(atPath: tracksDirectory.path) else {
+            return
+        }
+        guard let items = try? fileManager.contentsOfDirectory(
+            atPath: tracksDirectory.path
+        ) else {
+            return
+        }
+        for item in items {
+            guard !referencedIDs.contains(item) else { continue }
+            let url = tracksDirectory.appendingPathComponent(item)
+            try? fileManager.removeItem(at: url)
+        }
+    }
+
+    private func isUsableHLSPackage(at url: URL) -> Bool {
+        guard fileManager.fileExists(atPath: url.path) else { return false }
+        guard let enumerator = fileManager.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return false
+        }
+        for case let fileURL as URL in enumerator {
+            let values = try? fileURL.resourceValues(
+                forKeys: [.isRegularFileKey]
             )
-            if !fileManager.fileExists(atPath: url.path) {
-                reconciled.removeValue(forKey: id)
+            if values?.isRegularFile == true {
+                return true
             }
         }
-        records = reconciled
-        if let staging = accountDirectory?
-            .appendingPathComponent(".staging", isDirectory: true) {
-            try? fileManager.removeItem(at: staging)
+        return false
+    }
+
+    private func actualFileSize(at url: URL) -> Int64 {
+        let attributes = try? fileManager.attributesOfItem(atPath: url.path)
+        return (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+    }
+
+    private func refreshAuxiliaryUsage() {
+        var result = AuxiliaryUsage()
+        result.artworkBytes = artworkByteCountProvider()
+        if let directory = accountDirectory {
+            let staging = directory
+                .appendingPathComponent(".staging", isDirectory: true)
+            if fileManager.fileExists(atPath: staging.path) {
+                result.stagingBytes = allocatedSize(at: staging)
+            }
+            result.orphanBytes = orphanFileBytes(in: directory)
         }
-        try? saveManifest()
+        auxiliaryUsage = result
+    }
+
+    /// Bytes of files inside the account directory that no record references
+    /// (excluding the manifest and the staging folder itself).
+    private func orphanFileBytes(in directory: URL) -> Int64 {
+        let referenced = Set(
+            records.values
+                .filter { $0.resolvedStorage == .directFile }
+                .map(\.relativePath)
+        )
+        let keys: Set<URLResourceKey> = [
+            .isRegularFileKey,
+            .totalFileAllocatedSizeKey
+        ]
+        guard let enumerator = fileManager.enumerator(
+            at: directory,
+            includingPropertiesForKeys: Array(keys),
+            options: []
+        ) else {
+            return 0
+        }
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            let relative = fileURL.path.replacingOccurrences(
+                of: directory.path + "/",
+                with: ""
+            )
+            if relative == "index.json" || referenced.contains(relative) {
+                continue
+            }
+            let values = try? fileURL.resourceValues(forKeys: keys)
+            guard values?.isRegularFile == true else { continue }
+            total += Int64(
+                values?.totalFileAllocatedSize
+                    ?? values?.fileAllocatedSize
+                    ?? 0
+            )
+        }
+        return total
     }
 
     private func createProtectedDirectory(_ url: URL) throws {

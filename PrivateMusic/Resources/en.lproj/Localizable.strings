@@ -343,6 +343,16 @@
 "Скачано %d из %d" = "Downloaded %d of %d";
 "Загрузка отменена" = "Download Cancelled";
 "Не удалось скачать" = "Download Failed";
+"Подготовка…" = "Preparing…";
+"В очереди…" = "Queued…";
+"Обработано %d из %d · Скачано %d · Ошибок %d" = "Processed %d of %d · Downloaded %d · Errors %d";
+"Не удалось получить треки плейлиста" = "Couldn't fetch the playlist tracks";
+"Не удалось скачать плейлист" = "Couldn't download the playlist";
+"Не удалось скачать %d из %d треков" = "Couldn't download %d of %d tracks";
+"Скачанные треки удалены. Скачайте плейлист заново." = "Downloaded tracks were removed. Please download the playlist again.";
+"Загрузка прервана" = "Download interrupted";
+"Активные загрузки" = "Active downloads";
+"Скачанные плейлисты" = "Downloaded playlists";
 "Отменить загрузку" = "Cancel Download";
 "Удалить плейлист" = "Remove Playlist";
 "Скачать плейлист" = "Download Playlist";

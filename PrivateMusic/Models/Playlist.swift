@@ -27,6 +27,42 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
 
     var source: PlaylistSource { .vk }
 
+    /// Returns a copy with a refreshed track count. Used after the offline
+    /// download resolves the real track list so the stored playlist metadata
+    /// never keeps a stale `count == 0`.
+    func updatingCount(_ newCount: Int) -> Playlist {
+        Playlist(
+            id: id,
+            ownerID: ownerID,
+            title: title,
+            description: description,
+            count: newCount,
+            artworkURL: artworkURL,
+            accessKey: accessKey
+        )
+    }
+
+    /// Explicit memberwise initializer. `init(from:)` suppresses the
+    /// synthesized one, and the offline store builds copies with a refreshed
+    /// track count.
+    init(
+        id: Int,
+        ownerID: Int,
+        title: String,
+        description: String? = nil,
+        count: Int,
+        artworkURL: URL? = nil,
+        accessKey: String? = nil
+    ) {
+        self.id = id
+        self.ownerID = ownerID
+        self.title = title
+        self.description = description
+        self.count = count
+        self.artworkURL = artworkURL
+        self.accessKey = accessKey
+    }
+
     enum CodingKeys: String, CodingKey {
         case id
         case ownerID = "owner_id"

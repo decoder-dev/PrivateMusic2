@@ -39,8 +39,7 @@ final class AppEnvironment: ObservableObject {
             limitGB: settings.offlineStorageLimitGB
         )
         offlineStore.configure(
-            accountID: sessionStore.session?.userID
-                ?? sessionStore.profile?.id
+            accountID: sessionStore.resolvedOfflineAccountID
         )
         let player = AudioPlayer(
             settings: settings,
@@ -60,8 +59,7 @@ final class AppEnvironment: ObservableObject {
         let service = VKMusicService(
             client: client,
             apiVersion: configuration.apiVersion,
-            initialUserID: sessionStore.session?.userID
-                ?? sessionStore.profile?.id
+            initialUserID: sessionStore.resolvedOfflineAccountID
         )
         self.musicService = service
         player.configureContinuation { [weak self, service] in
@@ -111,8 +109,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     func configureOfflineAccount() {
-        let accountID = sessionStore.session?.userID
-            ?? sessionStore.profile?.id
+        let accountID = sessionStore.resolvedOfflineAccountID
         offlineStore.configure(accountID: accountID)
         OfflinePlaylistStore.shared.configure(accountID: accountID)
     }

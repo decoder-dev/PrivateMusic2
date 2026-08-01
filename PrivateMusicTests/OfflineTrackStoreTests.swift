@@ -127,6 +127,95 @@ final class OfflineTrackStoreTests: XCTestCase {
         XCTAssertEqual(store.storageLimitBytes, 100_000_000_000)
     }
 
+    func testReconcileDropsMissingFilesAndRemovesOrphans() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = OfflineTrackStore(
+            rootURL: root,
+            downloadService: makeDownloadService()
+        )
+        let track = makeTrack()
+        store.configure(accountID: 42)
+        try await store.download(track, userAgent: nil)
+
+        let localURL = try XCTUnwrap(store.localURL(for: track))
+        try FileManager.default.removeItem(at: localURL)
+
+        let tracksDirectory = localURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("tracks", isDirectory: true)
+        let ghost = tracksDirectory.appendingPathComponent(
+            "ghost-1",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: ghost,
+            withIntermediateDirectories: true
+        )
+        try Data("ghost".utf8).write(
+            to: ghost.appendingPathComponent("audio.mp3")
+        )
+
+        store.configure(accountID: 7)
+        store.configure(accountID: 42)
+
+        XCTAssertFalse(store.contains(track))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ghost.path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: tracksDirectory
+                    .appendingPathComponent(track.id)
+                    .path
+            )
+        )
+    }
+
+    func testDownloadedTrackCountReflectsActualFiles() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = OfflineTrackStore(
+            rootURL: root,
+            downloadService: makeDownloadService()
+        )
+        let first = makeTrack()
+        let second = Track(
+            trackID: 8,
+            ownerID: -42,
+            title: "Second",
+            artist: "Artist",
+            duration: 120,
+            streamURL: URL(string: "https://example.com/second.mp3"),
+            artworkURL: nil
+        )
+        store.configure(accountID: 42)
+        try await store.download(first, userAgent: nil)
+        try await store.download(second, userAgent: nil)
+        XCTAssertEqual(store.downloadedTrackCount, 2)
+
+        let localURL = try XCTUnwrap(store.localURL(for: first))
+        try FileManager.default.removeItem(at: localURL)
+        XCTAssertEqual(store.downloadedTrackCount, 1)
+    }
+
+    func testConcurrentDownloadsOfSameTrackDownloadOnce() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = OfflineTrackStore(
+            rootURL: root,
+            downloadService: makeDownloadService(),
+            downloadCoordinator: DownloadCoordinator()
+        )
+        let track = makeTrack()
+        store.configure(accountID: 42)
+
+        async let first: Void = store.download(track, userAgent: nil)
+        async let second: Void = store.download(track, userAgent: nil)
+        _ = try await (first, second)
+
+        XCTAssertTrue(store.contains(track))
+    }
+
     private func makeDownloadService() -> TrackShareService {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [OfflineURLProtocol.self]
