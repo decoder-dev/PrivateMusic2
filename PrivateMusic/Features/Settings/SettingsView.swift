@@ -163,9 +163,7 @@ private struct AppearanceSettingsView: View {
                                 if settings.theme == theme {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 14, weight: .bold))
-                                        .foregroundStyle(
-                                            theme.buttonForeground
-                                        )
+                                        .foregroundStyle(theme.accent)
                                 }
                             }
                         Text(theme.title)
@@ -387,20 +385,22 @@ private struct OfflineStorageSettingsView: View {
                                 )
                             if usage.totalBytes > 0 {
                                 HStack(spacing: 0) {
-                                    RoundedRectangle(
-                                        cornerRadius: 4
-                                    )
-                                    .fill(
-                                        usageColor(usage: usage)
-                                    )
-                                    .frame(
-                                        width: max(
-                                            4,
-                                            geo.size.width
-                                                * usage.manualRatio
-                                                * usage.usageRatio
+                                    if usage.manualBytes > 0 {
+                                        RoundedRectangle(
+                                            cornerRadius: 4
                                         )
-                                    )
+                                        .fill(
+                                            usageColor(usage: usage)
+                                        )
+                                        .frame(
+                                            width: max(
+                                                4,
+                                                geo.size.width
+                                                    * usage.manualRatio
+                                                    * usage.usageRatio
+                                            )
+                                        )
+                                    }
                                     if usage.automaticBytes > 0 {
                                         RoundedRectangle(
                                             cornerRadius: 4
@@ -432,12 +432,7 @@ private struct OfflineStorageSettingsView: View {
                     HStack(spacing: 16) {
                         if usage.manualCount > 0 {
                             Label {
-                                Text(
-                                    L10n.format(
-                                        "%d треков",
-                                        usage.manualCount
-                                    )
-                                )
+                                Text(L10n.trackCount(usage.manualCount))
                             } icon: {
                                 Circle()
                                     .fill(
@@ -448,12 +443,7 @@ private struct OfflineStorageSettingsView: View {
                         }
                         if usage.automaticCount > 0 {
                             Label {
-                                Text(
-                                    L10n.format(
-                                        "%d треков",
-                                        usage.automaticCount
-                                    )
-                                )
+                                Text(L10n.trackCount(usage.automaticCount))
                             } icon: {
                                 Circle()
                                     .fill(
