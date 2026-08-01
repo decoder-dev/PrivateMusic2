@@ -19,6 +19,7 @@ struct PlayerView: View {
     @State private var scrubPosition: TimeInterval?
     @State private var isDismissing = false
     @State private var showCopiedToast = false
+    @State private var sharingTrack: Track?
 
     var body: some View {
         GeometryReader { proxy in
@@ -56,6 +57,7 @@ struct PlayerView: View {
         ) { sheet in
             presentedSheetContent(sheet)
         }
+        .trackShareSheet(track: $sharingTrack)
         .onChange(of: player.currentTrack?.id) { _ in
             deferredPlayerAction = nil
             scrubPosition = nil
@@ -563,7 +565,7 @@ struct PlayerView: View {
                 }
                 quickAction(
                     "square.and.arrow.up",
-                    title: "Поделиться"
+                    title: "Поделиться файлом"
                 ) {
                     startShare(track)
                 }
@@ -708,8 +710,11 @@ struct PlayerView: View {
                     )
                 },
                 onShare: {
+                    deferFromActionSheet(.share(track))
+                },
+                onCopyLink: {
                     presentedSheet = nil
-                    startShare(track)
+                    copyTrackLink(track)
                 },
                 onOffline: {
                     presentedSheet = nil
@@ -735,15 +740,17 @@ struct PlayerView: View {
     }
 
     private func handleSheetDismissal() {
-        guard self.deferredPlayerAction != nil else {
-            return
-        }
+        guard let action = deferredPlayerAction else { return }
+        deferredPlayerAction = nil
+
         Task { @MainActor in
             await Task.yield()
-            if case let .sheet(sheet) = self.deferredPlayerAction {
+            switch action {
+            case let .sheet(sheet):
                 _ = present(sheet)
+            case let .share(track):
+                startShare(track)
             }
-            self.deferredPlayerAction = nil
         }
     }
 
@@ -800,34 +807,24 @@ struct PlayerView: View {
     }
 
     private func startShare(_ track: Track) {
+        Haptics.open()
+        sharingTrack = track
+    }
+
+    private func copyTrackLink(_ track: Track) {
         let url = "https://vk.com/audio\(track.ownerID)_\(track.trackID)"
         UIPasteboard.general.string = url
         Haptics.selection()
         showCopiedToast = true
+
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
+            do {
+                try await Task.sleep(for: .seconds(2))
+            } catch {
+                return
+            }
             showCopiedToast = false
         }
-        guard let scene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene }).first,
-              let root = scene.windows.first?.rootViewController
-        else { return }
-        let activityVC = UIActivityViewController(
-            activityItems: [url],
-            applicationActivities: nil
-        )
-        if let popover = activityVC.popoverPresentationController,
-           UIDevice.current.userInterfaceIdiom == .pad {
-            popover.sourceView = root.view
-            popover.sourceRect = CGRect(
-                x: root.view.bounds.midX,
-                y: root.view.bounds.maxY - 60,
-                width: 0,
-                height: 0
-            )
-            popover.permittedArrowDirections = []
-        }
-        root.present(activityVC, animated: true)
     }
 
     private func toggleLibrary(_ track: Track) {
@@ -1151,6 +1148,7 @@ private enum PlayerSheet: Identifiable {
 
 private enum DeferredPlayerAction {
     case sheet(PlayerSheet)
+    case share(Track)
 }
 
 struct PlayerActionAvailability: Equatable {
@@ -1187,6 +1185,7 @@ private struct PlayerActionsSheet: View {
     let onArtist: () -> Void
     let onPlaylist: () -> Void
     let onShare: () -> Void
+    let onCopyLink: () -> Void
     let onOffline: () -> Void
     let onSettings: () -> Void
 
@@ -1218,10 +1217,15 @@ private struct PlayerActionsSheet: View {
                             action: onPlaylist
                         )
                         actionTile(
-                            "Поделиться",
+                            "Поделиться аудиофайлом",
                             systemImage: "square.and.arrow.up",
                             enabled: availability.canShare,
                             action: onShare
+                        )
+                        actionTile(
+                            "Скопировать ссылку VK",
+                            systemImage: "link",
+                            action: onCopyLink
                         )
                         actionTile(
                             offlineTitle,

@@ -10,6 +10,7 @@ final class AppEnvironment: ObservableObject {
     let historyStore: ListeningHistoryStore
     let libraryStore: MusicLibraryStore
     let offlineStore: OfflineTrackStore
+    let trackShareService: TrackShareService
     let player: AudioPlayer
     let musicService: any MusicService
     let webAuthService: VKWebAuthService
@@ -33,7 +34,12 @@ final class AppEnvironment: ObservableObject {
         self.networkMonitor = NetworkMonitor()
         self.historyStore = ListeningHistoryStore()
         self.libraryStore = MusicLibraryStore()
-        let offlineStore = OfflineTrackStore()
+        let trackShareService = TrackShareService()
+        self.trackShareService = trackShareService
+
+        let offlineStore = OfflineTrackStore(
+            downloadService: trackShareService
+        )
         self.offlineStore = offlineStore
         offlineStore.configureStorage(
             limitGB: settings.offlineStorageLimitGB
@@ -106,12 +112,56 @@ final class AppEnvironment: ObservableObject {
                 self?.pendingAutomaticCacheTrack = nil
             }
             .store(in: &cancellables)
+
+        Task {
+            await trackShareService.removeStaleExports()
+        }
     }
 
     func configureOfflineAccount() {
         let accountID = sessionStore.resolvedOfflineAccountID
         offlineStore.configure(accountID: accountID)
         OfflinePlaylistStore.shared.configure(accountID: accountID)
+    }
+
+    /// Prepares a shareable audio file, preferring the already-downloaded
+    /// local copy (works offline and without a token). A remote URL is only
+    /// touched after a local copy is ruled out, and it is always refreshed
+    /// right before the export.
+    func prepareSharePayload(
+        for track: Track,
+        progress: TrackExportProgressHandler? = nil
+    ) async throws -> TrackSharePayload {
+        progress?(.resolvingSource)
+        try Task.checkCancellation()
+
+        if let localURL = offlineStore.localURL(for: track) {
+            return try await trackShareService.payloadFromLocalFile(
+                localURL,
+                track: track,
+                requiresMP3: false,
+                progress: progress
+            )
+        }
+
+        let refreshed = try await withAuthorizedToken { token in
+            try await musicService.refreshedTrack(
+                track,
+                accessToken: token
+            )
+        }
+        try Task.checkCancellation()
+
+        return try await trackShareService.preparePayload(
+            for: refreshed,
+            userAgent: sessionStore.userAgent,
+            requiresMP3: false,
+            progress: progress
+        )
+    }
+
+    func removeSharePayload(_ payload: TrackSharePayload) async {
+        await trackShareService.removeExportedFile(payload)
     }
 
     func downloadForOffline(

@@ -44,25 +44,33 @@ actor TrackShareService {
         self.hlsExporter = HLSSegmentExporter(fileManager: fileManager)
     }
 
-    /// Creates a real audio attachment when VK exposes a direct audio file.
-    /// HLS playlists are deliberately rejected: renaming or linking a playlist
-    /// does not create an MP3 and would expose a temporary signed address.
+    /// Creates a real audio attachment: direct streams are downloaded and
+    /// kept in their original format, HLS streams are exported to M4A.
+    /// HLS is never exposed as a link or a fake MP3 — renaming a playlist
+    /// would not create an audio file and would leak a temporary signed
+    /// address to the share sheet.
     func preparePayload(
         for track: Track,
         userAgent: String?,
-        requiresMP3: Bool = false
+        requiresMP3: Bool = false,
+        progress: TrackExportProgressHandler? = nil
     ) async throws -> TrackSharePayload {
         guard let streamURL = track.streamURL else {
             throw directAudioUnavailableError
         }
         if isHLS(streamURL) {
+            guard !requiresMP3 else {
+                throw directMP3UnavailableError
+            }
             return try await exportM4A(
                 from: streamURL,
                 track: track,
-                userAgent: userAgent
+                userAgent: userAgent,
+                progress: progress
             )
         }
 
+        await progress?(.downloadingDirectFile)
         var request = URLRequest(url: streamURL)
         request.timeoutInterval = 60
         for (field, value) in requestHeaders(userAgent: userAgent) {
@@ -70,6 +78,7 @@ actor TrackShareService {
         }
 
         let (temporaryURL, response) = try await session.download(for: request)
+        try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode) else {
             throw APIError.invalidResponse
@@ -117,7 +126,8 @@ actor TrackShareService {
     func payloadFromLocalFile(
         _ sourceURL: URL,
         track: Track,
-        requiresMP3: Bool = true
+        requiresMP3: Bool = false,
+        progress: TrackExportProgressHandler? = nil
     ) async throws -> TrackSharePayload {
         guard sourceURL.isFileURL,
               fileManager.fileExists(atPath: sourceURL.path) else {
@@ -131,9 +141,12 @@ actor TrackShareService {
             return try await exportM4A(
                 from: sourceURL,
                 track: track,
-                userAgent: nil
+                userAgent: nil,
+                progress: progress
             )
         }
+
+        await progress?(.copyingLocalFile)
         if requiresMP3 {
             guard isLikelyMP3(at: sourceURL) else {
                 throw directMP3UnavailableError
@@ -154,22 +167,54 @@ actor TrackShareService {
         do {
             try fileManager.linkItem(at: sourceURL, to: destination)
         } catch {
-            try fileManager.copyItem(at: sourceURL, to: destination)
+            do {
+                try fileManager.copyItem(at: sourceURL, to: destination)
+            } catch {
+                removeExportDirectory(containing: destination)
+                throw error
+            }
         }
         return .audioFile(destination)
     }
 
     func removeExportedFile(_ payload: TrackSharePayload) {
-        let url = payload.fileURL
-        let exportRoot = fileManager.temporaryDirectory
-            .appendingPathComponent("PrivateMusicShare", isDirectory: true)
-            .standardizedFileURL
-        let parent = url.deletingLastPathComponent().standardizedFileURL
-        guard url.isFileURL,
-              parent.path.hasPrefix(exportRoot.path + "/") else {
+        removeExportDirectory(containing: payload.fileURL)
+    }
+
+    /// Removes export directories that survived a previous crash: anything
+    /// older than `cutoff` inside `PrivateMusicShare` is discarded. The
+    /// offline source never lives under this root, so it is never touched.
+    func removeStaleExports(
+        olderThan cutoff: Date = Date().addingTimeInterval(-86_400)
+    ) {
+        guard let children = try? fileManager.contentsOfDirectory(
+            at: exportRoot,
+            includingPropertiesForKeys: [
+                .contentModificationDateKey,
+                .creationDateKey,
+                .isDirectoryKey
+            ],
+            options: [.skipsHiddenFiles]
+        ) else {
             return
         }
-        try? fileManager.removeItem(at: parent)
+
+        for child in children {
+            let values = try? child.resourceValues(
+                forKeys: [
+                    .contentModificationDateKey,
+                    .creationDateKey,
+                    .isDirectoryKey
+                ]
+            )
+            guard values?.isDirectory == true else { continue }
+            let date = values?.contentModificationDate
+                ?? values?.creationDate
+                ?? .distantPast
+            if date < cutoff {
+                try? fileManager.removeItem(at: child)
+            }
+        }
     }
 
     private var fileTooLargeError: APIError {
@@ -237,8 +282,7 @@ actor TrackShareService {
         extensionName: String
     ) -> URL {
         let name = safeFilename("\(track.artist) — \(track.title)")
-        let directory = fileManager.temporaryDirectory
-            .appendingPathComponent("PrivateMusicShare", isDirectory: true)
+        let directory = exportRoot
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try? fileManager.createDirectory(
             at: directory,
@@ -247,6 +291,32 @@ actor TrackShareService {
         return directory
             .appendingPathComponent(name)
             .appendingPathExtension(extensionName)
+    }
+
+    private var exportRoot: URL {
+        fileManager.temporaryDirectory
+            .appendingPathComponent(
+                "PrivateMusicShare",
+                isDirectory: true
+            )
+            .standardizedFileURL
+    }
+
+    /// Removes the per-export UUID directory containing `url`. Guarded by a
+    /// prefix check against the share root so cleanup can never touch the
+    /// offline source or anything outside `PrivateMusicShare`.
+    private func removeExportDirectory(containing url: URL) {
+        let standardizedURL = url.standardizedFileURL
+        let parent = standardizedURL
+            .deletingLastPathComponent()
+            .standardizedFileURL
+
+        guard standardizedURL.isFileURL,
+              parent.path.hasPrefix(exportRoot.path + "/"),
+              parent != exportRoot else {
+            return
+        }
+        try? fileManager.removeItem(at: parent)
     }
 
     private func fileSize(at url: URL) throws -> Int64 {
@@ -288,32 +358,42 @@ actor TrackShareService {
     private func exportM4A(
         from sourceURL: URL,
         track: Track,
-        userAgent: String?
+        userAgent: String?,
+        progress: TrackExportProgressHandler?
     ) async throws -> TrackSharePayload {
         let destination = exportDestination(
             for: track,
             extensionName: "m4a"
         )
-        if sourceURL.isFileURL {
-            try await hlsExporter.exportMovpkgToM4A(
-                packageURL: sourceURL,
-                destination: destination,
-                fileSizeLimit: Self.maximumFileSize
-            )
-        } else {
-            try await hlsExporter.exportToM4A(
-                streamURL: sourceURL,
-                headers: requestHeaders(userAgent: userAgent),
-                destination: destination,
-                fileSizeLimit: Self.maximumFileSize
-            )
+
+        do {
+            if sourceURL.isFileURL {
+                try await hlsExporter.exportMovpkgToM4A(
+                    packageURL: sourceURL,
+                    destination: destination,
+                    fileSizeLimit: Self.maximumFileSize,
+                    progress: progress
+                )
+            } else {
+                try await hlsExporter.exportToM4A(
+                    streamURL: sourceURL,
+                    headers: requestHeaders(userAgent: userAgent),
+                    destination: destination,
+                    fileSizeLimit: Self.maximumFileSize,
+                    progress: progress
+                )
+            }
+
+            try Task.checkCancellation()
+            guard isLikelyM4A(at: destination),
+                  (try? fileSize(at: destination)) ?? 0 > 0 else {
+                throw audioExportUnavailableError
+            }
+            return .audioFile(destination)
+        } catch {
+            removeExportDirectory(containing: destination)
+            throw error
         }
-        guard isLikelyM4A(at: destination),
-              (try? fileSize(at: destination)) ?? 0 > 0 else {
-            try? fileManager.removeItem(at: destination)
-            throw audioExportUnavailableError
-        }
-        return .audioFile(destination)
     }
 
     private func isLikelyMP3(at url: URL) -> Bool {
@@ -362,11 +442,19 @@ actor TrackShareService {
     }
 
     private func safeFilename(_ value: String) -> String {
-        let invalid = CharacterSet(charactersIn: "/\\:*?\"<>|")
-            .union(.controlCharacters)
-        let cleaned = value.components(separatedBy: invalid).joined()
+        let invalid = CharacterSet(
+            charactersIn: "/\\:*?\"<>|"
+        )
+        .union(.controlCharacters)
+        .union(.newlines)
+
+        let collapsed = value
+            .components(separatedBy: invalid)
+            .joined(separator: " ")
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let shortened = String(cleaned.prefix(90))
+        let shortened = String(collapsed.prefix(90))
         return shortened.isEmpty ? "Private Music" : shortened
     }
 }

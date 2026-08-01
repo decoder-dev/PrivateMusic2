@@ -7,13 +7,35 @@ struct OfflineDownloadsView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @ObservedObject private var offlinePlaylists =
         OfflinePlaylistStore.shared
+
+    private enum DownloadsSection: String, CaseIterable, Identifiable {
+        case tracks
+        case playlists
+        case cache
+
+        var id: Self { self }
+
+        var title: String {
+            switch self {
+            case .tracks: return L10n.text("Треки")
+            case .playlists: return L10n.text("Плейлисты")
+            case .cache: return L10n.text("Автокэш")
+            }
+        }
+    }
+
+    @State private var section: DownloadsSection = .tracks
+    @State private var searchText = ""
     @State private var selection: Set<String>?
+    @State private var sharingTrack: Track?
+    @State private var selectedRecord: OfflineTrackRecord?
     @State private var showsDeleteConfirmation = false
+    @State private var showsDeleteAllConfirmation = false
+    @State private var showsClearCacheConfirmation = false
 
     var body: some View {
         Group {
-            if offlineStore.downloadedTracks.isEmpty
-                && offlinePlaylists.records.isEmpty {
+            if hasNoContent {
                 EmptyStateView(
                     title: "Нет загрузок",
                     systemImage: "arrow.down.circle",
@@ -25,57 +47,72 @@ struct OfflineDownloadsView: View {
                 .padding()
             } else {
                 List {
-                    let active = activeSections
-                    if !active.isEmpty {
-                        Section {
-                            ForEach(active) { section in
-                                activeDownloadRow(section)
-                                    .transition(.opacity)
+                    Section {
+                        DownloadStorageSummary(
+                            usage: offlineStore.storageUsage,
+                            onClearCache: {
+                                showsClearCacheConfirmation = true
+                            },
+                            onDeleteAll: {
+                                showsDeleteAllConfirmation = true
                             }
-                        } header: {
-                            Text(L10n.text("Активные загрузки"))
+                        )
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                    }
+
+                    if activeDownloadCount > 0 {
+                        Section {
+                            HStack(spacing: 12) {
+                                ProgressView()
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(L10n.text("Идёт загрузка"))
+                                        .font(.subheadline.weight(.semibold))
+                                    Text(
+                                        L10n.format(
+                                            "Активные загрузки: %d",
+                                            activeDownloadCount
+                                        )
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                }
+                            }
                         }
                     }
 
-                    let done = downloadedSections
-                    if !done.isEmpty {
-                        Section {
-                            ForEach(done) { section in
-                                downloadedPlaylistRow(section)
-                                    .transition(.opacity)
+                    Section {
+                        Picker(L10n.text("Раздел"), selection: $section) {
+                            ForEach(DownloadsSection.allCases) { value in
+                                Text(value.title).tag(value)
                             }
-                        } header: {
-                            Text(L10n.text("Скачанные плейлисты"))
                         }
+                        .pickerStyle(.segmented)
                     }
 
-                    let orphans = orphanTracks
-                    if !orphans.isEmpty {
-                        Section {
-                            ForEach(orphans) { track in
-                                trackRow(
-                                    track,
-                                    playlistTracks: orphans,
-                                    inPlaylist: nil
-                                )
-                                .transition(.opacity)
-                            }
-                        } header: {
-                            Text(L10n.text("Другие загрузки"))
-                        }
+                    switch section {
+                    case .tracks:
+                        tracksSection(manualRecords)
+                    case .cache:
+                        cacheSection(cacheRecords)
+                    case .playlists:
+                        playlistsSections
                     }
                 }
-                .animation(
-                    .easeInOut(duration: 0.3),
-                    value: contentSnapshot
-                )
-                .scrollContentBackground(.hidden)
+                .listStyle(.insetGrouped)
+                .animation(.easeInOut(duration: 0.3), value: contentSnapshot)
             }
         }
         .background(ThemeBackground())
+        .scrollContentBackground(.hidden)
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(selection != nil)
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .automatic),
+            prompt: L10n.text("Название или исполнитель")
+        )
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 if selection != nil {
@@ -85,26 +122,45 @@ struct OfflineDownloadsView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                if hasAnyContent {
-                    if selection != nil {
-                        Button(role: .destructive) {
-                            showsDeleteConfirmation = true
-                        } label: {
-                            Label(
-                                "Удалить",
-                                systemImage: "trash"
-                            )
-                        }
-                        .disabled(selection?.isEmpty != false)
-                    } else if !orphanTracks.isEmpty {
-                        Button(L10n.text("Выбрать")) {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                selection = []
-                            }
+                if selection != nil {
+                    Button(role: .destructive) {
+                        showsDeleteConfirmation = true
+                    } label: {
+                        Label("Удалить", systemImage: "trash")
+                    }
+                    .disabled(selection?.isEmpty != false)
+                } else if !validRecords.isEmpty {
+                    Button(L10n.text("Выбрать")) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            selection = []
                         }
                     }
                 }
             }
+        }
+        .trackShareSheet(track: $sharingTrack)
+        .sheet(item: $selectedRecord) { record in
+            DownloadedTrackDetailsView(
+                record: record,
+                localURL: offlineStore.localURL(for: record.track),
+                onPlay: {
+                    player.play(
+                        record.track,
+                        in: validRecords.map(\.track)
+                    )
+                },
+                onShare: {
+                    let track = record.track
+                    selectedRecord = nil
+                    Task { @MainActor in
+                        await Task.yield()
+                        sharingTrack = track
+                    }
+                },
+                onDelete: {
+                    deleteTrack(record.track)
+                }
+            )
         }
         .confirmationDialog(
             L10n.format(
@@ -119,6 +175,26 @@ struct OfflineDownloadsView: View {
             }
             Button(L10n.text("Отмена"), role: .cancel) {}
         }
+        .confirmationDialog(
+            L10n.text("Удалить все загрузки с устройства?"),
+            isPresented: $showsDeleteAllConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.text("Удалить всё"), role: .destructive) {
+                deleteAll()
+            }
+            Button(L10n.text("Отмена"), role: .cancel) {}
+        }
+        .confirmationDialog(
+            L10n.text("Очистить все автокэш-файлы?"),
+            isPresented: $showsClearCacheConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.text("Очистить"), role: .destructive) {
+                clearAutomaticCache()
+            }
+            Button(L10n.text("Отмена"), role: .cancel) {}
+        }
         .task(id: sessionStore.resolvedOfflineAccountID) {
             offlinePlaylists.configure(
                 accountID: sessionStore.resolvedOfflineAccountID
@@ -126,6 +202,8 @@ struct OfflineDownloadsView: View {
             offlineStore.configure(
                 accountID: sessionStore.resolvedOfflineAccountID
             )
+            offlineStore.reconcile()
+            offlinePlaylists.reconcileDownloads(with: offlineStore)
         }
     }
 
@@ -137,6 +215,39 @@ struct OfflineDownloadsView: View {
         var tracks: [Track]
         var allTracks: [Track]
         var record: OfflinePlaylistRecord
+    }
+
+    private var validRecords: [OfflineTrackRecord] {
+        offlineStore.records.values
+            .filter { offlineStore.localURL(for: $0.track) != nil }
+            .sorted { $0.downloadedAt > $1.downloadedAt }
+    }
+
+    private var manualRecords: [OfflineTrackRecord] {
+        filtered(validRecords.filter {
+            $0.resolvedRetention == .manual
+        })
+    }
+
+    private var cacheRecords: [OfflineTrackRecord] {
+        filtered(validRecords.filter {
+            $0.resolvedRetention == .automaticCache
+        })
+    }
+
+    private func filtered(
+        _ values: [OfflineTrackRecord]
+    ) -> [OfflineTrackRecord] {
+        let query = searchText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !query.isEmpty else { return values }
+        return values.filter {
+            $0.track.title.localizedCaseInsensitiveContains(query)
+                || $0.track.artist.localizedCaseInsensitiveContains(query)
+                || ($0.track.albumTitle?
+                    .localizedCaseInsensitiveContains(query) == true)
+        }
     }
 
     private var allPlaylistSections: [PlaylistSection] {
@@ -181,32 +292,180 @@ struct OfflineDownloadsView: View {
         }
     }
 
-    private var orphanTracks: [Track] {
-        let playlistTrackIDs = Set(
-            offlinePlaylists.records.values
-                .flatMap { $0.tracks }
-                .map(\.id)
-        )
-        return offlineStore.downloadedTracks.filter {
-            !playlistTrackIDs.contains($0.id)
-        }
+    private var hasNoContent: Bool {
+        validRecords.isEmpty && offlinePlaylists.records.isEmpty
     }
 
-    private var hasAnyContent: Bool {
-        !activeSections.isEmpty
-            || !downloadedSections.isEmpty
-            || !orphanTracks.isEmpty
+    private var activeDownloadCount: Int {
+        offlineStore.downloadingTrackIDs.count + activeSections.count
     }
 
     private var contentSnapshot: [String] {
-        activeSections.map(\.id)
-            + downloadedSections.map(\.id)
-            + orphanTracks.map(\.id)
+        validRecords.map(\.id) + allPlaylistSections.map(\.id)
     }
 
-    // MARK: - Active rows
+    // MARK: - Sections
 
-    private func activeDownloadRow(_ section: PlaylistSection) -> some View {
+    @ViewBuilder
+    private func tracksSection(
+        _ records: [OfflineTrackRecord]
+    ) -> some View {
+        if records.isEmpty {
+            emptySection(
+                title: searchText.isEmpty
+                    ? "Нет сохранённых треков"
+                    : "Ничего не найдено",
+                systemImage: "music.note",
+                description: searchText.isEmpty
+                    ? "Скачанные треки появятся здесь."
+                    : "Измените запрос поиска."
+            )
+        } else {
+            Section {
+                ForEach(records) { record in
+                    downloadedTrackRow(record)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cacheSection(
+        _ records: [OfflineTrackRecord]
+    ) -> some View {
+        if records.isEmpty {
+            emptySection(
+                title: searchText.isEmpty
+                    ? "Автокэш пуст"
+                    : "Ничего не найдено",
+                systemImage: "bolt.horizontal",
+                description: searchText.isEmpty
+                    ? "Прослушанные треки сохраняются сюда "
+                        + "временно и очищаются автоматически."
+                    : "Измените запрос поиска."
+            )
+        } else {
+            Section {
+                ForEach(records) { record in
+                    downloadedTrackRow(record)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var playlistsSections: some View {
+        let active = filteredSections(activeSections)
+        let done = filteredSections(downloadedSections)
+        if active.isEmpty && done.isEmpty {
+            emptySection(
+                title: searchText.isEmpty
+                    ? "Нет плейлистов"
+                    : "Ничего не найдено",
+                systemImage: "rectangle.stack",
+                description: searchText.isEmpty
+                    ? "Загруженные плейлисты появятся здесь."
+                    : "Измените запрос поиска."
+            )
+        } else {
+            if !active.isEmpty {
+                Section {
+                    ForEach(active) { section in
+                        activeDownloadRow(section)
+                            .transition(.opacity)
+                    }
+                } header: {
+                    Text(L10n.text("Активные загрузки"))
+                }
+            }
+            if !done.isEmpty {
+                Section {
+                    ForEach(done) { section in
+                        downloadedPlaylistRow(section)
+                            .transition(.opacity)
+                    }
+                } header: {
+                    Text(L10n.text("Скачанные плейлисты"))
+                }
+            }
+        }
+    }
+
+    private func filteredSections(
+        _ sections: [PlaylistSection]
+    ) -> [PlaylistSection] {
+        let query = searchText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !query.isEmpty else { return sections }
+        return sections.filter {
+            $0.playlist.title.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private func emptySection(
+        title: String,
+        systemImage: String,
+        description: String
+    ) -> some View {
+        Section {
+            EmptyStateView(
+                title: title,
+                systemImage: systemImage,
+                description: description
+            )
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+        }
+    }
+
+    // MARK: - Track rows
+
+    private func downloadedTrackRow(
+        _ record: OfflineTrackRecord
+    ) -> some View {
+        DownloadedTrackRow(
+            record: record,
+            isPlaying: player.currentTrack?.id == record.track.id,
+            isSelectionMode: selection != nil,
+            isSelected: selection?.contains(record.track.id) == true,
+            onPlay: {
+                if selection != nil {
+                    toggleSelection(record.track)
+                } else {
+                    player.play(
+                        record.track,
+                        in: validRecords.map(\.track)
+                    )
+                }
+            },
+            onShare: {
+                sharingTrack = record.track
+            },
+            onInfo: {
+                selectedRecord = record
+            },
+            onDelete: {
+                deleteTrack(record.track)
+            },
+            onLongPress: {
+                guard selection == nil else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    selection = [record.track.id]
+                }
+                Haptics.selection()
+            },
+            onToggleSelection: {
+                toggleSelection(record.track)
+            }
+        )
+    }
+
+    // MARK: - Active playlist rows
+
+    private func activeDownloadRow(
+        _ section: PlaylistSection
+    ) -> some View {
         let status = OfflinePlaylistStatus.status(for: section.record)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
@@ -250,123 +509,148 @@ struct OfflineDownloadsView: View {
         _ section: PlaylistSection
     ) -> some View {
         let status = OfflinePlaylistStatus.status(for: section.record)
-        HStack(spacing: 12) {
-            PlaylistArtworkView(
-                playlist: section.playlist,
-                size: 44,
-                showsSource: false
+        NavigationLink {
+            PlaylistDownloadsDetailView(
+                title: section.playlist.title,
+                records: section.tracks.compactMap {
+                    offlineStore.record(for: $0)
+                },
+                onPlay: { record in
+                    player.play(
+                        record.track,
+                        in: section.tracks
+                    )
+                },
+                onShare: { record in
+                    sharingTrack = record.track
+                },
+                onInfo: { record in
+                    selectedRecord = record
+                },
+                onDelete: { record in
+                    deleteTrack(record.track)
+                }
             )
-            VStack(alignment: .leading, spacing: 3) {
-                Text(section.playlist.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                switch status {
-                case .partial(let count, let total):
-                    Text(L10n.format("Скачано %d из %d", count, total))
+        } label: {
+            HStack(spacing: 12) {
+                PlaylistArtworkView(
+                    playlist: section.playlist,
+                    size: 44,
+                    showsSource: false
+                )
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(section.playlist.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    switch status {
+                    case .partial(let count, let total):
+                        Text(
+                            L10n.format("Скачано %d из %d", count, total)
+                        )
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                case .failed(let message):
-                    Text(message ?? L10n.text("Не удалось скачать плейлист"))
+                    case .failed(let message):
+                        Text(
+                            message
+                                ?? L10n.text("Не удалось скачать плейлист")
+                        )
                         .font(.caption)
                         .foregroundStyle(.red)
                         .lineLimit(2)
-                case .cancelled:
-                    Text(L10n.text("Загрузка отменена"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                default:
-                    Text(
-                        L10n.format(
-                            "%d из %d",
-                            section.tracks.count,
-                            section.allTracks.count
+                    case .cancelled:
+                        Text(L10n.text("Загрузка отменена"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    default:
+                        Text(
+                            L10n.format(
+                                "%d из %d",
+                                section.tracks.count,
+                                section.allTracks.count
+                            )
                         )
-                    )
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if section.record.state == .partial
+                    || section.record.state == .failed
+                    || section.record.state == .cancelled {
+                    Button(L10n.text("Повторить")) {
+                        retryDownload(section)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
                 }
             }
-            Spacer()
-            if section.record.state == .partial
-                || section.record.state == .failed
-                || section.record.state == .cancelled {
-                Button(L10n.text("Повторить")) {
-                    retryDownload(section)
-                }
-                .font(.caption.weight(.semibold))
-                .buttonStyle(.bordered)
-            } else {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            }
+            .padding(.vertical, 2)
         }
-        .padding(.vertical, 2)
         .swipeActions(edge: .trailing) {
-            if selection == nil {
-                Button(role: .destructive) {
-                    offlinePlaylists.remove(section.playlist)
-                } label: {
-                    Label("Удалить", systemImage: "trash")
-                }
+            Button(role: .destructive) {
+                offlinePlaylists.remove(section.playlist)
+                offlinePlaylists.reconcileDownloads(with: offlineStore)
+            } label: {
+                Label("Удалить", systemImage: "trash")
             }
         }
     }
 
-    // MARK: - Track rows
+    // MARK: - Playlist detail
 
-    @ViewBuilder
-    private func trackRow(
-        _ track: Track,
-        playlistTracks: [Track],
-        inPlaylist playlistID: String?
-    ) -> some View {
-        Button {
-            if selection != nil {
-                toggleSelection(track)
-            } else {
-                player.play(track, in: playlistTracks)
-            }
-        } label: {
-            HStack(spacing: 12) {
-                if selection != nil {
-                    selectionIndicator(for: track)
-                }
-                AsyncArtwork(url: track.artworkURL, size: 48)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(track.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(track.artist)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer()
-                if selection == nil {
-                    Image(systemName: "play.circle")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onLongPressGesture {
-            guard selection == nil else { return }
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selection = [track.id]
-            }
-            Haptics.selection()
-        }
-        .swipeActions {
-            if selection == nil {
-                Button(role: .destructive) {
-                    offlineStore.remove(track)
-                } label: {
-                    Label("Удалить", systemImage: "trash")
+    private struct PlaylistDownloadsDetailView: View {
+        @EnvironmentObject private var player: AudioPlayer
+
+        let title: String
+        let records: [OfflineTrackRecord]
+        let onPlay: (OfflineTrackRecord) -> Void
+        let onShare: (OfflineTrackRecord) -> Void
+        let onInfo: (OfflineTrackRecord) -> Void
+        let onDelete: (OfflineTrackRecord) -> Void
+
+        var body: some View {
+            List {
+                if records.isEmpty {
+                    Section {
+                        EmptyStateView(
+                            title: "Нет доступных треков",
+                            systemImage: "music.note",
+                            description:
+                                "В этом плейлисте пока нет файлов "
+                                    + "на устройстве."
+                        )
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                    }
+                } else {
+                    Section {
+                        ForEach(records) { record in
+                            DownloadedTrackRow(
+                                record: record,
+                                isPlaying: player.currentTrack?.id
+                                    == record.track.id,
+                                isSelectionMode: false,
+                                isSelected: false,
+                                onPlay: { onPlay(record) },
+                                onShare: { onShare(record) },
+                                onInfo: { onInfo(record) },
+                                onDelete: { onDelete(record) },
+                                onLongPress: {},
+                                onToggleSelection: {}
+                            )
+                        }
+                    }
                 }
             }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(ThemeBackground())
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 
@@ -391,6 +675,26 @@ struct OfflineDownloadsView: View {
         )
     }
 
+    private func deleteTrack(_ track: Track) {
+        offlineStore.remove(track)
+        offlinePlaylists.reconcileDownloads(with: offlineStore)
+        Haptics.selection()
+    }
+
+    private func clearAutomaticCache() {
+        offlineStore.removeAutomaticCache()
+        offlinePlaylists.reconcileDownloads(with: offlineStore)
+        Haptics.selection()
+    }
+
+    private func deleteAll() {
+        exitSelection()
+        Task {
+            offlinePlaylists.removeAll()
+            await offlineStore.removeAll()
+        }
+    }
+
     // MARK: - Selection
 
     private var navigationTitle: String {
@@ -398,19 +702,6 @@ struct OfflineDownloadsView: View {
             return L10n.text("Загрузки")
         }
         return L10n.format("Выбрано: %d", selection.count)
-    }
-
-    private func selectionIndicator(for track: Track) -> some View {
-        let isSelected = selection?.contains(track.id) == true
-        return Image(
-            systemName: isSelected
-                ? "checkmark.circle.fill"
-                : "circle"
-        )
-        .font(.title3)
-        .foregroundStyle(
-            isSelected ? Color.accentColor : Color.secondary
-        )
     }
 
     private func toggleSelection(_ track: Track) {
@@ -434,13 +725,221 @@ struct OfflineDownloadsView: View {
 
     private func removeSelectedTracks() {
         guard let selected = selection, !selected.isEmpty else { return }
-        let tracks = offlineStore.downloadedTracks.filter {
-            selected.contains($0.id)
+        let tracks = validRecords.filter {
+            selected.contains($0.track.id)
         }
-        for track in tracks {
-            offlineStore.remove(track)
+        for record in tracks {
+            offlineStore.remove(record.track)
         }
+        offlinePlaylists.reconcileDownloads(with: offlineStore)
         exitSelection()
+    }
+}
+
+// MARK: - Downloaded track row
+
+private struct DownloadedTrackRow: View {
+    let record: OfflineTrackRecord
+    let isPlaying: Bool
+    let isSelectionMode: Bool
+    let isSelected: Bool
+    let onPlay: () -> Void
+    let onShare: () -> Void
+    let onInfo: () -> Void
+    let onDelete: () -> Void
+    let onLongPress: () -> Void
+    let onToggleSelection: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            if isSelectionMode {
+                Image(
+                    systemName: isSelected
+                        ? "checkmark.circle.fill"
+                        : "circle"
+                )
+                .font(.title3)
+                .foregroundStyle(
+                    isSelected ? Color.accentColor : Color.secondary
+                )
+            }
+
+            Button(action: isSelectionMode ? onToggleSelection : onPlay) {
+                HStack(spacing: 12) {
+                    AsyncArtwork(url: record.track.artworkURL, size: 50)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(record.track.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Text(record.track.artist)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        HStack(spacing: 5) {
+                            Image(systemName: "arrow.down.circle.fill")
+                            Text(formattedBytes(record.byteCount))
+                            Text("·")
+                            Text(
+                                record.resolvedRetention == .manual
+                                    ? L10n.text("Скачано")
+                                    : L10n.text("Автокэш")
+                            )
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    if !isSelectionMode {
+                        Image(
+                            systemName: isPlaying
+                                ? "waveform"
+                                : "play.circle.fill"
+                        )
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if !isSelectionMode {
+                Menu {
+                    Button(action: onPlay) {
+                        Label("Воспроизвести", systemImage: "play.fill")
+                    }
+                    Button(action: onShare) {
+                        Label(
+                            "Поделиться аудиофайлом",
+                            systemImage: "square.and.arrow.up"
+                        )
+                    }
+                    Button(action: onInfo) {
+                        Label(
+                            "Сведения о файле",
+                            systemImage: "info.circle"
+                        )
+                    }
+                    Button(role: .destructive, action: onDelete) {
+                        Label("Удалить загрузку", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(width: 40, height: 44)
+                        .contentShape(Rectangle())
+                }
+            }
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            if !isSelectionMode {
+                Button(action: onShare) {
+                    Label("Поделиться", systemImage: "square.and.arrow.up")
+                }
+                .tint(.accentColor)
+            }
+        }
+        .swipeActions(edge: .trailing) {
+            if !isSelectionMode {
+                Button(role: .destructive, action: onDelete) {
+                    Label("Удалить", systemImage: "trash")
+                }
+            }
+        }
+        .onLongPressGesture {
+            onLongPress()
+        }
+    }
+
+    private func formattedBytes(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(
+            fromByteCount: bytes,
+            countStyle: .file
+        )
+    }
+}
+
+// MARK: - Storage summary
+
+private struct DownloadStorageSummary: View {
+    let usage: StorageUsage
+    let onClearCache: () -> Void
+    let onDeleteAll: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(L10n.text("Загрузки на устройстве"))
+                    .font(.headline)
+                Spacer()
+                Text(subtitle)
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.2))
+                    Capsule()
+                        .fill(
+                            usage.usageRatio > 0.9
+                                ? Color.red
+                                : Color.accentColor
+                        )
+                        .frame(
+                            width: max(
+                                proxy.size.width * usage.usageRatio,
+                                6
+                            )
+                        )
+                }
+            }
+            .frame(height: 6)
+
+            Text(L10n.text("Доступны без интернета"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 10) {
+                Button(action: onClearCache) {
+                    Label(
+                        L10n.text("Очистить автокэш"),
+                        systemImage: "broom"
+                    )
+                    .font(.caption.weight(.semibold))
+                }
+                .disabled(usage.automaticBytes <= 0)
+
+                Button(role: .destructive, action: onDeleteAll) {
+                    Label(
+                        L10n.text("Удалить всё"),
+                        systemImage: "trash"
+                    )
+                    .font(.caption.weight(.semibold))
+                }
+                .disabled(usage.totalCount <= 0)
+
+                Spacer()
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(16)
+        .background(
+            Color(uiColor: .secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+    }
+
+    private var subtitle: String {
+        let size = ByteCountFormatter.string(
+            fromByteCount: usage.audioBytes,
+            countStyle: .file
+        )
+        return "\(L10n.trackCount(usage.totalCount)) · \(size)"
     }
 }
 
