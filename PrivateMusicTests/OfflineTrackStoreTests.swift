@@ -198,6 +198,52 @@ final class OfflineTrackStoreTests: XCTestCase {
         XCTAssertEqual(store.downloadedTrackCount, 1)
     }
 
+    func testManualAndCacheCountsAndByteTotalsUseValidFiles() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = OfflineTrackStore(
+            rootURL: root,
+            downloadService: makeDownloadService()
+        )
+        let manual = makeTrack()
+        let cached = Track(
+            trackID: 8,
+            ownerID: -42,
+            title: "Cached",
+            artist: "Artist",
+            duration: 120,
+            streamURL: URL(string: "https://example.com/cached.mp3"),
+            artworkURL: nil
+        )
+        store.configure(accountID: 42)
+        try await store.download(manual, userAgent: nil)
+        try await store.download(
+            cached,
+            userAgent: nil,
+            retention: .automaticCache
+        )
+
+        var usage = store.storageUsage
+        XCTAssertEqual(usage.totalCount, 2)
+        XCTAssertEqual(usage.manualCount, 1)
+        XCTAssertEqual(usage.automaticCount, 1)
+        XCTAssertGreaterThan(usage.manualBytes, 0)
+        XCTAssertGreaterThan(usage.automaticBytes, 0)
+        XCTAssertEqual(
+            usage.audioBytes,
+            usage.manualBytes + usage.automaticBytes
+        )
+
+        let cachedURL = try XCTUnwrap(store.localURL(for: cached))
+        try FileManager.default.removeItem(at: cachedURL)
+        usage = store.storageUsage
+        XCTAssertEqual(usage.totalCount, 1)
+        XCTAssertEqual(usage.manualCount, 1)
+        XCTAssertEqual(usage.automaticCount, 0)
+        XCTAssertGreaterThan(usage.manualBytes, 0)
+        XCTAssertEqual(usage.automaticBytes, 0)
+    }
+
     func testConcurrentDownloadsOfSameTrackDownloadOnce() async throws {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
