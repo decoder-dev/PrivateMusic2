@@ -76,8 +76,7 @@ actor HLSSegmentExporter {
         }
         let totalSegments = parsed.segments.count
         logger.info(
-            "HLS export: \(totalSegments) segments, mediaSequence \(parsed.mediaSequence), "
-                + "map \(parsed.firstInitialization != nil)"
+            "HLS export: \(totalSegments) segments, mediaSequence \(parsed.mediaSequence), map \(parsed.firstInitialization != nil)"
         )
 
         await progress?(
@@ -100,8 +99,7 @@ actor HLSSegmentExporter {
                 nextOffsetByURL: &nextOffsetByURL
             )
             logger.info(
-                "HLS export: init fetched, "
-                    + "\(initializationData?.count ?? 0) bytes"
+                "HLS export: init fetched, \(initializationData?.count ?? 0) bytes"
             )
         } else {
             initializationData = nil
@@ -120,8 +118,7 @@ actor HLSSegmentExporter {
             firstSegmentData: firstSegmentData
         )
         logger.info(
-            "HLS export: container \(container.rawValue), "
-                + "magic \(Self.magicPrefix(firstSegmentData))"
+            "HLS export: container \(container.rawValue), magic \(Self.magicPrefix(firstSegmentData))"
         )
 
         let stagingDirectory = destination
@@ -277,8 +274,8 @@ actor HLSSegmentExporter {
             InitializationCacheKey(
                 url: url,
                 lowerBound: byteRangeSpec?.explicitOffset,
-                upperBound: byteRangeSpec.flatMap {
-                    $0.explicitOffset.map { $0 + $0.length }
+                upperBound: byteRangeSpec.flatMap { spec in
+                    spec.explicitOffset.map { $0 + spec.length }
                 }
             )
         }
@@ -314,7 +311,7 @@ actor HLSSegmentExporter {
     }
 
     private struct HLSVariant {
-        let url: URL
+        var url: URL
         let bandwidth: Int
         let codecs: [String]
         let audioGroupID: String?
@@ -390,8 +387,7 @@ actor HLSSegmentExporter {
             throw HLSExportError.noAudioVariant
         }
         logger.info(
-            "HLS export: chosen variant \(chosen.lastPathComponent) on "
-                + "\(chosen.host ?? "unknown-host")"
+            "HLS export: chosen variant \(chosen.lastPathComponent) on \(chosen.host ?? "unknown-host")"
         )
 
         let mediaData = try await fetchData(
@@ -869,8 +865,7 @@ actor HLSSegmentExporter {
                   (200..<300).contains(http.statusCode) else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
                 logger.info(
-                    "HLS fetch \(kind.rawValue): http \(code), host "
-                        + "\(safeHost(url)), ext \(url.pathExtension)"
+                    "HLS fetch \(kind.rawValue): http \(code), host \(safeHost(url)), ext \(url.pathExtension)"
                 )
                 lastError = HLSExportError.httpFailure(
                     kind: kind.exportErrorKind,
@@ -884,10 +879,7 @@ actor HLSSegmentExporter {
                 throw lastError!
             }
             logger.info(
-                "HLS fetch \(kind.rawValue): \(data.count) bytes, host "
-                    + "\(safeHost(url)), ext \(url.pathExtension), mime "
-                    + "\(http.mimeType ?? "unknown"), magic "
-                    + "\(Self.magicPrefix(data))"
+                "HLS fetch \(kind.rawValue): \(data.count) bytes, host \(safeHost(url)), ext \(url.pathExtension), mime \(http.mimeType ?? "unknown"), magic \(Self.magicPrefix(data))"
             )
             guard !data.isEmpty else {
                 lastError = HLSExportError.emptyResponse(kind: kind.exportErrorKind)
@@ -1213,8 +1205,7 @@ actor HLSSegmentExporter {
 
         guard reader.startReading() else {
             logger.info(
-                "HLS transcode: reader start failed code "
-                    + "\(reader.error?._code ?? -1)"
+                "HLS transcode: reader start failed code \(reader.error?._code ?? -1)"
             )
             throw HLSExportError.readerStartFailed(
                 code: reader.error?._code
@@ -1222,8 +1213,7 @@ actor HLSSegmentExporter {
         }
         guard writer.startWriting() else {
             logger.info(
-                "HLS transcode: writer start failed code "
-                    + "\(writer.error?._code ?? -1)"
+                "HLS transcode: writer start failed code \(writer.error?._code ?? -1)"
             )
             throw HLSExportError.writerStartFailed(
                 code: writer.error?._code
