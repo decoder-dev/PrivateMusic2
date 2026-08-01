@@ -31,6 +31,26 @@ struct OfflineTrackRecord: Codable, Identifiable, Equatable, Sendable {
         case playCount
     }
 
+    init(
+        track: Track,
+        relativePath: String,
+        storage: OfflineTrackStorage?,
+        retention: OfflineTrackRetention?,
+        byteCount: Int64,
+        downloadedAt: Date,
+        lastPlayedAt: Date,
+        playCount: Int
+    ) {
+        self.track = track
+        self.relativePath = relativePath
+        self.storage = storage
+        self.retention = retention
+        self.byteCount = byteCount
+        self.downloadedAt = downloadedAt
+        self.lastPlayedAt = lastPlayedAt
+        self.playCount = playCount
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         track = try container.decode(Track.self, forKey: .track)
