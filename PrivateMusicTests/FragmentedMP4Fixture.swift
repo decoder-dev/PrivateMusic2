@@ -69,7 +69,7 @@ enum FragmentedMP4Fixture {
         writer.add(input)
 
         guard writer.startWriting() else { throw FixtureError.writerStart }
-        writer.startSession(atSourceTime: CMTime(value: 0, timescale: CMTimeScale(sampleRate)))
+        writer.startSession(atSourceTime: CMTime.zero)
 
         let buffer = AVAudioPCMBuffer(
             pcmFormat: pcmFormat,
@@ -90,7 +90,10 @@ enum FragmentedMP4Fixture {
                 value: CMTimeValue(frameCount),
                 timescale: CMTimeScale(sampleRate)
             ),
-            presentationTimeStamp: .zero,
+            presentationTimeStamp: CMTime(
+                value: 0,
+                timescale: CMTimeScale(sampleRate)
+            ),
             decodeTimeStamp: .invalid
         )
         var sampleBuffer: CMSampleBuffer?
