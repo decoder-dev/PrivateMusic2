@@ -848,7 +848,7 @@ final class OfflinePlaylistStore: ObservableObject {
             encoder.dateEncodingStrategy = .iso8601
             return try encoder.encode(values)
         }.value
-        await Task.detached(priority: .utility) {
+        try await Task.detached(priority: .utility) {
             try data.write(to: writeURL, options: .atomic)
         }.value
         protect(writeURL)
