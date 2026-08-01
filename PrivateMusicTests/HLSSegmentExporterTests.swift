@@ -695,7 +695,7 @@ final class HLSSegmentExporterTests: XCTestCase {
         lock.lock()
         let headers = observed
         lock.unlock()
-        XCTAssertEqual(headers.count, 3)
+        XCTAssertEqual(headers.count, 4)
         XCTAssertTrue(headers.allSatisfy {
             $0["Referer"] == "https://vk.com/"
                 && $0["User-Agent"] == "PrivateMusicTests"
