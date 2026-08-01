@@ -76,7 +76,7 @@ actor HLSSegmentExporter {
         }
         let totalSegments = parsed.segments.count
         logger.info(
-            "HLS export: \(totalSegments) segments, mediaSequence \(parsed.mediaSequence), map \(parsed.firstInitialization != nil)"
+            "HLS export: \(totalSegments) segments, mediaSequence \(parsed.mediaSequence), map \(parsed.segments.first?.initialization != nil)"
         )
 
         await progress?(
@@ -865,7 +865,7 @@ actor HLSSegmentExporter {
                   (200..<300).contains(http.statusCode) else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
                 logger.info(
-                    "HLS fetch \(kind.rawValue): http \(code), host \(safeHost(url)), ext \(url.pathExtension)"
+                    "HLS fetch \(kind.rawValue): http \(code), host \(self.safeHost(url)), ext \(url.pathExtension)"
                 )
                 lastError = HLSExportError.httpFailure(
                     kind: kind.exportErrorKind,
@@ -879,7 +879,7 @@ actor HLSSegmentExporter {
                 throw lastError!
             }
             logger.info(
-                "HLS fetch \(kind.rawValue): \(data.count) bytes, host \(safeHost(url)), ext \(url.pathExtension), mime \(http.mimeType ?? "unknown"), magic \(Self.magicPrefix(data))"
+                "HLS fetch \(kind.rawValue): \(data.count) bytes, host \(self.safeHost(url)), ext \(url.pathExtension), mime \(http.mimeType ?? "unknown"), magic \(Self.magicPrefix(data))"
             )
             guard !data.isEmpty else {
                 lastError = HLSExportError.emptyResponse(kind: kind.exportErrorKind)
