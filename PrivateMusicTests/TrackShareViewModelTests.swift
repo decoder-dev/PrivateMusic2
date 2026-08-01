@@ -142,13 +142,14 @@ private final class MockPreparer: TrackSharePreparing {
         hasPrepareStarted = true
         prepareStarted?.resume()
         prepareStarted = nil
+        let capturedResult = result
         if shouldSuspendNextPrepare {
             shouldSuspendNextPrepare = false
             await withCheckedContinuation { continuation in
                 suspension = continuation
             }
         }
-        return try result.get()
+        return try capturedResult.get()
     }
 
     func removeSharePayload(_ payload: TrackSharePayload) async {
