@@ -5,11 +5,15 @@ import Foundation
 /// Deterministic, non-copyrighted audio fixture for HLS tests: 0.2 seconds of
 /// silence encoded as AAC inside a fragmented MP4.
 ///
-/// The output of `AVAssetWriter` with a `movieFragmentInterval` is a standard
-/// CMAF-compatible stream: an initialization section (`ftyp` + `moov`) followed
-/// by `moof`/`mdat` fragments. The fixture is produced at runtime (not stored)
-/// and split into exactly those pieces, so tests can serve them as an
-/// `#EXT-X-MAP` playlist.
+/// AVAssetWriter is not guaranteed to emit `moof`/`mdat` fragments for
+/// audio-only output even with a `movieFragmentInterval`, so the fixture
+/// writes a plain `.m4a` and then splits the samples from the `moov` sample
+/// table into two CMAF fragments built by hand. The initialization section is
+/// `ftyp` plus a patched `moov` with empty sample tables and a `mvex`/`trex`
+/// declaration, exactly like a real HLS fragmented stream; the segments are
+/// two `moof`/`mdat` pairs. The stitched stream is a valid fragmented MP4
+/// that AVAssetReader can decode, which the end-to-end tests assert by
+/// transcoding it to a playable M4A.
 enum FragmentedMP4Fixture {
     struct Bundle {
         let initialization: Data
@@ -104,7 +108,6 @@ enum FragmentedMP4Fixture {
         }
 
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-        writer.movieFragmentInterval = CMTime(value: 1, timescale: 10)
         let input = AVAssetWriterInput(
             mediaType: .audio,
             outputSettings: [
@@ -146,33 +149,212 @@ enum FragmentedMP4Fixture {
         let data = try Data(contentsOf: outputURL)
         let boxes = topLevelBoxes(in: data)
         guard let ftyp = boxes.first(where: { $0.type == "ftyp" })?.range,
-              let moov = boxes.first(where: { $0.type == "moov" })?.range else {
+              let moov = boxes.first(where: { $0.type == "moov" })?.range,
+              let mdat = boxes.first(where: { $0.type == "mdat" })?.range else {
             throw FixtureError.missingInitialization
         }
-        let initialization = data.subdata(in: ftyp) + data.subdata(in: moov)
 
+        let trackID = try Self.trackID(in: data, moov: moov)
+        let sizes = try Self.sampleSizes(in: data, moov: moov)
+        var durations = try Self.sampleDurations(in: data, moov: moov)
+        guard !sizes.isEmpty else {
+            throw FixtureError.missingSamples
+        }
+        if durations.count == 1 {
+            durations = Array(repeating: durations[0], count: sizes.count)
+        }
+        guard durations.count == sizes.count else {
+            throw FixtureError.invalidBox
+        }
+        let initialization = try Self.initialization(
+            from: data,
+            ftyp: ftyp,
+            moov: moov,
+            trackID: trackID
+        )
+
+        let payload = data.subdata(in: mdat.lowerBound + 8..<mdat.upperBound)
+        let splitIndex = (sizes.count + 1) / 2
         var fragments: [Data] = []
-        var index = 0
-        while index < boxes.count {
-            guard boxes[index].type == "moof" else {
-                index += 1
-                continue
+        var payloadOffset = 0
+        var baseMediaDecodeTime: UInt64 = 0
+        let parts = sizes.count > 1 ? [0..<splitIndex, splitIndex..<sizes.count] : [0..<sizes.count]
+        for part in parts {
+            var chunk = Data()
+            var samples: [(duration: UInt32, size: UInt32)] = []
+            for index in part {
+                let size = Int(sizes[index])
+                chunk.append(payload.subdata(in: payloadOffset..<(payloadOffset + size)))
+                payloadOffset += size
+                samples.append((duration: durations[index], size: sizes[index]))
             }
-            let moofRange = boxes[index].range
-            guard index + 1 < boxes.count, boxes[index + 1].type == "mdat" else {
-                index += 1
-                continue
-            }
-            let mdatRange = boxes[index + 1].range
             fragments.append(
-                data.subdata(in: moofRange) + data.subdata(in: mdatRange)
+                Self.fragment(
+                    trackID: trackID,
+                    baseMediaDecodeTime: baseMediaDecodeTime,
+                    samples: samples,
+                    payload: chunk
+                )
             )
-            index += 2
+            baseMediaDecodeTime += samples.reduce(0) { $0 + UInt64($1.duration) }
         }
         guard !fragments.isEmpty else {
-            throw FixtureError.noFragments
+            throw FixtureError.missingSamples
         }
         return Bundle(initialization: initialization, fragments: fragments)
+    }
+
+    /// Rebuilds the `moov` as a CMAF initialization section: movie and track
+    /// durations are zeroed and the sample tables (`stsz`, `stts`, `stco`,
+    /// `stsc`) are emptied so all samples are read from `moof` fragments,
+    /// then a `mvex`/`trex` box is appended.
+    private static func initialization(
+        from data: Data,
+        ftyp: Range<Int>,
+        moov: Range<Int>,
+        trackID: UInt32
+    ) throws -> Data {
+        var payload = data.subdata(in: moov.lowerBound + 8..<moov.upperBound)
+        let moovChildren = children(of: moov, in: data)
+        if let mvhd = moovChildren.first(where: { $0.type == "mvhd" }) {
+            let version = data[mvhd.range.lowerBound + 8]
+            let body = mvhd.range.lowerBound - moov.lowerBound + 8
+            let durationOffset = version == 1 ? 24 : 16
+            payload.replaceSubrange(
+                body + durationOffset..<body + durationOffset + 4,
+                with: u32(0)
+            )
+        }
+        guard let trak = moovChildren.first(where: { $0.type == "trak" }) else {
+            throw FixtureError.invalidBox
+        }
+        let trakChildren = children(of: trak.range, in: data)
+        if let tkhd = trakChildren.first(where: { $0.type == "tkhd" }) {
+            let version = data[tkhd.range.lowerBound + 8]
+            let body = tkhd.range.lowerBound - moov.lowerBound + 8
+            let durationOffset = version == 1 ? 28 : 20
+            payload.replaceSubrange(
+                body + durationOffset..<body + durationOffset + 4,
+                with: u32(0)
+            )
+        }
+        let stbl = try sampleTableBoxes(in: data, moov: moov)
+        for type in ["stsz", "stts", "stco", "stsc"] {
+            guard let box = stbl.first(where: { $0.type == type }) else {
+                continue
+            }
+            let body = box.range.lowerBound - moov.lowerBound + 8
+            let end = type == "stsz" ? body + 12 : body + 8
+            payload.replaceSubrange(
+                body + 4..<end,
+                with: Data(repeating: 0, count: end - body - 4)
+            )
+        }
+        let trex = box(
+            "trex",
+            payload: u32(0) + u32(trackID) + u32(1) + u32(0) + u32(0) + u32(0)
+        )
+        payload.append(box("mvex", payload: trex))
+        return data.subdata(in: ftyp) + box("moov", payload: payload)
+    }
+
+    private static func trackID(in data: Data, moov: Range<Int>) throws -> UInt32 {
+        let moovChildren = children(of: moov, in: data)
+        guard let trak = moovChildren.first(where: { $0.type == "trak" }),
+              let tkhd = children(of: trak.range, in: data).first(where: { $0.type == "tkhd" }),
+              let mdia = children(of: trak.range, in: data).first(where: { $0.type == "mdia" }),
+              let mdhd = children(of: mdia.range, in: data).first(where: { $0.type == "mdhd" }) else {
+            throw FixtureError.invalidBox
+        }
+        let body = tkhd.range.lowerBound + 8
+        let version = data[body]
+        return readUInt32(body + (version == 1 ? 20 : 12), in: data)
+    }
+
+    private static func sampleSizes(in data: Data, moov: Range<Int>) throws -> [UInt32] {
+        let stbl = try sampleTableBoxes(in: data, moov: moov)
+        guard let stsz = stbl.first(where: { $0.type == "stsz" }) else {
+            throw FixtureError.invalidBox
+        }
+        let body = stsz.range.lowerBound + 8
+        let uniformSize = readUInt32(body + 4, in: data)
+        let count = Int(readUInt32(body + 8, in: data))
+        if uniformSize != 0 {
+            return Array(repeating: uniformSize, count: count)
+        }
+        var sizes: [UInt32] = []
+        for index in 0..<count {
+            guard body + 12 + index * 4 + 4 <= stsz.range.upperBound else { break }
+            sizes.append(readUInt32(body + 12 + index * 4, in: data))
+        }
+        return sizes
+    }
+
+    private static func sampleDurations(in data: Data, moov: Range<Int>) throws -> [UInt32] {
+        let stbl = try sampleTableBoxes(in: data, moov: moov)
+        guard let stts = stbl.first(where: { $0.type == "stts" }) else {
+            throw FixtureError.invalidBox
+        }
+        let body = stts.range.lowerBound + 8
+        let entryCount = Int(readUInt32(body + 4, in: data))
+        var durations: [UInt32] = []
+        for index in 0..<entryCount {
+            let entryOffset = body + 8 + index * 8
+            guard entryOffset + 8 <= stts.range.upperBound else { break }
+            let count = Int(readUInt32(entryOffset, in: data))
+            let delta = readUInt32(entryOffset + 4, in: data)
+            durations.append(contentsOf: Array(repeating: delta, count: count))
+        }
+        return durations
+    }
+
+    private static func sampleTableBoxes(
+        in data: Data,
+        moov: Range<Int>
+    ) throws -> [BoxInfo] {
+        let moovChildren = children(of: moov, in: data)
+        guard let trak = moovChildren.first(where: { $0.type == "trak" }),
+              let mdia = children(of: trak.range, in: data).first(where: { $0.type == "mdia" }),
+              let minf = children(of: mdia.range, in: data).first(where: { $0.type == "minf" }),
+              let stbl = children(of: minf.range, in: data).first(where: { $0.type == "stbl" }) else {
+            throw FixtureError.invalidBox
+        }
+        return children(of: stbl.range, in: data)
+    }
+
+    private static func fragment(
+        trackID: UInt32,
+        baseMediaDecodeTime: UInt64,
+        samples: [(duration: UInt32, size: UInt32)],
+        payload: Data
+    ) -> Data {
+        let mfhd = box("mfhd", payload: u32(0))
+        let tfhd = box("tfhd", payload: u32(0x020000) + u32(trackID))
+        let tfdt = box("tfdt", payload: u32(0x01000000) + u64(baseMediaDecodeTime))
+        var entries = Data()
+        for sample in samples {
+            entries.append(u32(sample.duration))
+            entries.append(u32(sample.size))
+        }
+        let trunFlags: UInt32 = 0x000001 | 0x000100 | 0x000200
+        let placeholder = box(
+            "trun",
+            payload: u32(trunFlags) + u32(UInt32(samples.count)) + u32(0) + entries
+        )
+        let moofWithPlaceholder = box(
+            "moof",
+            payload: mfhd + box("traf", payload: tfhd + tfdt + placeholder)
+        )
+        let dataOffset = UInt32(moofWithPlaceholder.count + 8)
+        let trun = box(
+            "trun",
+            payload: u32(trunFlags) + u32(UInt32(samples.count)) + u32(dataOffset) + entries
+        )
+        let moof = box(
+            "moof",
+            payload: mfhd + box("traf", payload: tfhd + tfdt + trun)
+        )
+        return moof + box("mdat", payload: payload)
     }
 
     private static func topLevelBoxes(
@@ -181,12 +363,7 @@ enum FragmentedMP4Fixture {
         var boxes: [(String, Range<Int>)] = []
         var offset = 0
         while offset + 8 <= data.count {
-            let size32 = data.withUnsafeBytes { raw in
-                raw.loadUnaligned(
-                    fromByteOffset: offset,
-                    as: UInt32.self
-                ).bigEndian
-            }
+            let size32 = readUInt32(offset, in: data)
             let type = String(
                 data: data.subdata(in: offset + 4..<offset + 8),
                 encoding: .ascii
@@ -194,12 +371,7 @@ enum FragmentedMP4Fixture {
             let size: Int
             if size32 == 1 {
                 guard offset + 16 <= data.count else { break }
-                let size64 = data.withUnsafeBytes { raw in
-                    raw.loadUnaligned(
-                        fromByteOffset: offset + 8,
-                        as: UInt64.self
-                    ).bigEndian
-                }
+                let size64 = readUInt64(offset + 8, in: data)
                 size = size64 > Int.max ? data.count - offset : Int(size64)
             } else if size32 == 0 {
                 size = data.count - offset
@@ -213,6 +385,66 @@ enum FragmentedMP4Fixture {
         return boxes
     }
 
+    private static func children(of range: Range<Int>, in data: Data) -> [BoxInfo] {
+        var boxes: [BoxInfo] = []
+        var offset = range.lowerBound
+        while offset + 8 <= range.upperBound {
+            let size = Int(readUInt32(offset, in: data))
+            guard size >= 8, offset + size <= range.upperBound else { break }
+            boxes.append(
+                BoxInfo(
+                    type: String(
+                        data: data.subdata(in: offset + 4..<offset + 8),
+                        encoding: .ascii
+                    ) ?? "",
+                    range: offset..<(offset + size)
+                )
+            )
+            offset += size
+        }
+        return boxes
+    }
+
+    private struct BoxInfo {
+        let type: String
+        let range: Range<Int>
+    }
+
+    private static func u32(_ value: UInt32) -> Data {
+        var bigEndian = value.bigEndian
+        return withUnsafeBytes(of: &bigEndian) { Data($0) }
+    }
+
+    private static func u64(_ value: UInt64) -> Data {
+        var bigEndian = value.bigEndian
+        return withUnsafeBytes(of: &bigEndian) { Data($0) }
+    }
+
+    private static func box(_ type: String, payload: Data) -> Data {
+        var data = u32(UInt32(payload.count + 8))
+        data.append(Data(type.utf8))
+        data.append(payload)
+        return data
+    }
+
+    private static func readUInt32(_ offset: Int, in data: Data) -> UInt32 {
+        data.withUnsafeBytes { raw in
+            raw.loadUnaligned(
+                fromByteOffset: offset,
+                as: UInt32.self
+            ).bigEndian
+        }
+    }
+
+    private static func readUInt64(_ offset: Int, in data: Data) -> UInt64 {
+        data.withUnsafeBytes { raw in
+            raw.loadUnaligned(
+                fromByteOffset: offset,
+                as: UInt64.self
+            ).bigEndian
+        }
+    }
+
     private enum FixtureError: Error {
         case audioFormat
         case sampleBuffer
@@ -222,6 +454,7 @@ enum FragmentedMP4Fixture {
         case append
         case finish
         case missingInitialization
-        case noFragments
+        case missingSamples
+        case invalidBox
     }
 }
