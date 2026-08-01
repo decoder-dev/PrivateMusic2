@@ -1,5 +1,100 @@
 import SwiftUI
 
+/// Lifecycle of the "delete all saved files" control in settings. Internal so
+/// tests can drive every state without touching the view.
+enum OfflineDeleteAllPhase: Equatable {
+    case idle
+    case deleting
+    case completed
+    case incomplete(remainingBytes: Int64, remainingItems: Int)
+
+    var isDeleting: Bool {
+        if case .deleting = self { return true }
+        return false
+    }
+}
+
+/// Pure presentation of the delete-all row: title, subtitle, icon, enabled
+/// state and spinner flag. Resolving happens in one place so the view stays
+/// thin and the states are unit-testable.
+struct OfflineDeleteAllPresentation: Equatable {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let isEnabled: Bool
+    let showsProgress: Bool
+
+    /// Normalizes the phase: new content after a completed deletion returns
+    /// the row to the active idle state.
+    static func resolve(
+        phase: OfflineDeleteAllPhase,
+        hasContent: Bool,
+        downloadedTrackCount: Int,
+        totalBytes: Int64,
+        formattedBytes: (Int64) -> String
+    ) -> OfflineDeleteAllPresentation {
+        let effectivePhase: OfflineDeleteAllPhase
+        if hasContent, phase == .completed {
+            effectivePhase = .idle
+        } else {
+            effectivePhase = phase
+        }
+        switch effectivePhase {
+        case .idle:
+            guard hasContent else {
+                return OfflineDeleteAllPresentation(
+                    title: L10n.text("Все сохранённые файлы удалены"),
+                    subtitle: L10n.text("Готово"),
+                    systemImage: "checkmark.circle.fill",
+                    isEnabled: false,
+                    showsProgress: false
+                )
+            }
+            return OfflineDeleteAllPresentation(
+                title: L10n.text("Удалить все сохранённые"),
+                subtitle: L10n.format(
+                    "%d файлов · %@",
+                    downloadedTrackCount,
+                    formattedBytes(totalBytes)
+                ),
+                systemImage: "trash",
+                isEnabled: true,
+                showsProgress: false
+            )
+        case .deleting:
+            return OfflineDeleteAllPresentation(
+                title: L10n.text("Удаляем сохранённые файлы…"),
+                subtitle: L10n.text(
+                    "Останавливаем загрузки и очищаем хранилище."
+                ),
+                systemImage: "trash",
+                isEnabled: false,
+                showsProgress: true
+            )
+        case .completed:
+            return OfflineDeleteAllPresentation(
+                title: L10n.text("Все сохранённые файлы удалены"),
+                subtitle: L10n.text("Готово"),
+                systemImage: "checkmark.circle.fill",
+                isEnabled: false,
+                showsProgress: false
+            )
+        case let .incomplete(remainingBytes, remainingItems):
+            return OfflineDeleteAllPresentation(
+                title: L10n.text("Удалено не всё"),
+                subtitle: L10n.format(
+                    "Осталось: %d объектов · %@",
+                    remainingItems,
+                    formattedBytes(remainingBytes)
+                ),
+                systemImage: "exclamationmark.triangle.fill",
+                isEnabled: true,
+                showsProgress: false
+            )
+        }
+    }
+}
+
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var player: AudioPlayer
@@ -354,6 +449,8 @@ private struct OfflineStorageSettingsView: View {
     @EnvironmentObject private var offlineStore: OfflineTrackStore
     @ObservedObject private var offlinePlaylists =
         OfflinePlaylistStore.shared
+    @State private var deleteAllPhase: OfflineDeleteAllPhase = .idle
+    @State private var showsDeleteAllConfirmation = false
 
     var body: some View {
         let usage = offlineStore.storageUsage
@@ -564,28 +661,158 @@ private struct OfflineStorageSettingsView: View {
                     }
                 }
 
-                if offlineStore.totalByteCount > 0
-                    || !offlinePlaylists.records.isEmpty {
-                    Button(
-                        "Удалить все загрузки",
-                        role: .destructive
-                    ) {
-                        Task {
-                            // Track files first, then playlist metadata and
-                            // artwork (defect 11): both stores share the
-                            // coordinator, so the queue must be drained
-                            // before reconciliation.
-                            await offlineStore.removeAll()
-                            offlinePlaylists.removeAll()
-                        }
+                let presentation = OfflineDeleteAllPresentation.resolve(
+                    phase: deleteAllPhase,
+                    hasContent: hasSavedOrActiveContent,
+                    downloadedTrackCount: offlineStore.downloadedTrackCount,
+                    totalBytes: offlineStore.storageUsage.totalBytes,
+                    formattedBytes: formattedBytes
+                )
+                Button {
+                    guard hasSavedOrActiveContent,
+                          !deleteAllPhase.isDeleting else {
+                        return
                     }
+                    showsDeleteAllConfirmation = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Group {
+                            if presentation.showsProgress {
+                                ProgressView()
+                            } else {
+                                Image(systemName: presentation.systemImage)
+                                    .foregroundStyle(deleteAllIconColor)
+                            }
+                        }
+                        .frame(width: 24)
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(presentation.title)
+                                .foregroundStyle(deleteAllTitleColor)
+                            Text(presentation.subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .disabled(!presentation.isEnabled)
+                .accessibilityLabel(presentation.title)
+                .accessibilityValue(presentation.subtitle)
             }
         }
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle("Офлайн и хранилище")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            L10n.text("Удалить все сохранённые файлы?"),
+            isPresented: $showsDeleteAllConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(
+                L10n.text("Удалить всё"),
+                role: .destructive
+            ) {
+                Task {
+                    await deleteAllSavedContent()
+                }
+            }
+            Button(L10n.text("Отмена"), role: .cancel) {}
+        } message: {
+            Text(
+                L10n.text(
+                    "Будут остановлены текущие загрузки и удалены "
+                        + "скачанные треки, плейлисты и автокэш. "
+                        + "Музыка в VK не изменится."
+                )
+            )
+        }
+        .onChange(of: deleteAllContentSnapshot) { _ in
+            if hasSavedOrActiveContent,
+               deleteAllPhase == .completed {
+                deleteAllPhase = .idle
+            }
+        }
+    }
+
+    /// Content is defined by audio bytes, physical files, in-flight
+    /// downloads and playlist records (including active playlist state).
+    private var hasSavedOrActiveContent: Bool {
+        let hasActivePlaylist = offlinePlaylists.records.values.contains {
+            OfflinePlaylistStatus.status(for: $0).isActive
+        }
+
+        return offlineStore.storageUsage.totalBytes > 0
+            || offlineStore.downloadedTrackCount > 0
+            || !offlineStore.downloadingTrackIDs.isEmpty
+            || !offlinePlaylists.records.isEmpty
+            || hasActivePlaylist
+    }
+
+    /// Stable signature of the storage/playlist state. When content appears
+    /// after a completed deletion the row returns to the active idle state.
+    private var deleteAllContentSnapshot: String {
+        [
+            String(offlineStore.storageUsage.totalBytes),
+            String(offlineStore.downloadedTrackCount),
+            String(offlineStore.downloadingTrackIDs.count),
+            String(offlinePlaylists.records.count)
+        ].joined(separator: ":")
+    }
+
+    @MainActor
+    private func deleteAllSavedContent() async {
+        deleteAllPhase = .deleting
+
+        // First stop playlist orchestration.
+        offlinePlaylists.removeAll()
+
+        // Then cancel/block/wait/delete/unblock the shared queue.
+        await offlineStore.removeAll()
+
+        offlineStore.reconcile()
+        offlinePlaylists.reconcileDownloads(with: offlineStore)
+
+        let usage = offlineStore.storageUsage
+        let remainingItems =
+            offlineStore.downloadedTrackCount
+            + offlinePlaylists.records.count
+
+        if usage.totalBytes == 0,
+           remainingItems == 0,
+           offlineStore.downloadingTrackIDs.isEmpty {
+            deleteAllPhase = .completed
+            Haptics.success()
+        } else {
+            deleteAllPhase = .incomplete(
+                remainingBytes: usage.totalBytes,
+                remainingItems: remainingItems
+            )
+            Haptics.error()
+        }
+    }
+
+    private var deleteAllIconColor: Color {
+        switch deleteAllPhase {
+        case .deleting:
+            return .secondary
+        case .completed:
+            return .green
+        case .incomplete:
+            return .orange
+        case .idle:
+            return hasSavedOrActiveContent ? Color.red : Color.green
+        }
+    }
+
+    private var deleteAllTitleColor: Color {
+        hasSavedOrActiveContent && deleteAllPhase == .idle
+            ? Color.red
+            : Color.primary
     }
 
     private func formattedBytes(_ value: Int64) -> String {
