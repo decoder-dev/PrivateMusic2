@@ -845,7 +845,9 @@ enum PlaylistDownloadsVisibility {
     }
 }
 
-// MARK: - Downloaded track rowprivate struct DownloadedTrackRow: View {
+// MARK: - Downloaded track row
+
+private struct DownloadedTrackRow: View {
     let record: OfflineTrackRecord
     let isPlaying: Bool
     let isSelectionMode: Bool
