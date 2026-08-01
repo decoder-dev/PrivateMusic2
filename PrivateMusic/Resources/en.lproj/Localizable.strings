@@ -468,3 +468,11 @@
 "Не удалось расшифровать аудиопоток." = "Couldn’t decrypt the audio stream.";
 
 "Не удалось собрать аудиопоток." = "Couldn’t assemble the audio stream.";
+
+"Не удалось открыть собранный аудиопоток." = "Could not open the assembled audio stream.";
+
+"Не удалось создать аудиофайл из этого потока." = "Could not create an audio file from this stream.";
+
+"Не удалось подготовить аудиофайл." = "Could not prepare the audio file.";
+
+"Скопировать код ошибки" = "Copy error code";

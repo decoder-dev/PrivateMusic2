@@ -639,9 +639,7 @@ final class HLSSegmentExporterTests: XCTestCase {
 
     // MARK: - Header propagation
 
-    // NOTE: disabled — depends on FragmentedMP4Fixture which currently produces
-    // an init segment that AVAssetReader rejects (-11800).
-    func blocked_testHeadersPropagateToAllRequests() async throws {
+    func testHeadersPropagateToAllRequests() async throws {
         let fixture = try FragmentedMP4Fixture.make()
         let playlist = """
         #EXTM3U
@@ -894,10 +892,7 @@ final class HLSSegmentExporterTests: XCTestCase {
 
     // MARK: - Full integration
 
-    // NOTE: disabled — FragmentedMP4Fixture hand-builds CMAF boxes that AVAssetReader
-    // rejects (-11800 / -17913). Fixture needs to be rewritten using a real CMAF
-    // generator (e.g. AVAssetWriter with flushSegment) in a follow-up.
-    func blocked_testFragmentedMP4EndToEndProducesPlayableM4A() async throws {
+    func testFragmentedMP4EndToEndProducesPlayableM4A() async throws {
         let fixture = try FragmentedMP4Fixture.make()
         let playlist = """
         #EXTM3U
