@@ -319,14 +319,14 @@ struct CMAFAudioDemuxer {
             )
         }
 
-        var decodeTime: Int64
+        var decodeTimeValue: Int64?
         if let tfdt = children.first(where: { $0.type == "tfdt" }) {
-            decodeTime = try tfdtBaseTime(tfdt, reader: reader)
+            decodeTimeValue = try tfdtBaseTime(tfdt, reader: reader)
         } else if let running = decodeTime {
-            decodeTime = running
-        } else {
-            decodeTime = 0
+            decodeTimeValue = running
         }
+        let baseDecodeTime = decodeTimeValue ?? 0
+        var decodeTime: Int64 = baseDecodeTime
 
         // For our real HLS CMAF, every fragment is a moof followed by an mdat.
         // Data offsets inside trun are relative to the byte-basis advertised
@@ -359,7 +359,10 @@ struct CMAFAudioDemuxer {
                 let size = trun.sizes[safe: index] ?? nil
                     ?? tfhd.defaultSampleSize
                     ?? initialization.defaultSampleSize
-                guard let size, size > 0 else {
+                guard let size else {
+                    throw CMAFError.missingSampleSize
+                }
+                guard size > 0 else {
                     throw CMAFError.missingSampleSize
                 }
 
