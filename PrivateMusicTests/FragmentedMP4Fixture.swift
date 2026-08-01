@@ -33,13 +33,15 @@ enum FragmentedMP4Fixture {
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
         writer.outputFileTypeProfile = .mpeg4CMAFCompliant
 
-        let format = AVAudioFormat(
+        // The input provides raw PCM; outputSettings tell the writer to
+        // encode to AAC inside a CMAF-compliant .mp4 container.
+        let pcmFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: sampleRate,
             channels: 2,
             interleaved: false
         )!
-        var asbd = format.streamDescription.pointee
+        var asbd = pcmFormat.streamDescription.pointee
         var formatDescription: CMAudioFormatDescription?
         let status = CMAudioFormatDescriptionCreate(
             allocator: nil,
@@ -72,10 +74,8 @@ enum FragmentedMP4Fixture {
         guard writer.startWriting() else { throw FixtureError.writerStart }
         writer.startSession(atSourceTime: .zero)
 
-        // Feed PCM 440 Hz stereo sine so the writer produces at least one
-        // moof/mdat pair in fragmented MP4 output.
         let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
+            pcmFormat: pcmFormat,
             frameCapacity: AVAudioFrameCount(frameCount)
         )!
         buffer.frameLength = AVAudioFrameCount(frameCount)
