@@ -20,7 +20,10 @@ final class PlaylistDecodingTests: XCTestCase {
         )
 
         XCTAssertEqual(playlist.source, .vk)
-        XCTAssertEqual(playlist.source.title, "VK Музыка")
+        XCTAssertEqual(
+            playlist.source.title,
+            L10n.text("VK Музыка")
+        )
         XCTAssertEqual(playlist.source.shortTitle, "VK")
         XCTAssertEqual(
             playlist.artworkURL?.absoluteString,

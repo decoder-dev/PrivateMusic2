@@ -110,8 +110,8 @@ final class AudioPlayerTransitionTests: XCTestCase {
         defer {
             context.defaults.removePersistentDomain(forName: context.suite)
         }
-        let first = track(id: 1, duration: 180)
-        let second = track(id: 2, duration: 245)
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        let second = track(id: 2, duration: 245, streamURL: silentWAVURL)
         var requestCount = 0
         context.player.configureContinuation {
             requestCount += 1
@@ -140,8 +140,8 @@ final class AudioPlayerTransitionTests: XCTestCase {
         defer {
             context.defaults.removePersistentDomain(forName: context.suite)
         }
-        let first = track(id: 1, duration: 180)
-        let second = track(id: 2, duration: 245)
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        let second = track(id: 2, duration: 245, streamURL: silentWAVURL)
         var requestCount = 0
         context.player.configureContinuation {
             requestCount += 1
@@ -168,8 +168,8 @@ final class AudioPlayerTransitionTests: XCTestCase {
         defer {
             context.defaults.removePersistentDomain(forName: context.suite)
         }
-        let first = track(id: 1, duration: 180)
-        let second = track(id: 2, duration: 245)
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        let second = track(id: 2, duration: 245, streamURL: silentWAVURL)
         var requestCount = 0
         context.player.configureContinuation {
             requestCount += 1
@@ -214,9 +214,9 @@ final class AudioPlayerTransitionTests: XCTestCase {
         defer {
             context.defaults.removePersistentDomain(forName: context.suite)
         }
-        let first = track(id: 1, duration: 180)
-        let second = track(id: 2, duration: 245)
-        let continuation = track(id: 3, duration: 210)
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        let second = track(id: 2, duration: 245, streamURL: silentWAVURL)
+        let continuation = track(id: 3, duration: 210, streamURL: silentWAVURL)
         var requestCount = 0
         context.player.configureContinuation {
             requestCount += 1
@@ -243,9 +243,9 @@ final class AudioPlayerTransitionTests: XCTestCase {
         defer {
             context.defaults.removePersistentDomain(forName: context.suite)
         }
-        let first = track(id: 1, duration: 180)
-        let second = track(id: 2, duration: 245)
-        let continuation = track(id: 3, duration: 210)
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        let second = track(id: 2, duration: 245, streamURL: silentWAVURL)
+        let continuation = track(id: 3, duration: 210, streamURL: silentWAVURL)
         var requestCount = 0
         context.player.configureContinuation {
             requestCount += 1
@@ -321,7 +321,8 @@ final class AudioPlayerTransitionTests: XCTestCase {
 
     private func track(
         id: Int,
-        duration: TimeInterval
+        duration: TimeInterval,
+        streamURL: URL? = nil
     ) -> Track {
         Track(
             trackID: id,
@@ -329,8 +330,44 @@ final class AudioPlayerTransitionTests: XCTestCase {
             title: "Track \(id)",
             artist: "Artist",
             duration: duration,
-            streamURL: nil,
+            streamURL: streamURL,
             artworkURL: nil
         )
     }
 }
+
+/// Local, deterministic audio source for player tests: AVPlayer reports
+/// `.failed` for unreachable HTTP URLs on the CI simulator, which would
+/// surface as a playback error message. A valid WAV file loads cleanly
+/// without touching the network.
+private let silentWAVURL: URL = {
+    let sampleRate: UInt32 = 8000
+    let sampleCount = sampleRate * 120
+    let byteRate = sampleRate * 2
+    var data = Data(capacity: Int(44 + sampleCount * 2))
+    func appendLittleEndian<T: FixedWidthInteger>(_ value: T) {
+        withUnsafeBytes(of: value.littleEndian) {
+            data.append(contentsOf: $0)
+        }
+    }
+    data.append(contentsOf: Array("RIFF".utf8))
+    appendLittleEndian(UInt32(36 + sampleCount * 2))
+    data.append(contentsOf: Array("WAVE".utf8))
+    data.append(contentsOf: Array("fmt ".utf8))
+    appendLittleEndian(UInt32(16))
+    appendLittleEndian(UInt16(1))
+    appendLittleEndian(UInt16(1))
+    appendLittleEndian(sampleRate)
+    appendLittleEndian(byteRate)
+    appendLittleEndian(UInt16(2))
+    appendLittleEndian(UInt16(16))
+    data.append(contentsOf: Array("data".utf8))
+    appendLittleEndian(UInt32(sampleCount * 2))
+    data.append(
+        contentsOf: repeatElement(0, count: Int(sampleCount * 2))
+    )
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("silent-\(UUID().uuidString).wav")
+    try? data.write(to: url)
+    return url
+}()

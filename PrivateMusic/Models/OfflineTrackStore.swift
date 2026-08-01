@@ -19,6 +19,39 @@ struct OfflineTrackRecord: Codable, Identifiable, Equatable, Sendable {
     var resolvedRetention: OfflineTrackRetention {
         retention ?? .manual
     }
+
+    enum CodingKeys: String, CodingKey {
+        case track
+        case relativePath
+        case storage
+        case retention
+        case byteCount
+        case downloadedAt
+        case lastPlayedAt
+        case playCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        track = try container.decode(Track.self, forKey: .track)
+        relativePath = try container.decode(String.self, forKey: .relativePath)
+        storage = try container.decodeIfPresent(
+            OfflineTrackStorage.self,
+            forKey: .storage
+        )
+        retention = try container.decodeIfPresent(
+            OfflineTrackRetention.self,
+            forKey: .retention
+        )
+        byteCount = try container.decode(Int64.self, forKey: .byteCount)
+        downloadedAt = try container.decode(Date.self, forKey: .downloadedAt)
+        lastPlayedAt = try container.decodeIfPresent(
+            Date.self,
+            forKey: .lastPlayedAt
+        ) ?? downloadedAt
+        playCount = try container.decodeIfPresent(Int.self, forKey: .playCount)
+            ?? 0
+    }
 }
 
 enum OfflineTrackStorage: String, Codable, Sendable {

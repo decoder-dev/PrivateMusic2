@@ -161,6 +161,7 @@ final class OfflinePlaylistStoreTests: XCTestCase {
         let fetchStarted = expectation(description: "fetch page started")
         fetchStarted.assertForOverFulfill = false
         let release = AsyncStream<Void>.makeStream()
+        let track = makeTrack(0)
         let store = OfflinePlaylistStore(rootURL: root)
         store.configure(accountID: 1)
 
@@ -169,7 +170,7 @@ final class OfflinePlaylistStoreTests: XCTestCase {
             fetchPage: { _ in
                 fetchStarted.fulfill()
                 _ = await release.stream.first(where: { _ in true })
-                return MusicPage(items: [], totalCount: 0, nextOffset: nil)
+                return MusicPage(items: [track], totalCount: 1, nextOffset: nil)
             },
             downloadTrack: { _ in }
         )
@@ -262,11 +263,11 @@ final class OfflinePlaylistStoreTests: XCTestCase {
         let store = OfflinePlaylistStore(rootURL: root)
         store.configure(accountID: 1)
 
-        var fetchCount = 0
+        var fetchCount = PageCounter()
         let first = store.startDownload(
             playlist: playlist,
             fetchPage: { _ in
-                fetchCount += 1
+                fetchCount.increment()
                 try await Task.sleep(for: .milliseconds(100))
                 return MusicPage(items: [], totalCount: 0, nextOffset: nil)
             },
@@ -275,14 +276,14 @@ final class OfflinePlaylistStoreTests: XCTestCase {
         let second = store.startDownload(
             playlist: playlist,
             fetchPage: { _ in
-                fetchCount += 1
+                fetchCount.increment()
                 return MusicPage(items: [], totalCount: 0, nextOffset: nil)
             },
             downloadTrack: { _ in }
         )
         await first.value
         await second.value
-        XCTAssertEqual(fetchCount, 1)
+        XCTAssertEqual(fetchCount.value, 1)
     }
 
     func testPartialPagesAreFetchedUntilAllTracksKnown() async throws {
