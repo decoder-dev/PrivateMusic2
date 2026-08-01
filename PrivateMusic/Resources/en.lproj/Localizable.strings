@@ -424,3 +424,5 @@
 "Сохранено" = "Saved";
 "Хранение" = "Storage";
 "M4A (из HLS)" = "M4A (from HLS)";
+"Удалить плейлист?" = "Delete playlist?";
+"Удалить плейлист и аудиофайлы" = "Delete playlist and audio files";
