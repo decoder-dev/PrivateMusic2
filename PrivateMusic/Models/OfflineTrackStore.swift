@@ -104,7 +104,7 @@ final class OfflineTrackStore: ObservableObject {
         hlsDownloadService: HLSOfflineDownloadService? = nil,
         downloadCoordinator: DownloadCoordinator = .shared,
         artworkByteCountProvider: @escaping () -> Int64 = {
-            OfflinePlaylistStore.shared.artworkByteCount
+            PlaylistArtworkBytesBox.shared.current()
         }
     ) {
         self.fileManager = fileManager
