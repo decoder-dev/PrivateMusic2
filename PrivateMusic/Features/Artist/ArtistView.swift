@@ -112,7 +112,6 @@ struct ArtistView: View {
                     }
                 }
             }
-            .padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
         .refreshable {

@@ -53,8 +53,27 @@ struct PlaylistDetailView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    playlistHeader
-                        .padding(.bottom, 8)
+                    VStack(spacing: 0) {
+                        if let message = model.errorMessage {
+                            // Defect 17: pagination failures surface as a
+                            // banner instead of replacing the loaded list.
+                            HStack(spacing: 8) {
+                                Image(
+                                    systemName: "exclamationmark.triangle.fill"
+                                )
+                                .foregroundStyle(.orange)
+                                Text(message)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial)
+                        }
+                        playlistHeader
+                            .padding(.bottom, 8)
+                    }
                 }
             }
         }
@@ -67,9 +86,9 @@ struct PlaylistDetailView: View {
             }
         }
         .task { await load() }
-        .task(id: sessionStore.session?.userID) {
+        .task(id: sessionStore.resolvedOfflineAccountID) {
             offlinePlaylists.configure(
-                accountID: sessionStore.session?.userID
+                accountID: sessionStore.resolvedOfflineAccountID
             )
         }
         .refreshable { await load(force: true) }
@@ -96,20 +115,19 @@ struct PlaylistDetailView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if let record = offlinePlaylists.record(for: playlist),
-               record.state == .downloading || record.state == .queued {
-                VStack(alignment: .trailing, spacing: 3) {
-                    ProgressView(value: record.progress)
-                        .frame(width: 72)
-                    Text(
-                        L10n.format(
-                            "%d из %d",
-                            record.completedCount,
-                            record.totalCount
-                        )
-                    )
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            if let record = offlinePlaylists.record(for: playlist) {
+                let status = OfflinePlaylistStatus.status(for: record)
+                if status.isActive {
+                    VStack(alignment: .trailing, spacing: 3) {
+                        if let progress = status.progress {
+                            ProgressView(value: progress)
+                                .frame(width: 72)
+                        }
+                        Text(status.localizedText ?? "")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
         }
@@ -119,16 +137,42 @@ struct PlaylistDetailView: View {
         .premiumAppear()
     }
 
+    private enum OfflineButtonState {
+        case active
+        case downloaded
+        case needsDownload
+    }
+
+    /// Defect 5: derived from the playlist status AND the real track files,
+    /// never from stale metadata alone. If files were deleted locally the
+    /// button flips back to download even when the record still says
+    /// `.available`.
+    private var offlineButtonState: OfflineButtonState {
+        guard let record = offlinePlaylists.record(for: playlist) else {
+            return .needsDownload
+        }
+        if OfflinePlaylistStatus.status(for: record).isActive {
+            return .active
+        }
+        if record.state == .available || record.state == .partial {
+            let missing = record.tracks.contains {
+                !environment.offlineStore.contains($0)
+            }
+            return missing ? .needsDownload : .downloaded
+        }
+        return .needsDownload
+    }
+
     @ViewBuilder
     private var offlineButton: some View {
-        switch offlinePlaylists.record(for: playlist)?.state {
-        case .queued, .downloading:
+        switch offlineButtonState {
+        case .active:
             Button {
                 offlinePlaylists.cancelDownload(for: playlist)
             } label: {
                 Label("Отменить загрузку", systemImage: "xmark.circle")
             }
-        case .available:
+        case .downloaded:
             Menu {
                 Button(role: .destructive) {
                     offlinePlaylists.remove(playlist)
@@ -138,7 +182,7 @@ struct PlaylistDetailView: View {
             } label: {
                 Image(systemName: "arrow.down.circle.fill")
             }
-        case .partial, .cancelled, .failed, .none:
+        case .needsDownload:
             Button {
                 startOfflineDownload()
             } label: {
@@ -245,11 +289,17 @@ private final class PlaylistDetailViewModel: ObservableObject {
         defer { isLoadingMore = false }
         do {
             let page = try await operation(offset)
+            // Defect 17: the offset must strictly advance, otherwise a
+            // server quirk would loop the same page forever.
+            guard let next = page.nextOffset, next > offset else {
+                nextOffset = nil
+                return
+            }
             var known = Set(tracks.map(\.id))
             tracks.append(contentsOf: page.items.filter {
                 known.insert($0.id).inserted
             })
-            nextOffset = page.nextOffset
+            nextOffset = next
             errorMessage = nil
         } catch is CancellationError {
             return
