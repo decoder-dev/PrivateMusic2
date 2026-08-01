@@ -29,6 +29,7 @@ struct OfflineDownloadsView: View {
     @State private var selection: Set<String>?
     @State private var sharingTrack: Track?
     @State private var selectedRecord: OfflineTrackRecord?
+    @State private var deferredShareTrack: Track?
     @State private var showsDeleteConfirmation = false
     @State private var showsDeleteAllConfirmation = false
     @State private var showsClearCacheConfirmation = false
@@ -131,7 +132,8 @@ struct OfflineDownloadsView: View {
                         Label("Удалить", systemImage: "trash")
                     }
                     .disabled(selection?.isEmpty != false)
-                } else if !validRecords.isEmpty {
+                } else if section != .playlists,
+                          !recordsForCurrentSection.isEmpty {
                     Button(L10n.text("Выбрать")) {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             selection = []
@@ -141,7 +143,10 @@ struct OfflineDownloadsView: View {
             }
         }
         .trackShareSheet(track: $sharingTrack)
-        .sheet(item: $selectedRecord) { record in
+        .sheet(
+            item: $selectedRecord,
+            onDismiss: presentDeferredShareIfNeeded
+        ) { record in
             DownloadedTrackDetailsView(
                 record: record,
                 localURL: offlineStore.localURL(for: record.track),
@@ -152,12 +157,8 @@ struct OfflineDownloadsView: View {
                     )
                 },
                 onShare: {
-                    let track = record.track
+                    deferredShareTrack = record.track
                     selectedRecord = nil
-                    Task { @MainActor in
-                        await Task.yield()
-                        sharingTrack = track
-                    }
                 },
                 onDelete: {
                     deleteTrack(record.track)
@@ -217,6 +218,13 @@ struct OfflineDownloadsView: View {
             Button(L10n.text("Отмена"), role: .cancel) {
                 pendingPlaylistRemoval = nil
             }
+        } message: {
+            Text(
+                L10n.text(
+                    "Аудиофайлы останутся в разделе «Треки», "
+                        + "если удалить только плейлист."
+                )
+            )
         }
         .task(id: sessionStore.resolvedOfflineAccountID) {
             offlinePlaylists.configure(
@@ -258,6 +266,14 @@ struct OfflineDownloadsView: View {
         })
     }
 
+    private var recordsForCurrentSection: [OfflineTrackRecord] {
+        switch section {
+        case .tracks: return manualRecords
+        case .cache: return cacheRecords
+        case .playlists: return []
+        }
+    }
+
     private func filtered(
         _ values: [OfflineTrackRecord]
     ) -> [OfflineTrackRecord] {
@@ -295,28 +311,25 @@ struct OfflineDownloadsView: View {
         }
     }
 
-    /// Finished playlists plus errored records that still carry tracks or a
-    /// partial result. Empty failed/cancelled records are hidden entirely.
+    /// Finished playlists plus errored records that still carry local
+    /// tracks. Empty failed/cancelled records are hidden entirely.
     private var downloadedSections: [PlaylistSection] {
         allPlaylistSections.filter { section in
             guard !OfflinePlaylistStatus.status(for: section.record).isActive
             else {
                 return false
             }
-            switch section.record.state {
-            case .available, .partial:
-                return true
-            case .failed, .cancelled:
-                return section.record.completedCount > 0
-                    || !section.record.tracks.isEmpty
-            case .idle, .resolvingTracks, .queued, .downloading:
-                return false
-            }
+            return PlaylistDownloadsVisibility.shouldShowDownloaded(
+                section.record,
+                hasLocalTracks: !section.tracks.isEmpty
+            )
         }
     }
 
     private var hasNoContent: Bool {
-        validRecords.isEmpty && offlinePlaylists.records.isEmpty
+        validRecords.isEmpty
+            && activeSections.isEmpty
+            && downloadedSections.isEmpty
     }
 
     private var activeDownloadCount: Int {
@@ -679,8 +692,15 @@ struct OfflineDownloadsView: View {
 
     // MARK: - Actions
 
-    private func retryDownload(_ section: PlaylistSection) {
-        offlinePlaylists.startDownload(
+    /// Presents the share sheet only after the details sheet has fully
+    /// dismissed; presenting two sheets at once is not supported by SwiftUI.
+    private func presentDeferredShareIfNeeded() {
+        guard let track = deferredShareTrack else { return }
+        deferredShareTrack = nil
+        sharingTrack = track
+    }
+
+    private func retryDownload(_ section: PlaylistSection) {        offlinePlaylists.startDownload(
             playlist: section.playlist,
             fetchPage: { offset in
                 try await environment.withAuthorizedToken { token in
@@ -803,9 +823,29 @@ struct OfflineDownloadsView: View {
     }
 }
 
-// MARK: - Downloaded track row
+// MARK: - Playlist download visibility
 
-private struct DownloadedTrackRow: View {
+/// Decides whether a finished playlist download is shown in the
+/// «Скачанные плейлисты» section. Failed/cancelled records appear only
+/// while they still have local audio files — a record whose tracks are
+/// metadata-only (files were deleted) is stale and hidden.
+enum PlaylistDownloadsVisibility {
+    static func shouldShowDownloaded(
+        _ record: OfflinePlaylistRecord,
+        hasLocalTracks: Bool
+    ) -> Bool {
+        switch record.state {
+        case .available, .partial:
+            return true
+        case .failed, .cancelled:
+            return hasLocalTracks
+        case .idle, .resolvingTracks, .queued, .downloading:
+            return false
+        }
+    }
+}
+
+// MARK: - Downloaded track rowprivate struct DownloadedTrackRow: View {
     let record: OfflineTrackRecord
     let isPlaying: Bool
     let isSelectionMode: Bool
@@ -931,18 +971,53 @@ private struct DownloadedTrackRow: View {
 
 // MARK: - Storage summary
 
+/// Text lines for the storage card, kept testable: the subtitle must show
+/// the full stored audio size against the configured limit, and the
+/// breakdown must cover manual, cache and overhead bytes.
+enum DownloadStorageText {
+    static func summary(
+        usage: StorageUsage,
+        formatBytes: (Int64) -> String
+    ) -> (subtitle: String, manual: String, cache: String, overhead: String) {
+        let overheadBytes = max(0, usage.totalBytes - usage.audioBytes)
+        return (
+            subtitle: L10n.format(
+                "%@ из %@",
+                formatBytes(usage.audioBytes),
+                formatBytes(usage.limitBytes)
+            ),
+            manual: L10n.format(
+                "Мои загрузки: %@",
+                formatBytes(usage.manualBytes)
+            ),
+            cache: L10n.format(
+                "Автокэш: %@",
+                formatBytes(usage.automaticBytes)
+            ),
+            overhead: L10n.format(
+                "Служебные данные: %@",
+                formatBytes(overheadBytes)
+            )
+        )
+    }
+}
+
 private struct DownloadStorageSummary: View {
     let usage: StorageUsage
     let onClearCache: () -> Void
     let onDeleteAll: () -> Void
 
     var body: some View {
+        let lines = DownloadStorageText.summary(
+            usage: usage,
+            formatBytes: Self.formattedBytes
+        )
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Text(L10n.text("Загрузки на устройстве"))
                     .font(.headline)
                 Spacer()
-                Text(subtitle)
+                Text(lines.subtitle)
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -970,6 +1045,14 @@ private struct DownloadStorageSummary: View {
             Text(L10n.text("Доступны без интернета"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(lines.manual)
+                Text(lines.cache)
+                Text(lines.overhead)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
             HStack(spacing: 10) {
                 Button(action: onClearCache) {
@@ -1001,12 +1084,8 @@ private struct DownloadStorageSummary: View {
         )
     }
 
-    private var subtitle: String {
-        let size = ByteCountFormatter.string(
-            fromByteCount: usage.audioBytes,
-            countStyle: .file
-        )
-        return "\(L10n.trackCount(usage.totalCount)) · \(size)"
+    private static func formattedBytes(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 }
 

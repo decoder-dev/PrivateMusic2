@@ -426,3 +426,19 @@
 "M4A (из HLS)" = "M4A (from HLS)";
 "Удалить плейлист?" = "Delete playlist?";
 "Удалить плейлист и аудиофайлы" = "Delete playlist and audio files";
+
+"Не удалось создать временный файл." = "Could not create a temporary file.";
+
+"%@ из %@" = "%@ of %@";
+
+"Мои загрузки: %@" = "My downloads: %@";
+
+"Служебные данные: %@" = "Service data: %@";
+
+"Аудиофайлы останутся в разделе «Треки», если удалить только плейлист." = "Audio files will remain in the Tracks section if you only delete the playlist.";
+
+"Потоковое аудио · при отправке создаётся M4A" = "Streaming audio · M4A is created on share";
+
+"Альбом" = "Album";
+
+"Длительность" = "Duration";
