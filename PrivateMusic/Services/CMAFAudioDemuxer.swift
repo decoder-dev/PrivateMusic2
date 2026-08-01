@@ -37,7 +37,7 @@ struct CMAFAudioDemuxer {
         let isSync: Bool
     }
 
-    enum CMAFError: Sendable, Equatable {
+    enum CMAFError: Error, Sendable, Equatable {
         case invalidInitialization
         case noAudioTrack
         case unsupportedCodec(String)
@@ -143,7 +143,7 @@ struct CMAFAudioDemuxer {
 
     private struct TrakInfo {
         let isAudio: Bool
-        let config: InitializationInfo?
+        let config: InitializationInfo
     }
 
     private func parseTrak(
