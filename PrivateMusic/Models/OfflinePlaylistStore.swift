@@ -345,7 +345,7 @@ final class OfflinePlaylistStore: ObservableObject {
         record.failedCount = 0
         record.processedCount = 0
         record.errorMessage = nil
-        record.updatedAt = Date()
+        record.updatedAt = updatedNow()
         records[identifier] = record
         requestSave()
 
@@ -377,7 +377,7 @@ final class OfflinePlaylistStore: ObservableObject {
             return
         }
         record.state = .cancelled
-        record.updatedAt = Date()
+        record.updatedAt = updatedNow()
         records[identifier] = record
         requestSave()
     }
@@ -459,7 +459,7 @@ final class OfflinePlaylistStore: ObservableObject {
                 break
             }
             if recordChanged {
-                record.updatedAt = Date()
+                record.updatedAt = updatedNow()
                 records[id] = record
                 didChange = true
             }
@@ -497,7 +497,7 @@ final class OfflinePlaylistStore: ObservableObject {
         do {
             record.state = .resolvingTracks
             record.errorMessage = nil
-            record.updatedAt = Date()
+            record.updatedAt = updatedNow()
             records[identifier] = record
             requestSave()
 
@@ -545,7 +545,7 @@ final class OfflinePlaylistStore: ObservableObject {
                     record.errorMessage = L10n.text(
                         "Не удалось получить треки плейлиста"
                     )
-                    record.updatedAt = Date()
+                    record.updatedAt = updatedNow()
                     records[identifier] = record
                     requestSave()
                     DownloadNotifications.notifyDownloadError(
@@ -565,7 +565,7 @@ final class OfflinePlaylistStore: ObservableObject {
                     .updatingCount(storedTracks.count)
             }
             record.state = .downloading
-            record.updatedAt = Date()
+            record.updatedAt = updatedNow()
             records[identifier] = record
             requestSave()
 
@@ -610,7 +610,7 @@ final class OfflinePlaylistStore: ObservableObject {
                 )
                 DownloadNotifications.notifyDownloadError(title: name)
             }
-            finalRecord.updatedAt = Date()
+            finalRecord.updatedAt = updatedNow()
             records[identifier] = finalRecord
             await flushAfterTerminalState()
         } catch is CancellationError {
@@ -620,7 +620,7 @@ final class OfflinePlaylistStore: ObservableObject {
                 return
             }
             cancelled.state = .cancelled
-            cancelled.updatedAt = Date()
+            cancelled.updatedAt = updatedNow()
             records[identifier] = cancelled
             await flushAfterTerminalState()
         } catch {
@@ -631,10 +631,17 @@ final class OfflinePlaylistStore: ObservableObject {
             }
             failed.state = failed.completedCount > 0 ? .partial : .failed
             failed.errorMessage = error.localizedDescription
-            failed.updatedAt = Date()
+            failed.updatedAt = updatedNow()
             records[identifier] = failed
             await flushAfterTerminalState()
         }
+    }
+
+    /// Whole-second timestamp so the ISO-8601 manifest round-trips exactly:
+    /// the JSON encoder drops fractional seconds, and restoring a manifest
+    /// must yield a record identical to the one that was saved.
+    private func updatedNow() -> Date {
+        Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970))
     }
 
     private func flushAfterTerminalState() async {
@@ -747,7 +754,7 @@ final class OfflinePlaylistStore: ObservableObject {
         record.completedCount = completed
         record.failedCount = failed
         record.processedCount = completed + failed
-        record.updatedAt = Date()
+        record.updatedAt = updatedNow()
         records[identifier] = record
         requestSave()
     }
