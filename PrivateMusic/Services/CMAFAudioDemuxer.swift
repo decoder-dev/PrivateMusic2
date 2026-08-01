@@ -348,7 +348,13 @@ struct CMAFAudioDemuxer {
             // tfhd-implied one (authoritative for baseDataOffsetPresent).
             let startInsideMoof = moofBasedStart >= mdatStart
                 && moofBasedStart < mdat.payloadRange.upperBound
-            let startInsideMoofNextSample = moofBasedStart + Int(trun.sizes[safe: 0] ?? 0) <= mdat.payloadRange.upperBound
+            let firstSampleSize = trun.sizes[safe: 0] ?? nil
+            let startInsideMoofNextSample: Bool
+            if let firstSize = firstSampleSize {
+                startInsideMoofNextSample = moofBasedStart + Int(firstSize) <= mdat.payloadRange.upperBound
+            } else {
+                startInsideMoofNextSample = false
+            }
             let useMoofAnchor = startInsideMoof && startInsideMoofNextSample
             var sampleOffset = useMoofAnchor ? moofBasedStart : mdatStart
 
