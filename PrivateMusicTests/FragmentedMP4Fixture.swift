@@ -30,10 +30,13 @@ enum FragmentedMP4Fixture {
         let seconds = 0.2
         let frameCount = Int(sampleRate * seconds)
 
-        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-        // CMAF fragmented MP4 requires the profile hint BEFORE startWriting.
-        writer.outputFileTypeProfile = .mpeg4CMAFCompliant
-        writer.shouldOptimizeForNetworkUse = false
+        // The fragment profile only activates if we also provide an
+        // actual fragment interval. Without this flag AVAssetWriter writes a
+        // regular (non-fragmented) MP4 and emits no moof/mdat boxes.
+        writer.movieFragmentInterval = CMTime(
+            value: CMTimeValue(frameCount / 2),
+            timescale: CMTimeScale(sampleRate)
+        )
 
         // The input provides raw PCM; outputSettings tell the writer to
         // encode to AAC inside a CMAF-compliant .mp4 container.
