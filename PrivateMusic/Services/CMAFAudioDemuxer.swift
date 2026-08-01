@@ -74,7 +74,7 @@ struct CMAFAudioDemuxer {
         guard let config = fallback else {
             throw CMAFError.noAudioTrack
         }
-        guard config.codec == .aac else {
+        guard config.codec != .unsupported else {
             throw CMAFError.unsupportedCodec(config.codec.rawValue)
         }
 
