@@ -55,7 +55,7 @@ final class VKMusicServiceTests: XCTestCase {
     func testPageHandlesEmptyResponse() {
         let service = makeService()
         let page = service.page(
-            VKItems(count: 0, items: []),
+            VKItems(count: 0, items: [Int]()),
             offset: 0,
             requested: 100
         )
