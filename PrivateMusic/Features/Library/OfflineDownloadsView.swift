@@ -80,21 +80,21 @@ struct OfflineDownloadsView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 if hasAnyContent {
-                    EmptyView()
-                } else if selection != nil {
-                    Button(role: .destructive) {
-                        showsDeleteConfirmation = true
-                    } label: {
-                        Label(
-                            "Удалить",
-                            systemImage: "trash"
-                        )
-                    }
-                    .disabled(selection?.isEmpty != false)
-                } else {
-                    Button(L10n.text("Выбрать")) {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            selection = []
+                    if selection != nil {
+                        Button(role: .destructive) {
+                            showsDeleteConfirmation = true
+                        } label: {
+                            Label(
+                                "Удалить",
+                                systemImage: "trash"
+                            )
+                        }
+                        .disabled(selection?.isEmpty != false)
+                    } else {
+                        Button(L10n.text("Выбрать")) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selection = []
+                            }
                         }
                     }
                 }
