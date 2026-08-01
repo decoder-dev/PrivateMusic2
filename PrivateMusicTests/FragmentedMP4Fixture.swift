@@ -206,56 +206,101 @@ enum FragmentedMP4Fixture {
 
     /// Rebuilds the `moov` as a CMAF initialization section: movie and track
     /// durations are zeroed and the sample tables (`stsz`, `stts`, `stco`,
-    /// `stsc`) are emptied so all samples are read from `moof` fragments,
-    /// then a `mvex`/`trex` box is appended.
+    /// `stsc`) are rebuilt from scratch with empty entries so all samples are
+    /// read from `moof` fragments, then a `mvex`/`trex` box is appended.
     private static func initialization(
         from data: Data,
         ftyp: Range<Int>,
         moov: Range<Int>,
         trackID: UInt32
     ) throws -> Data {
-        var payload = data.subdata(in: moov.lowerBound + 8..<moov.upperBound)
         let moovChildren = children(of: moov, in: data)
+
+        // Build new mvhd with zero duration.
+        var mvhdPayload = Data()
         if let mvhd = moovChildren.first(where: { $0.type == "mvhd" }) {
             let version = data[mvhd.range.lowerBound + 8]
-            let body = mvhd.range.lowerBound - moov.lowerBound
+            mvhdPayload = data.subdata(in: mvhd.range.lowerBound + 8..<mvhd.range.upperBound)
             let durationOffset = version == 1 ? 24 : 16
-            payload.replaceSubrange(
-                body + durationOffset..<body + durationOffset + 4,
+            mvhdPayload.replaceSubrange(
+                durationOffset..<durationOffset + 4,
                 with: u32(0)
             )
         }
+
+        // Build new trak with zero tkhd duration and rebuilt stbl.
         guard let trak = moovChildren.first(where: { $0.type == "trak" }) else {
             throw FixtureError.invalidBox
         }
         let trakChildren = children(of: trak.range, in: data)
-        if let tkhd = trakChildren.first(where: { $0.type == "tkhd" }) {
-            let version = data[tkhd.range.lowerBound + 8]
-            let body = tkhd.range.lowerBound - moov.lowerBound
-            let durationOffset = version == 1 ? 28 : 20
-            payload.replaceSubrange(
-                body + durationOffset..<body + durationOffset + 4,
-                with: u32(0)
-            )
-        }
-        let stbl = try sampleTableBoxes(in: data, moov: moov)
-        for type in ["stsz", "stts", "stco", "stsc"] {
-            guard let box = stbl.first(where: { $0.type == type }) else {
-                continue
+        var newTrakPayload = Data()
+        for child in trakChildren {
+            if child.type == "tkhd" {
+                let version = data[child.range.lowerBound + 8]
+                var tkhdPayload = data.subdata(in: child.range.lowerBound + 8..<child.range.upperBound)
+                let durationOffset = version == 1 ? 28 : 20
+                tkhdPayload.replaceSubrange(
+                    durationOffset..<durationOffset + 4,
+                    with: u32(0)
+                )
+                newTrakPayload.append(box("tkhd", payload: tkhdPayload))
+            } else if child.type == "mdia" {
+                let mdiaChildren = children(of: child.range, in: data)
+                var newMdiaPayload = Data()
+                for mdiaChild in mdiaChildren {
+                    if mdiaChild.type == "minf" {
+                        let minfChildren = children(of: mdiaChild.range, in: data)
+                        var newMinfPayload = Data()
+                        for minfChild in minfChildren {
+                            if minfChild.type == "stbl" {
+                                let stblChildren = children(of: minfChild.range, in: data)
+                                var newStblPayload = Data()
+                                if let stsd = stblChildren.first(where: { $0.type == "stsd" }) {
+                                    newStblPayload.append(data.subdata(in: stsd.range))
+                                }
+                                newStblPayload.append(box("stts", payload: u32(0) + u32(0)))
+                                newStblPayload.append(box("stco", payload: u32(0) + u32(0)))
+                                newStblPayload.append(box("stsc", payload: u32(0) + u32(0)))
+                                newStblPayload.append(box("stsz", payload: u32(0) + u32(0) + u32(0)))
+                                for stblChild in stblChildren {
+                                    if !["stsd", "stts", "stco", "stsc", "stsz"].contains(stblChild.type) {
+                                        newStblPayload.append(data.subdata(in: stblChild.range))
+                                    }
+                                }
+                                newMinfPayload.append(box("stbl", payload: newStblPayload))
+                            } else {
+                                newMinfPayload.append(data.subdata(in: minfChild.range))
+                            }
+                        }
+                        newMdiaPayload.append(box("minf", payload: newMinfPayload))
+                    } else {
+                        newMdiaPayload.append(data.subdata(in: mdiaChild.range))
+                    }
+                }
+                newTrakPayload.append(box("mdia", payload: newMdiaPayload))
+            } else {
+                newTrakPayload.append(data.subdata(in: child.range))
             }
-            let body = box.range.lowerBound - moov.lowerBound
-            let end = type == "stsz" ? body + 12 : body + 8
-            payload.replaceSubrange(
-                body + 4..<end,
-                with: Data(repeating: 0, count: end - body - 4)
-            )
         }
+
+        // Build new moov.
+        var newMoovPayload = Data()
+        for child in moovChildren {
+            if child.type == "mvhd" {
+                newMoovPayload.append(box("mvhd", payload: mvhdPayload))
+            } else if child.type == "trak" {
+                newMoovPayload.append(box("trak", payload: newTrakPayload))
+            } else {
+                newMoovPayload.append(data.subdata(in: child.range))
+            }
+        }
+
         let trex = box(
             "trex",
             payload: u32(0) + u32(trackID) + u32(1) + u32(0) + u32(0) + u32(0)
         )
-        payload.append(box("mvex", payload: trex))
-        return data.subdata(in: ftyp) + box("moov", payload: payload)
+        newMoovPayload.append(box("mvex", payload: trex))
+        return data.subdata(in: ftyp) + box("moov", payload: newMoovPayload)
     }
 
     private static func trackID(in data: Data, moov: Range<Int>) throws -> UInt32 {
