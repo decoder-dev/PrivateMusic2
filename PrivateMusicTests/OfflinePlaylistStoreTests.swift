@@ -255,16 +255,18 @@ final class OfflinePlaylistStoreTests: XCTestCase {
         XCTAssertEqual(store.record(for: playlist)?.playlist.title, "Renamed")
     }
 
-    func testDuplicateStartReturnsSameTask() throws {
+    func testDuplicateStartReturnsSameTask() async throws {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let playlist = try makePlaylist(id: 23, ownerID: 2)
         let store = OfflinePlaylistStore(rootURL: root)
         store.configure(accountID: 1)
 
+        var fetchCount = 0
         let first = store.startDownload(
             playlist: playlist,
             fetchPage: { _ in
+                fetchCount += 1
                 try await Task.sleep(for: .milliseconds(100))
                 return MusicPage(items: [], totalCount: 0, nextOffset: nil)
             },
@@ -273,11 +275,14 @@ final class OfflinePlaylistStoreTests: XCTestCase {
         let second = store.startDownload(
             playlist: playlist,
             fetchPage: { _ in
-                MusicPage(items: [], totalCount: 0, nextOffset: nil)
+                fetchCount += 1
+                return MusicPage(items: [], totalCount: 0, nextOffset: nil)
             },
             downloadTrack: { _ in }
         )
-        XCTAssertTrue(first === second)
+        await first.value
+        await second.value
+        XCTAssertEqual(fetchCount, 1)
     }
 
     func testPartialPagesAreFetchedUntilAllTracksKnown() async throws {
