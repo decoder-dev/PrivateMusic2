@@ -66,10 +66,21 @@ enum FragmentedMP4Fixture {
             throw FixtureError.audioFormat
         }
 
+        var emptyBuffer: CMBlockBuffer?
+        let emptyStatus = CMBlockBufferCreateEmpty(
+            allocator: nil,
+            capacity: 0,
+            flags: 0,
+            blockBufferOut: &emptyBuffer
+        )
+        guard emptyStatus == noErr, let emptyBuffer else {
+            throw FixtureError.sampleBuffer
+        }
+
         var sampleBuffer: CMSampleBuffer?
         let sampleStatus = CMAudioSampleBufferCreateReadyWithPacketDescriptions(
             allocator: nil,
-            dataBuffer: nil,
+            dataBuffer: emptyBuffer,
             formatDescription: formatDescription,
             sampleCount: frameCount,
             presentationTimeStamp: .zero,
@@ -84,7 +95,7 @@ enum FragmentedMP4Fixture {
             blockBufferAllocator: nil,
             blockBufferMemoryAllocator: nil,
             flags: kCMBlockBufferAssureMemoryNowFlag,
-            audioBufferList: buffer.mutableAudioBufferList
+            bufferList: buffer.mutableAudioBufferList
         )
         guard attachStatus == noErr else {
             throw FixtureError.audioBufferList
