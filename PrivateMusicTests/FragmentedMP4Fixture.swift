@@ -90,10 +90,7 @@ enum FragmentedMP4Fixture {
                 value: CMTimeValue(frameCount),
                 timescale: CMTimeScale(sampleRate)
             ),
-            presentationTimeStamp: CMTime(
-                value: 0,
-                timescale: CMTimeScale(sampleRate)
-            ),
+            presentationTimeStamp: CMTime.zero,
             decodeTimeStamp: .invalid
         )
         var sampleBuffer: CMSampleBuffer?
