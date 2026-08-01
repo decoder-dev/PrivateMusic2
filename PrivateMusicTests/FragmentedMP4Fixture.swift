@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreMedia
 import Foundation
+@testable import PrivateMusic
 
 /// Real CMAF fixture produced by AVAssetWriter: a short synthetic AAC sine
 /// written as fragmented MP4 and sliced into init + two media fragments.
