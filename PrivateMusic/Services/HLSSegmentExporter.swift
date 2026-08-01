@@ -127,6 +127,7 @@ actor HLSSegmentExporter {
             }
             try await exportCMAFToM4A(
                 initializationData: initializationData,
+                firstInitialization: firstInitialization,
                 firstSegmentData: firstSegmentData,
                 segments: parsed.segments,
                 mediaSequence: parsed.mediaSequence,
@@ -255,6 +256,7 @@ actor HLSSegmentExporter {
     /// hope AVAssetReader accepts them" path that triggers `-11800`/`-17913`.
     private func exportCMAFToM4A(
         initializationData: Data,
+        firstInitialization: HLSInitializationSection?,
         firstSegmentData: Data,
         segments: [HLSSegment],
         mediaSequence: Int,
@@ -301,6 +303,9 @@ actor HLSSegmentExporter {
 
         for (index, segment) in segments.enumerated() {
             try Task.checkCancellation()
+            guard segment.initialization == firstInitialization else {
+                throw HLSExportError.changingInitializationSection
+            }
             let data: Data
             if index == 0 {
                 data = firstSegmentData
@@ -1365,13 +1370,15 @@ actor HLSSegmentExporter {
     static func looksLikeMPEGTS(_ data: Data) -> Bool {
         let packetSizes = [188, 192, 204]
         for initialOffset in 0..<min(16, data.count) {
-            for packetSize in packetSizes {
+            guard data[initialOffset] == 0x47 else { continue }
+            // A short BYTERANGE peek may contain fewer than two full packets;
+            // a leading sync byte is still enough to classify the container.
+            let hasSecondSync = packetSizes.contains { packetSize in
                 let second = initialOffset + packetSize
-                guard second < data.count else { continue }
-                if data[initialOffset] == 0x47,
-                   data[second] == 0x47 {
-                    return true
-                }
+                return second < data.count && data[second] == 0x47
+            }
+            if hasSecondSync || data.count <= packetSizes[0] {
+                return true
             }
         }
         return false
