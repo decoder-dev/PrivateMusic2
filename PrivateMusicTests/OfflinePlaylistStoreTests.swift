@@ -168,7 +168,7 @@ final class OfflinePlaylistStoreTests: XCTestCase {
             playlist: playlist,
             fetchPage: { _ in
                 fetchStarted.fulfill()
-                _ = await release.stream.first()
+                _ = await release.stream.first(where: { _ in true })
                 return MusicPage(items: [], totalCount: 0, nextOffset: nil)
             },
             downloadTrack: { _ in }
