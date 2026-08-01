@@ -4,7 +4,7 @@ import Foundation
 @testable import PrivateMusic
 
 /// Real CMAF fixture produced by AVAssetWriter: a short synthetic AAC sine
-/// written as fragmented MP4 and sliced into init + two media fragments.
+/// written as fragmented MP4 and sliced into init + media fragments.
 /// This replaces the previous hand-patched moov/stbl that AVAssetReader
 /// rejected.
 enum FragmentedMP4Fixture {
@@ -27,7 +27,7 @@ enum FragmentedMP4Fixture {
         let outputURL = directory.appendingPathComponent("fixture.mp4")
 
         let sampleRate = 44_100.0
-        let seconds = 0.4
+        let seconds = 0.2
         let frameCount = Int(sampleRate * seconds)
 
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
@@ -72,82 +72,67 @@ enum FragmentedMP4Fixture {
         guard writer.startWriting() else { throw FixtureError.writerStart }
         writer.startSession(atSourceTime: .zero)
 
-        // Feed PCM 440 Hz stereo sine in chunks so the writer fragments a
-        // valid CMAF stream with at least two moofs.
-        let chunkFrames = 4410 // 100 ms worth
-        var offset = 0
-        var timestamp = CMTime.zero
-        while offset < frameCount {
-            let framesToWrite = min(chunkFrames, frameCount - offset)
-            let buffer = AVAudioPCMBuffer(
-                pcmFormat: format,
-                frameCapacity: AVAudioFrameCount(framesToWrite)
-            )!
-            buffer.frameLength = AVAudioFrameCount(framesToWrite)
-            let phaseStep = 2.0 * Double.pi * 440.0 / sampleRate
-            for channel in 0..<2 {
-                if let data = buffer.floatChannelData?[channel] {
-                    for frame in 0..<framesToWrite {
-                        let phase = phaseStep * Double(offset + frame)
-                        data[frame] = Float(sin(phase) * 0.2)
-                    }
+        // Feed PCM 440 Hz stereo sine so the writer produces at least one
+        // moof/mdat pair in fragmented MP4 output.
+        let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: AVAudioFrameCount(frameCount)
+        )!
+        buffer.frameLength = AVAudioFrameCount(frameCount)
+        let phaseStep = 2.0 * Double.pi * 440.0 / sampleRate
+        for channel in 0..<2 {
+            if let data = buffer.floatChannelData?[channel] {
+                for frame in 0..<frameCount {
+                    data[frame] = Float(sin(phaseStep * Double(frame)) * 0.2)
                 }
             }
+        }
 
-            var timing = CMSampleTimingInfo(
-                duration: CMTime(
-                    value: CMTimeValue(framesToWrite),
-                    timescale: CMTimeScale(sampleRate)
-                ),
-                presentationTimeStamp: timestamp,
-                decodeTimeStamp: .invalid
-            )
-            var sampleBuffer: CMSampleBuffer?
-            let createStatus = CMSampleBufferCreate(
-                allocator: nil,
-                dataBuffer: nil,
-                dataReady: false,
-                makeDataReadyCallback: nil,
-                refcon: nil,
-                formatDescription: sourceFormat,
-                sampleCount: framesToWrite,
-                sampleTimingEntryCount: 1,
-                sampleTimingArray: &timing,
-                sampleSizeEntryCount: 0,
-                sampleSizeArray: nil,
-                sampleBufferOut: &sampleBuffer
-            )
-            guard createStatus == noErr, let sampleBuffer else {
-                throw FixtureError.sampleBuffer
-            }
-            let attachStatus = CMSampleBufferSetDataBufferFromAudioBufferList(
-                sampleBuffer,
-                blockBufferAllocator: nil,
-                blockBufferMemoryAllocator: nil,
-                flags: 0,
-                bufferList: buffer.mutableAudioBufferList
-            )
-            guard attachStatus == noErr else {
-                throw FixtureError.audioBufferList
-            }
-            guard CMSampleBufferSetDataReady(sampleBuffer) == noErr else {
-                throw FixtureError.sampleBuffer
-            }
+        var timing = CMSampleTimingInfo(
+            duration: CMTime(
+                value: CMTimeValue(frameCount),
+                timescale: CMTimeScale(sampleRate)
+            ),
+            presentationTimeStamp: .zero,
+            decodeTimeStamp: .invalid
+        )
+        var sampleBuffer: CMSampleBuffer?
+        let createStatus = CMSampleBufferCreate(
+            allocator: nil,
+            dataBuffer: nil,
+            dataReady: false,
+            makeDataReadyCallback: nil,
+            refcon: nil,
+            formatDescription: sourceFormat,
+            sampleCount: frameCount,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleSizeEntryCount: 0,
+            sampleSizeArray: nil,
+            sampleBufferOut: &sampleBuffer
+        )
+        guard createStatus == noErr, let sampleBuffer else {
+            throw FixtureError.sampleBuffer
+        }
+        let attachStatus = CMSampleBufferSetDataBufferFromAudioBufferList(
+            sampleBuffer,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
+            flags: 0,
+            bufferList: buffer.mutableAudioBufferList
+        )
+        guard attachStatus == noErr else {
+            throw FixtureError.audioBufferList
+        }
+        guard CMSampleBufferSetDataReady(sampleBuffer) == noErr else {
+            throw FixtureError.sampleBuffer
+        }
 
-            while !input.isReadyForMoreMediaData {
-                Thread.sleep(forTimeInterval: 0.001)
-            }
-            guard input.append(sampleBuffer) else {
-                throw FixtureError.append
-            }
-            offset += framesToWrite
-            timestamp = CMTimeAdd(
-                timestamp,
-                CMTime(
-                    value: CMTimeValue(framesToWrite),
-                    timescale: CMTimeScale(sampleRate)
-                )
-            )
+        while !input.isReadyForMoreMediaData {
+            Thread.sleep(forTimeInterval: 0.001)
+        }
+        guard input.append(sampleBuffer) else {
+            throw FixtureError.append
         }
 
         input.markAsFinished()
@@ -168,34 +153,34 @@ enum FragmentedMP4Fixture {
     private static func split(_ data: Data) throws -> Bundle {
         let reader = ISOBoxReader(data)
         let boxes = try reader.boxes()
-        guard let moov = boxes.first(where: { $0.type == "moov" }) else {
+        var moovBox: ISOBoxReader.ISOBox?
+        var moovsAndFragments: [(moof: ISOBoxReader.ISOBox, mdat: ISOBoxReader.ISOBox)] = []
+        for box in boxes {
+            if box.type == "moov" {
+                moovBox = box
+            } else if box.type == "moof" {
+                guard let mdat = try reader.child(
+                    "mdat",
+                    siblingAfter: box,
+                    in: data
+                ) else { continue }
+                moovsAndFragments.append((box, mdat))
+            }
+        }
+        guard let moov = moovBox, !moovsAndFragments.isEmpty else {
             throw FixtureError.missingInitialization
         }
-        var fragments: [Data] = []
-        var moofStart = moov.range.upperBound
-        while moofStart < data.count,
-              let moof = try reader.parseBoxIfPossible(at: moofStart),
-              moof.type == "moof" {
-            guard let mdat = try reader.child(
-                "mdat",
-                siblingAfter: moof,
-                in: data
-            ) else {
-                break
-            }
-            fragments.append(
-                data.subdata(in: moof.range) + data.subdata(in: mdat.range)
-            )
-            moofStart = mdat.range.upperBound
-        }
-        guard !fragments.isEmpty else { throw FixtureError.missingSamples }
 
-        let initializationBoxes: [ISOBoxReader.ISOBox] = boxes.filter {
-            $0.range.lowerBound <= moov.range.upperBound
+        var initialization = data.subdata(in: 0..<moov.range.upperBound)
+        // CMAF sometimes prepends a 'styp' box before each moof: strip it
+        // if present so the initializer truly only contains header bytes.
+        if let styp = boxes.first(where: { $0.type == "styp" }),
+           styp.range.lowerBound == moov.range.upperBound {
+            initialization = data.subdata(in: 0..<moov.range.upperBound + styp.range.count)
         }
-        let initialization = initializationBoxes.map {
-            data.subdata(in: $0.range)
-        }.reduce(Data(), +)
+        let fragments = moovsAndFragments.map {
+            data.subdata(in: $0.moof.range) + data.subdata(in: $0.mdat.range)
+        }
         return Bundle(initialization: initialization, fragments: fragments)
     }
 
@@ -213,22 +198,6 @@ enum FragmentedMP4Fixture {
 }
 
 private extension ISOBoxReader {
-    func parseBoxIfPossible(at offset: Int) throws -> ISOBox? {
-        guard offset + 8 <= data.count else { return nil }
-        let size32 = try readUInt32BE(at: offset)
-        guard size32 >= 8, offset + Int(size32) <= data.count else {
-            return nil
-        }
-        return ISOBox(
-            type: String(
-                bytes: data.subdata(in: (offset + 4)..<(offset + 8)),
-                encoding: .ascii
-            ) ?? "",
-            range: offset..<(offset + Int(size32)),
-            headerSize: 8
-        )
-    }
-
     func child(
         _ type: String,
         siblingAfter sibling: ISOBox,
