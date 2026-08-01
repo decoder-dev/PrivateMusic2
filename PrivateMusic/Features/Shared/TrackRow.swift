@@ -15,11 +15,11 @@ struct TrackRow: View {
             player.play(track, in: queue)
         } label: {
             HStack(spacing: 12) {
-                AsyncArtwork(url: track.artworkURL, size: 52)
+                AsyncArtwork(url: track.artworkURL, size: 48)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(track.title)
-                        .font(.headline)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(
                             isCurrent
                                 ? currentTrackColor

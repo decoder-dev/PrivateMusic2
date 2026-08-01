@@ -6,6 +6,7 @@ struct LibraryView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var libraryStore: MusicLibraryStore
     @EnvironmentObject private var offlineStore: OfflineTrackStore
+    @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var networkMonitor: NetworkMonitor
     @StateObject private var tracks = TrackCollectionViewModel(source: .library)
     @StateObject private var playlists = PlaylistLibraryViewModel()
@@ -87,7 +88,7 @@ struct LibraryView: View {
                                 .padding(.vertical, 1)
                                 .background(
                                     Capsule()
-                                        .fill(Color.accentColor)
+                                        .fill(settings.theme.accent)
                                 )
                                 .offset(x: 3, y: -3)
                             }
@@ -172,8 +173,17 @@ struct LibraryView: View {
         }
     }
 
-    private var playlistShelf: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func isCurrent(_ track: Track) -> Bool {
+        player.currentTrack?.id == track.id
+    }
+
+    private var currentTrackColor: Color {
+        settings.theme == .dark
+            ? settings.theme.accent
+            : .black
+    }
+
+    private var playlistShelf: some View {        VStack(alignment: .leading, spacing: 12) {
             Text("Плейлисты")
                 .font(.title2.weight(.bold))
             ScrollView(.horizontal, showsIndicators: false) {
@@ -223,11 +233,15 @@ struct LibraryView: View {
                 player.play(track, in: tracks.tracks)
             } label: {
                 HStack(spacing: 12) {
-                AsyncArtwork(url: track.artworkURL, size: 46)
+                AsyncArtwork(url: track.artworkURL, size: 48)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(track.title)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(
+                            isCurrent(track)
+                                ? currentTrackColor
+                                : Color.primary
+                        )
                         .lineLimit(1)
                     Text(track.artist)
                         .font(.subheadline)
@@ -235,6 +249,15 @@ struct LibraryView: View {
                         .lineLimit(1)
                 }
                 Spacer()
+                if isCurrent(track) {
+                    Image(
+                        systemName: player.isPlaying
+                            ? "waveform"
+                            : "pause.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(currentTrackColor)
+                }
                 }
                 .contentShape(Rectangle())
             }

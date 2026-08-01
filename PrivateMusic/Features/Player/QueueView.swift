@@ -26,13 +26,14 @@ struct QueueView: View {
                                 HStack(spacing: 12) {
                                     AsyncArtwork(
                                         url: track.artworkURL,
-                                        size: 46
+                                        size: 48
                                     )
-                                    VStack(alignment: .leading) {
+                                    VStack(alignment: .leading, spacing: 3) {
                                         Text(track.title)
+                                            .font(.subheadline.weight(.semibold))
                                             .lineLimit(1)
                                         Text(track.artist)
-                                            .font(.caption)
+                                            .font(.subheadline)
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
                                     }
