@@ -6,7 +6,8 @@ import Foundation
 /// `AVAssetExportSession`. AVFoundation refuses to export many VK HLS
 /// assets (and every offline `.movpkg` package), so segments are downloaded
 /// manually, decrypted (AES-128 CBC per RFC 8216), stitched into an MPEG-TS
-/// stream and remuxed into `.m4a` through `AVAssetReader`/`AVAssetWriter`.
+/// stream and transcoded into `.m4a` (PCM → AAC) through
+/// `AVAssetReader`/`AVAssetWriter`.
 ///
 /// The approach mirrors the reference Python implementation used by
 /// VKpyMusic (`vkpymusic/utils/m3u8converter.py`):
@@ -45,6 +46,7 @@ actor HLSSegmentExporter {
         fileSizeLimit: Int64,
         progress: TrackExportProgressHandler? = nil
     ) async throws {
+        try Task.checkCancellation()
         let playlistData = try await fetchData(
             from: streamURL,
             headers: headers
@@ -94,7 +96,12 @@ actor HLSSegmentExporter {
         }
         let stitchedURL = stagingDirectory
             .appendingPathComponent("stream.ts")
-        fileManager.createFile(atPath: stitchedURL.path, contents: nil)
+        guard fileManager.createFile(
+            atPath: stitchedURL.path,
+            contents: nil
+        ) else {
+            throw HLSExportError.cannotCreateStagingFile
+        }
         let handle = try FileHandle(forWritingTo: stitchedURL)
         defer { try? handle.close() }
 
@@ -365,6 +372,7 @@ actor HLSSegmentExporter {
     ) async throws -> Data {
         var lastError: Error?
         for attempt in 0...retries {
+            try Task.checkCancellation()
             var request = URLRequest(url: url)
             request.timeoutInterval = 60
             for (field, value) in headers {
@@ -644,6 +652,7 @@ enum HLSExportError: LocalizedError {
     case tooManySegments
     case network
     case segmentFetchFailed(url: String, status: Int)
+    case cannotCreateStagingFile
     case fileTooLarge
     case decryptionFailed
     case noFragments
@@ -658,6 +667,8 @@ enum HLSExportError: LocalizedError {
             return L10n.text("Не удалось скачать сегменты потока.")
         case .segmentFetchFailed:
             return L10n.text("Не удалось скачать сегменты потока.")
+        case .cannotCreateStagingFile:
+            return L10n.text("Не удалось создать временный файл.")
         case .fileTooLarge:
             return L10n.text("Файл больше 150 МБ.")
         case .decryptionFailed:
