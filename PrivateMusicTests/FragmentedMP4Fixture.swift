@@ -31,7 +31,7 @@ enum FragmentedMP4Fixture {
         let frameCount = Int(sampleRate * seconds)
 
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-        // CMAF fragmented MP4 requires the profile hint BEFORE startWriting:
+        // CMAF fragmented MP4 requires the profile hint BEFORE startWriting.
         writer.outputFileTypeProfile = .mpeg4CMAFCompliant
         writer.shouldOptimizeForNetworkUse = false
 
