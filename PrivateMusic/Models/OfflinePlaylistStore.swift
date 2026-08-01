@@ -314,6 +314,12 @@ final class OfflinePlaylistStore: ObservableObject {
         return allocatedSize(at: artworkDirectory)
     }
 
+    /// Publishes the artwork folder size to the thread-safe snapshot read by
+    /// the (non-isolated) track store for the storage usage screen.
+    private func refreshArtworkBytesSnapshot() {
+        PlaylistArtworkBytesBox.shared.update(artworkByteCount)
+    }
+
     @discardableResult
     func startDownload(
         playlist: Playlist,
@@ -388,6 +394,7 @@ final class OfflinePlaylistStore: ObservableObject {
             }
         }
         requestSave()
+        refreshArtworkBytesSnapshot()
     }
 
     func removeAll() {
@@ -405,6 +412,7 @@ final class OfflinePlaylistStore: ObservableObject {
         }
         records.removeAll()
         requestSave()
+        refreshArtworkBytesSnapshot()
     }
 
     func waitForDownload(of playlist: Playlist) async {
@@ -524,6 +532,7 @@ final class OfflinePlaylistStore: ObservableObject {
                 }
                 records[identifier] = record
                 requestSave()
+                refreshArtworkBytesSnapshot()
             }
 
             if tracks.isEmpty {
@@ -889,6 +898,7 @@ final class OfflinePlaylistStore: ObservableObject {
             }
         }
         records = result
+        refreshArtworkBytesSnapshot()
         try? saveManifestSync()
     }
 
@@ -953,5 +963,22 @@ final class OfflinePlaylistStore: ObservableObject {
             total += Int64(values?.totalFileAllocatedSize ?? 0)
         }
         return total
+    }
+}
+
+/// Thread-safe cache of the playlist store's artwork folder size, read from
+/// the non-isolated track store for the storage usage screen.
+final class PlaylistArtworkBytesBox: @unchecked Sendable {
+    static let shared = PlaylistArtworkBytesBox()
+
+    private var value: Int64 = 0
+    private let lock = NSLock()
+
+    func update(_ newValue: Int64) {
+        lock.withLock { value = newValue }
+    }
+
+    func current() -> Int64 {
+        lock.withLock { value }
     }
 }
