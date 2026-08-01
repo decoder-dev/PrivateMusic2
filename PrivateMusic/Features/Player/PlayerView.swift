@@ -816,6 +816,17 @@ struct PlayerView: View {
             activityItems: [url],
             applicationActivities: nil
         )
+        if let popover = activityVC.popoverPresentationController,
+           UIDevice.current.userInterfaceIdiom == .pad {
+            popover.sourceView = root.view
+            popover.sourceRect = CGRect(
+                x: root.view.bounds.midX,
+                y: root.view.bounds.maxY - 60,
+                width: 0,
+                height: 0
+            )
+            popover.permittedArrowDirections = []
+        }
         root.present(activityVC, animated: true)
     }
 
