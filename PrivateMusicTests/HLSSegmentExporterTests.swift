@@ -78,6 +78,8 @@ final class HLSSegmentExporterTests: XCTestCase {
                 capturedRanges.append(range)
                 lock.unlock()
             }
+            // Full resource so a 200 response can be sliced locally to the
+            // requested BYTERANGE (CDN ignored Range).
             return (
                 Self.successResponse(for: request),
                 Data(repeating: 0x47, count: 512)
@@ -409,7 +411,7 @@ final class HLSSegmentExporterTests: XCTestCase {
             }
             return (
                 Self.successResponse(for: request),
-                Data(repeating: 0x47, count: 512)
+                Data(repeating: 0x47, count: 2_500)
             )
         }
         let (parent, destination) = makeDestination()
@@ -724,6 +726,16 @@ final class HLSSegmentExporterTests: XCTestCase {
         XCTAssertFalse(
             HLSSegmentExporter.looksLikeMPEGTS(
                 Data(repeating: 0x00, count: 512)
+            )
+        )
+        XCTAssertTrue(
+            HLSSegmentExporter.looksLikeMPEGTS(
+                Data(repeating: 0x47, count: 100)
+            )
+        )
+        XCTAssertFalse(
+            HLSSegmentExporter.looksLikeMPEGTS(
+                Data([0x47] + [UInt8](repeating: 0x00, count: 250))
             )
         )
     }
