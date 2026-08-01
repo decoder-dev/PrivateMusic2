@@ -1,13 +1,19 @@
 import SwiftUI
 import UIKit
 
+struct TrackShareFailure: Equatable, Sendable {
+    let title: String
+    let message: String
+    let diagnosticCode: String?
+}
+
 @MainActor
 final class TrackShareViewModel: ObservableObject {
     enum State: Equatable {
         case idle
         case preparing(TrackExportProgress)
         case ready(TrackSharePayload)
-        case failed(String)
+        case failed(TrackShareFailure)
     }
 
     @Published private(set) var state: State = .idle
@@ -57,9 +63,41 @@ final class TrackShareViewModel: ObservableObject {
                 state = .idle
             } catch {
                 guard generation == operationID else { return }
-                state = .failed(error.localizedDescription)
+                state = .failed(Self.failure(from: error))
             }
         }
+    }
+
+    private static func failure(from error: Error) -> TrackShareFailure {
+        let baseTitle = L10n.text("Не удалось подготовить аудиофайл.")
+        let nsError = error as NSError
+
+        let baseMessage: String
+        let code: String?
+
+        switch error {
+        case let diagnostic as HLSDiagnosticError:
+            baseMessage = diagnostic.errorDescription
+                ?? L10n.text("Не удалось подготовить аудиофайл.")
+            code = diagnostic.publicCode
+        case let exporterError as HLSExportError:
+            baseMessage = exporterError.errorDescription
+                ?? L10n.text("Не удалось подготовить аудиофайл.")
+            code = nil
+        case let apiError as APIError:
+            baseMessage = apiError.errorDescription
+                ?? L10n.text("Не удалось подготовить аудиофайл.")
+            code = "VK-\(nsError.code)"
+        default:
+            baseMessage = L10n.text("Не удалось подготовить аудиофайл.")
+            code = "PM-\(nsError.domain)-\(nsError.code)"
+        }
+
+        return TrackShareFailure(
+            title: baseTitle,
+            message: baseMessage,
+            diagnosticCode: code
+        )
     }
 
     func cancel(environment: any TrackSharePreparing) {
@@ -167,8 +205,8 @@ struct TrackShareFlowView: View {
                 statusScreen(progress: progress)
                     .interactiveDismissDisabled()
 
-            case let .failed(message):
-                failureScreen(message: message)
+            case let .failed(failure):
+                failureScreen(failure: failure)
 
             case .idle:
                 statusScreen(progress: .resolvingSource)
@@ -248,14 +286,26 @@ struct TrackShareFlowView: View {
         .presentationDetents([.medium, .large])
     }
 
-    private func failureScreen(message: String) -> some View {
+    private func failureScreen(failure: TrackShareFailure) -> some View {
         NavigationStack {
             VStack(spacing: 16) {
                 EmptyStateView(
-                    title: "Не удалось подготовить файл",
+                    title: failure.title,
                     systemImage: "exclamationmark.triangle",
-                    description: message
+                    description: failure.message
                 )
+
+                if let code = failure.diagnosticCode {
+                    Button {
+                        UIPasteboard.general.string = Self.errorReport(code: code)
+                    } label: {
+                        Label(
+                            L10n.text("Скопировать код ошибки"),
+                            systemImage: "doc.on.doc"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                }
 
                 Button(L10n.text("Повторить")) {
                     model.retry(track: track, environment: environment)
@@ -273,6 +323,14 @@ struct TrackShareFlowView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium])
+    }
+
+    private static func errorReport(code: String) -> String {
+        let marketing = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+            ?? "unknown"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+            ?? "unknown"
+        return "Private Music \(marketing) (\(build))\n\(code)"
     }
 }
 
