@@ -2,6 +2,8 @@ import Foundation
 import UIKit
 
 enum OfflinePlaylistDownloadState: String, Codable, Sendable {
+    case idle
+    case resolvingTracks
     case queued
     case downloading
     case available
@@ -11,31 +13,219 @@ enum OfflinePlaylistDownloadState: String, Codable, Sendable {
 }
 
 struct OfflinePlaylistRecord: Codable, Identifiable, Equatable, Sendable {
-    let playlist: Playlist
+    var playlist: Playlist
     var tracks: [Track]
     var artworkRelativePath: String?
     var state: OfflinePlaylistDownloadState
     var completedCount: Int
     var failedCount: Int
+    var processedCount: Int
+    var errorMessage: String?
+    var artworkError: String?
     var updatedAt: Date
+
+    init(
+        playlist: Playlist,
+        tracks: [Track] = [],
+        artworkRelativePath: String? = nil,
+        state: OfflinePlaylistDownloadState,
+        completedCount: Int = 0,
+        failedCount: Int = 0,
+        processedCount: Int = 0,
+        errorMessage: String? = nil,
+        artworkError: String? = nil,
+        updatedAt: Date = Date()
+    ) {
+        self.playlist = playlist
+        self.tracks = tracks
+        self.artworkRelativePath = artworkRelativePath
+        self.state = state
+        self.completedCount = completedCount
+        self.failedCount = failedCount
+        self.processedCount = processedCount
+        self.errorMessage = errorMessage
+        self.artworkError = artworkError
+        self.updatedAt = updatedAt
+    }
 
     var id: String {
         Self.identifier(for: playlist)
     }
 
+    /// Exact denominator once the playlist has been resolved; the stored
+    /// `playlist.count` is only an estimate while tracks are still being
+    /// fetched.
     var totalCount: Int {
-        max(tracks.count, playlist.count)
+        tracks.isEmpty ? playlist.count : tracks.count
     }
 
     var progress: Double {
-        guard totalCount > 0 else {
-            return state == .available ? 1 : 0
+        switch state {
+        case .resolvingTracks, .queued:
+            return 0
+        case .available:
+            return 1
+        default:
+            guard totalCount > 0 else { return 0 }
+            return min(1, Double(processedCount) / Double(totalCount))
         }
-        return min(1, Double(completedCount + failedCount) / Double(totalCount))
     }
 
     static func identifier(for playlist: Playlist) -> String {
         "\(playlist.ownerID)_\(playlist.id)"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case playlist
+        case tracks
+        case artworkRelativePath
+        case state
+        case completedCount
+        case failedCount
+        case processedCount
+        case errorMessage
+        case artworkError
+        case updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        playlist = try container.decode(Playlist.self, forKey: .playlist)
+        tracks = try container.decode([Track].self, forKey: .tracks)
+        artworkRelativePath = try container.decodeIfPresent(
+            String.self,
+            forKey: .artworkRelativePath
+        )
+        state = try container.decode(
+            OfflinePlaylistDownloadState.self,
+            forKey: .state
+        )
+        completedCount = try container.decode(Int.self, forKey: .completedCount)
+        failedCount = try container.decodeIfPresent(
+            Int.self,
+            forKey: .failedCount
+        ) ?? 0
+        processedCount = try container.decodeIfPresent(
+            Int.self,
+            forKey: .processedCount
+        ) ?? completedCount + failedCount
+        errorMessage = try container.decodeIfPresent(
+            String.self,
+            forKey: .errorMessage
+        )
+        artworkError = try container.decodeIfPresent(
+            String.self,
+            forKey: .artworkError
+        )
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(playlist, forKey: .playlist)
+        try container.encode(tracks, forKey: .tracks)
+        try container.encodeIfPresent(
+            artworkRelativePath,
+            forKey: .artworkRelativePath
+        )
+        try container.encode(state, forKey: .state)
+        try container.encode(completedCount, forKey: .completedCount)
+        try container.encode(failedCount, forKey: .failedCount)
+        try container.encode(processedCount, forKey: .processedCount)
+        try container.encodeIfPresent(errorMessage, forKey: .errorMessage)
+        try container.encodeIfPresent(artworkError, forKey: .artworkError)
+        try container.encode(updatedAt, forKey: .updatedAt)
+    }
+}
+
+/// UI-facing status derived from a record's explicit state. Lives next to the
+/// model so every screen (and tests) can render the same text and progress.
+enum OfflinePlaylistStatus: Equatable, Sendable {
+    case preparing
+    case queued
+    case downloading(processed: Int, total: Int, succeeded: Int, failed: Int)
+    case completed(count: Int, total: Int)
+    case partial(count: Int, total: Int)
+    case failed(message: String?)
+    case cancelled
+    case idle
+
+    var isActive: Bool {
+        switch self {
+        case .preparing, .queued, .downloading:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var progress: Double? {
+        switch self {
+        case .downloading(let processed, let total, _, _):
+            guard total > 0 else { return nil }
+            return min(1, Double(processed) / Double(total))
+        case .completed:
+            return 1
+        default:
+            return nil
+        }
+    }
+
+    var localizedText: String? {
+        switch self {
+        case .preparing:
+            return L10n.text("Подготовка…")
+        case .queued:
+            return L10n.text("В очереди…")
+        case .downloading(let processed, let total, let succeeded, let failed):
+            return L10n.format(
+                "Обработано %d из %d · Скачано %d · Ошибок %d",
+                processed,
+                total,
+                succeeded,
+                failed
+            )
+        case .completed:
+            return nil
+        case .partial(let count, let total):
+            return L10n.format("Скачано %d из %d", count, total)
+        case .failed(let message):
+            return message ?? L10n.text("Не удалось скачать плейлист")
+        case .cancelled:
+            return L10n.text("Загрузка отменена")
+        case .idle:
+            return nil
+        }
+    }
+
+    static func status(for record: OfflinePlaylistRecord) -> OfflinePlaylistStatus {
+        switch record.state {
+        case .idle, .resolvingTracks:
+            return .preparing
+        case .queued:
+            return .queued
+        case .downloading:
+            return .downloading(
+                processed: record.processedCount,
+                total: record.totalCount,
+                succeeded: record.completedCount,
+                failed: record.failedCount
+            )
+        case .available:
+            return .completed(
+                count: record.completedCount,
+                total: record.totalCount
+            )
+        case .partial:
+            return .partial(
+                count: record.completedCount,
+                total: record.totalCount
+            )
+        case .failed:
+            return .failed(message: record.errorMessage)
+        case .cancelled:
+            return .cancelled
+        }
     }
 }
 
@@ -43,10 +233,14 @@ struct OfflinePlaylistRecord: Codable, Identifiable, Equatable, Sendable {
 final class OfflinePlaylistStore: ObservableObject {
     static let shared = OfflinePlaylistStore()
     static let maximumArtworkSize = 12 * 1_024 * 1_024
-    static let maximumConcurrentDownloads = 3
 
     typealias PageFetcher = @Sendable (Int) async throws -> MusicPage<Track>
     typealias TrackDownloader = @Sendable (Track) async throws -> Void
+
+    private struct ActiveTask {
+        let generation: UUID
+        let task: Task<Void, Never>
+    }
 
     @Published private(set) var records: [String: OfflinePlaylistRecord] = [:]
 
@@ -54,7 +248,9 @@ final class OfflinePlaylistStore: ObservableObject {
     private let rootURL: URL
     private let artworkSession: URLSession
     private var activeAccountID: Int?
-    private var activeTasks: [String: Task<Void, Never>] = [:]
+    private var activeTasks: [String: ActiveTask] = [:]
+    private var isSaveScheduled = false
+    private var hasPendingSave = false
 
     init(
         fileManager: FileManager = .default,
@@ -83,7 +279,7 @@ final class OfflinePlaylistStore: ObservableObject {
 
     func configure(accountID: Int?) {
         guard activeAccountID != accountID else { return }
-        activeTasks.values.forEach { $0.cancel() }
+        activeTasks.values.forEach { $0.task.cancel() }
         activeTasks.removeAll()
         activeAccountID = accountID
         records = loadManifest()
@@ -107,6 +303,17 @@ final class OfflinePlaylistStore: ObservableObject {
         return url
     }
 
+    /// Total size of locally stored playlist artwork (used by storage usage).
+    var artworkByteCount: Int64 {
+        guard let directory = accountDirectory else { return 0 }
+        let artworkDirectory = directory
+            .appendingPathComponent("artwork", isDirectory: true)
+        guard fileManager.fileExists(atPath: artworkDirectory.path) else {
+            return 0
+        }
+        return allocatedSize(at: artworkDirectory)
+    }
+
     @discardableResult
     func startDownload(
         playlist: Playlist,
@@ -115,53 +322,63 @@ final class OfflinePlaylistStore: ObservableObject {
     ) -> Task<Void, Never> {
         let identifier = OfflinePlaylistRecord.identifier(for: playlist)
         if let existing = activeTasks[identifier] {
-            return existing
+            return existing.task
+        }
+        guard let accountID = activeAccountID else {
+            return Task {}
         }
 
         var record = records[identifier] ?? OfflinePlaylistRecord(
             playlist: playlist,
-            tracks: [],
-            artworkRelativePath: nil,
-            state: .queued,
-            completedCount: 0,
-            failedCount: 0,
-            updatedAt: Date()
+            state: .resolvingTracks
         )
-        record.state = .queued
+        // Always refresh metadata with the current playlist (defect 1).
+        record.playlist = playlist
+        record.state = .resolvingTracks
+        record.completedCount = 0
+        record.failedCount = 0
+        record.processedCount = 0
+        record.errorMessage = nil
         record.updatedAt = Date()
         records[identifier] = record
-        try? saveManifest()
+        requestSave()
 
-        let accountID = activeAccountID
+        let generation = UUID()
         let task = Task { [weak self] in
             guard let self else { return }
             await self.runDownload(
                 identifier: identifier,
                 accountID: accountID,
+                generation: generation,
                 fetchPage: fetchPage,
                 downloadTrack: downloadTrack
             )
         }
-        activeTasks[identifier] = task
+        activeTasks[identifier] = ActiveTask(generation: generation, task: task)
         return task
     }
 
     func cancelDownload(for playlist: Playlist) {
         let identifier = OfflinePlaylistRecord.identifier(for: playlist)
-        activeTasks[identifier]?.cancel()
+        guard let active = activeTasks[identifier] else { return }
+        active.task.cancel()
+        // Remove immediately so a restart is not blocked by the dying task.
+        activeTasks.removeValue(forKey: identifier)
         guard var record = records[identifier],
-              record.state == .queued || record.state == .downloading else {
+              record.state == .resolvingTracks
+                || record.state == .queued
+                || record.state == .downloading else {
             return
         }
         record.state = .cancelled
         record.updatedAt = Date()
         records[identifier] = record
-        try? saveManifest()
+        requestSave()
     }
 
     func remove(_ playlist: Playlist) {
         let identifier = OfflinePlaylistRecord.identifier(for: playlist)
-        activeTasks.removeValue(forKey: identifier)?.cancel()
+        activeTasks.removeValue(forKey: identifier)?.task.cancel()
         guard let record = records.removeValue(forKey: identifier) else { return }
         if let relativePath = record.artworkRelativePath,
            let directory = accountDirectory {
@@ -170,15 +387,15 @@ final class OfflinePlaylistStore: ObservableObject {
                 try? fileManager.removeItem(at: url)
             }
         }
-        try? saveManifest()
+        requestSave()
     }
 
     func removeAll() {
-        activeTasks.values.forEach { $0.cancel() }
+        activeTasks.values.forEach { $0.task.cancel() }
         activeTasks.removeAll()
         guard let directory = accountDirectory else {
             records.removeAll()
-            try? saveManifest()
+            requestSave()
             return
         }
         let artworkDir = directory
@@ -187,116 +404,241 @@ final class OfflinePlaylistStore: ObservableObject {
             try? fileManager.removeItem(at: artworkDir)
         }
         records.removeAll()
-        try? saveManifest()
+        requestSave()
     }
 
     func waitForDownload(of playlist: Playlist) async {
         let identifier = OfflinePlaylistRecord.identifier(for: playlist)
-        await activeTasks[identifier]?.value
+        await activeTasks[identifier]?.task.value
+    }
+
+    /// Recomputed playlist states from the real track files after local
+    /// deletions: an `available` record whose files disappeared becomes
+    /// `partial` or `failed`, and an empty record is never left `available`.
+    func reconcileDownloads(with offlineStore: OfflineTrackStore) {
+        var didChange = false
+        for (id, var record) in records {
+            guard record.state != .resolvingTracks,
+                  record.state != .queued,
+                  record.state != .downloading else {
+                continue
+            }
+            let localCount = record.tracks
+                .filter { offlineStore.contains($0) }
+                .count
+            var recordChanged = false
+            switch record.state {
+            case .available:
+                if localCount == 0 {
+                    record.state = .failed
+                    record.errorMessage = L10n.text(
+                        "Скачанные треки удалены. Скачайте плейлист заново."
+                    )
+                    recordChanged = true
+                } else if localCount < record.tracks.count {
+                    record.state = .partial
+                    recordChanged = true
+                }
+            case .partial:
+                if localCount == 0 {
+                    record.state = .failed
+                    record.errorMessage = L10n.text(
+                        "Скачанные треки удалены. Скачайте плейлист заново."
+                    )
+                    recordChanged = true
+                }
+            default:
+                break
+            }
+            if recordChanged {
+                record.updatedAt = Date()
+                records[id] = record
+                didChange = true
+            }
+        }
+        if didChange {
+            requestSave()
+        }
+    }
+
+    /// Throttled manifest persistence (defect 21): progress updates never
+    /// write the full manifest per track on the main thread.
+    func flushPendingSave() async throws {
+        hasPendingSave = false
+        isSaveScheduled = false
+        try await persistToDisk()
     }
 
     private func runDownload(
         identifier: String,
         accountID: Int?,
+        generation: UUID,
         fetchPage: @escaping PageFetcher,
         downloadTrack: @escaping TrackDownloader
     ) async {
-        defer { activeTasks.removeValue(forKey: identifier) }
+        defer {
+            if isCurrentTask(identifier: identifier, generation: generation) {
+                activeTasks.removeValue(forKey: identifier)
+            }
+        }
         guard accountID != nil, accountID == activeAccountID,
               var record = records[identifier] else {
             return
         }
 
         do {
-            record.state = .downloading
-            record.completedCount = 0
-            record.failedCount = 0
+            record.state = .resolvingTracks
+            record.errorMessage = nil
             record.updatedAt = Date()
             records[identifier] = record
-            try saveManifest()
+            requestSave()
 
             let tracks = try await fetchAllPages(fetchPage)
             try Task.checkCancellation()
-            guard accountID == activeAccountID else {
+            guard isCurrentTask(identifier: identifier, generation: generation),
+                  accountID == activeAccountID else {
                 throw CancellationError()
             }
 
-            record.tracks = tracks.map(Self.storableTrack)
-            record.updatedAt = Date()
-            records[identifier] = record
-            try saveManifest()
-
+            // Artwork is best effort and runs before the empty check so a
+            // record with no fetchable tracks still keeps its cover.
             if record.artworkRelativePath == nil {
-                record.artworkRelativePath = try await downloadArtwork(
-                    from: record.playlist.artworkURL,
-                    identifier: identifier
-                )
+                do {
+                    let path = try await downloadArtwork(
+                        from: record.playlist.artworkURL,
+                        identifier: identifier
+                    )
+                    guard isCurrentTask(
+                        identifier: identifier,
+                        generation: generation
+                    ), accountID == activeAccountID else {
+                        throw CancellationError()
+                    }
+                    record.artworkRelativePath = path
+                    record.artworkError = nil
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // Best effort: artwork must never fail the batch.
+                    record.artworkError = error.localizedDescription
+                }
                 records[identifier] = record
-                try saveManifest()
+                requestSave()
             }
 
-            let counts = await downloadTracks(
-                tracks,
-                downloadTrack: downloadTrack,
-                progress: { [weak self] completed, failed in
-                    guard let self else { return }
-                    self.updateProgress(
-                        identifier: identifier,
-                        completed: completed,
-                        failed: failed
+            if tracks.isEmpty {
+                if record.playlist.count == 0 {
+                    // Never leave an empty permanent record behind.
+                    records.removeValue(forKey: identifier)
+                    requestSave()
+                } else {
+                    record.state = .failed
+                    record.errorMessage = L10n.text(
+                        "Не удалось получить треки плейлиста"
+                    )
+                    record.updatedAt = Date()
+                    records[identifier] = record
+                    requestSave()
+                    DownloadNotifications.notifyDownloadError(
+                        title: record.playlist.title
                     )
                 }
+                await flushAfterTerminalState()
+                return
+            }
+
+            // The resolved list becomes the exact total; the stored playlist
+            // keeps its metadata refreshed.
+            let storedTracks = tracks.map(Self.storableTrack)
+            record.tracks = storedTracks
+            if record.playlist.count != storedTracks.count {
+                record.playlist = record.playlist
+                    .updatingCount(storedTracks.count)
+            }
+            record.state = .downloading
+            record.updatedAt = Date()
+            records[identifier] = record
+            requestSave()
+
+            let counts = await downloadTracks(
+                storedTracks,
+                downloadTrack: downloadTrack,
+                identifier: identifier,
+                generation: generation
             )
             try Task.checkCancellation()
-            guard accountID == activeAccountID,
+            guard isCurrentTask(identifier: identifier, generation: generation),
+                  accountID == activeAccountID,
                   var finalRecord = records[identifier] else {
                 throw CancellationError()
             }
             finalRecord.completedCount = counts.completed
             finalRecord.failedCount = counts.failed
+            finalRecord.processedCount = counts.completed + counts.failed
             let name = finalRecord.playlist.title
-            if tracks.isEmpty || counts.failed == 0 {
+            if storedTracks.isEmpty || counts.failed == 0 {
                 finalRecord.state = .available
-                await MainActor.run {
-                    DownloadNotifications.notifyDownloadComplete(
-                        title: name
-                    )
-                }
+                DownloadNotifications.notifyDownloadComplete(title: name)
             } else if counts.completed > 0 {
                 finalRecord.state = .partial
-                await MainActor.run {
-                    DownloadNotifications.notifyDownloadComplete(
-                        title: "\(name) (\(counts.failed) ошибок)"
-                    )
-                }
+                finalRecord.errorMessage = L10n.format(
+                    "Не удалось скачать %d из %d треков",
+                    counts.failed,
+                    storedTracks.count
+                )
+                DownloadNotifications.notifyDownloadComplete(
+                    title: "\(name) · \(L10n.format(
+                        "Скачано %d из %d",
+                        counts.completed,
+                        storedTracks.count
+                    ))"
+                )
             } else {
                 finalRecord.state = .failed
-                await MainActor.run {
-                    DownloadNotifications.notifyDownloadError(
-                        title: name
-                    )
-                }
+                finalRecord.errorMessage = L10n.text(
+                    "Не удалось скачать плейлист"
+                )
+                DownloadNotifications.notifyDownloadError(title: name)
             }
             finalRecord.updatedAt = Date()
             records[identifier] = finalRecord
-            try saveManifest()
+            await flushAfterTerminalState()
         } catch is CancellationError {
-            if var cancelled = records[identifier],
-               accountID == activeAccountID {
-                cancelled.state = .cancelled
-                cancelled.updatedAt = Date()
-                records[identifier] = cancelled
-                try? saveManifest()
+            guard isCurrentTask(identifier: identifier, generation: generation),
+                  accountID == activeAccountID,
+                  var cancelled = records[identifier] else {
+                return
             }
+            cancelled.state = .cancelled
+            cancelled.updatedAt = Date()
+            records[identifier] = cancelled
+            await flushAfterTerminalState()
         } catch {
-            if var failed = records[identifier],
-               accountID == activeAccountID {
-                failed.state = failed.completedCount > 0 ? .partial : .failed
-                failed.updatedAt = Date()
-                records[identifier] = failed
-                try? saveManifest()
+            guard isCurrentTask(identifier: identifier, generation: generation),
+                  accountID == activeAccountID,
+                  var failed = records[identifier] else {
+                return
             }
+            failed.state = failed.completedCount > 0 ? .partial : .failed
+            failed.errorMessage = error.localizedDescription
+            failed.updatedAt = Date()
+            records[identifier] = failed
+            await flushAfterTerminalState()
         }
+    }
+
+    private func flushAfterTerminalState() async {
+        do {
+            try await flushPendingSave()
+        } catch {
+            // Persistence failure is non-fatal for the download itself; the
+            // in-memory state stays authoritative and reconciliation handles
+            // any missing manifest on the next launch.
+        }
+    }
+
+    private func isCurrentTask(identifier: String, generation: UUID) -> Bool {
+        activeTasks[identifier]?.generation == generation
     }
 
     private func fetchAllPages(
@@ -305,40 +647,58 @@ final class OfflinePlaylistStore: ObservableObject {
         var offset = 0
         var known = Set<String>()
         var result: [Track] = []
+        var visitedOffsets = Set<Int>()
+        var pageCount = 0
+        let maximumPageCount = 100
+
         while true {
             try Task.checkCancellation()
+            guard !visitedOffsets.contains(offset) else { break }
+            visitedOffsets.insert(offset)
+            pageCount += 1
+            guard pageCount <= maximumPageCount else { break }
+
             let page = try await fetchPage(offset)
+            try Task.checkCancellation()
+
+            let before = result.count
             result.append(contentsOf: page.items.filter {
                 known.insert($0.id).inserted
             })
+            let added = result.count - before
+            if added == 0 { break }
+
             guard let next = page.nextOffset,
-                  next > offset else {
+                  next > offset,
+                  !visitedOffsets.contains(next) else {
+                return result
+            }
+            if page.totalCount > 0, known.count >= page.totalCount {
                 return result
             }
             offset = next
         }
+        return result
     }
 
     private func downloadTracks(
         _ tracks: [Track],
         downloadTrack: @escaping TrackDownloader,
-        progress: @escaping @MainActor (Int, Int) -> Void
+        identifier: String,
+        generation: UUID
     ) async -> (completed: Int, failed: Int) {
         await withTaskGroup(of: Bool.self) { group in
-            var iterator = tracks.makeIterator()
             var completed = 0
             var failed = 0
 
-            for _ in 0..<min(Self.maximumConcurrentDownloads, tracks.count) {
-                if let track = iterator.next() {
-                    group.addTask {
-                        guard !Task.isCancelled else { return false }
-                        do {
-                            try await downloadTrack(track)
-                            return true
-                        } catch {
-                            return false
-                        }
+            for track in tracks {
+                group.addTask {
+                    guard !Task.isCancelled else { return false }
+                    do {
+                        try await downloadTrack(track)
+                        return true
+                    } catch {
+                        return false
                     }
                 }
             }
@@ -353,18 +713,12 @@ final class OfflinePlaylistStore: ObservableObject {
                 } else {
                     failed += 1
                 }
-                progress(completed, failed)
-                if let track = iterator.next() {
-                    group.addTask {
-                        guard !Task.isCancelled else { return false }
-                        do {
-                            try await downloadTrack(track)
-                            return true
-                        } catch {
-                            return false
-                        }
-                    }
-                }
+                updateProgress(
+                    identifier: identifier,
+                    generation: generation,
+                    completed: completed,
+                    failed: failed
+                )
             }
             return (completed, failed)
         }
@@ -372,15 +726,20 @@ final class OfflinePlaylistStore: ObservableObject {
 
     private func updateProgress(
         identifier: String,
+        generation: UUID,
         completed: Int,
         failed: Int
     ) {
-        guard var record = records[identifier] else { return }
+        guard isCurrentTask(identifier: identifier, generation: generation),
+              var record = records[identifier] else {
+            return
+        }
         record.completedCount = completed
         record.failedCount = failed
+        record.processedCount = completed + failed
         record.updatedAt = Date()
         records[identifier] = record
-        try? saveManifest()
+        requestSave()
     }
 
     private func downloadArtwork(
@@ -466,17 +825,44 @@ final class OfflinePlaylistStore: ObservableObject {
         return Dictionary(uniqueKeysWithValues: decoded.map { ($0.id, $0) })
     }
 
-    private func saveManifest() throws {
+    private func persistToDisk() async throws {
         guard let directory = accountDirectory,
               let manifestURL else {
-            return
+            throw APIError.unauthorized
         }
         try createDirectory(directory)
         let values = records.values.sorted { $0.id < $1.id }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        try encoder.encode(values).write(to: manifestURL, options: .atomic)
-        protect(manifestURL)
+        let writeURL = manifestURL
+        let data = try await Task.detached(priority: .utility) { () -> Data in
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            return try encoder.encode(values)
+        }.value
+        await Task.detached(priority: .utility) {
+            try data.write(to: writeURL, options: .atomic)
+        }.value
+        protect(writeURL)
+    }
+
+    private func requestSave() {
+        hasPendingSave = true
+        guard !isSaveScheduled else { return }
+        isSaveScheduled = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard let self else { return }
+            self.isSaveScheduled = false
+            guard self.hasPendingSave else { return }
+            self.hasPendingSave = false
+            do {
+                try await self.persistToDisk()
+            } catch {
+                // The next request or terminal flush retries the write.
+            }
+            if self.hasPendingSave {
+                self.requestSave()
+            }
+        }
     }
 
     private func reconcileFiles() {
@@ -491,13 +877,32 @@ final class OfflinePlaylistStore: ObservableObject {
                     result[id] = record
                 }
             }
-            if record.state == .queued || record.state == .downloading {
+            // Records that look active must never survive a restart without a
+            // real running Task (requirement C).
+            if record.state == .resolvingTracks
+                || record.state == .queued
+                || record.state == .downloading {
                 record.state = record.completedCount > 0 ? .partial : .cancelled
+                record.errorMessage = L10n.text("Загрузка прервана")
                 result[id] = record
             }
         }
         records = result
-        try? saveManifest()
+        try? saveManifestSync()
+    }
+
+    private func saveManifestSync() throws {
+        guard let directory = accountDirectory,
+              let manifestURL else {
+            return
+        }
+        try createDirectory(directory)
+        let values = records.values.sorted { $0.id < $1.id }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(values)
+        try data.write(to: manifestURL, options: .atomic)
+        protect(manifestURL)
     }
 
     private func createDirectory(_ url: URL) throws {
@@ -526,5 +931,26 @@ final class OfflinePlaylistStore: ObservableObject {
         url.standardizedFileURL.path.hasPrefix(
             parent.standardizedFileURL.path + "/"
         )
+    }
+
+    private func allocatedSize(at url: URL) -> Int64 {
+        guard let enumerator = fileManager.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
+            options: []
+        ) else {
+            let values = try? url.resourceValues(
+                forKeys: [.totalFileAllocatedSizeKey]
+            )
+            return Int64(values?.totalFileAllocatedSize ?? 0)
+        }
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            let values = try? fileURL.resourceValues(
+                forKeys: [.totalFileAllocatedSizeKey]
+            )
+            total += Int64(values?.totalFileAllocatedSize ?? 0)
+        }
+        return total
     }
 }

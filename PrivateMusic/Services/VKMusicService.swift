@@ -450,7 +450,7 @@ struct VKMusicService: MusicService {
         ]
     }
 
-    private func page<Item: Decodable & Sendable>(
+    func page<Item: Decodable & Sendable>(
         _ response: VKItems<Item>,
         offset: Int,
         requested: Int
@@ -458,7 +458,6 @@ struct VKMusicService: MusicService {
         let total = response.count ?? response.items.count
         let consumed = offset + response.items.count
         let hasNext = !response.items.isEmpty
-            && response.items.count >= requested
             && consumed < total
         return MusicPage(
             items: response.items,
@@ -501,7 +500,7 @@ private struct VKResponse<Value: Decodable & Sendable>: Decodable, Sendable {
     let response: Value
 }
 
-private struct VKItems<Item: Decodable & Sendable>: Decodable, Sendable {
+struct VKItems<Item: Decodable & Sendable>: Decodable, Sendable {
     let count: Int?
     let items: [Item]
 }
