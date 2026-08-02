@@ -41,26 +41,112 @@ enum MPEGTSAudioExtractor {
         )
     }
 
-    /// Demuxes a stitched MPEG-TS file without copying it into a contiguous
-    /// heap buffer. The source is memory-mapped; only the much smaller
-    /// elementary stream is materialized and written next to it.
-    ///
-    /// Loading a full stitch with plain `Data(contentsOf:)` (up to
-    /// ~150 MB) is a common jetsam cause during Share on device.
+    /// Demuxes a stitched MPEG-TS file packet-by-packet. Neither the source
+    /// nor the elementary stream is materialized in memory.
     static func extractAudioFile(
         from sourceURL: URL,
         toDirectory directory: URL
     ) throws -> (url: URL, kind: OutputKind)? {
-        let mapped = try Data(contentsOf: sourceURL, options: [.mappedIfSafe])
-        guard let extracted = extractAudio(from: mapped),
-              extracted.kind != .unknown else {
+        let input = try FileHandle(forReadingFrom: sourceURL)
+        defer { try? input.close() }
+
+        let probe = try input.read(upToCount: 204 * 3) ?? Data()
+        guard let packetSize = packetSize(in: probe) else { return nil }
+        try input.seek(toOffset: 0)
+
+        guard let program = try discoverProgram(
+            in: input,
+            packetSize: packetSize
+        ) else {
             return nil
         }
-        let url = directory
+        try input.seek(toOffset: 0)
+
+        let temporaryURL = directory.appendingPathComponent("elementary.tmp")
+        _ = FileManager.default.createFile(
+            atPath: temporaryURL.path,
+            contents: nil
+        )
+        let output = try FileHandle(forWritingTo: temporaryURL)
+        var written = 0
+        var remainingPESPayload: Int?
+
+        do {
+            while let packet = try readPacket(from: input, size: packetSize) {
+                guard let parsed = packetPayload(packet),
+                      parsed.pid == program.audioPID else {
+                    continue
+                }
+
+                var payload = parsed.payload
+                if parsed.payloadUnitStart {
+                    guard payload.count >= 9,
+                          payload[0] == 0,
+                          payload[1] == 0,
+                          payload[2] == 1 else {
+                        remainingPESPayload = nil
+                        continue
+                    }
+                    let packetLength = Int(payload[4]) << 8 | Int(payload[5])
+                    let headerLength = Int(payload[8])
+                    let payloadStart = 9 + headerLength
+                    guard payloadStart <= payload.count else {
+                        remainingPESPayload = nil
+                        continue
+                    }
+                    payload = payload.subdata(in: payloadStart..<payload.count)
+                    remainingPESPayload = packetLength == 0
+                        ? nil
+                        : max(0, packetLength - 3 - headerLength)
+                } else if remainingPESPayload == 0 {
+                    continue
+                }
+
+                let count = min(
+                    payload.count,
+                    remainingPESPayload ?? payload.count
+                )
+                if count > 0 {
+                    try output.write(contentsOf: payload.prefix(count))
+                    written += count
+                    if let remaining = remainingPESPayload {
+                        remainingPESPayload = max(0, remaining - count)
+                    }
+                }
+            }
+            try output.synchronize()
+            try output.close()
+        } catch {
+            try? output.close()
+            try? FileManager.default.removeItem(at: temporaryURL)
+            throw error
+        }
+
+        guard written > 32 else {
+            try? FileManager.default.removeItem(at: temporaryURL)
+            return nil
+        }
+
+        let kind: OutputKind
+        if let known = outputKind(forStreamType: program.streamType) {
+            kind = known
+        } else {
+            let elementary = try FileHandle(forReadingFrom: temporaryURL)
+            let prefix = try elementary.read(upToCount: 16) ?? Data()
+            try elementary.close()
+            kind = inferKind(from: prefix)
+        }
+        guard kind != .unknown else {
+            try? FileManager.default.removeItem(at: temporaryURL)
+            return nil
+        }
+
+        let finalURL = directory
             .appendingPathComponent("elementary")
-            .appendingPathExtension(extracted.kind.fileExtension)
-        try extracted.data.write(to: url, options: .atomic)
-        return (url, extracted.kind)
+            .appendingPathExtension(kind.fileExtension)
+        try? FileManager.default.removeItem(at: finalURL)
+        try FileManager.default.moveItem(at: temporaryURL, to: finalURL)
+        return (finalURL, kind)
     }
 
     // MARK: - Discovery
@@ -68,6 +154,89 @@ enum MPEGTSAudioExtractor {
     private struct ProgramInfo {
         let audioPID: Int
         let streamType: UInt8
+    }
+
+    private struct PacketPayload {
+        let pid: Int
+        let payloadUnitStart: Bool
+        let payload: Data
+    }
+
+    private static func readPacket(
+        from handle: FileHandle,
+        size: Int
+    ) throws -> Data? {
+        guard let data = try handle.read(upToCount: size),
+              !data.isEmpty else {
+            return nil
+        }
+        guard data.count == size else { return nil }
+        return data
+    }
+
+    private static func packetPayload(_ packet: Data) -> PacketPayload? {
+        guard packet.count >= 4, packet[0] == 0x47 else { return nil }
+        let pid = Int(packet[1] & 0x1F) << 8 | Int(packet[2])
+        let payloadUnitStart = packet[1] & 0x40 != 0
+        let adaptationControl = (packet[3] >> 4) & 0x03
+        guard adaptationControl == 1 || adaptationControl == 3 else {
+            return nil
+        }
+        var offset = 4
+        if adaptationControl == 3 {
+            guard offset < packet.count else { return nil }
+            offset += 1 + Int(packet[offset])
+        }
+        guard offset < packet.count else { return nil }
+        return PacketPayload(
+            pid: pid,
+            payloadUnitStart: payloadUnitStart,
+            payload: packet.subdata(in: offset..<packet.count)
+        )
+    }
+
+    private static func discoverProgram(
+        in handle: FileHandle,
+        packetSize: Int
+    ) throws -> ProgramInfo? {
+        var pmtPID: Int?
+        var fallbackAudioPID: Int?
+
+        // PSI tables occur near the beginning of each HLS segment. Limit the
+        // scan while still spanning multiple segment boundaries.
+        for _ in 0..<50_000 {
+            guard let packet = try readPacket(
+                from: handle,
+                size: packetSize
+            ) else {
+                break
+            }
+            guard let parsed = packetPayload(packet) else { continue }
+
+            if parsed.pid == 0, pmtPID == nil {
+                pmtPID = parsePAT(parsed.payload)
+                continue
+            }
+            if let pmtPID, parsed.pid == pmtPID {
+                if let program = parsePMT(parsed.payload) {
+                    return program
+                }
+                continue
+            }
+            if fallbackAudioPID == nil,
+               parsed.payloadUnitStart,
+               parsed.payload.count >= 4,
+               parsed.payload[0] == 0,
+               parsed.payload[1] == 0,
+               parsed.payload[2] == 1,
+               (0xC0...0xDF).contains(parsed.payload[3]) {
+                fallbackAudioPID = parsed.pid
+            }
+        }
+
+        return fallbackAudioPID.map {
+            ProgramInfo(audioPID: $0, streamType: 0)
+        }
     }
 
     private static func packetSize(in data: Data) -> Int? {

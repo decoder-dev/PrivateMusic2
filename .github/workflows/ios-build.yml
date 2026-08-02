@@ -130,7 +130,7 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.25.4-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.25.5-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -139,13 +139,13 @@ jobs:
         run: |
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.25.4
+          Private Music 3.25.5
 
-          - Исправлен вылет при «Поделиться»: меню шаринга больше не
-            презентуется из SwiftUI sheet. После подготовки sheet
-            закрывается, а UIActivityViewController открывается из
-            UIKit root (с корректным popover на iPad).
-          - Не открываем share sheet поверх другого sheet плеера.
+          - Удалена вся ручная презентация UIActivityViewController:
+            готовый файл открывается штатным SwiftUI ShareLink только
+            после явного нажатия пользователя.
+          - MPEG-TS demux теперь полностью потоковый (файл → файл);
+            полный исходный или выходной аудиобуфер не хранится в RAM.
           - Офлайн-загрузки по-прежнему временно скрыты.
 
           IPA не подписан. Перед установкой подпишите его собственным
@@ -153,15 +153,15 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.25.4-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.25.5-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.25.4" \
+              --title "Private Music 3.25.5" \
               --notes-file "$NOTES"
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.25.4-unsigned.ipa" \
-              --title "Private Music 3.25.4" \
+              "$PWD/artifacts/PrivateMusic-3.25.5-unsigned.ipa" \
+              --title "Private Music 3.25.5" \
               --notes-file "$NOTES"
           fi
 
@@ -169,7 +169,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.25.4-unsigned
-          path: artifacts/PrivateMusic-3.25.4-unsigned.ipa
+          name: PrivateMusic-3.25.5-unsigned
+          path: artifacts/PrivateMusic-3.25.5-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
