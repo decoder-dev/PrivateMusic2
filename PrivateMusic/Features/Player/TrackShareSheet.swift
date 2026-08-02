@@ -35,8 +35,11 @@ actor TrackShareService {
             self.session = session
         } else {
             let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 60
-            configuration.timeoutIntervalForResource = 180
+            // Share exports compete with playback; give long-lived streams
+            // enough room so NSURLErrorTimedOut (-1001) is not the default.
+            configuration.timeoutIntervalForRequest = 120
+            configuration.timeoutIntervalForResource = 600
+            configuration.waitsForConnectivity = true
             configuration.httpCookieStorage = nil
             configuration.urlCache = nil
             self.session = URLSession(configuration: configuration)
@@ -75,13 +78,10 @@ actor TrackShareService {
         }
 
         await progress?(.downloadingDirectFile)
-        var request = URLRequest(url: streamURL)
-        request.timeoutInterval = 60
-        for (field, value) in requestHeaders(userAgent: userAgent) {
-            request.setValue(value, forHTTPHeaderField: field)
-        }
-
-        let (temporaryURL, response) = try await session.download(for: request)
+        let (temporaryURL, response) = try await downloadDirectAudio(
+            from: streamURL,
+            userAgent: userAgent
+        )
         try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode) else {
@@ -133,6 +133,61 @@ actor TrackShareService {
             removeExportDirectory(containing: destination)
             throw error
         }
+    }
+
+    /// Downloads a direct audio URL once, retrying a single timed-out attempt
+    /// so transient `NSURLErrorTimedOut` (-1001) does not fail the share.
+    private func downloadDirectAudio(
+        from streamURL: URL,
+        userAgent: String?
+    ) async throws -> (URL, URLResponse) {
+        var lastError: Error?
+        for attempt in 0..<2 {
+            try Task.checkCancellation()
+            var request = URLRequest(url: streamURL)
+            request.timeoutInterval = 120
+            for (field, value) in requestHeaders(userAgent: userAgent) {
+                request.setValue(value, forHTTPHeaderField: field)
+            }
+            do {
+                return try await session.download(for: request)
+            } catch {
+                let mapped = mapShareTransportError(error)
+                lastError = mapped
+                if attempt == 0, isShareTimeout(mapped) {
+                    continue
+                }
+                throw mapped
+            }
+        }
+        throw lastError ?? APIError.timedOut
+    }
+
+    private func mapShareTransportError(_ error: Error) -> Error {
+        if error is CancellationError {
+            return error
+        }
+        if let urlError = error as? URLError, urlError.code == .timedOut {
+            return APIError.timedOut
+        }
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain,
+           nsError.code == NSURLErrorTimedOut {
+            return APIError.timedOut
+        }
+        return error
+    }
+
+    private func isShareTimeout(_ error: Error) -> Bool {
+        if case .timedOut = error as? APIError {
+            return true
+        }
+        if let urlError = error as? URLError, urlError.code == .timedOut {
+            return true
+        }
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain
+            && nsError.code == NSURLErrorTimedOut
     }
 
     func payloadFromLocalFile(

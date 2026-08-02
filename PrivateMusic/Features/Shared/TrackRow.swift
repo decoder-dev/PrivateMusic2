@@ -35,15 +35,20 @@ struct TrackRow: View {
 
                 Spacer()
 
-                if offlineStore.contains(track) {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel(L10n.text("Доступно офлайн"))
-                } else if offlineStore.downloadingTrackIDs.contains(track.id) {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel(L10n.text("Загрузка"))
+                if !environment.isShareSessionActive {
+                    if offlineStore.contains(track) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(
+                                L10n.text("Доступно офлайн")
+                            )
+                    } else if offlineStore.downloadingTrackIDs
+                        .contains(track.id) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel(L10n.text("Загрузка"))
+                    }
                 }
 
                 Text(track.duration.formattedDuration)
@@ -109,21 +114,25 @@ struct TrackRow: View {
                     systemImage: "square.and.arrow.up"
                 )
             }
-            Button(
-                role: offlineStore.contains(track) ? .destructive : nil
-            ) {
-                toggleOffline()
-            } label: {
-                Label(
-                    offlineStore.contains(track)
-                        ? "Удалить загрузку"
-                        : "Скачать офлайн",
-                    systemImage: offlineStore.contains(track)
-                        ? "trash"
-                        : "arrow.down.circle"
+            if !environment.isShareSessionActive {
+                Button(
+                    role: offlineStore.contains(track) ? .destructive : nil
+                ) {
+                    toggleOffline()
+                } label: {
+                    Label(
+                        offlineStore.contains(track)
+                            ? "Удалить загрузку"
+                            : "Скачать офлайн",
+                        systemImage: offlineStore.contains(track)
+                            ? "trash"
+                            : "arrow.down.circle"
+                    )
+                }
+                .disabled(
+                    offlineStore.downloadingTrackIDs.contains(track.id)
                 )
             }
-            .disabled(offlineStore.downloadingTrackIDs.contains(track.id))
         }
     }
 

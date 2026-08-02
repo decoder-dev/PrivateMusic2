@@ -30,6 +30,7 @@ final class PlayerActionSheetTests: XCTestCase {
         XCTAssertTrue(state.canAddToPlaylist)
         XCTAssertTrue(state.canShare)
         XCTAssertFalse(state.showsLibraryProgress)
+        XCTAssertTrue(state.showsOfflineControls)
     }
 
     func testLibraryMutationDisablesOnlyLibraryAction() {
@@ -42,6 +43,7 @@ final class PlayerActionSheetTests: XCTestCase {
         XCTAssertTrue(state.canAddToPlaylist)
         XCTAssertTrue(state.canShare)
         XCTAssertTrue(state.showsLibraryProgress)
+        XCTAssertTrue(state.showsOfflineControls)
     }
 
     func testMetadataShareRemainsAvailableWithoutCredentials() {
@@ -54,6 +56,18 @@ final class PlayerActionSheetTests: XCTestCase {
         XCTAssertFalse(state.canAddToPlaylist)
         XCTAssertTrue(state.canShare)
         XCTAssertFalse(state.showsLibraryProgress)
+        XCTAssertTrue(state.showsOfflineControls)
+    }
+
+    func testShareSessionHidesOfflineControls() {
+        let state = PlayerActionAvailability(
+            hasSession: true,
+            isUpdatingLibrary: false,
+            showsOfflineControls: false
+        )
+
+        XCTAssertTrue(state.canShare)
+        XCTAssertFalse(state.showsOfflineControls)
     }
 }
 

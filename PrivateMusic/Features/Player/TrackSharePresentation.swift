@@ -87,10 +87,25 @@ final class TrackShareViewModel: ObservableObject {
         case let apiError as APIError:
             baseMessage = apiError.errorDescription
                 ?? L10n.text("Не удалось подготовить аудиофайл.")
-            code = "VK-\(nsError.code)"
+            if apiError == .timedOut {
+                code = "PM-NSURLErrorDomain--1001"
+            } else {
+                code = "VK-\(nsError.code)"
+            }
+        case let urlError as URLError where urlError.code == .timedOut:
+            baseMessage = APIError.timedOut.errorDescription
+                ?? L10n.text("Не удалось подготовить аудиофайл.")
+            code = "PM-\(NSURLErrorDomain)-\(URLError.timedOut.rawValue)"
         default:
-            baseMessage = L10n.text("Не удалось подготовить аудиофайл.")
-            code = "PM-\(nsError.domain)-\(nsError.code)"
+            if nsError.domain == NSURLErrorDomain,
+               nsError.code == NSURLErrorTimedOut {
+                baseMessage = APIError.timedOut.errorDescription
+                    ?? L10n.text("Не удалось подготовить аудиофайл.")
+                code = "PM-\(nsError.domain)-\(nsError.code)"
+            } else {
+                baseMessage = L10n.text("Не удалось подготовить аудиофайл.")
+                code = "PM-\(nsError.domain)-\(nsError.code)"
+            }
         }
 
         return TrackShareFailure(
@@ -212,11 +227,15 @@ struct TrackShareFlowView: View {
                 statusScreen(progress: .resolvingSource)
             }
         }
+        .onAppear {
+            environment.beginShareSession()
+        }
         .task(id: track.id) {
             model.start(track: track, environment: environment)
         }
         .onDisappear {
             model.cancel(environment: environment)
+            environment.endShareSession()
         }
     }
 

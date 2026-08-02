@@ -306,6 +306,32 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    /// Matches Apple's "Responding to audio route changes" guidance:
+    /// pause on `.oldDeviceUnavailable` when headphones / earbuds leave.
+    func testHeadphoneOrEarbudRemovalPausesPlayback() {
+        XCTAssertTrue(
+            AudioRoutePolicy.shouldPauseAfterRouteLoss(
+                wasPlaying: true,
+                previousOutputPortTypes: [.headphones],
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+        XCTAssertTrue(
+            AudioRoutePolicy.shouldPauseAfterRouteLoss(
+                wasPlaying: true,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+        XCTAssertTrue(
+            AudioRoutePolicy.shouldPauseAfterRouteLoss(
+                wasPlaying: true,
+                previousOutputPortTypes: [.bluetoothLE],
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+    }
+
     func testRouteTransferResumeRequiresPendingPlaybackIntent() {
         XCTAssertTrue(
             AudioRoutePolicy.shouldResumeAfterRouteTransfer(
