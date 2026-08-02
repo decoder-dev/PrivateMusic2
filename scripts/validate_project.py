@@ -65,6 +65,12 @@ player_view_source = (
 root_view_source = (
     SOURCE / "Features" / "Root" / "RootView.swift"
 ).read_text(encoding="utf-8")
+mini_player_source = (
+    SOURCE / "Features" / "Player" / "MiniPlayerView.swift"
+).read_text(encoding="utf-8")
+cached_image_source = (
+    SOURCE / "Features" / "Shared" / "CachedRemoteImage.swift"
+).read_text(encoding="utf-8")
 glass_source = (
     SOURCE / "Features" / "Shared" / "AdaptiveGlass.swift"
 ).read_text(encoding="utf-8")
@@ -113,6 +119,15 @@ for required_fullscreen_symbol in (
             "player presentation is not full-screen: "
             f"{required_fullscreen_symbol}"
         )
+if re.search(
+    r"\.onDisappear\s*\{\s*player\.dismissPlayer\(\)",
+    root_view_source,
+):
+    fail("player presentation must not be dismissed from content onDisappear")
+if ".simultaneousGesture(miniPlayerGesture)" not in mini_player_source:
+    fail("mini-player swipe gesture must not intercept its open button")
+if "loadedIdentity == loadIdentity ? image : nil" not in cached_image_source:
+    fail("cached artwork must never display a stale request identity")
 for required_player_symbol in (
     ".background(playerBackground.ignoresSafeArea())",
     ".buttonStyle(.glassProminent)",
