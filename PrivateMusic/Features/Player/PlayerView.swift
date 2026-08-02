@@ -47,6 +47,8 @@ struct PlayerView: View {
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .simultaneousGesture(fullScreenDismissGesture)
         .background(playerBackground.ignoresSafeArea())
         .preferredColorScheme(settings.theme.colorScheme)
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
@@ -813,6 +815,21 @@ struct PlayerView: View {
             }
     }
 
+    private var fullScreenDismissGesture: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onEnded { value in
+                guard presentedSheet == nil,
+                      sharingTrack == nil,
+                      PlayerDismissGesturePolicy.shouldDismiss(
+                        translation: value.translation,
+                        predictedEndTranslation: value.predictedEndTranslation
+                      ) else {
+                    return
+                }
+                closePlayer()
+            }
+    }
+
     private func closePlayer() {
         presentedSheet = nil
         deferredPlayerAction = nil
@@ -1199,6 +1216,21 @@ struct PlayerActionAvailability: Equatable {
 enum PlayerActionSheetMetrics {
     static let preferredHeight: CGFloat = 520
     static let minimumTapTarget: CGFloat = 52
+}
+
+enum PlayerDismissGesturePolicy {
+    static func shouldDismiss(
+        translation: CGSize,
+        predictedEndTranslation: CGSize
+    ) -> Bool {
+        let vertical = translation.height
+        let horizontal = abs(translation.width)
+        guard vertical >= 80,
+              vertical > horizontal * 1.25 else {
+            return false
+        }
+        return vertical >= 140 || predictedEndTranslation.height >= 120
+    }
 }
 
 private struct PlayerActionsSheet: View {
