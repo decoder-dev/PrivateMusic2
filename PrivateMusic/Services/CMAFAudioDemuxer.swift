@@ -63,15 +63,19 @@ struct CMAFAudioDemuxer {
             throw CMAFError.missingMovieBox
         }
 
+        var selected: InitializationInfo?
         var fallback: InitializationInfo?
         for trak in try reader.children(of: moov) where trak.type == "trak" {
             guard let info = try? parseTrak(trak, in: reader) else {
                 continue
             }
-            if info.isAudio { return info.config }
+            if info.isAudio {
+                selected = info.config
+                break
+            }
             if fallback == nil { fallback = info.config }
         }
-        guard let config = fallback else {
+        guard let config = selected ?? fallback else {
             throw CMAFError.noAudioTrack
         }
         guard config.codec != .unsupported else {
@@ -173,7 +177,7 @@ struct CMAFAudioDemuxer {
 
         // Audio sample entries: 8-byte version/flags + entry count + sample
         // entry headers (28 bytes each) followed by `esds` etc.
-        guard let entry = try reader.children(of: stsd).first else {
+        guard let entry = try reader.children(of: stsd, skipping: 8).first else {
             throw CMAFError.invalidInitialization
         }
         let codec = Codec(rawValue: entry.type) ?? .unsupported
@@ -228,8 +232,8 @@ struct CMAFAudioDemuxer {
         reader: ISOBoxReader
     ) throws -> (UInt32?, Double?) {
         let body = entry.payloadRange.lowerBound
-        let channels = UInt32(try reader.readUInt16BE(at: body + 24))
-        let rateFixed = try reader.readUInt32BE(at: body + 32)
+        let channels = UInt32(try reader.readUInt16BE(at: body + 16))
+        let rateFixed = try reader.readUInt32BE(at: body + 24)
         let sampleRate = rateFixed > 0 ? Double(rateFixed >> 16) : nil
         return (channels > 0 ? channels : nil, sampleRate)
     }
@@ -241,7 +245,11 @@ struct CMAFAudioDemuxer {
         reader: ISOBoxReader
     ) throws -> Data? {
         guard entry.type == "mp4a",
-              let esds = try reader.child("esds", in: entry) else {
+              let esds = try reader.child(
+                "esds",
+                in: entry,
+                skipping: 28
+              ) else {
             return nil
         }
         var offset = esds.payloadRange.lowerBound + 4 // version/flags
