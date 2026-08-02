@@ -120,8 +120,10 @@ final class PlayerLayoutMetricsTests: XCTestCase {
         )
 
         XCTAssertEqual(metrics.mode, .landscape)
-        XCTAssertLessThanOrEqual(metrics.minimumContentHeight, 320)
         XCTAssertEqual(metrics.quickActionsHeight, 72)
+        XCTAssertTrue(
+            metrics.requiresAccessibilityScrolling(containerHeight: 320)
+        )
     }
 
     func testPlayerControlsUseAccessibleMinimumHeights() {
