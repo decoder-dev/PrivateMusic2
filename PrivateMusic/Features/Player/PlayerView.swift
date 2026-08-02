@@ -1204,7 +1204,8 @@ private struct PlayerActionsSheet: View {
     let offlineState: OfflineTrackState
     let availability: PlayerActionAvailability
     @Binding var equalizerEnabled: Bool
-    @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var player: AudioPlayer
+    @State private var showsSleepTimerOptions = false
     let onDismiss: () -> Void
     let onLibrary: () -> Void
     let onArtist: () -> Void
@@ -1220,96 +1221,170 @@ private struct PlayerActionsSheet: View {
     ]
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
+        ZStack {
+            ThemeBackground()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    libraryAction
-
-                    sectionTitle("Действия с треком")
-                    LazyVGrid(columns: columns, spacing: 10) {
-                        actionTile(
-                            "Исполнитель",
-                            systemImage: "person.wave.2",
-                            action: onArtist
-                        )
-                        actionTile(
-                            "Добавить в плейлист",
-                            systemImage: "rectangle.stack.badge.plus",
-                            enabled: availability.canAddToPlaylist,
-                            action: onPlaylist
-                        )
-                        actionTile(
-                            "Поделиться аудиофайлом",
-                            systemImage: "square.and.arrow.up",
-                            enabled: availability.canShare,
-                            action: onShare
-                        )
-                        actionTile(
-                            "Скопировать ссылку VK",
-                            systemImage: "link",
-                            action: onCopyLink
-                        )
-                        if availability.showsOfflineControls {
-                            actionTile(
-                                offlineTitle,
-                                systemImage: offlineImage,
-                                enabled: offlineState != .downloading,
-                                action: onOffline
-                            )
-                        }
-                        actionTile(
-                            "Настройки звука",
-                            systemImage: "slider.horizontal.3",
-                            action: onSettings
-                        )
-                    }
-
-                    sectionTitle("Плеер и аудио")
-                    Toggle(isOn: $equalizerEnabled) {
-                        Label {
-                            Text(L10n.text("Эквалайзер"))
-                                .font(.body.weight(.semibold))
-                        } icon: {
-                            Image(systemName: "waveform")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .tint(.accentColor)
-                    .padding(.horizontal, 16)
-                    .frame(
-                        minHeight: PlayerActionSheetMetrics.minimumTapTarget
-                    )
-                    .background(
-                        settings.theme == .light
-                            ? Color(.secondarySystemBackground)
-                            : Color(.tertiarySystemBackground),
+            VStack(spacing: 0) {
+                header
+                    .adaptiveGlass(
                         in: RoundedRectangle(
-                            cornerRadius: 16,
+                            cornerRadius: PremiumLayout.cardRadius,
                             style: .continuous
                         )
                     )
+                    .padding(.horizontal, PremiumLayout.screenPadding)
+                    .padding(.top, 8)
 
-                    Text(L10n.text("Качество: автоматически VK"))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 12)
-                        .padding(.horizontal, 4)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        libraryAction
+
+                        sectionTitle("Действия с треком")
+                        LazyVGrid(columns: columns, spacing: 10) {
+                            actionTile(
+                                "Исполнитель",
+                                systemImage: "person.wave.2",
+                                action: onArtist
+                            )
+                            actionTile(
+                                "Добавить в плейлист",
+                                systemImage: "rectangle.stack.badge.plus",
+                                enabled: availability.canAddToPlaylist,
+                                action: onPlaylist
+                            )
+                            actionTile(
+                                "Поделиться аудиофайлом",
+                                systemImage: "square.and.arrow.up",
+                                enabled: availability.canShare,
+                                action: onShare
+                            )
+                            actionTile(
+                                "Скопировать ссылку VK",
+                                systemImage: "link",
+                                action: onCopyLink
+                            )
+                            if availability.showsOfflineControls {
+                                actionTile(
+                                    offlineTitle,
+                                    systemImage: offlineImage,
+                                    enabled: offlineState != .downloading,
+                                    action: onOffline
+                                )
+                            }
+                            actionTile(
+                                "Настройки звука",
+                                systemImage: "slider.horizontal.3",
+                                action: onSettings
+                            )
+                        }
+
+                        sectionTitle("Плеер и аудио")
+                        audioControls
+
+                        Text(L10n.text("Качество: автоматически VK"))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 12)
+                            .padding(.horizontal, 4)
+                    }
+                    .padding(.horizontal, PremiumLayout.screenPadding)
+                    .padding(.bottom, 24)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(settings.theme == .light ? Color.white : Color.black)
         .presentationDetents([
             .height(PlayerActionSheetMetrics.preferredHeight),
             .large
         ])
         .presentationDragIndicator(.visible)
+        .confirmationDialog(
+            L10n.text("Остановить воспроизведение через…"),
+            isPresented: $showsSleepTimerOptions,
+            titleVisibility: .visible
+        ) {
+            ForEach([15, 30, 45, 60, 90], id: \.self) { minutes in
+                Button(L10n.minutes(minutes)) {
+                    player.scheduleSleepTimer(minutes: minutes)
+                    Haptics.success()
+                }
+            }
+            if player.sleepTimerEndDate != nil {
+                Button(
+                    L10n.text("Отключить таймер"),
+                    role: .destructive
+                ) {
+                    player.cancelSleepTimer()
+                    Haptics.selection()
+                }
+            }
+            Button(L10n.text("Отмена"), role: .cancel) {}
+        }
+    }
+
+    private var audioControls: some View {
+        VStack(spacing: 0) {
+            Toggle(isOn: $equalizerEnabled) {
+                actionRowLabel(
+                    "Эквалайзер",
+                    systemImage: "waveform"
+                )
+            }
+            .tint(.accentColor)
+            .padding(.horizontal, 16)
+            .frame(minHeight: PlayerActionSheetMetrics.minimumTapTarget)
+
+            Divider()
+                .padding(.leading, 58)
+
+            Button {
+                Haptics.open()
+                showsSleepTimerOptions = true
+            } label: {
+                HStack(spacing: 12) {
+                    actionRowLabel(
+                        "Таймер сна",
+                        systemImage: "moon.zzz"
+                    )
+                    Spacer()
+                    if let endDate = player.sleepTimerEndDate {
+                        Text(endDate, style: .timer)
+                            .font(.subheadline.monospacedDigit().weight(.medium))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 16)
+                .frame(minHeight: PlayerActionSheetMetrics.minimumTapTarget)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PremiumPressStyle())
+            .accessibilityLabel(L10n.text("Таймер сна"))
+        }
+        .adaptiveGlass(in: RoundedRectangle(
+                cornerRadius: PremiumLayout.compactRadius,
+                style: .continuous
+            )
+        )
+    }
+
+    private func actionRowLabel(
+        _ title: String,
+        systemImage: String
+    ) -> some View {
+        Label {
+            Text(L10n.text(title))
+                .font(.body.weight(.semibold))
+        } icon: {
+            Image(systemName: systemImage)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 30, height: 30)
+                .background(Color.accentColor.opacity(0.12), in: Circle())
+        }
     }
 
     private var offlineTitle: String {
@@ -1336,12 +1411,12 @@ private struct PlayerActionsSheet: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            AsyncArtwork(url: track.artworkURL, size: 48)
+            AsyncArtwork(url: track.artworkURL, size: 58)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(track.title)
-                    .font(.headline)
+                    .font(.headline.weight(.bold))
                     .lineLimit(1)
                 Text(track.artist)
                     .font(.subheadline)
@@ -1360,8 +1435,8 @@ private struct PlayerActionsSheet: View {
             .buttonStyle(.plain)
             .accessibilityLabel(L10n.text("Закрыть"))
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .accessibilityElement(children: .contain)
     }
 
@@ -1377,7 +1452,15 @@ private struct PlayerActionsSheet: View {
                         : "heart"
                 )
                 .font(.system(size: 18, weight: .semibold))
-                .frame(width: 28)
+                .foregroundStyle(
+                    isInLibrary ? Color.red : Color.accentColor
+                )
+                .frame(width: 34, height: 34)
+                .background(
+                    (isInLibrary ? Color.red : Color.accentColor)
+                        .opacity(0.12),
+                    in: Circle()
+                )
 
                 Text(
                     L10n.text(
@@ -1401,11 +1484,14 @@ private struct PlayerActionsSheet: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PremiumPressStyle())
         .foregroundStyle(Color.primary)
-        .background(
-            Color(uiColor: .secondarySystemBackground),
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .adaptiveGlass(in: RoundedRectangle(
+                cornerRadius: PremiumLayout.compactRadius,
+                style: .continuous
+            ),
+            interactive: true,
+            tint: (isInLibrary ? Color.red : Color.accentColor).opacity(0.08)
         )
         .disabled(!availability.canModifyLibrary)
         .padding(.top, 14)
@@ -1416,6 +1502,7 @@ private struct PlayerActionsSheet: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .textCase(.uppercase)
+            .tracking(0.7)
             .padding(.horizontal, 4)
             .padding(.top, 18)
             .padding(.bottom, 8)
@@ -1431,6 +1518,12 @@ private struct PlayerActionsSheet: View {
             VStack(alignment: .leading, spacing: 9) {
                 Image(systemName: systemImage)
                     .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Color.accentColor.opacity(0.12),
+                        in: Circle()
+                    )
                 Text(L10n.text(title))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(2)
@@ -1438,15 +1531,17 @@ private struct PlayerActionsSheet: View {
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(minHeight: 54, alignment: .topLeading)
-            .padding(12)
+            .frame(minHeight: 66, alignment: .topLeading)
+            .padding(13)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PremiumPressStyle())
         .foregroundStyle(Color.primary)
-        .background(
-            Color(uiColor: .secondarySystemBackground),
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .adaptiveGlass(in: RoundedRectangle(
+                cornerRadius: PremiumLayout.compactRadius,
+                style: .continuous
+            ),
+            interactive: true
         )
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.45)
