@@ -391,6 +391,22 @@ final class OfflinePlaylistStore: ObservableObject {
         fetchPage: @escaping PageFetcher,
         downloadTrack: @escaping TrackDownloader
     ) -> Task<Void, Never> {
+        guard OfflineDownloadsFeature.isEnabled else {
+            return Task {}
+        }
+        return startDownloadUnlocked(
+            playlist: playlist,
+            fetchPage: fetchPage,
+            downloadTrack: downloadTrack
+        )
+    }
+
+    @discardableResult
+    private func startDownloadUnlocked(
+        playlist: Playlist,
+        fetchPage: @escaping PageFetcher,
+        downloadTrack: @escaping TrackDownloader
+    ) -> Task<Void, Never> {
         let identifier = OfflinePlaylistRecord.identifier(for: playlist)
         if let existing = activeTasks[identifier] {
             return existing.task
@@ -447,6 +463,21 @@ final class OfflinePlaylistStore: ObservableObject {
         records[identifier] = record
         requestSave()
         return active.task
+    }
+
+    /// Cancels every in-flight playlist download. Used when offline downloads
+    /// are temporarily disabled for a stable share-focused release.
+    func cancelAllDownloads() {
+        let playlists = activeTasks.keys.compactMap { identifier -> Playlist? in
+            records[identifier]?.playlist
+        }
+        for playlist in playlists {
+            _ = cancelDownload(for: playlist)
+        }
+        for active in activeTasks.values {
+            active.task.cancel()
+        }
+        activeTasks.removeAll()
     }
 
     func remove(_ playlist: Playlist) {
