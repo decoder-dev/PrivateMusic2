@@ -24,6 +24,10 @@ struct CMAFAudioDemuxer {
         let channelCount: UInt32
         let codec: Codec
         let audioSpecificConfig: Data?
+        /// MPEG-4 elementary stream descriptor stored after the four-byte
+        /// FullBox header of `esds`. Core Audio expects this complete ESDS as
+        /// the AAC magic cookie, not only DecoderSpecificInfo (ASC).
+        let elementaryStreamDescriptor: Data?
         let defaultSampleDuration: UInt32?
         let defaultSampleSize: UInt32?
         let defaultSampleFlags: UInt32?
@@ -95,6 +99,7 @@ struct CMAFAudioDemuxer {
                 channelCount: config.channelCount,
                 codec: config.codec,
                 audioSpecificConfig: config.audioSpecificConfig,
+                elementaryStreamDescriptor: config.elementaryStreamDescriptor,
                 defaultSampleDuration: config.defaultSampleDuration
                     ?? trexDefaults.duration,
                 defaultSampleSize: config.defaultSampleSize
@@ -182,7 +187,7 @@ struct CMAFAudioDemuxer {
         }
         let codec = Codec(rawValue: entry.type) ?? .unsupported
         let (channels, sampleRate) = try audioSampleEntry(entry, reader: reader)
-        let asc = try esdsAudioSpecificConfig(entry, reader: reader)
+        let esds = try esdsConfiguration(entry, reader: reader)
 
         return TrakInfo(
             isAudio: isAudio,
@@ -192,7 +197,8 @@ struct CMAFAudioDemuxer {
                 sampleRate: sampleRate ?? 44_100,
                 channelCount: channels ?? 2,
                 codec: codec,
-                audioSpecificConfig: asc,
+                audioSpecificConfig: esds.audioSpecificConfig,
+                elementaryStreamDescriptor: esds.elementaryStreamDescriptor,
                 defaultSampleDuration: nil,
                 defaultSampleSize: nil,
                 defaultSampleFlags: nil
@@ -240,20 +246,44 @@ struct CMAFAudioDemuxer {
 
     /// `esds` contains an MPEG-4 ES_Descriptor; the AAC AudioSpecificConfig
     /// lives in the DecoderSpecificInfo tag (0x05).
-    private func esdsAudioSpecificConfig(
+    private func esdsConfiguration(
         _ entry: ISOBoxReader.ISOBox,
         reader: ISOBoxReader
-    ) throws -> Data? {
+    ) throws -> (
+        audioSpecificConfig: Data?,
+        elementaryStreamDescriptor: Data?
+    ) {
         guard entry.type == "mp4a",
               let esds = try reader.child(
                 "esds",
                 in: entry,
                 skipping: 28
               ) else {
-            return nil
+            return (nil, nil)
         }
-        var offset = esds.payloadRange.lowerBound + 4 // version/flags
-        let limit = esds.payloadRange.upperBound
+        let descriptorStart = esds.payloadRange.lowerBound + 4
+        guard descriptorStart < esds.payloadRange.upperBound else {
+            return (nil, nil)
+        }
+        let descriptor = try reader.readBytes(
+            at: descriptorStart..<esds.payloadRange.upperBound
+        )
+        let asc = try decoderSpecificInfo(
+            in: descriptorStart..<esds.payloadRange.upperBound,
+            reader: reader
+        )
+        return (asc, descriptor)
+    }
+
+    /// Searches nested MPEG-4 descriptors. ES_Descriptor (0x03) and
+    /// DecoderConfigDescriptor (0x04) contain small fixed headers before
+    /// their children, so a flat top-level walk cannot reach tag 0x05.
+    private func decoderSpecificInfo(
+        in range: Range<Int>,
+        reader: ISOBoxReader
+    ) throws -> Data? {
+        var offset = range.lowerBound
+        let limit = range.upperBound
         while offset + 2 <= limit {
             let tag = try reader.readUInt8(at: offset)
             offset += 1
@@ -270,7 +300,28 @@ struct CMAFAudioDemuxer {
             if tag == 0x05 {
                 return try reader.readBytes(at: offset..<(offset + Int(size)))
             }
-            offset += Int(size)
+            let payloadEnd = offset + Int(size)
+            let nestedStart: Int?
+            switch tag {
+            case 0x03:
+                // ES_ID(2), flags(1); optional fields are not used by CMAF
+                // audio produced by AVFoundation/VK.
+                nestedStart = offset + 3
+            case 0x04:
+                // objectTypeIndication(1), streamType(1), bufferSizeDB(3),
+                // maxBitrate(4), avgBitrate(4).
+                nestedStart = offset + 13
+            default:
+                nestedStart = nil
+            }
+            if let nestedStart, nestedStart < payloadEnd,
+               let nested = try decoderSpecificInfo(
+                   in: nestedStart..<payloadEnd,
+                   reader: reader
+               ) {
+                return nested
+            }
+            offset = payloadEnd
         }
         return nil
     }
