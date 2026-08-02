@@ -96,6 +96,7 @@ struct OfflineDeleteAllPresentation: Equatable {
 }
 
 struct SettingsView: View {
+    @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var sessionStore: SessionStore
@@ -132,13 +133,16 @@ struct SettingsView: View {
                     )
                 }
 
-                NavigationLink {
-                    OfflineStorageSettingsView()
-                } label: {
-                    Label(
-                        "Офлайн и хранилище",
-                        systemImage: "externaldrive"
-                    )
+                if OfflineDownloadsFeature.showsControls,
+                   !environment.isShareSessionActive {
+                    NavigationLink {
+                        OfflineStorageSettingsView()
+                    } label: {
+                        Label(
+                            "Офлайн и хранилище",
+                            systemImage: "externaldrive"
+                        )
+                    }
                 }
 
                 NavigationLink {
@@ -445,6 +449,7 @@ private struct EqualizerSettingsView: View {
 // MARK: - Offline & Storage
 
 private struct OfflineStorageSettingsView: View {
+    @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var offlineStore: OfflineTrackStore
     @ObservedObject private var offlinePlaylists =
@@ -630,28 +635,30 @@ private struct OfflineStorageSettingsView: View {
                 }
             }
 
-            Section("Автокэширование") {
-                Toggle(
-                    isOn: $settings.automaticOfflineCacheEnabled
-                ) {
-                    Label(
-                        "Автокэширование",
-                        systemImage: "arrow.triangle.2.circlepath"
-                    )
-                }
+            if !environment.isShareSessionActive {
+                Section("Автокэширование") {
+                    Toggle(
+                        isOn: $settings.automaticOfflineCacheEnabled
+                    ) {
+                        Label(
+                            "Автокэширование",
+                            systemImage: "arrow.triangle.2.circlepath"
+                        )
+                    }
 
-                Text(
-                    L10n.text(
-                        "Прослушанные треки автоматически "
-                            + "сохраняются для повторного "
-                            + "воспроизведения без интернета. "
-                            + "При заполнении хранилища старый "
-                            + "автокэш очищается первым; ручные "
-                            + "загрузки сохраняются."
+                    Text(
+                        L10n.text(
+                            "Прослушанные треки автоматически "
+                                + "сохраняются для повторного "
+                                + "воспроизведения без интернета. "
+                                + "При заполнении хранилища старый "
+                                + "автокэш очищается первым; ручные "
+                                + "загрузки сохраняются."
+                        )
                     )
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
             }
 
             Section("Управление") {
