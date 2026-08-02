@@ -78,11 +78,4 @@ extension WatchRemoteViewModel: WCSessionDelegate {
         }
     }
 
-    // Required when a build tool type-checks the embedded target against an
-    // iOS SDK; harmless on watchOS and supports multi-watch reactivation.
-    nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
-
-    nonisolated func sessionDidDeactivate(_ session: WCSession) {
-        session.activate()
-    }
 }
