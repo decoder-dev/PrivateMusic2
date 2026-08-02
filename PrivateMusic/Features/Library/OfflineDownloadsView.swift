@@ -1109,6 +1109,8 @@ private struct DownloadStorageSummary: View {
                 systemImage: "broom"
             )
             .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
         }
         .disabled(usage.automaticBytes <= 0)
     }
@@ -1120,6 +1122,8 @@ private struct DownloadStorageSummary: View {
                 systemImage: "trash"
             )
             .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
         }
         .disabled(usage.totalCount <= 0)
     }
