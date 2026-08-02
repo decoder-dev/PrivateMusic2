@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct PlaylistArtworkView: View {
     @ObservedObject private var offlinePlaylists =
@@ -28,21 +27,39 @@ struct PlaylistArtworkView: View {
 
     @ViewBuilder
     private var artwork: some View {
-        if let url = offlinePlaylists.localArtworkURL(for: playlist),
-           let image = UIImage(contentsOfFile: url.path) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .frame(width: size, height: size)
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: PremiumLayout.artworkRadius(for: size),
-                        style: .continuous
-                    )
-                )
+        if let url = offlinePlaylists.localArtworkURL(for: playlist) {
+            CachedRemoteImage(
+                url: url,
+                maxPixelSize: max(size * 3, 128)
+            ) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+            } placeholder: {
+                artworkPlaceholder
+            }
+            .frame(width: size, height: size)
+            .clipShape(artworkShape)
         } else {
             AsyncArtwork(url: playlist.artworkURL, size: size)
         }
+    }
+
+    private var artworkPlaceholder: some View {
+        Rectangle()
+            .fill(Color(uiColor: .secondarySystemBackground))
+            .overlay {
+                Image(systemName: "music.note")
+                    .font(.system(size: size * 0.3, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+    }
+
+    private var artworkShape: RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: PremiumLayout.artworkRadius(for: size),
+            style: .continuous
+        )
     }
 
     private var sourceBadge: some View {

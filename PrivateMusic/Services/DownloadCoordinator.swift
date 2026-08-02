@@ -14,12 +14,13 @@ final class DownloadCoordinator {
     private struct RunningEntry {
         let id: String
         let task: Task<Void, Error>
+        var subscribers: Set<UUID>
     }
 
     private struct WaitingEntry {
+        let token: UUID
         let id: String
-        let operation: @MainActor () async throws -> Void
-        let continuation: CheckedContinuation<Void, Never>
+        let continuation: CheckedContinuation<Bool, Never>
     }
 
     private var running: [String: RunningEntry] = [:]
@@ -35,8 +36,9 @@ final class DownloadCoordinator {
         id: String,
         operation: @escaping @MainActor () async throws -> Void
     ) async throws {
-        if let existing = running[id] {
-            try await existing.task.value
+        let token = UUID()
+        if let task = attachSubscriber(id: id, token: token) {
+            try await awaitSharedTask(task, id: id, token: token)
             return
         }
         guard !queueIsBlocked else {
@@ -44,29 +46,34 @@ final class DownloadCoordinator {
         }
         if availableSlots > 0 {
             availableSlots -= 1
-            try await run(id: id, operation: operation)
+            try await run(id: id, token: token, operation: operation)
             return
         }
 
         // No free slot: wait in the shared FIFO queue.
-        await withCheckedContinuation { continuation in
-            waiters.append(
-                WaitingEntry(
-                    id: id,
-                    operation: operation,
-                    continuation: continuation
+        let receivedSlot = await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                waiters.append(
+                    WaitingEntry(
+                        token: token,
+                        id: id,
+                        continuation: continuation
+                    )
                 )
-            )
+            }
+        } onCancel: { [weak self] in
+            Task { @MainActor in
+                self?.cancelWaitingSubscriber(token: token)
+            }
         }
-        try Task.checkCancellation()
-        guard !queueIsBlocked else {
+        guard receivedSlot, !queueIsBlocked else {
             throw CancellationError()
         }
-        if let existing = running[id] {
-            try await existing.task.value
+        if let task = attachSubscriber(id: id, token: token) {
+            try await awaitSharedTask(task, id: id, token: token)
             return
         }
-        try await run(id: id, operation: operation)
+        try await run(id: id, token: token, operation: operation)
     }
 
     /// Blocks new work, cancels every running download and wakes every waiter
@@ -78,7 +85,7 @@ final class DownloadCoordinator {
             entry.task.cancel()
         }
         for waiter in waiters {
-            waiter.continuation.resume()
+            waiter.continuation.resume(returning: false)
         }
         waiters.removeAll()
     }
@@ -98,6 +105,7 @@ final class DownloadCoordinator {
 
     private func run(
         id: String,
+        token: UUID,
         operation: @escaping @MainActor () async throws -> Void
     ) async throws {
         let task = Task { @MainActor [weak self] in
@@ -110,12 +118,65 @@ final class DownloadCoordinator {
                 throw error
             }
         }
-        running[id] = RunningEntry(id: id, task: task)
+        running[id] = RunningEntry(
+            id: id,
+            task: task,
+            subscribers: [token]
+        )
+        try await awaitSharedTask(task, id: id, token: token)
+    }
+
+    private func attachSubscriber(id: String, token: UUID) -> Task<Void, Error>? {
+        guard var entry = running[id] else { return nil }
+        entry.subscribers.insert(token)
+        running[id] = entry
+        return entry.task
+    }
+
+    private func awaitSharedTask(
+        _ task: Task<Void, Error>,
+        id: String,
+        token: UUID
+    ) async throws {
         do {
-            try await task.value
+            try await withTaskCancellationHandler {
+                try await task.value
+            } onCancel: { [weak self] in
+                Task { @MainActor in
+                    self?.detachSubscriber(
+                        id: id,
+                        token: token,
+                        cancelIfLast: true
+                    )
+                }
+            }
+            try Task.checkCancellation()
+            detachSubscriber(id: id, token: token, cancelIfLast: false)
         } catch {
+            detachSubscriber(id: id, token: token, cancelIfLast: false)
             throw error
         }
+    }
+
+    private func detachSubscriber(
+        id: String,
+        token: UUID,
+        cancelIfLast: Bool
+    ) {
+        guard var entry = running[id] else { return }
+        entry.subscribers.remove(token)
+        if cancelIfLast, entry.subscribers.isEmpty {
+            entry.task.cancel()
+        }
+        running[id] = entry
+    }
+
+    private func cancelWaitingSubscriber(token: UUID) {
+        guard let index = waiters.firstIndex(where: { $0.token == token }) else {
+            return
+        }
+        let waiter = waiters.remove(at: index)
+        waiter.continuation.resume(returning: false)
     }
 
     private func finish(_ id: String) {
@@ -124,8 +185,13 @@ final class DownloadCoordinator {
         guard !queueIsBlocked else { return }
         while availableSlots > 0, !waiters.isEmpty {
             let next = waiters.removeFirst()
+            let duplicates = waiters.filter { $0.id == next.id }
+            waiters.removeAll { $0.id == next.id }
             availableSlots -= 1
-            next.continuation.resume()
+            next.continuation.resume(returning: true)
+            for duplicate in duplicates {
+                duplicate.continuation.resume(returning: true)
+            }
         }
     }
 }

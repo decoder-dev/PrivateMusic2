@@ -810,9 +810,9 @@ private struct OfflineStorageSettingsView: View {
     }
 
     private var deleteAllTitleColor: Color {
-        hasSavedOrActiveContent && deleteAllPhase == .idle
-            ? Color.red
-            : Color.primary
+        // Typography stays monochrome in both supported themes. Destructive
+        // intent is communicated by the icon, role and confirmation dialog.
+        Color.primary
     }
 
     private func formattedBytes(_ value: Int64) -> String {

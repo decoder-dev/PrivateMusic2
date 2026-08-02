@@ -13,7 +13,7 @@ struct CachedRemoteImage<
     @ViewBuilder let placeholder: () -> Placeholder
 
     @State private var image: UIImage?
-    @State private var loadedURL: URL?
+    @State private var loadedIdentity: LoadIdentity?
 
     var body: some View {
         ZStack {
@@ -25,65 +25,88 @@ struct CachedRemoteImage<
         }
         .animation(
             reduceMotion ? nil : .easeOut(duration: 0.18),
-            value: loadedURL
+            value: loadedIdentity
         )
-        .task(id: url) {
-            await load()
+        .task(id: loadIdentity) {
+            await load(loadIdentity)
         }
     }
 
+    private var loadIdentity: LoadIdentity {
+        let requestedSize = maxPixelSize.isFinite ? maxPixelSize : 1_200
+        let bucket = max(
+            Int((requestedSize / 128).rounded(.up)) * 128,
+            128
+        )
+        return LoadIdentity(url: url, pixelSize: bucket)
+    }
+
     @MainActor
-    private func load() async {
-        guard let url else {
+    private func load(_ identity: LoadIdentity) async {
+        guard let url = identity.url else {
             image = nil
-            loadedURL = nil
+            loadedIdentity = nil
             return
         }
-        let pixelSize = max(maxPixelSize, 64)
+        let pixelSize = CGFloat(identity.pixelSize)
         if let cached = ArtworkImageCache.shared.image(
             for: url,
             maxPixelSize: pixelSize
         ) {
             image = cached
-            loadedURL = url
+            loadedIdentity = identity
             return
         }
+
+        // Never leave artwork from the previous track visible while the new
+        // request is in flight.
+        image = nil
+        loadedIdentity = nil
+
         do {
-            let (data, response) = try await ArtworkImageCache.shared.session
-                .data(from: url)
+            let data: Data
+            if url.isFileURL {
+                data = try await Task.detached(priority: .utility) {
+                    try Data(contentsOf: url, options: .mappedIfSafe)
+                }.value
+            } else {
+                let (remoteData, response) = try await ArtworkImageCache
+                    .shared.session.data(from: url)
+                guard let http = response as? HTTPURLResponse,
+                      (200..<300).contains(http.statusCode) else {
+                    throw URLError(.badServerResponse)
+                }
+                data = remoteData
+            }
             guard !Task.isCancelled,
-                  self.url == url else {
+                  loadIdentity == identity else {
                 return
             }
-            guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode),
-                  let loaded = await ArtworkImageCache.downsample(
+            guard let loaded = await ArtworkImageCache.downsample(
                     data,
                     maxPixelSize: pixelSize
-                  ) else {
-                if loadedURL != url {
-                    withAnimation(.easeOut(duration: 0.16)) {
-                        image = nil
-                        loadedURL = nil
-                    }
-                }
-                return
-            }
+                  ) else { return }
+            guard !Task.isCancelled, loadIdentity == identity else { return }
             ArtworkImageCache.shared.insert(
                 loaded,
                 for: url,
                 maxPixelSize: pixelSize
             )
             image = loaded
-            loadedURL = url
+            loadedIdentity = identity
         } catch is CancellationError {
             return
         } catch {
-            guard self.url == url, loadedURL != url else { return }
+            guard loadIdentity == identity else { return }
             image = nil
-            loadedURL = nil
+            loadedIdentity = nil
             return
         }
+    }
+
+    private struct LoadIdentity: Hashable {
+        let url: URL?
+        let pixelSize: Int
     }
 }
 

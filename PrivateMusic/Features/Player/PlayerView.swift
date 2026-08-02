@@ -132,13 +132,11 @@ struct PlayerView: View {
         )
 
         Group {
-            if metrics.mode == .landscape {
-                landscapePlayerContent(track, metrics: metrics)
-            } else if metrics.requiresVerticalScrolling(
+            if metrics.requiresVerticalScrolling(
                 containerHeight: size.height
             ) {
                 ScrollView(.vertical) {
-                    portraitPlayerContent(track, metrics: metrics)
+                    playerContentForCurrentMode(track, metrics: metrics)
                         .frame(
                             minHeight: metrics.minimumContentHeight,
                             alignment: .top
@@ -146,7 +144,7 @@ struct PlayerView: View {
                 }
                 .scrollIndicators(.hidden)
             } else {
-                portraitPlayerContent(track, metrics: metrics)
+                playerContentForCurrentMode(track, metrics: metrics)
             }
         }
         .frame(
@@ -156,6 +154,18 @@ struct PlayerView: View {
         .padding(.leading, metrics.leadingPadding)
         .padding(.trailing, metrics.trailingPadding)
         .foregroundStyle(playerForeground)
+    }
+
+    @ViewBuilder
+    private func playerContentForCurrentMode(
+        _ track: Track,
+        metrics: PlayerLayoutMetrics
+    ) -> some View {
+        if metrics.mode == .landscape {
+            landscapePlayerContent(track, metrics: metrics)
+        } else {
+            portraitPlayerContent(track, metrics: metrics)
+        }
     }
 
     private func portraitPlayerContent(
@@ -1062,7 +1072,7 @@ struct PlayerLayoutMetrics: Equatable {
 
         let primaryControlsHeight: CGFloat = 60
         let quickActionsHeight: CGFloat =
-            usesAccessibilityText ? 148 : 64
+            usesAccessibilityText ? 200 : 64
         let bottomPadding = max(
             safeBottom,
             mode == .landscape ? 6 : 10
@@ -1430,7 +1440,7 @@ private struct PlayerActionsSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isInLibrary ? Color.red : Color.primary)
+        .foregroundStyle(Color.primary)
         .background(
             Color(uiColor: .secondarySystemBackground),
             in: RoundedRectangle(cornerRadius: 16, style: .continuous)
