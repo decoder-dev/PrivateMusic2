@@ -96,6 +96,15 @@ enum AudioRoutePolicy {
     }
 }
 
+enum AudioProcessingRoutePolicy {
+    /// Remote AVPlayer handoff bypasses MTAudioProcessingTap. Keep decoding on
+    /// the phone while DSP is active; AirPlay remains available as an audio
+    /// output route and receives the processed signal.
+    static func allowsExternalPlayback(requiresAudioTap: Bool) -> Bool {
+        !requiresAudioTap
+    }
+}
+
 enum AudioInterruptionPolicy {
     static func shouldResume(
         wasPlayingBeforeInterruption: Bool,
@@ -229,7 +238,12 @@ final class AudioPlayer: ObservableObject {
                     spatialAudio: spatialAudio,
                     spatialIntensity: spatialIntensity
                 )
-                if requiredTap != self.equalizer.requiresAudioTap,
+                let requiresAudioTap = self.equalizer.requiresAudioTap
+                self.player.allowsExternalPlayback = AudioProcessingRoutePolicy
+                    .allowsExternalPlayback(
+                        requiresAudioTap: requiresAudioTap
+                    )
+                if requiredTap != requiresAudioTap,
                    self.player.currentItem != nil {
                     self.reloadCurrentItemForAudioProcessing()
                 }
@@ -754,7 +768,10 @@ final class AudioPlayer: ObservableObject {
 
     private func configurePlayerInstance() {
         player.automaticallyWaitsToMinimizeStalling = true
-        player.allowsExternalPlayback = true
+        player.allowsExternalPlayback = AudioProcessingRoutePolicy
+            .allowsExternalPlayback(
+                requiresAudioTap: equalizer.requiresAudioTap
+            )
     }
 
     private func observePlayer() {

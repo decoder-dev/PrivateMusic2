@@ -3,6 +3,19 @@ import XCTest
 @testable import PrivateMusic
 
 final class ConnectionStabilityTests: XCTestCase {
+    func testAudioProcessingKeepsAllOutputsOnLocalDecodePath() {
+        XCTAssertFalse(
+            AudioProcessingRoutePolicy.allowsExternalPlayback(
+                requiresAudioTap: true
+            )
+        )
+        XCTAssertTrue(
+            AudioProcessingRoutePolicy.allowsExternalPlayback(
+                requiresAudioTap: false
+            )
+        )
+    }
+
     func testTransientPolicyRetriesOnlyConnectivityFailures() {
         XCTAssertEqual(RequestRetryPolicy.transient.maximumAttempts, 3)
         XCTAssertTrue(

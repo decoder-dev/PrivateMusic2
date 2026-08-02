@@ -104,6 +104,17 @@ for required_symbol in (
 
 if "options: [.allowAirPlay, .allowBluetoothA2DP]" in audio_player_source:
     fail("playback audio session must not use incompatible route options")
+for required_processing_route_symbol in (
+    "enum AudioProcessingRoutePolicy",
+    "player.allowsExternalPlayback = AudioProcessingRoutePolicy",
+):
+    if required_processing_route_symbol not in audio_player_source:
+        fail(
+            "audio processing must remain active on external output routes: "
+            f"{required_processing_route_symbol}"
+        )
+if "player.allowsExternalPlayback = true" in audio_player_source:
+    fail("external AVPlayer handoff must not bypass active audio processing")
 configure_audio_session = audio_player_source.split(
     "private func configureAudioSession()", 1
 )[1].split("private func activateAudioSession()", 1)[0]

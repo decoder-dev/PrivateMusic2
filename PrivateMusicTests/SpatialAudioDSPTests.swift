@@ -71,4 +71,22 @@ final class SpatialAudioDSPTests: XCTestCase {
         XCTAssertTrue(processor.requiresAudioTap)
         XCTAssertFalse(processor.isEnabled)
     }
+
+    func testEqualizerAloneRequiresProcessingTapForEveryOutputRoute() {
+        let processor = EqualizerDSP()
+        processor.update(
+            enabled: true,
+            gains: EqualizerPreset.rock.gains,
+            preamp: 0,
+            spatialAudio: false
+        )
+
+        XCTAssertTrue(processor.requiresAudioTap)
+        XCTAssertTrue(processor.isEnabled)
+        XCTAssertFalse(
+            AudioProcessingRoutePolicy.allowsExternalPlayback(
+                requiresAudioTap: processor.requiresAudioTap
+            )
+        )
+    }
 }
