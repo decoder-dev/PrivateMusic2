@@ -130,7 +130,7 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.25.2-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.25.3-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -139,29 +139,30 @@ jobs:
         run: |
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.25.2
+          Private Music 3.25.3
 
-          - Исправлено HLS-SOURCE-11828 при «Поделиться»: MPEG-TS поток
-            demux в ADTS/MP3 перед транскодом, пауза плеера на время
-            экспорта и повтор открытия файла.
-          - Офлайн-загрузки по-прежнему временно скрыты; сохранение —
-            через «Поделиться».
-          - Сборка IPA на Xcode 27 / iOS 27 SDK.
+          - Исправлен вылет при «Поделиться»: системное меню шаринга больше
+            не встраивается как корень sheet (корректный host + popover
+            на iPad).
+          - Demux MPEG-TS при экспорте больше не грузит весь stitch в RAM
+            (memory-map), чтобы не убивать процесс по памяти.
+          - Убран unsafeDowncast формата аудио при транскоде в M4A.
+          - Офлайн-загрузки по-прежнему временно скрыты.
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом.
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.25.2-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.25.3-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.25.2" \
+              --title "Private Music 3.25.3" \
               --notes-file "$NOTES"
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.25.2-unsigned.ipa" \
-              --title "Private Music 3.25.2" \
+              "$PWD/artifacts/PrivateMusic-3.25.3-unsigned.ipa" \
+              --title "Private Music 3.25.3" \
               --notes-file "$NOTES"
           fi
 
@@ -169,7 +170,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.25.2-unsigned
-          path: artifacts/PrivateMusic-3.25.2-unsigned.ipa
+          name: PrivateMusic-3.25.3-unsigned
+          path: artifacts/PrivateMusic-3.25.3-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
