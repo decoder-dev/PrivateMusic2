@@ -1581,11 +1581,17 @@ actor HLSSegmentExporter {
         for item in track.formatDescriptions {
             // CF bridging makes `as? CMFormatDescription` always succeed, so
             // validate the type ID before reading the audio ASBD.
-            let candidate = item as CMFormatDescription
-            guard CFGetTypeID(candidate) == CMFormatDescriptionGetTypeID(),
-                  let pointer = CMAudioFormatDescriptionGetStreamBasicDescription(
-                    candidate
-                  ) else {
+            let cfItem = item as CFTypeRef
+            guard CFGetTypeID(cfItem) == CMFormatDescriptionGetTypeID() else {
+                continue
+            }
+            let formatDescription = unsafeBitCast(
+                cfItem,
+                to: CMFormatDescription.self
+            )
+            guard let pointer = CMAudioFormatDescriptionGetStreamBasicDescription(
+                formatDescription
+            ) else {
                 continue
             }
             return pointer.pointee
