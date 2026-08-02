@@ -37,76 +37,61 @@ struct OfflineDownloadsView: View {
     @State private var showsDeletePlaylistConfirmation = false
 
     var body: some View {
-        Group {
-            if hasNoContent {
-                EmptyStateView(
-                    title: "Нет загрузок",
-                    systemImage: "arrow.down.circle",
-                    description:
-                        "Скачайте треки самостоятельно — они останутся "
-                            + "на устройстве, пока вы их не удалите. "
-                            + "Или включите автокэш в Настройках, "
-                            + "и прослушанное будет сохраняться само."
+        List {
+            Section {
+                DownloadStorageSummary(
+                    usage: offlineStore.storageUsage,
+                    onClearCache: {
+                        showsClearCacheConfirmation = true
+                    },
+                    onDeleteAll: {
+                        showsDeleteAllConfirmation = true
+                    }
                 )
-                .padding()
-            } else {
-                List {
-                    Section {
-                        DownloadStorageSummary(
-                            usage: offlineStore.storageUsage,
-                            onClearCache: {
-                                showsClearCacheConfirmation = true
-                            },
-                            onDeleteAll: {
-                                showsDeleteAllConfirmation = true
-                            }
-                        )
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                    }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+            }
 
-                    if activeDownloadCount > 0 {
-                        Section {
-                            HStack(spacing: 12) {
-                                ProgressView()
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(L10n.text("Идёт загрузка"))
-                                        .font(.subheadline.weight(.semibold))
-                                    Text(
-                                        L10n.format(
-                                            "Активные загрузки: %d",
-                                            activeDownloadCount
-                                        )
-                                    )
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                }
-                            }
+            if activeDownloadCount > 0 {
+                Section {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(L10n.text("Идёт загрузка"))
+                                .font(.subheadline.weight(.semibold))
+                            Text(
+                                L10n.format(
+                                    "Активные загрузки: %d",
+                                    activeDownloadCount
+                                )
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         }
-                    }
-
-                    Section {
-                        Picker(L10n.text("Раздел"), selection: $section) {
-                            ForEach(DownloadsSection.allCases) { value in
-                                Text(value.title).tag(value)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                    }
-
-                    switch section {
-                    case .tracks:
-                        tracksSection(manualRecords)
-                    case .cache:
-                        cacheSection(cacheRecords)
-                    case .playlists:
-                        playlistsSections
                     }
                 }
-                .listStyle(.insetGrouped)
-                .animation(.easeInOut(duration: 0.3), value: contentSnapshot)
+            }
+
+            Section {
+                Picker(L10n.text("Раздел"), selection: $section) {
+                    ForEach(DownloadsSection.allCases) { value in
+                        Text(value.title).tag(value)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            switch section {
+            case .tracks:
+                tracksSection(manualRecords)
+            case .cache:
+                cacheSection(cacheRecords)
+            case .playlists:
+                playlistsSections
             }
         }
+        .listStyle(.insetGrouped)
+        .animation(.easeInOut(duration: 0.3), value: contentSnapshot)
         .background(ThemeBackground())
         .scrollContentBackground(.hidden)
         .navigationTitle(navigationTitle)
@@ -325,12 +310,6 @@ struct OfflineDownloadsView: View {
                 hasLocalTracks: !section.tracks.isEmpty
             )
         }
-    }
-
-    private var hasNoContent: Bool {
-        validRecords.isEmpty
-            && activeSections.isEmpty
-            && downloadedSections.isEmpty
     }
 
     private var activeDownloadCount: Int {
