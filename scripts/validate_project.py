@@ -167,6 +167,10 @@ if "productionEnabled = false" not in feature_source:
         "offline downloads must stay disabled for the stable build "
         "(OfflineDownloadsFeature.productionEnabled = false)"
     )
+if "MPEGTSAudioExtractor" not in all_source:
+    fail("MPEG-TS demux for HLS share export is missing")
+if "pauseForShareExport" not in all_source:
+    fail("share export must pause playback before HLS transcode")
 for required_route_symbol in (
     "shouldPauseAfterRouteLoss",
     "setPrefersInterruptionOnRouteDisconnect",

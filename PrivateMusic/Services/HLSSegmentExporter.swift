@@ -214,9 +214,30 @@ actor HLSSegmentExporter {
 
         try Task.checkCancellation()
         await progress?(.convertingToM4A)
+
+        // Stitched MPEG-TS with discontinuities often fails AVAssetReader with
+        // AVError.fileFailedToParse (-11828 / HLS-SOURCE-11828). Demux to a
+        // raw ADTS/MP3 elementary stream first — that opens reliably.
+        let transcodeURL: URL
+        if container == .mpegTransportStream,
+           let stitched = try? Data(contentsOf: sourceURL),
+           let extracted = MPEGTSAudioExtractor.extractAudio(from: stitched),
+           extracted.kind != .unknown {
+            let elementaryURL = stagingDirectory
+                .appendingPathComponent("elementary")
+                .appendingPathExtension(extracted.kind.fileExtension)
+            try extracted.data.write(to: elementaryURL, options: .atomic)
+            logger.info(
+                "HLS export: demuxed MPEG-TS to \(extracted.kind.fileExtension, privacy: .public), \(extracted.data.count) bytes"
+            )
+            transcodeURL = elementaryURL
+        } else {
+            transcodeURL = sourceURL
+        }
+
         do {
             try await transcodeToM4A(
-                source: AVURLAsset(url: sourceURL),
+                source: AVURLAsset(url: transcodeURL),
                 destination: destination
             )
             try enforceSizeLimit(destination, limit: fileSizeLimit)
@@ -1549,6 +1570,38 @@ actor HLSSegmentExporter {
         }
     }
 
+    /// Loads audio tracks with one retry. Media-services contention (active
+    /// playback) and freshly written files sometimes fail the first
+    /// `loadTracks` with `AVError.fileFailedToParse` (-11828).
+    private func loadAudioTracks(
+        from source: AVURLAsset
+    ) async throws -> [AVAssetTrack] {
+        var lastError: Error?
+        for attempt in 0..<2 {
+            try Task.checkCancellation()
+            do {
+                _ = try await source.load(.isPlayable, .duration)
+                let tracks = try await source.loadTracks(withMediaType: .audio)
+                if !tracks.isEmpty {
+                    return tracks
+                }
+                // Empty tracks are not a parse failure — let the caller map
+                // that to `noAudioTrack` without inventing a SOURCE code.
+                return []
+            } catch {
+                lastError = error
+                logger.error(
+                    "stage=openingLinearSource attempt=\(attempt) error=\(String(describing: error), privacy: .public)"
+                )
+            }
+            if attempt == 0 {
+                try await Task.sleep(for: .milliseconds(250))
+            }
+        }
+        if let lastError { throw lastError }
+        return []
+    }
+
     // MARK: - Transcode (any AVFoundation asset) → AAC M4A
 
     /// Universal path: decode the source to linear PCM with AVAssetReader
@@ -1565,7 +1618,9 @@ actor HLSSegmentExporter {
     ) async throws {
         let tracks: [AVAssetTrack]
         do {
-            tracks = try await source.loadTracks(withMediaType: .audio)
+            tracks = try await loadAudioTracks(from: source)
+        } catch let error as HLSDiagnosticError {
+            throw error
         } catch let error as NSError {
             logger.error(
                 "stage=openingLinearSource domain=\(error.domain, privacy: .public) code=\(error.code)"
@@ -1881,6 +1936,12 @@ struct HLSDiagnosticError: LocalizedError, Sendable {
              .creatingReader,
              .startingReader,
              .validatingOutput:
+            if publicCode == "HLS-SOURCE-11828" {
+                return L10n.text(
+                    "Не удалось разобрать собранный аудиопоток. "
+                        + "Попробуйте ещё раз или выберите другой трек."
+                )
+            }
             return L10n.text("Не удалось открыть собранный аудиопоток.")
         default:
             return L10n.text("Не удалось создать аудиофайл из этого потока.")

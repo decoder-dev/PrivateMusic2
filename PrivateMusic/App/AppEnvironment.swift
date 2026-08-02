@@ -142,6 +142,8 @@ final class AppEnvironment: ObservableObject {
         OfflinePlaylistStore.shared.configure(accountID: accountID)
     }
 
+    private var resumePlaybackAfterShare = false
+
     /// Begins a share-export session: pauses offline downloads / auto-cache
     /// and hides those controls until `endShareSession()` balances it out.
     func beginShareSession() {
@@ -154,6 +156,12 @@ final class AppEnvironment: ObservableObject {
         predictivePreDownloadTask?.cancel()
         predictivePreDownloadTask = nil
         DownloadCoordinator.shared.cancelAll()
+        // Free media services for HLS demux / AVAssetReader. Without this,
+        // stitched MPEG-TS often fails with HLS-SOURCE-11828.
+        resumePlaybackAfterShare = player.isPlaying
+        if resumePlaybackAfterShare {
+            player.pauseForShareExport()
+        }
     }
 
     func endShareSession() {
@@ -162,6 +170,10 @@ final class AppEnvironment: ObservableObject {
         guard shareSessionDepth == 0 else { return }
         isShareSessionActive = false
         DownloadCoordinator.shared.unblockQueue()
+        if resumePlaybackAfterShare {
+            resumePlaybackAfterShare = false
+            player.resume()
+        }
     }
 
     /// Prepares a shareable audio file, preferring the already-downloaded

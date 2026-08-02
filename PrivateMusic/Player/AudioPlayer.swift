@@ -425,6 +425,13 @@ final class AudioPlayer: ObservableObject {
         pausePreservingIntent()
     }
 
+    /// Soft pause used while preparing a share export so AVFoundation media
+    /// services are free for `AVAssetReader` without clearing the user's
+    /// intent to keep listening afterwards.
+    func pauseForShareExport() {
+        pausePreservingIntent()
+    }
+
     private func pausePreservingIntent() {
         player.pause()
         isPlaying = false
