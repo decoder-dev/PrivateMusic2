@@ -163,15 +163,32 @@ struct Album: Decodable, Hashable, Identifiable, Sendable {
             Artwork.self,
             forKey: .photo
         )
-        let rawArtwork = try container.decodeIfPresent(String.self, forKey: .photo600)
-            ?? container.decodeIfPresent(String.self, forKey: .photo300)
-            ?? container.decodeIfPresent(String.self, forKey: .photo270)
-            ?? nestedArtwork?.photo600
-            ?? nestedArtwork?.photo300
-            ?? nestedArtwork?.photo270
-            ?? nestedPhoto?.photo600
-            ?? nestedPhoto?.photo300
-            ?? nestedPhoto?.photo270
+        var rawArtwork = try container.decodeIfPresent(
+            String.self,
+            forKey: .photo600
+        )
+        if rawArtwork == nil {
+            rawArtwork = try container.decodeIfPresent(
+                String.self,
+                forKey: .photo300
+            )
+        }
+        if rawArtwork == nil {
+            rawArtwork = try container.decodeIfPresent(
+                String.self,
+                forKey: .photo270
+            )
+        }
+        if rawArtwork == nil {
+            rawArtwork = nestedArtwork?.photo600
+                ?? nestedArtwork?.photo300
+                ?? nestedArtwork?.photo270
+        }
+        if rawArtwork == nil {
+            rawArtwork = nestedPhoto?.photo600
+                ?? nestedPhoto?.photo300
+                ?? nestedPhoto?.photo270
+        }
         artworkURL = rawArtwork.flatMap(URL.secureRemoteURL)
         let integerReleaseDate = try? container.decode(
             Int.self,
