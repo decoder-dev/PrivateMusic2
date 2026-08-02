@@ -137,6 +137,61 @@ final class PlayerDismissGestureTests: XCTestCase {
     }
 }
 
+final class PlayerArtworkCarouselPolicyTests: XCTestCase {
+    func testMiddleTrackShowsPreviousAndNextArtwork() {
+        let neighbors = PlayerArtworkCarouselPolicy.neighborIndices(
+            queueCount: 3,
+            currentIndex: 1,
+            repeatMode: .off
+        )
+
+        XCTAssertEqual(neighbors.previous, 0)
+        XCTAssertEqual(neighbors.next, 2)
+    }
+
+    func testQueueEdgesDoNotWrapWhenRepeatIsOff() {
+        XCTAssertNil(
+            PlayerArtworkCarouselPolicy.neighborIndices(
+                queueCount: 3,
+                currentIndex: 0,
+                repeatMode: .off
+            ).previous
+        )
+        XCTAssertNil(
+            PlayerArtworkCarouselPolicy.neighborIndices(
+                queueCount: 3,
+                currentIndex: 2,
+                repeatMode: .off
+            ).next
+        )
+    }
+
+    func testRepeatAllWrapsAdjacentArtworkAtQueueEdges() {
+        let first = PlayerArtworkCarouselPolicy.neighborIndices(
+            queueCount: 3,
+            currentIndex: 0,
+            repeatMode: .all
+        )
+        let last = PlayerArtworkCarouselPolicy.neighborIndices(
+            queueCount: 3,
+            currentIndex: 2,
+            repeatMode: .all
+        )
+
+        XCTAssertEqual(first.previous, 2)
+        XCTAssertEqual(last.next, 0)
+    }
+
+    func testCarouselKeepsMainArtworkDominantAndVisible() {
+        let layout = PlayerArtworkCarouselPolicy.layout(for: 320)
+
+        XCTAssertEqual(layout.centerSize, 268.8, accuracy: 0.001)
+        XCTAssertLessThan(layout.neighborSize, layout.centerSize)
+        XCTAssertGreaterThan(layout.neighborOffset, layout.centerSize / 2)
+        XCTAssertLessThan(layout.neighborOffset, 320)
+    }
+}
+
 @MainActor
 final class PlayerSleepTimerTests: XCTestCase {
     func testSleepTimerCanBeScheduledAndCancelledFromPlayer() throws {

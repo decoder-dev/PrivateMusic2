@@ -296,22 +296,66 @@ struct PlayerView: View {
         _ track: Track,
         size: CGFloat
     ) -> some View {
-        AsyncArtwork(url: track.artworkURL, size: size)
-            .id(track.id)
-            .clipShape(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(playerForeground.opacity(0.08), lineWidth: 0.7)
+        let layout = PlayerArtworkCarouselPolicy.layout(for: size)
+        let neighbors = PlayerArtworkCarouselPolicy.neighborIndices(
+            queueCount: player.queue.count,
+            currentIndex: player.currentIndex,
+            repeatMode: player.repeatMode
+        )
+
+        return ZStack {
+            ZStack {
+                if let previousIndex = neighbors.previous,
+                   player.queue.indices.contains(previousIndex) {
+                    carouselNeighbor(
+                        player.queue[previousIndex],
+                        size: layout.neighborSize,
+                        role: "previous"
+                    )
+                    .offset(x: -layout.neighborOffset)
+                }
+                if let nextIndex = neighbors.next,
+                   player.queue.indices.contains(nextIndex) {
+                    carouselNeighbor(
+                        player.queue[nextIndex],
+                        size: layout.neighborSize,
+                        role: "next"
+                    )
+                    .offset(x: layout.neighborOffset)
+                }
             }
-            .shadow(color: .black.opacity(0.42), radius: 26, y: 14)
-            .offset(
-                x: reduceMotion ? 0 : artworkDrag.width * 0.16,
-                y: reduceMotion ? 0 : artworkDrag.height * 0.08
+            .frame(width: size, height: size)
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: PremiumLayout.artworkRadius(for: size),
+                    style: .continuous
+                )
             )
-            .rotationEffect(
-                .degrees(reduceMotion ? 0 : artworkDrag.width / 65)
+
+            AsyncArtwork(url: track.artworkURL, size: layout.centerSize)
+                .id(track.id)
+                .overlay {
+                    RoundedRectangle(
+                        cornerRadius: PremiumLayout.artworkRadius(
+                            for: layout.centerSize
+                        ),
+                        style: .continuous
+                    )
+                    .stroke(playerForeground.opacity(0.08), lineWidth: 0.7)
+                }
+                .shadow(color: .black.opacity(0.42), radius: 26, y: 14)
+                .offset(
+                    x: reduceMotion ? 0 : artworkDrag.width * 0.16,
+                    y: reduceMotion ? 0 : artworkDrag.height * 0.08
+                )
+                .rotationEffect(
+                    .degrees(reduceMotion ? 0 : artworkDrag.width / 65)
+                )
+        }
+            .frame(width: size, height: size)
+            .contentShape(Rectangle())
+            .offset(
+                x: reduceMotion ? 0 : artworkDrag.width * 0.03
             )
             .animation(
                 reduceMotion
@@ -355,6 +399,25 @@ struct PlayerView: View {
             ) {
                 closePlayer()
             }
+    }
+
+    private func carouselNeighbor(
+        _ track: Track,
+        size: CGFloat,
+        role: String
+    ) -> some View {
+        AsyncArtwork(url: track.artworkURL, size: size)
+            .id("\(role)-\(track.id)")
+            .saturation(0.82)
+            .opacity(0.58)
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: PremiumLayout.artworkRadius(for: size),
+                    style: .continuous
+                )
+                .stroke(playerForeground.opacity(0.06), lineWidth: 0.6)
+            }
+            .accessibilityHidden(true)
     }
 
     private func trackMetadata(_ track: Track) -> some View {
@@ -1230,6 +1293,54 @@ enum PlayerDismissGesturePolicy {
             return false
         }
         return vertical >= 140 || predictedEndTranslation.height >= 120
+    }
+}
+
+enum PlayerArtworkCarouselPolicy {
+    struct Layout: Equatable {
+        let centerSize: CGFloat
+        let neighborSize: CGFloat
+        let neighborOffset: CGFloat
+    }
+
+    struct NeighborIndices: Equatable {
+        let previous: Int?
+        let next: Int?
+    }
+
+    static func layout(for artworkSize: CGFloat) -> Layout {
+        let safeSize = max(artworkSize, 0)
+        let centerSize = safeSize * 0.84
+        return Layout(
+            centerSize: centerSize,
+            neighborSize: centerSize * 0.82,
+            neighborOffset: safeSize * 0.5
+        )
+    }
+
+    static func neighborIndices(
+        queueCount: Int,
+        currentIndex: Int?,
+        repeatMode: RepeatMode
+    ) -> NeighborIndices {
+        guard queueCount > 1,
+              let currentIndex,
+              (0..<queueCount).contains(currentIndex) else {
+            return NeighborIndices(previous: nil, next: nil)
+        }
+        let previous: Int?
+        if currentIndex > 0 {
+            previous = currentIndex - 1
+        } else {
+            previous = repeatMode == .all ? queueCount - 1 : nil
+        }
+        let next: Int?
+        if currentIndex + 1 < queueCount {
+            next = currentIndex + 1
+        } else {
+            next = repeatMode == .all ? 0 : nil
+        }
+        return NeighborIndices(previous: previous, next: next)
     }
 }
 
