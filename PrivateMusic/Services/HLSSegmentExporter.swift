@@ -419,7 +419,8 @@ actor HLSSegmentExporter {
         var asbd = AudioStreamBasicDescription(
             mSampleRate: initialization.sampleRate,
             mFormatID: kAudioFormatMPEG4AAC,
-            mFormatFlags: 0,
+            // MPEG-4 Audio Object Type 2 = AAC Low Complexity.
+            mFormatFlags: 2,
             mBytesPerPacket: 0,
             mFramesPerPacket: 1024,
             mBytesPerFrame: 0,
@@ -427,19 +428,23 @@ actor HLSSegmentExporter {
             mBitsPerChannel: 0,
             mReserved: 0
         )
-        let asc = initialization.audioSpecificConfig
-            ?? defaultAudioSpecificConfig(
-                sampleRate: initialization.sampleRate,
-                channels: initialization.channelCount
+        guard let magicCookie = initialization.elementaryStreamDescriptor else {
+            throw HLSDiagnosticError(
+                stage: .creatingWriter,
+                publicCode: "HLS-WRITER-ESDS",
+                underlyingDomain: "CoreMedia",
+                underlyingCode: nil,
+                safeDetail: nil
             )
+        }
         var activeFormat: CMAudioFormatDescription?
-        let creationStatus = asc.withUnsafeBytes { cookie in
+        let creationStatus = magicCookie.withUnsafeBytes { cookie in
             CMAudioFormatDescriptionCreate(
                 allocator: nil,
                 asbd: &asbd,
                 layoutSize: 0,
                 layout: nil,
-                magicCookieSize: asc.count,
+                magicCookieSize: magicCookie.count,
                 magicCookie: cookie.baseAddress,
                 extensions: nil,
                 formatDescriptionOut: &activeFormat
@@ -614,23 +619,6 @@ actor HLSSegmentExporter {
                 safeDetail: nil
             )
         }
-    }
-
-    private func defaultAudioSpecificConfig(
-        sampleRate: Double,
-        channels: UInt32
-    ) -> Data {
-        let rates: [Double] = [
-            96_000, 88_200, 64_000, 48_000, 44_100, 32_000,
-            24_000, 22_050, 16_000, 12_000, 11_025, 8_000, 7_350
-        ]
-        let objectType = 2
-        let rateIndex = rates.firstIndex(of: sampleRate) ?? 4
-        let channelIndex = Int(min(max(channels, 1), 7))
-        let bits = (objectType << 11)
-            | (rateIndex << 7)
-            | (channelIndex << 3)
-        return Data([UInt8((bits >> 8) & 0xFF), UInt8(bits & 0xFF)])
     }
 
     // MARK: - Models
