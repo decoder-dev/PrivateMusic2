@@ -69,7 +69,8 @@ struct LibraryView: View {
         .trackShareSheet(track: $sharingTrack)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                if !environment.isShareSessionActive {
+                if OfflineDownloadsFeature.showsControls,
+                   !environment.isShareSessionActive {
                     NavigationLink {
                         OfflineDownloadsView()
                     } label: {
@@ -296,23 +297,25 @@ struct LibraryView: View {
                         systemImage: "square.and.arrow.up"
                     )
                 }
-                Button(
-                    role: offlineStore.contains(track) ? .destructive : nil
-                ) {
-                    toggleOffline(track)
-                } label: {
-                    Label(
-                        offlineStore.contains(track)
-                            ? "Удалить загрузку"
-                            : "Скачать офлайн",
-                        systemImage: offlineStore.contains(track)
-                            ? "trash"
-                            : "arrow.down.circle"
+                if OfflineDownloadsFeature.showsControls {
+                    Button(
+                        role: offlineStore.contains(track) ? .destructive : nil
+                    ) {
+                        toggleOffline(track)
+                    } label: {
+                        Label(
+                            offlineStore.contains(track)
+                                ? "Удалить загрузку"
+                                : "Скачать офлайн",
+                            systemImage: offlineStore.contains(track)
+                                ? "trash"
+                                : "arrow.down.circle"
+                        )
+                    }
+                    .disabled(
+                        offlineStore.downloadingTrackIDs.contains(track.id)
                     )
                 }
-                .disabled(
-                    offlineStore.downloadingTrackIDs.contains(track.id)
-                )
                 Button(role: .destructive) {
                     guard let token = sessionStore.accessToken else { return }
                     Task {

@@ -133,7 +133,8 @@ struct SettingsView: View {
                     )
                 }
 
-                if !environment.isShareSessionActive {
+                if OfflineDownloadsFeature.showsControls,
+                   !environment.isShareSessionActive {
                     NavigationLink {
                         OfflineStorageSettingsView()
                     } label: {

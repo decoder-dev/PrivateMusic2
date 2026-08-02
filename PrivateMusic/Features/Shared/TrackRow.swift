@@ -35,7 +35,8 @@ struct TrackRow: View {
 
                 Spacer()
 
-                if !environment.isShareSessionActive {
+                if OfflineDownloadsFeature.showsControls,
+                   !environment.isShareSessionActive {
                     if offlineStore.contains(track) {
                         Image(systemName: "arrow.down.circle.fill")
                             .font(.caption)
@@ -114,7 +115,8 @@ struct TrackRow: View {
                     systemImage: "square.and.arrow.up"
                 )
             }
-            if !environment.isShareSessionActive {
+            if OfflineDownloadsFeature.showsControls,
+               !environment.isShareSessionActive {
                 Button(
                     role: offlineStore.contains(track) ? .destructive : nil
                 ) {

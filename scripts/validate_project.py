@@ -157,6 +157,16 @@ for required_share_session_symbol in (
             "share session bandwidth guard is missing: "
             f"{required_share_session_symbol}"
         )
+feature_source = (
+    SOURCE / "App" / "OfflineDownloadsFeature.swift"
+).read_text(encoding="utf-8")
+if "enum OfflineDownloadsFeature" not in feature_source:
+    fail("offline downloads feature flag is missing")
+if "productionEnabled = false" not in feature_source:
+    fail(
+        "offline downloads must stay disabled for the stable build "
+        "(OfflineDownloadsFeature.productionEnabled = false)"
+    )
 for required_route_symbol in (
     "shouldPauseAfterRouteLoss",
     "setPrefersInterruptionOnRouteDisconnect",

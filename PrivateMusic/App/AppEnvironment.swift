@@ -99,6 +99,7 @@ final class AppEnvironment: ObservableObject {
             }
         )
         player.configurePlaybackReady { [weak self] track, isOffline in
+            guard OfflineDownloadsFeature.isEnabled else { return }
             guard !isOffline else { return }
             self?.scheduleAutomaticCache(for: track)
             self?.schedulePredictivePreDownload()
@@ -119,6 +120,19 @@ final class AppEnvironment: ObservableObject {
 
         Task {
             await trackShareService.removeStaleExports()
+        }
+
+        if !OfflineDownloadsFeature.isEnabled {
+            // Vacation-stable build: stop any leftover offline jobs so share
+            // and playback are not competing with download workers.
+            DownloadCoordinator.shared.cancelAll()
+            OfflinePlaylistStore.shared.cancelAllDownloads()
+            DownloadCoordinator.shared.unblockQueue()
+            pendingAutomaticCacheTrack = nil
+            automaticCacheTask?.cancel()
+            automaticCacheTask = nil
+            predictivePreDownloadTask?.cancel()
+            predictivePreDownloadTask = nil
         }
     }
 
@@ -194,6 +208,14 @@ final class AppEnvironment: ObservableObject {
         _ track: Track,
         retention: OfflineTrackRetention = .manual
     ) async throws {
+        guard OfflineDownloadsFeature.isEnabled else {
+            throw APIError.server(
+                code: 503,
+                message: L10n.text(
+                    "Офлайн-загрузки временно отключены. Используйте «Поделиться»."
+                )
+            )
+        }
         let refreshed = try await withAuthorizedToken { token in
             try await musicService.refreshedTrack(
                 track,
@@ -208,7 +230,8 @@ final class AppEnvironment: ObservableObject {
     }
 
     private func scheduleAutomaticCache(for track: Track) {
-        guard !isShareSessionActive,
+        guard OfflineDownloadsFeature.isEnabled,
+              !isShareSessionActive,
               settings.automaticOfflineCacheEnabled,
               networkMonitor.state == .online,
               networkMonitor.transport == .wifi
@@ -258,7 +281,8 @@ final class AppEnvironment: ObservableObject {
     private var predictivePreDownloadTask: Task<Void, Never>?
 
     private func schedulePredictivePreDownload() {
-        guard !isShareSessionActive,
+        guard OfflineDownloadsFeature.isEnabled,
+              !isShareSessionActive,
               settings.automaticOfflineCacheEnabled,
               networkMonitor.state == .online,
               (networkMonitor.transport == .wifi
