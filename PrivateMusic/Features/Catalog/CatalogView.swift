@@ -75,6 +75,17 @@ struct CatalogView: View {
         .task(id: sessionStore.resolvedOfflineAccountID) {
             await load()
         }
+        .alert(
+            "Не удалось открыть альбом",
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button("ОК", role: .cancel) {}
+        } message: {
+            Text(actionErrorMessage ?? "")
+        }
     }
 
     private func scrollToTop(
@@ -495,17 +506,18 @@ struct CatalogView: View {
         albumLookupTask?.cancel()
         albumLookupTask = nil
         loadingAlbumTrackID = nil
-        if let reference = track.albumReference,
-           let title = track.albumTitle,
-           !title.isEmpty {
+        if let reference = track.albumReference {
             selectedAlbum = reference.album(
-                title: title,
+                title: Album.isUsableTitle(track.albumTitle)
+                    ? track.albumTitle ?? ""
+                    : "",
                 artist: track.artist,
                 artworkURL: track.artworkURL
             )
             return
         }
-        guard let title = track.albumTitle, !title.isEmpty else {
+        guard let title = track.albumTitle,
+              Album.isUsableTitle(title) else {
             actionErrorMessage = L10n.text(
                 "VK не вернул данные альбома для этого трека."
             )

@@ -9,6 +9,7 @@ struct AlbumDetailView: View {
     let album: Album
     @StateObject private var model = AlbumDetailViewModel()
     @State private var isUpdatingFollow = false
+    @State private var actionErrorMessage: String?
 
     var body: some View {
         List {
@@ -38,7 +39,7 @@ struct AlbumDetailView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
-        .navigationTitle(album.title)
+        .navigationTitle(displayedTitle)
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
             if model.isLoading && model.tracks.isEmpty {
@@ -80,22 +81,39 @@ struct AlbumDetailView: View {
         }
         .task { await load(force: false) }
         .refreshable { await load(force: true) }
+        .alert(
+            "Не удалось изменить альбом",
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button("ОК", role: .cancel) {}
+        } message: {
+            Text(actionErrorMessage ?? "")
+        }
     }
 
     private var albumHeader: some View {
         VStack(spacing: 14) {
-            AsyncArtwork(url: album.artworkURL, size: 190)
+            AsyncArtwork(url: displayedAlbum.artworkURL, size: 190)
                 .shadow(color: .black.opacity(0.22), radius: 16, y: 8)
             VStack(spacing: 5) {
-                Text(album.title)
+                Text(displayedTitle)
                     .font(.title2.weight(.bold))
                     .multilineTextAlignment(.center)
-                Text(album.artistText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                if let releaseDate = album.releaseDate {
+                if !displayedAlbum.artists.isEmpty {
+                    Text(displayedAlbum.artistText)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                if let releaseDate = displayedAlbum.releaseDate {
                     Text(releaseDate.formatted(date: .long, time: .omitted))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                } else if let releaseYear = displayedAlbum.releaseYear {
+                    Text(String(releaseYear))
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
@@ -133,15 +151,25 @@ struct AlbumDetailView: View {
     }
 
     private var isFollowed: Bool {
-        likedAlbumsStore.isFollowed(album)
+        likedAlbumsStore.isFollowed(displayedAlbum)
     }
 
     private var shareURL: URL? {
-        AlbumShareLinkBuilder.url(for: album)
+        AlbumShareLinkBuilder.url(for: displayedAlbum)
     }
 
     private var displayedTrackCount: Int {
-        album.count > 0 ? album.count : model.tracks.count
+        displayedAlbum.count
+    }
+
+    private var displayedAlbum: Album {
+        album.normalized(using: model.tracks)
+    }
+
+    private var displayedTitle: String {
+        Album.isUsableTitle(displayedAlbum.title)
+            ? displayedAlbum.title
+            : L10n.text("Альбом")
     }
 
     private func playAlbum() {
@@ -158,14 +186,14 @@ struct AlbumDetailView: View {
             do {
                 try await environment.withAuthorizedToken { token in
                     try await environment.musicService.toggleAlbumFollow(
-                        album,
+                        displayedAlbum,
                         accessToken: token
                     )
                 }
                 if desired {
-                    likedAlbumsStore.markFollowed(album)
+                    likedAlbumsStore.markFollowed(displayedAlbum)
                 } else {
-                    likedAlbumsStore.markUnfollowed(album)
+                    likedAlbumsStore.markUnfollowed(displayedAlbum)
                 }
                 NotificationCenter.default.post(
                     name: .likedAlbumsDidChange,
@@ -173,7 +201,7 @@ struct AlbumDetailView: View {
                 )
                 Haptics.success()
             } catch {
-                player.errorMessage = error.localizedDescription
+                actionErrorMessage = error.localizedDescription
                 Haptics.error()
             }
         }

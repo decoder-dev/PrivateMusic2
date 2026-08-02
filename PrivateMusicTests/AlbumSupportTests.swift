@@ -48,6 +48,92 @@ final class AlbumDecodingTests: XCTestCase {
         )
     }
 
+    func testDecodesPlaylistPhotoArtistAndYearWithoutInventingDate() throws {
+        let data = """
+        {
+          "id": 24,
+          "owner_id": -5,
+          "title": "unnamed",
+          "size": 24,
+          "artist": "Real Artist",
+          "year": 2018,
+          "photo": {"photo_600": "https://example.com/photo.jpg"}
+        }
+        """.data(using: .utf8)!
+
+        let album = try JSONDecoder().decode(Album.self, from: data)
+
+        XCTAssertEqual(album.artists, ["Real Artist"])
+        XCTAssertEqual(album.releaseYear, 2018)
+        XCTAssertNil(album.releaseDate)
+        XCTAssertEqual(
+            album.artworkURL?.absoluteString,
+            "https://example.com/photo.jpg"
+        )
+        XCTAssertFalse(Album.isUsableTitle(album.title))
+    }
+
+    func testNormalizesUnnamedAlbumFromLoadedTracks() {
+        let album = Album(
+            id: 24,
+            ownerID: -5,
+            title: "unnamed",
+            count: 0,
+            releaseYear: 2018
+        )
+        let tracks = [
+            Track(
+                trackID: 1,
+                ownerID: -5,
+                title: "One",
+                artist: "Real Artist",
+                albumTitle: "Real Album",
+                duration: 120,
+                streamURL: nil,
+                artworkURL: URL(string: "https://example.com/cover.jpg")
+            ),
+            Track(
+                trackID: 2,
+                ownerID: -5,
+                title: "Two",
+                artist: "Real Artist",
+                albumTitle: "Real Album",
+                duration: 140,
+                streamURL: nil,
+                artworkURL: URL(string: "https://example.com/cover.jpg")
+            )
+        ]
+
+        let normalized = album.normalized(using: tracks)
+
+        XCTAssertEqual(normalized.title, "Real Album")
+        XCTAssertEqual(normalized.artists, ["Real Artist"])
+        XCTAssertEqual(normalized.count, 2)
+        XCTAssertEqual(normalized.releaseYear, 2018)
+        XCTAssertEqual(
+            normalized.artworkURL?.absoluteString,
+            "https://example.com/cover.jpg"
+        )
+    }
+
+    func testTrackDecodesLegacyTopLevelAlbumReference() throws {
+        let data = """
+        {
+          "id": 7,
+          "owner_id": 8,
+          "title": "Track",
+          "artist": "Artist",
+          "duration": 120,
+          "album_id": 9
+        }
+        """.data(using: .utf8)!
+
+        let track = try JSONDecoder().decode(Track.self, from: data)
+
+        XCTAssertEqual(track.albumReference?.albumID, 9)
+        XCTAssertEqual(track.albumReference?.ownerID, 8)
+    }
+
     func testTrackDecodesAndPersistsAlbumReference() throws {
         let data = """
         {

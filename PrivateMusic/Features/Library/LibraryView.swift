@@ -507,14 +507,22 @@ struct LibraryView: View {
         )
         guard sessionStore.accessToken != nil else { return }
         do {
-            let page = try await environment.withAuthorizedToken { token in
-                try await environment.musicService.likedAlbums(
-                    accessToken: token,
-                    offset: 0,
-                    count: 100
-                )
+            var albums: [Album] = []
+            var offset = 0
+            for _ in 0..<10 {
+                let page = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.likedAlbums(
+                        accessToken: token,
+                        offset: offset,
+                        count: 100
+                    )
+                }
+                albums.append(contentsOf: page.items)
+                guard let next = page.nextOffset, next > offset else { break }
+                offset = next
             }
-            likedAlbumsStore.replace(with: page.items)
+            guard !Task.isCancelled else { return }
+            likedAlbumsStore.replace(with: albums)
         } catch {
             return
         }
