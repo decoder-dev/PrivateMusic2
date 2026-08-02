@@ -199,6 +199,16 @@ final class AppSettings: ObservableObject {
             )
         }
     }
+    @Published var appVolume: Double {
+        didSet {
+            let normalized = min(max(appVolume, 0), 1)
+            if appVolume != normalized {
+                appVolume = normalized
+                return
+            }
+            defaults.set(normalized, forKey: Keys.appVolume)
+        }
+    }
     @Published var advanceOnPlaybackError: Bool {
         didSet {
             defaults.set(
@@ -294,6 +304,10 @@ final class AppSettings: ObservableObject {
         pauseAtMinimumVolume = defaults.object(
             forKey: Keys.pauseAtMinimumVolume
         ) as? Bool ?? false
+        appVolume = min(
+            max(defaults.object(forKey: Keys.appVolume) as? Double ?? 1, 0),
+            1
+        )
         advanceOnPlaybackError = defaults.object(
             forKey: Keys.advanceOnPlaybackError
         ) as? Bool ?? true
@@ -354,6 +368,7 @@ final class AppSettings: ObservableObject {
             "audio.bluetooth.resumeOnConnection"
         static let pauseAtMinimumVolume =
             "audio.volume.pauseAtMinimum"
+        static let appVolume = "audio.volume.appLevel"
         static let advanceOnPlaybackError =
             "audio.playback.advanceOnError"
         static let offlineStorageLimitGB =

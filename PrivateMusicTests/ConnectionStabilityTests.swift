@@ -273,6 +273,49 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    func testAppVolumeZeroPausesOnlyActivePlayback() {
+        XCTAssertTrue(
+            AppVolumePolicy.shouldPauseAtZero(volume: 0, isPlaying: true)
+        )
+        XCTAssertFalse(
+            AppVolumePolicy.shouldPauseAtZero(volume: 0, isPlaying: false)
+        )
+        XCTAssertFalse(
+            AppVolumePolicy.shouldPauseAtZero(volume: 0.2, isPlaying: true)
+        )
+    }
+
+    func testAppVolumeResumesOnlyItsAutomaticPause() {
+        XCTAssertTrue(
+            AppVolumePolicy.shouldResumeAfterZeroPause(
+                volume: 0.25,
+                pausedForAppVolumeZero: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false
+            )
+        )
+        XCTAssertFalse(
+            AppVolumePolicy.shouldResumeAfterZeroPause(
+                volume: 0.25,
+                pausedForAppVolumeZero: false,
+                playbackIntended: false,
+                hasCurrentTrack: true,
+                isPlaying: false
+            )
+        )
+        XCTAssertFalse(
+            AppVolumePolicy.shouldResumeAfterZeroPause(
+                volume: 0.25,
+                pausedForAppVolumeZero: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                isAudioInterrupted: true
+            )
+        )
+    }
+
     func testRaisingVolumeResumesOnlyAutomaticMinimumVolumePause() {
         XCTAssertTrue(
             AudioRoutePolicy.shouldResumeAfterMinimumVolumePause(

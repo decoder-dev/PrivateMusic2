@@ -772,6 +772,7 @@ struct PlayerView: View {
                 ),
                 equalizerEnabled: $settings.equalizerEnabled,
                 spatialAudioEnabled: $settings.spatialAudioEnabled,
+                appVolume: $settings.appVolume,
                 onDismiss: {
                     presentedSheet = nil
                 },
@@ -1351,6 +1352,7 @@ private struct PlayerActionsSheet: View {
     let availability: PlayerActionAvailability
     @Binding var equalizerEnabled: Bool
     @Binding var spatialAudioEnabled: Bool
+    @Binding var appVolume: Double
     @EnvironmentObject private var player: AudioPlayer
     @State private var showsSleepTimerOptions = false
     let onDismiss: () -> Void
@@ -1472,6 +1474,32 @@ private struct PlayerActionsSheet: View {
 
     private var audioControls: some View {
         VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(
+                    systemName: appVolume == 0
+                        ? "speaker.slash.fill"
+                        : "speaker.wave.2.fill"
+                )
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 30, height: 30)
+                .background(Color.accentColor.opacity(0.12), in: Circle())
+
+                Slider(value: $appVolume, in: 0...1, step: 0.01)
+                    .tint(.accentColor)
+                    .accessibilityLabel(L10n.text("Громкость приложения"))
+
+                Text(appVolume, format: .percent.precision(.fractionLength(0)))
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 38, alignment: .trailing)
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: PlayerActionSheetMetrics.minimumTapTarget)
+
+            Divider()
+                .padding(.leading, 58)
+
             Toggle(isOn: $equalizerEnabled) {
                 actionRowLabel(
                     "Эквалайзер",

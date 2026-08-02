@@ -123,6 +123,33 @@ enum AudioRoutePolicy {
     }
 }
 
+enum AppVolumePolicy {
+    static func shouldPauseAtZero(
+        volume: Float,
+        isPlaying: Bool
+    ) -> Bool {
+        isPlaying && volume <= AudioRoutePolicy.minimumAudibleVolume
+    }
+
+    static func shouldResumeAfterZeroPause(
+        volume: Float,
+        pausedForAppVolumeZero: Bool,
+        playbackIntended: Bool,
+        hasCurrentTrack: Bool,
+        isPlaying: Bool,
+        isAudioInterrupted: Bool = false,
+        allowsAutomaticResume: Bool = true
+    ) -> Bool {
+        volume > AudioRoutePolicy.minimumAudibleVolume
+            && pausedForAppVolumeZero
+            && playbackIntended
+            && hasCurrentTrack
+            && !isPlaying
+            && !isAudioInterrupted
+            && allowsAutomaticResume
+    }
+}
+
 enum AudioProcessingRoutePolicy {
     /// Remote AVPlayer handoff bypasses MTAudioProcessingTap. Keep decoding on
     /// the phone while DSP is active; AirPlay remains available as an audio
@@ -243,6 +270,8 @@ final class AudioPlayer: ObservableObject {
     private var listenedPlaybackDuration: TimeInterval = 0
     private var lastListeningElapsedTime: TimeInterval?
     private var continuationTask: Task<Void, Never>?
+    private var continuationPrefetchTask: Task<Void, Never>?
+    private var advanceAfterContinuationPrefetch = false
     private var streamRefreshTask: Task<Void, Never>?
     private var lastPersistedSecond = -1
     private var playbackGeneration = 0
@@ -259,6 +288,8 @@ final class AudioPlayer: ObservableObject {
     private var lastNowPlayingSecond = -1
     private var playbackIntended = false
     private var pausedForMinimumVolume = false
+    private var pausedForAppVolumeZero = false
+    private var appVolume: Float = 1
     private var minimumVolumeResumeSuppressed = false
     private var wasPlayingBeforeInterruption = false
     private var isAudioInterrupted = false
@@ -302,6 +333,7 @@ final class AudioPlayer: ObservableObject {
         self.streamUserAgent = userAgent
         resumeOnBluetoothConnection = settings.resumeOnBluetoothConnection
         pauseAtMinimumVolume = settings.pauseAtMinimumVolume
+        appVolume = Float(settings.appVolume)
         advanceOnPlaybackError = settings.advanceOnPlaybackError
         shuffleEnabled = defaults.bool(forKey: "player.shuffle")
         repeatMode = RepeatMode(
@@ -361,6 +393,14 @@ final class AudioPlayer: ObservableObject {
                 self.handleOutputVolume(
                     AVAudioSession.sharedInstance().outputVolume
                 )
+            }
+            .store(in: &cancellables)
+        settings.$appVolume
+            .sink { [weak self] volume in
+                guard let self else { return }
+                self.appVolume = Float(volume)
+                self.player.volume = self.appVolume
+                self.handleAppVolume(self.appVolume)
             }
             .store(in: &cancellables)
         settings.$advanceOnPlaybackError
@@ -466,6 +506,7 @@ final class AudioPlayer: ObservableObject {
         resetProgressForTrackTransition()
         persistPlayback()
         loadCurrentAndPlay()
+        startContinuationPrefetch()
     }
 
     func playNext(_ track: Track) {
@@ -593,18 +634,32 @@ final class AudioPlayer: ObservableObject {
     }
 
     func resume() {
-        resume(preservingMinimumVolumePause: false)
+        resume(
+            preservingMinimumVolumePause: false,
+            preservingAppVolumePause: false
+        )
     }
 
-    private func resume(preservingMinimumVolumePause: Bool) {
+    private func resume(
+        preservingMinimumVolumePause: Bool,
+        preservingAppVolumePause: Bool
+    ) {
         if !preservingMinimumVolumePause {
             pausedForMinimumVolume = false
             minimumVolumeResumeSuppressed = false
+        }
+        if !preservingAppVolumePause {
+            pausedForAppVolumeZero = false
         }
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         playbackIntended = true
         guard !isAudioInterrupted else { return }
+        guard appVolume > AudioRoutePolicy.minimumAudibleVolume else {
+            pausedForAppVolumeZero = true
+            pausePreservingIntent()
+            return
+        }
         if requiresStreamRefresh {
             refreshCurrentStream(autoplay: true)
             return
@@ -618,6 +673,7 @@ final class AudioPlayer: ObservableObject {
         }
         guard activateAudioSession() else { return }
         pausedForMinimumVolume = false
+        pausedForAppVolumeZero = false
         player.play()
         isPlaying = true
         publishPlaybackState(force: true)
@@ -628,6 +684,7 @@ final class AudioPlayer: ObservableObject {
 
     func pause() {
         pausedForMinimumVolume = false
+        pausedForAppVolumeZero = false
         minimumVolumeResumeSuppressed = false
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
@@ -652,6 +709,11 @@ final class AudioPlayer: ObservableObject {
         guard let currentIndex, !queue.isEmpty else { return }
         let nextIndex = queue.index(after: currentIndex)
         if nextIndex >= queue.endIndex, repeatMode == .off {
+            if continuationPrefetchTask != nil {
+                advanceAfterContinuationPrefetch = true
+                isBuffering = true
+                return
+            }
             startContinuationIfNeeded()
             return
         }
@@ -701,6 +763,7 @@ final class AudioPlayer: ObservableObject {
 
     func stop() {
         pausedForMinimumVolume = false
+        pausedForAppVolumeZero = false
         minimumVolumeResumeSuppressed = false
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
@@ -742,6 +805,7 @@ final class AudioPlayer: ObservableObject {
 
     private func loadCurrentAndPlay() {
         pausedForMinimumVolume = false
+        pausedForAppVolumeZero = false
         minimumVolumeResumeSuppressed = false
         playbackIntended = true
         if let track = currentTrack,
@@ -837,6 +901,7 @@ final class AudioPlayer: ObservableObject {
             player.play()
             isPlaying = true
             isBuffering = true
+            handleAppVolume(appVolume)
             handleOutputVolume(
                 AVAudioSession.sharedInstance().outputVolume
             )
@@ -1211,6 +1276,7 @@ final class AudioPlayer: ObservableObject {
 
     private func configurePlayerInstance() {
         player.automaticallyWaitsToMinimizeStalling = true
+        player.volume = appVolume
         player.allowsExternalPlayback = AudioProcessingRoutePolicy
             .allowsExternalPlayback(
                 requiresAudioTap: equalizer.requiresAudioTap
@@ -1362,6 +1428,7 @@ final class AudioPlayer: ObservableObject {
                 resume()
             }
             handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
+            handleAppVolume(appVolume)
         @unknown default:
             break
         }
@@ -1424,12 +1491,17 @@ final class AudioPlayer: ObservableObject {
             AVAudioSession.sharedInstance().outputVolume,
             allowsAutomaticResume: allowsMinimumVolumeResume
         )
+        handleAppVolume(
+            appVolume,
+            allowsAutomaticResume: allowsMinimumVolumeResume
+        )
     }
 
     private func handleMediaServicesReset() {
         let position = elapsedTime
         playbackIntended = false
         pausedForMinimumVolume = false
+        pausedForAppVolumeZero = false
         minimumVolumeResumeSuppressed = false
         isAudioInterrupted = false
         wasPlayingBeforeInterruption = false
@@ -1506,7 +1578,38 @@ final class AudioPlayer: ObservableObject {
             allowsAutomaticResume: allowsAutomaticResume
                 && !minimumVolumeResumeSuppressed
         ) else { return }
-        resume(preservingMinimumVolumePause: true)
+        resume(
+            preservingMinimumVolumePause: true,
+            preservingAppVolumePause: false
+        )
+    }
+
+    private func handleAppVolume(
+        _ volume: Float,
+        allowsAutomaticResume: Bool = true
+    ) {
+        player.volume = min(max(volume, 0), 1)
+        if AppVolumePolicy.shouldPauseAtZero(
+            volume: volume,
+            isPlaying: isPlaying
+        ) {
+            pausedForAppVolumeZero = true
+            pausePreservingIntent()
+            return
+        }
+        guard AppVolumePolicy.shouldResumeAfterZeroPause(
+            volume: volume,
+            pausedForAppVolumeZero: pausedForAppVolumeZero,
+            playbackIntended: playbackIntended,
+            hasCurrentTrack: currentTrack != nil,
+            isPlaying: isPlaying,
+            isAudioInterrupted: isAudioInterrupted,
+            allowsAutomaticResume: allowsAutomaticResume
+        ) else { return }
+        resume(
+            preservingMinimumVolumePause: false,
+            preservingAppVolumePause: true
+        )
     }
 
     private func advanceAfterCompletion() {
@@ -1667,6 +1770,9 @@ final class AudioPlayer: ObservableObject {
         continuationGeneration += 1
         continuationTask?.cancel()
         continuationTask = nil
+        continuationPrefetchTask?.cancel()
+        continuationPrefetchTask = nil
+        advanceAfterContinuationPrefetch = false
     }
 
     private func cancelStreamRefresh() {
@@ -1690,6 +1796,65 @@ final class AudioPlayer: ObservableObject {
                 return
             }
             self.continuationTask = nil
+        }
+    }
+
+    private func startContinuationPrefetch() {
+        guard continuationPrefetchTask == nil,
+              let provider = activeContinuationProvider else {
+            return
+        }
+        let generation = continuationGeneration
+        let sourceIndex = currentIndex
+        continuationPrefetchTask = Task { [weak self] in
+            guard let self else { return }
+            var additions: [Track] = []
+            do {
+                for attempt in 0..<3 {
+                    let proposed = try await self.continuationTracks(
+                        from: provider
+                    )
+                    guard !Task.isCancelled,
+                          generation == self.continuationGeneration,
+                          self.currentIndex == sourceIndex else {
+                        return
+                    }
+                    additions = PlaybackQueueBuilder.uniqueAdditions(
+                        existing: self.queue,
+                        candidates: proposed
+                    )
+                    if !additions.isEmpty { break }
+                    if attempt < 2 {
+                        try await Task.sleep(for: .milliseconds(180))
+                    }
+                }
+            } catch {
+                additions = []
+            }
+            guard !Task.isCancelled,
+                  generation == self.continuationGeneration,
+                  self.currentIndex == sourceIndex else {
+                return
+            }
+            self.continuationPrefetchTask = nil
+            let shouldAdvance = self.advanceAfterContinuationPrefetch
+            self.advanceAfterContinuationPrefetch = false
+            if !additions.isEmpty {
+                self.queue.append(contentsOf: additions)
+                self.persistPlayback()
+                self.publishNowPlayingQueue()
+                self.scheduleNeighborPreloads()
+                if shouldAdvance,
+                   let sourceIndex,
+                   self.queue.indices.contains(sourceIndex + 1) {
+                    self.currentIndex = sourceIndex + 1
+                    self.resetProgressForTrackTransition()
+                    self.persistPlayback()
+                    self.loadCurrentAndPlay()
+                }
+            } else if shouldAdvance {
+                self.startContinuationIfNeeded()
+            }
         }
     }
 

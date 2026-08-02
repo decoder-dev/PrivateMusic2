@@ -215,6 +215,29 @@ final class AudioPlayerTransitionTests: XCTestCase {
         XCTAssertNil(context.player.errorMessage)
     }
 
+    func testContinuationPrefetchesImmediatelyWithoutAdvancing() async {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        let second = track(id: 2, duration: 245, streamURL: silentWAVURL)
+        var requestCount = 0
+        context.player.configureContinuation {
+            requestCount += 1
+            return [second]
+        }
+
+        context.player.play(first, in: [first])
+
+        await waitUntil {
+            context.player.queue.map(\.id) == [first.id, second.id]
+        }
+        XCTAssertEqual(requestCount, 1)
+        XCTAssertEqual(context.player.currentTrack?.id, first.id)
+        XCTAssertEqual(context.player.currentIndex, 0)
+    }
+
     func testContinuationRetriesProviderOnceWithoutPresentingError() async {
         let context = makePlayer()
         defer {
