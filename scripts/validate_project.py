@@ -161,9 +161,17 @@ for required_player_symbol in (
     "AdaptiveGlassContainer(spacing: 8)",
     ".simultaneousGesture(fullScreenDismissGesture)",
     "PlayerDismissGesturePolicy.shouldDismiss",
+    "PlayerArtworkCarouselPolicy.neighborIndices",
 ):
     if required_player_symbol not in player_view_source:
         fail(f"player is missing full-bleed/glass symbol: {required_player_symbol}")
+for required_queue_symbol in (
+    "func removeFromQueue(at index: Int)",
+    ".swipeActions(",
+    "Удалить из очереди",
+):
+    if required_queue_symbol not in all_source:
+        fail(f"queue swipe removal is missing: {required_queue_symbol}")
 for required_offline_symbol in (
     "configureOfflinePlayback",
     "offlineURLProvider",
