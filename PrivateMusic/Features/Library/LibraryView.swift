@@ -69,34 +69,36 @@ struct LibraryView: View {
         .trackShareSheet(track: $sharingTrack)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                NavigationLink {
-                    OfflineDownloadsView()
-                } label: {
-                    Image(systemName: "arrow.down.circle")
-                        .frame(width: 24, height: 24)
-                        .overlay(alignment: .topTrailing) {
-                            if isOfflineActivityActive {
-                                ProgressView()
-                                    .controlSize(.mini)
+                if !environment.isShareSessionActive {
+                    NavigationLink {
+                        OfflineDownloadsView()
+                    } label: {
+                        Image(systemName: "arrow.down.circle")
+                            .frame(width: 24, height: 24)
+                            .overlay(alignment: .topTrailing) {
+                                if isOfflineActivityActive {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                        .offset(x: 3, y: -3)
+                                } else if offlineStore
+                                    .downloadedTrackCount > 0 {
+                                    Text(
+                                        "\(min(validDownloadCount, 99))"
+                                    )
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 3)
+                                    .padding(.vertical, 1)
+                                    .background(
+                                        Capsule()
+                                            .fill(settings.theme.accent)
+                                    )
                                     .offset(x: 3, y: -3)
-                            } else if offlineStore
-                                .downloadedTrackCount > 0 {
-                                Text(
-                                    "\(min(validDownloadCount, 99))"
-                                )
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 3)
-                                .padding(.vertical, 1)
-                                .background(
-                                    Capsule()
-                                        .fill(settings.theme.accent)
-                                )
-                                .offset(x: 3, y: -3)
+                                }
                             }
-                        }
+                    }
+                    .accessibilityLabel(L10n.text("Загрузки"))
                 }
-                .accessibilityLabel(L10n.text("Загрузки"))
                 NavigationLink {
                     ListeningHistoryView()
                 } label: {
