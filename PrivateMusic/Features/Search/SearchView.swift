@@ -631,7 +631,10 @@ struct SearchView: View {
                 } else {
                     likedAlbumsStore.markUnfollowed(album)
                 }
-                NotificationCenter.default.post(name: .likedAlbumsDidChange)
+                NotificationCenter.default.post(
+                    name: .likedAlbumsDidChange,
+                    object: nil
+                )
             } catch {
                 model.actionErrorMessage = error.localizedDescription
             }
