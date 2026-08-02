@@ -139,24 +139,23 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.26.0-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.26.1-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.26.0"
+          test "$GITHUB_REF_NAME" = "v3.26.1"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.26.0
+          Private Music 3.26.1
 
-          - Добавлен пульт Private Music для Apple Watch: текущий трек,
-            исполнитель, обложка, прогресс, пауза/воспроизведение,
-            следующий и предыдущий трек.
-          - Состояние и команды синхронизируются через WatchConnectivity.
-          - Сохранены исправления «Поделиться»: системный ShareLink и
-            потоковый MPEG-TS demux без полного буфера в RAM.
+          - Меню действий трека переработано в общем стиле приложения:
+            градиент, Liquid Glass, акцентные иконки и анимации нажатия.
+          - В меню добавлен таймер сна на 15/30/45/60/90 минут.
+          - Активный таймер показывает обратный отсчёт; его можно отменить.
+          - Сохранён companion-пульт Private Music для Apple Watch.
           - Офлайн-загрузки по-прежнему временно скрыты.
 
           IPA не подписан. Перед установкой подпишите его собственным
@@ -164,15 +163,15 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.26.0-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.26.1-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.26.0" \
+              --title "Private Music 3.26.1" \
               --notes-file "$NOTES"
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.26.0-unsigned.ipa" \
-              --title "Private Music 3.26.0" \
+              "$PWD/artifacts/PrivateMusic-3.26.1-unsigned.ipa" \
+              --title "Private Music 3.26.1" \
               --notes-file "$NOTES"
           fi
 
@@ -180,7 +179,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.26.0-unsigned
-          path: artifacts/PrivateMusic-3.26.0-unsigned.ipa
+          name: PrivateMusic-3.26.1-unsigned
+          path: artifacts/PrivateMusic-3.26.1-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
