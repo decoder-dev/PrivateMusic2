@@ -700,7 +700,8 @@ struct PlayerView: View {
                 availability: PlayerActionAvailability(
                     hasSession: sessionStore.accessToken != nil,
                     isUpdatingLibrary: isUpdatingLibrary,
-                    showsOfflineControls: !environment.isShareSessionActive
+                    showsOfflineControls: OfflineDownloadsFeature.showsControls
+                        && !environment.isShareSessionActive
                 ),
                 equalizerEnabled: $settings.equalizerEnabled,
                 onDismiss: {
@@ -1176,7 +1177,7 @@ struct PlayerActionAvailability: Equatable {
     init(
         hasSession: Bool,
         isUpdatingLibrary: Bool,
-        showsOfflineControls: Bool = true
+        showsOfflineControls: Bool = OfflineDownloadsFeature.showsControls
     ) {
         canModifyLibrary = hasSession && !isUpdatingLibrary
         canAddToPlaylist = hasSession
