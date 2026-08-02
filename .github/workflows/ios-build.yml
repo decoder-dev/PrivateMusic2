@@ -137,10 +137,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.25.0-unsigned.ipa" \
-            --title "Private Music 3.25.0" \
-            --notes-file - <<'EOF'
+          NOTES="$(mktemp)"
+          cat > "$NOTES" <<'EOF'
           Private Music 3.25.0
 
           - Сборка на Xcode 27 / iOS 27 SDK.
@@ -157,8 +155,22 @@ jobs:
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом.
           EOF
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              "$PWD/artifacts/PrivateMusic-3.25.0-unsigned.ipa" \
+              --clobber
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "Private Music 3.25.0" \
+              --notes-file "$NOTES"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              "$PWD/artifacts/PrivateMusic-3.25.0-unsigned.ipa" \
+              --title "Private Music 3.25.0" \
+              --notes-file "$NOTES"
+          fi
 
       - name: Upload unsigned IPA
+        if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
           name: PrivateMusic-3.25.0-unsigned
