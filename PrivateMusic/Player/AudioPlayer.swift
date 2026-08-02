@@ -12,6 +12,17 @@ enum RepeatMode: String, CaseIterable {
     }
 }
 
+/// Playback route policy for wired / wireless headphone disconnects.
+///
+/// Apple documents that media apps must pause when headphones are removed so
+/// audio does not continue through the built-in speaker. See:
+/// https://developer.apple.com/documentation/avfaudio/responding-to-audio-route-changes
+/// (`AVAudioSession.routeChangeNotification` +
+/// `AVAudioSession.RouteChangeReason.oldDeviceUnavailable`).
+///
+/// Single-AirPod Automatic Ear Detection is delivered as a remote pause /
+/// interruption rather than a full route loss; `MPRemoteCommandCenter` and
+/// `setPrefersInterruptionOnRouteDisconnect(true)` cover that path.
 enum AudioRoutePolicy {
     static let minimumAudibleVolume: Float = 0.001
 
@@ -28,6 +39,8 @@ enum AudioRoutePolicy {
             && !outputPortTypes.contains(where: isExternalPlayback)
     }
 
+    /// Returns true when an external listening route disappeared and playback
+    /// must pause (wired headphones, AirPods / Bluetooth, AirPlay, car audio).
     static func shouldPauseAfterRouteLoss(
         wasPlaying: Bool,
         previousOutputPortTypes: [AVAudioSession.Port],
