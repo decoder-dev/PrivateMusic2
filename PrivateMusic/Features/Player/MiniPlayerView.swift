@@ -103,7 +103,7 @@ struct MiniPlayerView: View {
             }
             .adaptiveGlass(
                 in: containerShape,
-                interactive: true
+                interactive: false
             )
             .shadow(
                 color: .black.opacity(settings.theme == .dark ? 0.24 : 0.12),
@@ -125,7 +125,7 @@ struct MiniPlayerView: View {
                 x: reduceMotion ? 0 : dragOffset.width * 0.12,
                 y: reduceMotion ? 0 : min(dragOffset.height * 0.08, 0)
             )
-            .gesture(miniPlayerGesture)
+            .simultaneousGesture(miniPlayerGesture)
         }
     }
 

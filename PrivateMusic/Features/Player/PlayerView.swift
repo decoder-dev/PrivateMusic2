@@ -92,7 +92,7 @@ struct PlayerView: View {
             if let artworkURL = player.currentTrack?.artworkURL {
                 CachedRemoteImage(
                     url: artworkURL,
-                    maxPixelSize: 384
+                    maxPixelSize: 1_024
                 ) { image in
                     image
                         .resizable()
@@ -104,6 +104,7 @@ struct PlayerView: View {
                 } placeholder: {
                     Color.clear
                 }
+                .id(player.currentTrack?.id)
             }
             playerBackground.opacity(settings.theme == .light ? 0.72 : 0.56)
             LinearGradient(
@@ -294,6 +295,7 @@ struct PlayerView: View {
         size: CGFloat
     ) -> some View {
         AsyncArtwork(url: track.artworkURL, size: size)
+            .id(track.id)
             .clipShape(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
             )
