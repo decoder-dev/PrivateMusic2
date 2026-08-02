@@ -192,6 +192,15 @@ enum PlaybackPreloadPolicy {
     }
 }
 
+enum ContinuationAdvancePolicy {
+    static func shouldAdvance(
+        requested: Bool,
+        playbackIntended: Bool
+    ) -> Bool {
+        requested && playbackIntended
+    }
+}
+
 enum AudioInterruptionPolicy {
     static func shouldResume(
         wasPlayingBeforeInterruption: Bool,
@@ -211,24 +220,19 @@ final class AudioPlayer: ObservableObject {
     private final class PreloadedPlayback {
         let trackID: String
         let url: URL
-        let item: AVPlayerItem
-        let prerollPlayer: AVPlayer
+        let asset: AVURLAsset
         let preparedAt: Date
-        var statusObservation: NSKeyValueObservation?
-        var didStartPreroll = false
         var isReady = false
 
         init(
             trackID: String,
             url: URL,
-            item: AVPlayerItem,
-            prerollPlayer: AVPlayer,
+            asset: AVURLAsset,
             preparedAt: Date = Date()
         ) {
             self.trackID = trackID
             self.url = url
-            self.item = item
-            self.prerollPlayer = prerollPlayer
+            self.asset = asset
             self.preparedAt = preparedAt
         }
     }
@@ -296,6 +300,7 @@ final class AudioPlayer: ObservableObject {
     private var resumeAfterRouteTransfer = false
     private var routeDisconnectPending = false
     private var preloadedPlayback: PreloadedPlayback?
+    private var preloadAssetTask: Task<Void, Never>?
     private var preloadGeneration = 0
     private var preloadStreamRefreshTask: Task<Void, Never>?
     private var preloadStreamRefreshTrackID: String?
@@ -685,6 +690,7 @@ final class AudioPlayer: ObservableObject {
     func pause() {
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
+        advanceAfterContinuationPrefetch = false
         minimumVolumeResumeSuppressed = false
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
@@ -923,6 +929,17 @@ final class AudioPlayer: ObservableObject {
         url: URL,
         isOffline: Bool
     ) -> AVPlayerItem {
+        let item = AVPlayerItem(
+            asset: makePlaybackAsset(url: url, isOffline: isOffline)
+        )
+        item.preferredForwardBufferDuration = 12
+        return item
+    }
+
+    private func makePlaybackAsset(
+        url: URL,
+        isOffline: Bool
+    ) -> AVURLAsset {
         let asset: AVURLAsset
         if isOffline {
             asset = AVURLAsset(url: url)
@@ -939,9 +956,7 @@ final class AudioPlayer: ObservableObject {
                 options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
             )
         }
-        let item = AVPlayerItem(asset: asset)
-        item.preferredForwardBufferDuration = 12
-        return item
+        return asset
     }
 
     private func configureAudioProcessing(for item: AVPlayerItem) {
@@ -1000,72 +1015,43 @@ final class AudioPlayer: ObservableObject {
         }
 
         invalidatePreloadedPlayback()
-        let item = makePlaybackItem(
+        let asset = makePlaybackAsset(
             url: url,
             isOffline: offlineURL != nil
         )
-        let prerollPlayer = AVPlayer(playerItem: item)
-        prerollPlayer.automaticallyWaitsToMinimizeStalling = true
-        prerollPlayer.allowsExternalPlayback = false
-        prerollPlayer.isMuted = true
-        prerollPlayer.volume = 0
         let slot = PreloadedPlayback(
             trackID: track.id,
             url: url,
-            item: item,
-            prerollPlayer: prerollPlayer
+            asset: asset
         )
         preloadedPlayback = slot
         preloadGeneration += 1
         let generation = preloadGeneration
-        let trackID = track.id
-        slot.statusObservation = prerollPlayer.observe(
-            \.status,
-            options: [.initial, .new]
-        ) { [weak self] player, _ in
-            Task { @MainActor in
+        preloadAssetTask = Task { [weak self] in
+            do {
+                let isPlayable = try await asset.load(.isPlayable)
+                try Task.checkCancellation()
                 guard let self,
                       generation == self.preloadGeneration,
-                      self.preloadedPlayback?.trackID == trackID else {
+                      self.preloadedPlayback === slot else {
                     return
                 }
-                switch player.status {
-                case .readyToPlay:
-                    self.startPreroll(
-                        slot: slot,
-                        generation: generation
-                    )
-                case .failed:
+                self.preloadAssetTask = nil
+                if isPlayable {
+                    slot.isReady = true
+                } else {
                     self.recoverPreloadAfterFailure(slot)
-                case .unknown:
-                    break
-                @unknown default:
-                    self.invalidatePreloadedPlayback()
                 }
-            }
-        }
-    }
-
-    private func startPreroll(
-        slot: PreloadedPlayback,
-        generation: Int
-    ) {
-        guard !slot.didStartPreroll else { return }
-        slot.didStartPreroll = true
-        let trackID = slot.trackID
-        slot.prerollPlayer.preroll(atRate: 1) { [weak self] success in
-            Task { @MainActor in
+            } catch is CancellationError {
+                return
+            } catch {
                 guard let self,
                       generation == self.preloadGeneration,
-                      self.preloadedPlayback === slot,
-                      slot.trackID == trackID else {
+                      self.preloadedPlayback === slot else {
                     return
                 }
-                guard success else {
-                    self.recoverPreloadAfterFailure(slot)
-                    return
-                }
-                slot.isReady = true
+                self.preloadAssetTask = nil
+                self.recoverPreloadAfterFailure(slot)
             }
         }
     }
@@ -1089,22 +1075,19 @@ final class AudioPlayer: ObservableObject {
             return nil
         }
         preloadGeneration += 1
+        preloadAssetTask?.cancel()
+        preloadAssetTask = nil
         preloadedPlayback = nil
-        slot.statusObservation?.invalidate()
-        slot.statusObservation = nil
-        slot.prerollPlayer.cancelPendingPrerolls()
-        slot.prerollPlayer.replaceCurrentItem(with: nil)
-        return slot.item
+        let item = AVPlayerItem(asset: slot.asset)
+        item.preferredForwardBufferDuration = 12
+        return item
     }
 
     private func invalidatePreloadedPlayback() {
         preloadGeneration += 1
-        guard let slot = preloadedPlayback else { return }
+        preloadAssetTask?.cancel()
+        preloadAssetTask = nil
         preloadedPlayback = nil
-        slot.statusObservation?.invalidate()
-        slot.statusObservation = nil
-        slot.prerollPlayer.cancelPendingPrerolls()
-        slot.prerollPlayer.replaceCurrentItem(with: nil)
     }
 
     private func recoverPreloadAfterFailure(
@@ -1767,6 +1750,9 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func cancelContinuation() {
+        if advanceAfterContinuationPrefetch {
+            isBuffering = false
+        }
         continuationGeneration += 1
         continuationTask?.cancel()
         continuationTask = nil
@@ -1837,8 +1823,14 @@ final class AudioPlayer: ObservableObject {
                 return
             }
             self.continuationPrefetchTask = nil
-            let shouldAdvance = self.advanceAfterContinuationPrefetch
+            let shouldAdvance = ContinuationAdvancePolicy.shouldAdvance(
+                requested: self.advanceAfterContinuationPrefetch,
+                playbackIntended: self.playbackIntended
+            )
             self.advanceAfterContinuationPrefetch = false
+            if !shouldAdvance {
+                self.isBuffering = false
+            }
             if !additions.isEmpty {
                 self.queue.append(contentsOf: additions)
                 self.persistPlayback()

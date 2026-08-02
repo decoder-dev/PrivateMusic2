@@ -139,6 +139,29 @@ final class PlaybackPreloadPolicyTests: XCTestCase {
     }
 }
 
+final class ContinuationAdvancePolicyTests: XCTestCase {
+    func testAutomaticAdvanceRequiresCurrentPlaybackIntent() {
+        XCTAssertTrue(
+            ContinuationAdvancePolicy.shouldAdvance(
+                requested: true,
+                playbackIntended: true
+            )
+        )
+        XCTAssertFalse(
+            ContinuationAdvancePolicy.shouldAdvance(
+                requested: true,
+                playbackIntended: false
+            )
+        )
+        XCTAssertFalse(
+            ContinuationAdvancePolicy.shouldAdvance(
+                requested: false,
+                playbackIntended: true
+            )
+        )
+    }
+}
+
 @MainActor
 final class AudioPlayerTransitionTests: XCTestCase {
     func testPlayerPresentationIsIdempotentAndStopAlwaysDismisses() {
