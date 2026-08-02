@@ -46,12 +46,16 @@ enum AudioRoutePolicy {
         playbackIntended: Bool,
         hasCurrentTrack: Bool,
         isPlaying: Bool,
-        outputPortTypes: [AVAudioSession.Port]
+        outputPortTypes: [AVAudioSession.Port],
+        isAudioInterrupted: Bool = false,
+        allowsAutomaticResume: Bool = true
     ) -> Bool {
         guard pausedForMinimumVolume,
               playbackIntended,
               hasCurrentTrack,
-              !isPlaying else {
+              !isPlaying,
+              !isAudioInterrupted,
+              allowsAutomaticResume else {
             return false
         }
         let remainsMutedOnLocalOutput =
@@ -194,7 +198,9 @@ final class AudioPlayer: ObservableObject {
     private var lastNowPlayingSecond = -1
     private var playbackIntended = false
     private var pausedForMinimumVolume = false
+    private var minimumVolumeResumeSuppressed = false
     private var wasPlayingBeforeInterruption = false
+    private var isAudioInterrupted = false
     private var resumeAfterRouteTransfer = false
     private var routeDisconnectPending = false
 
@@ -442,10 +448,18 @@ final class AudioPlayer: ObservableObject {
     }
 
     func resume() {
-        pausedForMinimumVolume = false
+        resume(preservingMinimumVolumePause: false)
+    }
+
+    private func resume(preservingMinimumVolumePause: Bool) {
+        if !preservingMinimumVolumePause {
+            pausedForMinimumVolume = false
+            minimumVolumeResumeSuppressed = false
+        }
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         playbackIntended = true
+        guard !isAudioInterrupted else { return }
         if requiresStreamRefresh {
             refreshCurrentStream(autoplay: true)
             return
@@ -458,6 +472,7 @@ final class AudioPlayer: ObservableObject {
             seek(to: 0)
         }
         guard activateAudioSession() else { return }
+        pausedForMinimumVolume = false
         player.play()
         isPlaying = true
         publishPlaybackState(force: true)
@@ -468,6 +483,7 @@ final class AudioPlayer: ObservableObject {
 
     func pause() {
         pausedForMinimumVolume = false
+        minimumVolumeResumeSuppressed = false
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         playbackIntended = false
@@ -539,6 +555,7 @@ final class AudioPlayer: ObservableObject {
 
     func stop() {
         pausedForMinimumVolume = false
+        minimumVolumeResumeSuppressed = false
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         playbackIntended = false
@@ -575,6 +592,7 @@ final class AudioPlayer: ObservableObject {
 
     private func loadCurrentAndPlay() {
         pausedForMinimumVolume = false
+        minimumVolumeResumeSuppressed = false
         playbackIntended = true
         if let track = currentTrack,
            restoredTrackIDs.contains(track.id),
@@ -689,6 +707,7 @@ final class AudioPlayer: ObservableObject {
         duration = track.duration
         let shouldAutoplay = autoplay && activateAudioSession()
         if shouldAutoplay {
+            pausedForMinimumVolume = false
             player.play()
             isPlaying = true
             isBuffering = true
@@ -869,10 +888,11 @@ final class AudioPlayer: ObservableObject {
         outputVolumeObservation = AVAudioSession.sharedInstance().observe(
             \.outputVolume,
             options: [.initial, .new]
-        ) { [weak self] session, change in
-            let volume = change.newValue ?? session.outputVolume
+        ) { [weak self] _, _ in
             Task { @MainActor in
-                self?.handleOutputVolume(volume)
+                self?.handleOutputVolume(
+                    AVAudioSession.sharedInstance().outputVolume
+                )
             }
         }
     }
@@ -923,9 +943,11 @@ final class AudioPlayer: ObservableObject {
         }
         switch type {
         case .began:
+            isAudioInterrupted = true
             wasPlayingBeforeInterruption = playbackIntended && isPlaying
             pausePreservingIntent()
         case .ended:
+            isAudioInterrupted = false
             let rawOptions = notification.userInfo?[
                 AVAudioSessionInterruptionOptionKey
             ] as? UInt ?? 0
@@ -942,6 +964,7 @@ final class AudioPlayer: ObservableObject {
             if shouldResume {
                 resume()
             }
+            handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
         @unknown default:
             break
         }
@@ -956,6 +979,7 @@ final class AudioPlayer: ObservableObject {
               ) else {
             return
         }
+        var allowsMinimumVolumeResume = true
         switch reason {
         case .oldDeviceUnavailable:
             let previousRoute = notification.userInfo?[
@@ -980,6 +1004,11 @@ final class AudioPlayer: ObservableObject {
             resumeAfterRouteTransfer = false
             let currentOutputs = AVAudioSession.sharedInstance()
                 .currentRoute.outputs.map(\.portType)
+            if currentOutputs.contains(where: AudioRoutePolicy.isBluetooth),
+               !resumeOnBluetoothConnection {
+                allowsMinimumVolumeResume = false
+                minimumVolumeResumeSuppressed = true
+            }
             if AudioRoutePolicy.shouldResumeAfterRouteTransfer(
                 pendingResume: pendingResume,
                 playbackIntended: playbackIntended,
@@ -994,12 +1023,18 @@ final class AudioPlayer: ObservableObject {
         default:
             break
         }
-        handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
+        handleOutputVolume(
+            AVAudioSession.sharedInstance().outputVolume,
+            allowsAutomaticResume: allowsMinimumVolumeResume
+        )
     }
 
     private func handleMediaServicesReset() {
         let position = elapsedTime
         playbackIntended = false
+        pausedForMinimumVolume = false
+        minimumVolumeResumeSuppressed = false
+        isAudioInterrupted = false
         wasPlayingBeforeInterruption = false
         resumeAfterRouteTransfer = false
         isPlaying = false
@@ -1044,7 +1079,10 @@ final class AudioPlayer: ObservableObject {
         loadCurrent(autoplay: shouldResume, startAt: position)
     }
 
-    private func handleOutputVolume(_ volume: Float) {
+    private func handleOutputVolume(
+        _ volume: Float,
+        allowsAutomaticResume: Bool = true
+    ) {
         let outputPortTypes = AVAudioSession.sharedInstance()
             .currentRoute.outputs.map(\.portType)
         if AudioRoutePolicy.shouldPause(
@@ -1054,6 +1092,7 @@ final class AudioPlayer: ObservableObject {
             outputPortTypes: outputPortTypes
         ) {
             pausedForMinimumVolume = true
+            minimumVolumeResumeSuppressed = false
             pausePreservingIntent()
             return
         }
@@ -1064,10 +1103,12 @@ final class AudioPlayer: ObservableObject {
             playbackIntended: playbackIntended,
             hasCurrentTrack: currentTrack != nil,
             isPlaying: isPlaying,
-            outputPortTypes: outputPortTypes
+            outputPortTypes: outputPortTypes,
+            isAudioInterrupted: isAudioInterrupted,
+            allowsAutomaticResume: allowsAutomaticResume
+                && !minimumVolumeResumeSuppressed
         ) else { return }
-        pausedForMinimumVolume = false
-        resume()
+        resume(preservingMinimumVolumePause: true)
     }
 
     private func advanceAfterCompletion() {

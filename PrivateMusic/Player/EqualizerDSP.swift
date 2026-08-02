@@ -25,6 +25,8 @@ final class EqualizerDSP: @unchecked Sendable {
     private var states = [Float]()
     private var sampleRate = 44_100.0
     private var channelCount = 2
+    private var isNonInterleaved = false
+    private var frameStride = 2
     private var supportsProcessing = false
     private var loudnessNormEnabled = false
     private var drcEnabled = false
@@ -45,7 +47,7 @@ final class EqualizerDSP: @unchecked Sendable {
     var requiresAudioTap: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return enabled || spatialAudioEnabled
+        return enabled || isSpatialAudioActive
     }
 
     func update(
@@ -58,16 +60,25 @@ final class EqualizerDSP: @unchecked Sendable {
         spatialIntensity: Double = SpatialAudioDSP.defaultIntensity
     ) {
         lock.lock()
+        let normalizedGains = gains.count == Self.frequencies.count
+            ? gains
+            : self.gains
+        let normalizedPreamp = min(max(preamp, -12), 6)
+        let rebuildRequired =
+            self.gains != normalizedGains
+            || preampDB != normalizedPreamp
+            || loudnessNormEnabled != loudnessNorm
+            || drcEnabled != dynamicRangeCompression
         self.enabled = enabled
-        if gains.count == Self.frequencies.count {
-            self.gains = gains
-        }
-        preampDB = min(max(preamp, -12), 6)
+        self.gains = normalizedGains
+        preampDB = normalizedPreamp
         loudnessNormEnabled = loudnessNorm
         drcEnabled = dynamicRangeCompression
         spatialAudioEnabled = spatialAudio
         spatialAudioIntensity = min(max(spatialIntensity, 0), 1)
-        rebuildCoefficients()
+        if rebuildRequired {
+            rebuildCoefficients()
+        }
         lock.unlock()
     }
 
@@ -104,10 +115,17 @@ final class EqualizerDSP: @unchecked Sendable {
         lock.lock()
         sampleRate = format.mSampleRate
         channelCount = max(Int(format.mChannelsPerFrame), 1)
+        isNonInterleaved =
+            (format.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
+        frameStride = max(
+            Int(format.mBytesPerFrame) / MemoryLayout<Float>.size,
+            1
+        )
         supportsProcessing =
             format.mFormatID == kAudioFormatLinearPCM
             && format.mBitsPerChannel == 32
             && (format.mFormatFlags & kAudioFormatFlagIsFloat) != 0
+            && (isNonInterleaved || frameStride >= channelCount)
         states = [Float](
             repeating: 0,
             count: channelCount * Self.frequencies.count * 4
@@ -131,23 +149,20 @@ final class EqualizerDSP: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard supportsProcessing,
-              enabled || spatialAudioEnabled else {
+              enabled || isSpatialAudioActive else {
             return
         }
 
         let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
-        let nonInterleaved = buffers.count > 1
         if enabled, !coefficients.isEmpty {
             processEqualizer(
                 buffers: buffers,
-                nonInterleaved: nonInterleaved,
                 frameCount: frameCount
             )
         }
-        if spatialAudioEnabled {
+        if isSpatialAudioActive {
             processSpatialAudio(
                 buffers: buffers,
-                nonInterleaved: nonInterleaved,
                 frameCount: frameCount
             )
         }
@@ -155,7 +170,6 @@ final class EqualizerDSP: @unchecked Sendable {
 
     private func processEqualizer(
         buffers: UnsafeMutableAudioBufferListPointer,
-        nonInterleaved: Bool,
         frameCount: Int
     ) {
         for bufferIndex in buffers.indices {
@@ -165,10 +179,13 @@ final class EqualizerDSP: @unchecked Sendable {
                 Int(buffers[bufferIndex].mNumberChannels),
                 1
             )
-            let stride = nonInterleaved ? 1 : channelsInBuffer
+            if isNonInterleaved, channelsInBuffer != 1 {
+                continue
+            }
+            let stride = isNonInterleaved ? 1 : frameStride
 
             for localChannel in 0..<channelsInBuffer {
-                let channel = nonInterleaved
+                let channel = isNonInterleaved
                     ? min(bufferIndex, channelCount - 1)
                     : min(localChannel, channelCount - 1)
                 var sampleIndex = localChannel
@@ -223,13 +240,14 @@ final class EqualizerDSP: @unchecked Sendable {
 
     private func processSpatialAudio(
         buffers: UnsafeMutableAudioBufferListPointer,
-        nonInterleaved: Bool,
         frameCount: Int
     ) {
         guard channelCount >= 2 else { return }
 
-        if nonInterleaved {
+        if isNonInterleaved {
             guard buffers.count >= 2,
+                  buffers[0].mNumberChannels == 1,
+                  buffers[1].mNumberChannels == 1,
                   let leftData = buffers[0].mData,
                   let rightData = buffers[1].mData else {
                 return
@@ -254,9 +272,8 @@ final class EqualizerDSP: @unchecked Sendable {
             return
         }
         let samples = rawData.assumingMemoryBound(to: Float.self)
-        let stride = Int(buffer.mNumberChannels)
         for frame in 0..<frameCount {
-            let index = frame * stride
+            let index = frame * frameStride
             let widened = SpatialAudioDSP.process(
                 left: samples[index],
                 right: samples[index + 1],
@@ -265,6 +282,10 @@ final class EqualizerDSP: @unchecked Sendable {
             samples[index] = widened.left
             samples[index + 1] = widened.right
         }
+    }
+
+    private var isSpatialAudioActive: Bool {
+        spatialAudioEnabled && spatialAudioIntensity > 0.000_1
     }
 
     private func rebuildCoefficients() {
