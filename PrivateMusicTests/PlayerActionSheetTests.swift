@@ -93,6 +93,35 @@ final class PlayerActionSheetTests: XCTestCase {
     }
 }
 
+@MainActor
+final class PlayerSleepTimerTests: XCTestCase {
+    func testSleepTimerCanBeScheduledAndCancelledFromPlayer() throws {
+        let suite = "PlayerSleepTimerTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults)
+        let history = ListeningHistoryStore(defaults: defaults)
+        let player = AudioPlayer(
+            settings: settings,
+            historyStore: history,
+            defaults: defaults
+        )
+        let startedAt = Date()
+
+        player.scheduleSleepTimer(minutes: 15)
+
+        let endDate = try XCTUnwrap(player.sleepTimerEndDate)
+        XCTAssertEqual(
+            endDate.timeIntervalSince(startedAt),
+            15 * 60,
+            accuracy: 2
+        )
+
+        player.cancelSleepTimer()
+        XCTAssertNil(player.sleepTimerEndDate)
+    }
+}
+
 final class PlayerContentLayoutTests: XCTestCase {
     func testCompactPhoneReservesBottomDockWithoutOverflow() {
         let metrics = PlayerLayoutMetrics.resolve(
