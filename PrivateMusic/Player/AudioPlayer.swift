@@ -87,10 +87,12 @@ enum AudioInterruptionPolicy {
     static func shouldResume(
         wasPlayingBeforeInterruption: Bool,
         playbackIntended: Bool,
+        routeDisconnectPending: Bool,
         options: AVAudioSession.InterruptionOptions
     ) -> Bool {
         wasPlayingBeforeInterruption
             && playbackIntended
+            && !routeDisconnectPending
             && options.contains(.shouldResume)
     }
 }
@@ -148,6 +150,7 @@ final class AudioPlayer: ObservableObject {
     private var playbackIntended = false
     private var wasPlayingBeforeInterruption = false
     private var resumeAfterRouteTransfer = false
+    private var routeDisconnectPending = false
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -275,6 +278,7 @@ final class AudioPlayer: ObservableObject {
         continuation: (() async throws -> [Track])? = nil
     ) {
         resumeAfterRouteTransfer = false
+        routeDisconnectPending = false
         playbackIntended = true
         cancelContinuation()
         cancelStreamRefresh()
@@ -317,6 +321,7 @@ final class AudioPlayer: ObservableObject {
     func jump(to index: Int) {
         guard queue.indices.contains(index) else { return }
         resumeAfterRouteTransfer = false
+        routeDisconnectPending = false
         playbackIntended = true
         cancelContinuation()
         cancelStreamRefresh()
@@ -378,6 +383,7 @@ final class AudioPlayer: ObservableObject {
 
     func resume() {
         resumeAfterRouteTransfer = false
+        routeDisconnectPending = false
         playbackIntended = true
         if requiresStreamRefresh {
             refreshCurrentStream(autoplay: true)
@@ -401,6 +407,7 @@ final class AudioPlayer: ObservableObject {
 
     func pause() {
         resumeAfterRouteTransfer = false
+        routeDisconnectPending = false
         playbackIntended = false
         pausePreservingIntent()
     }
@@ -463,6 +470,7 @@ final class AudioPlayer: ObservableObject {
 
     func stop() {
         resumeAfterRouteTransfer = false
+        routeDisconnectPending = false
         playbackIntended = false
         playbackGeneration += 1
         dismissPlayer()
@@ -641,6 +649,12 @@ final class AudioPlayer: ObservableObject {
                 policy: .longFormAudio,
                 options: []
             )
+            if #available(iOS 17.0, *) {
+                // Keep the system's expected media-app behavior when wired or
+                // wireless headphones disappear: interrupt playback instead
+                // of leaking audio through the device speaker.
+                try? session.setPrefersInterruptionOnRouteDisconnect(true)
+            }
             audioSessionConfigured = true
             return true
         } catch {
@@ -847,6 +861,7 @@ final class AudioPlayer: ObservableObject {
             let shouldResume = AudioInterruptionPolicy.shouldResume(
                 wasPlayingBeforeInterruption: wasPlayingBeforeInterruption,
                 playbackIntended: playbackIntended,
+                routeDisconnectPending: routeDisconnectPending,
                 options: options
             )
             wasPlayingBeforeInterruption = false
@@ -875,12 +890,15 @@ final class AudioPlayer: ObservableObject {
             let previousOutputs = previousRoute?.outputs.map(\.portType) ?? []
             let currentOutputs = AVAudioSession.sharedInstance()
                 .currentRoute.outputs.map(\.portType)
+            let playbackWasActive = isPlaying || wasPlayingBeforeInterruption
             if AudioRoutePolicy.shouldPauseAfterRouteLoss(
-                wasPlaying: isPlaying,
+                wasPlaying: playbackWasActive,
                 previousOutputPortTypes: previousOutputs,
                 currentOutputPortTypes: currentOutputs
             ) {
-                resumeAfterRouteTransfer = playbackIntended && isPlaying
+                routeDisconnectPending = true
+                resumeAfterRouteTransfer = playbackIntended
+                    && playbackWasActive
                 pausePreservingIntent()
             }
         case .newDeviceAvailable:
@@ -898,6 +916,7 @@ final class AudioPlayer: ObservableObject {
             ) else {
                 return
             }
+            routeDisconnectPending = false
             resume()
         default:
             break
