@@ -262,6 +262,86 @@ final class OfflineTrackStoreTests: XCTestCase {
         XCTAssertTrue(store.contains(track))
     }
 
+    func testManualCallerPromotesJoinedAutomaticCacheDownload() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let responseStarted = expectation(description: "response started")
+        responseStarted.assertForOverFulfill = false
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [OfflineURLProtocol.self]
+        OfflineURLProtocol.handler = { request in
+            responseStarted.fulfill()
+            Thread.sleep(forTimeInterval: 0.15)
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: [
+                    "Content-Type": "audio/mpeg",
+                    "Content-Length": "8"
+                ]
+            )!
+            return (response, Data("ID3audio".utf8))
+        }
+        let store = OfflineTrackStore(
+            rootURL: root,
+            downloadService: TrackShareService(
+                session: URLSession(configuration: configuration)
+            ),
+            downloadCoordinator: DownloadCoordinator()
+        )
+        let track = makeTrack()
+        store.configure(accountID: 42)
+
+        let automatic = Task { @MainActor in
+            try await store.download(
+                track,
+                userAgent: nil,
+                retention: .automaticCache
+            )
+        }
+        await fulfillment(of: [responseStarted], timeout: 1)
+        let manual = Task { @MainActor in
+            try await store.download(
+                track,
+                userAgent: nil,
+                retention: .manual
+            )
+        }
+        try await automatic.value
+        try await manual.value
+
+        XCTAssertEqual(
+            store.record(for: track)?.resolvedRetention,
+            .manual
+        )
+    }
+
+    func testConfigureFlushesPendingActivityForPreviousAccount() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let track = makeTrack()
+        let store = OfflineTrackStore(
+            rootURL: root,
+            downloadService: makeDownloadService(),
+            downloadCoordinator: DownloadCoordinator()
+        )
+        store.configure(accountID: 1)
+        try await store.download(track, userAgent: nil)
+        store.markPlayed(track)
+
+        store.configure(accountID: 2)
+
+        let restored = OfflineTrackStore(
+            rootURL: root,
+            downloadService: makeDownloadService(),
+            downloadCoordinator: DownloadCoordinator()
+        )
+        restored.configure(accountID: 1)
+        XCTAssertEqual(restored.record(for: track)?.playCount, 1)
+        XCTAssertTrue(restored.contains(track))
+    }
+
     // MARK: - HLS integration (unified pipeline)
 
     func testHLSDownloadIsStoredAsDirectM4AFile() async throws {

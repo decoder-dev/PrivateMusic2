@@ -98,6 +98,41 @@ final class PlayerLayoutMetricsTests: XCTestCase {
         )
     }
 
+    func testPlayerHeaderStaysBelowTopSafeArea() {
+        let metrics = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 390, height: 844),
+            safeBottom: 34,
+            safeTop: 59
+        )
+
+        XCTAssertGreaterThanOrEqual(metrics.headerTopPadding, 59)
+        XCTAssertEqual(metrics.safeTop, 59)
+    }
+
+    func testPortraitContentWidthIsCappedAndCenteredOnIPad() {
+        let metrics = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 834, height: 1_194),
+            safeBottom: 20,
+            safeTop: 24
+        )
+
+        XCTAssertLessThanOrEqual(metrics.contentWidth, 560)
+        XCTAssertEqual(metrics.leadingPadding, metrics.trailingPadding)
+    }
+
+    func testAccessibilityQuickActionsUseExpandedHeightAndScrollFallback() {
+        let metrics = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 320, height: 568),
+            safeBottom: 34,
+            safeTop: 20,
+            usesAccessibilityText: true
+        )
+
+        XCTAssertGreaterThanOrEqual(metrics.quickActionsHeight, 140)
+        XCTAssertTrue(metrics.requiresVerticalScrolling(containerHeight: 568))
+        XCTAssertGreaterThanOrEqual(metrics.artworkSize, 112)
+    }
+
     func testPlayerControlsUseAccessibleMinimumHeights() {
         let metrics = PlayerLayoutMetrics.resolve(
             containerSize: CGSize(width: 320, height: 568),
