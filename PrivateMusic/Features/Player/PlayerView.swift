@@ -131,7 +131,15 @@ struct PlayerView: View {
         )
 
         Group {
-            if metrics.mode == .landscape {
+            if metrics.requiresAccessibilityScrolling(
+                containerHeight: size.height
+            ) {
+                ScrollView(.vertical) {
+                    landscapePlayerContent(track, metrics: metrics)
+                        .frame(minHeight: metrics.minimumContentHeight)
+                }
+                .scrollIndicators(.hidden)
+            } else if metrics.mode == .landscape {
                 landscapePlayerContent(track, metrics: metrics)
             } else {
                 portraitPlayerContent(track, metrics: metrics)
@@ -1117,6 +1125,12 @@ struct PlayerLayoutMetrics: Equatable {
 
     func quickActionsBottomY(containerHeight: CGFloat) -> CGFloat {
         max(containerHeight - bottomPadding, 0)
+    }
+
+    func requiresAccessibilityScrolling(containerHeight: CGFloat) -> Bool {
+        mode == .landscape
+            && usesAccessibilityText
+            && minimumContentHeight > containerHeight + 0.5
     }
 }
 
