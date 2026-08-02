@@ -9,8 +9,10 @@ final class WatchRemoteProtocolTests: XCTestCase {
             artist: "Artist",
             artworkURL: URL(string: "https://example.com/art.jpg"),
             isPlaying: true,
+            isBuffering: false,
             elapsed: 12.5,
-            duration: 180
+            duration: 180,
+            snapshotDate: Date(timeIntervalSince1970: 100)
         )
 
         XCTAssertEqual(WatchRemoteState(context: state.context), state)
@@ -30,5 +32,72 @@ final class WatchRemoteProtocolTests: XCTestCase {
         )
         XCTAssertEqual(WatchRemoteCommand.next.rawValue, "next")
         XCTAssertEqual(WatchRemoteCommand.previous.rawValue, "previous")
+    }
+
+    func testPlayingStateInterpolatesElapsedTime() {
+        let state = WatchRemoteState(
+            trackID: "1_2",
+            title: "Track",
+            artist: "Artist",
+            artworkURL: nil,
+            isPlaying: true,
+            isBuffering: false,
+            elapsed: 10,
+            duration: 20,
+            snapshotDate: Date(timeIntervalSince1970: 100)
+        )
+
+        XCTAssertEqual(
+            state.displayedElapsed(
+                at: Date(timeIntervalSince1970: 104.5)
+            ),
+            14.5
+        )
+        XCTAssertEqual(
+            state.displayedElapsed(
+                at: Date(timeIntervalSince1970: 200)
+            ),
+            20
+        )
+    }
+
+    func testCommandEnvelopeRoundTripsThroughMessage() {
+        let envelope = WatchRemoteCommandEnvelope(
+            command: .next,
+            issuedAt: Date(timeIntervalSince1970: 123),
+            trackID: "1_2"
+        )
+
+        XCTAssertEqual(
+            WatchRemoteCommandEnvelope(message: envelope.message),
+            envelope
+        )
+    }
+
+    func testCommandEnvelopeRejectsStaleOrWrongTrackCommands() {
+        let envelope = WatchRemoteCommandEnvelope(
+            command: .next,
+            issuedAt: Date(timeIntervalSince1970: 100),
+            trackID: "1_2"
+        )
+
+        XCTAssertTrue(
+            envelope.isValid(
+                at: Date(timeIntervalSince1970: 110),
+                currentTrackID: "1_2"
+            )
+        )
+        XCTAssertFalse(
+            envelope.isValid(
+                at: Date(timeIntervalSince1970: 116),
+                currentTrackID: "1_2"
+            )
+        )
+        XCTAssertFalse(
+            envelope.isValid(
+                at: Date(timeIntervalSince1970: 110),
+                currentTrackID: "9_9"
+            )
+        )
     }
 }

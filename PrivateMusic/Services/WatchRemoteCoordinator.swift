@@ -10,6 +10,7 @@ final class WatchRemoteCoordinator: NSObject {
     private let session: WCSession?
     private var cancellables = Set<AnyCancellable>()
     private var lastState: WatchRemoteState?
+    private var canControlPlayback: @MainActor () -> Bool = { true }
 
     init(player: AudioPlayer) {
         self.player = player
@@ -43,6 +44,19 @@ final class WatchRemoteCoordinator: NSObject {
                 self?.pushLatestState()
             }
             .store(in: &cancellables)
+
+        player.$isBuffering
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                self?.pushLatestState()
+            }
+            .store(in: &cancellables)
+    }
+
+    func configureControlGate(
+        _ gate: @escaping @MainActor () -> Bool
+    ) {
+        canControlPlayback = gate
     }
 
     private func currentState() -> WatchRemoteState {
@@ -55,8 +69,10 @@ final class WatchRemoteCoordinator: NSObject {
             artist: track.artist,
             artworkURL: track.artworkURL,
             isPlaying: player.isPlaying,
+            isBuffering: player.isBuffering,
             elapsed: player.elapsedTime,
-            duration: player.duration > 0 ? player.duration : track.duration
+            duration: player.duration > 0 ? player.duration : track.duration,
+            snapshotDate: Date()
         )
     }
 
@@ -78,13 +94,25 @@ final class WatchRemoteCoordinator: NSObject {
         }
     }
 
+    private func reply(accepted: Bool) -> [String: Any] {
+        var context = currentState().context
+        context[WatchRemoteMessageKey.accepted] = accepted
+        return context
+    }
+
     private func handle(_ message: [String: Any]) -> [String: Any] {
-        guard let raw = message[WatchRemoteMessageKey.command] as? String,
-              let command = WatchRemoteCommand(rawValue: raw),
-              let player else {
-            return currentState().context
+        guard let envelope = WatchRemoteCommandEnvelope(message: message),
+              let player,
+              canControlPlayback() else {
+            return reply(accepted: false)
         }
-        switch command {
+        guard envelope.isValid(
+            at: Date(),
+            currentTrackID: player.currentTrack?.id
+        ) else {
+            return reply(accepted: false)
+        }
+        switch envelope.command {
         case .togglePlayPause:
             player.playPause()
         case .next:
@@ -93,7 +121,7 @@ final class WatchRemoteCoordinator: NSObject {
             player.previous()
         }
         pushLatestState(force: true)
-        return currentState().context
+        return reply(accepted: true)
     }
 }
 
@@ -115,6 +143,12 @@ extension WatchRemoteCoordinator: WCSessionDelegate {
         session.activate()
     }
 
+    nonisolated func sessionWatchStateDidChange(_ session: WCSession) {
+        Task { @MainActor [weak self] in
+            self?.pushLatestState(force: true)
+        }
+    }
+
     nonisolated func session(
         _ session: WCSession,
         didReceiveMessage message: [String: Any],
@@ -129,8 +163,7 @@ extension WatchRemoteCoordinator: WCSessionDelegate {
         _ session: WCSession,
         didReceiveUserInfo userInfo: [String: Any] = [:]
     ) {
-        Task { @MainActor [weak self] in
-            _ = self?.handle(userInfo)
-        }
+        // Transport controls are intentionally never queued. Old queued
+        // messages from pre-3.26 builds are discarded to avoid stale replay.
     }
 }

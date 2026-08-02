@@ -42,6 +42,19 @@ for relative in required:
     if not (ROOT / relative).is_file():
         fail(f"missing {relative}")
 
+for relative in (
+    "PrivateMusic/Services/WatchRemoteCoordinator.swift",
+    "PrivateMusic/Shared/WatchRemoteProtocol.swift",
+    "PrivateMusicWatch/PrivateMusicWatchApp.swift",
+    "PrivateMusicWatch/RemotePlayerView.swift",
+    "PrivateMusicWatch/WatchRemoteViewModel.swift",
+    "PrivateMusicWatch/Resources/PrivacyInfo.xcprivacy",
+    "scripts/fix_watch_embedding.py",
+    "scripts/validate_watch_bundle.py",
+):
+    if not (ROOT / relative).is_file():
+        fail(f"missing Watch release file: {relative}")
+
 all_source = "\n".join(path.read_text(encoding="utf-8") for path in swift_files)
 audio_player_source = (
     SOURCE / "Player" / "AudioPlayer.swift"
@@ -246,6 +259,16 @@ if privacy.get("NSPrivacyAccessedAPITypes") != [
 ]:
     fail("privacy manifest must declare UserDefaults reason CA92.1")
 
+watch_privacy_path = (
+    ROOT / "PrivateMusicWatch" / "Resources" / "PrivacyInfo.xcprivacy"
+)
+with watch_privacy_path.open("rb") as stream:
+    watch_privacy = plistlib.load(stream)
+if watch_privacy.get("NSPrivacyTracking") is not False:
+    fail("Watch privacy manifest must disable tracking")
+if watch_privacy.get("NSPrivacyCollectedDataTypes") != []:
+    fail("Watch privacy manifest must not declare collected data")
+
 for path, expected_size in (
     (
         SOURCE
@@ -279,6 +302,15 @@ for path, expected_size in (
         / "AppIconPreview3x.png",
         768,
     ),
+    (
+        ROOT
+        / "PrivateMusicWatch"
+        / "Resources"
+        / "Assets.xcassets"
+        / "AppIcon.appiconset"
+        / "AppIcon.png",
+        1024,
+    ),
 ):
     data = path.read_bytes()
     if data[:8] != b"\x89PNG\r\n\x1a\n":
@@ -297,7 +329,11 @@ for forbidden_demo in (
 project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
 for required_setting in (
     'iOS: "16.0"',
+    'watchOS: "10.0"',
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2",
+    "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2.watchkitapp",
+    "INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.dec.privatemusic2",
+    "postGenCommand: python3 scripts/fix_watch_embedding.py",
     "GENERATE_INFOPLIST_FILE: NO",
     "INFOPLIST_FILE: PrivateMusic/Resources/Info.plist",
 ):

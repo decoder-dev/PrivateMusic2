@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 struct RemotePlayerView: View {
@@ -29,17 +30,24 @@ struct RemotePlayerView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
-                ProgressView(
-                    value: min(remote.state.elapsed, remote.state.duration),
-                    total: max(remote.state.duration, 1)
-                )
-                .tint(.white)
-                .padding(.horizontal, 4)
+                TimelineView(.periodic(from: .now, by: 1)) { timeline in
+                    progress(at: timeline.date)
+                }
 
                 controls
 
-                if !remote.isReachable {
-                    Label("iPhone не в сети", systemImage: "iphone.slash")
+                if remote.commandFailed {
+                    Label(
+                        WatchL10n.text("command_failed"),
+                        systemImage: "exclamationmark.circle"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                } else if !remote.isReachable {
+                    Label(
+                        WatchL10n.text("iphone_unavailable"),
+                        systemImage: "iphone.slash"
+                    )
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -64,6 +72,35 @@ struct RemotePlayerView: View {
         }
         .frame(width: 88, height: 88)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityHidden(true)
+    }
+
+    private func progress(at date: Date) -> some View {
+        let elapsed = remote.state.displayedElapsed(at: date)
+        return VStack(spacing: 3) {
+            if remote.state.duration > 0 {
+                ProgressView(
+                    value: elapsed,
+                    total: remote.state.duration
+                )
+                .tint(.white)
+                .accessibilityLabel(WatchL10n.text("playback_progress"))
+                .accessibilityValue(
+                    "\(format(elapsed)) / \(format(remote.state.duration))"
+                )
+                HStack {
+                    Text(format(elapsed))
+                    Spacer()
+                    Text("-\(format(max(0, remote.state.duration - elapsed)))")
+                }
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+            } else {
+                ProgressView()
+                    .accessibilityLabel(WatchL10n.text("loading"))
+            }
+        }
+        .padding(.horizontal, 4)
     }
 
     private var controls: some View {
@@ -74,18 +111,30 @@ struct RemotePlayerView: View {
                 Image(systemName: "backward.fill")
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(WatchL10n.text("previous_track"))
 
             Button {
                 remote.send(.togglePlayPause)
             } label: {
-                Image(
-                    systemName: remote.state.isPlaying
-                        ? "pause.circle.fill"
-                        : "play.circle.fill"
-                )
-                .font(.system(size: 42))
+                ZStack {
+                    Image(
+                        systemName: remote.state.isPlaying
+                            ? "pause.circle.fill"
+                            : "play.circle.fill"
+                    )
+                    .font(.system(size: 42))
+                    if remote.state.isBuffering {
+                        ProgressView()
+                            .controlSize(.mini)
+                    }
+                }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(
+                WatchL10n.text(
+                    remote.state.isPlaying ? "pause" : "play"
+                )
+            )
 
             Button {
                 remote.send(.next)
@@ -93,24 +142,33 @@ struct RemotePlayerView: View {
                 Image(systemName: "forward.fill")
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(WatchL10n.text("next_track"))
         }
         .font(.title3)
         .padding(.vertical, 4)
+        .disabled(!remote.isReachable || remote.state.isBuffering)
+        .opacity(remote.isReachable ? 1 : 0.45)
     }
 
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "iphone.and.arrow.forward")
                 .font(.system(size: 36))
-            Text("Откройте Private Music на iPhone")
+            Text(WatchL10n.text("open_on_iphone"))
                 .font(.headline)
                 .multilineTextAlignment(.center)
-            Text("Запустите трек — он появится здесь.")
+            Text(WatchL10n.text("start_track_hint"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .padding()
+    }
+
+    private func format(_ interval: TimeInterval) -> String {
+        guard interval.isFinite else { return "0:00" }
+        let seconds = max(0, Int(interval.rounded(.down)))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 }
 

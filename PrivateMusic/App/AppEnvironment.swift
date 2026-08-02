@@ -137,6 +137,9 @@ final class AppEnvironment: ObservableObject {
             predictivePreDownloadTask?.cancel()
             predictivePreDownloadTask = nil
         }
+        watchRemoteCoordinator.configureControlGate { [weak self] in
+            self?.isShareSessionActive == false
+        }
         watchRemoteCoordinator.start()
     }
 
