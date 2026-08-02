@@ -187,6 +187,8 @@ final class AudioPlayer: ObservableObject {
         let item: AVPlayerItem
         let prerollPlayer: AVPlayer
         let preparedAt: Date
+        var statusObservation: NSKeyValueObservation?
+        var didStartPreroll = false
         var isReady = false
 
         init(
@@ -261,6 +263,9 @@ final class AudioPlayer: ObservableObject {
     private var routeDisconnectPending = false
     private var preloadedPlayback: PreloadedPlayback?
     private var preloadGeneration = 0
+    private var preloadStreamRefreshTask: Task<Void, Never>?
+    private var preloadStreamRefreshTrackID: String?
+    private var attemptedPreloadRefreshes = Set<String>()
     private var canPreloadPlayback: () -> Bool = { true }
     private var artworkPrefetchHandler: (([Track]) async -> Void)?
     private var artworkPrefetchTask: Task<Void, Never>?
@@ -387,6 +392,9 @@ final class AudioPlayer: ObservableObject {
 
     func cancelPreloading() {
         invalidatePreloadedPlayback()
+        preloadStreamRefreshTask?.cancel()
+        preloadStreamRefreshTask = nil
+        preloadStreamRefreshTrackID = nil
         artworkPrefetchTask?.cancel()
         artworkPrefetchTask = nil
     }
@@ -433,6 +441,7 @@ final class AudioPlayer: ObservableObject {
         requiresStreamRefresh = false
         didAttemptStreamRefresh = false
         restoredTrackIDs.removeAll()
+        attemptedPreloadRefreshes.removeAll()
         activeContinuationProvider =
             continuation ?? defaultContinuationProvider
         let prepared = PlaybackQueueBuilder.normalized(
@@ -895,6 +904,12 @@ final class AudioPlayer: ObservableObject {
             return
         }
         let track = queue[nextIndex]
+        if let refreshTrackID = preloadStreamRefreshTrackID,
+           refreshTrackID != track.id {
+            preloadStreamRefreshTask?.cancel()
+            preloadStreamRefreshTask = nil
+            preloadStreamRefreshTrackID = nil
+        }
         let offlineURL = offlineURLProvider?(track)
         guard (offlineURL != nil || remotePreloadingAllowed),
               offlineURL != nil || !restoredTrackIDs.contains(track.id),
@@ -933,18 +948,53 @@ final class AudioPlayer: ObservableObject {
         preloadGeneration += 1
         let generation = preloadGeneration
         let trackID = track.id
-        prerollPlayer.preroll(atRate: 1) { [weak self] success in
+        slot.statusObservation = prerollPlayer.observe(
+            \.status,
+            options: [.initial, .new]
+        ) { [weak self] player, _ in
             Task { @MainActor in
                 guard let self,
                       generation == self.preloadGeneration,
                       self.preloadedPlayback?.trackID == trackID else {
                     return
                 }
-                guard success else {
+                switch player.status {
+                case .readyToPlay:
+                    self.startPreroll(
+                        slot: slot,
+                        generation: generation
+                    )
+                case .failed:
+                    self.recoverPreloadAfterFailure(slot)
+                case .unknown:
+                    break
+                @unknown default:
                     self.invalidatePreloadedPlayback()
+                }
+            }
+        }
+    }
+
+    private func startPreroll(
+        slot: PreloadedPlayback,
+        generation: Int
+    ) {
+        guard !slot.didStartPreroll else { return }
+        slot.didStartPreroll = true
+        let trackID = slot.trackID
+        slot.prerollPlayer.preroll(atRate: 1) { [weak self] success in
+            Task { @MainActor in
+                guard let self,
+                      generation == self.preloadGeneration,
+                      self.preloadedPlayback === slot,
+                      slot.trackID == trackID else {
                     return
                 }
-                self.preloadedPlayback?.isReady = true
+                guard success else {
+                    self.recoverPreloadAfterFailure(slot)
+                    return
+                }
+                slot.isReady = true
             }
         }
     }
@@ -969,6 +1019,8 @@ final class AudioPlayer: ObservableObject {
         }
         preloadGeneration += 1
         preloadedPlayback = nil
+        slot.statusObservation?.invalidate()
+        slot.statusObservation = nil
         slot.prerollPlayer.cancelPendingPrerolls()
         slot.prerollPlayer.replaceCurrentItem(with: nil)
         return slot.item
@@ -978,8 +1030,56 @@ final class AudioPlayer: ObservableObject {
         preloadGeneration += 1
         guard let slot = preloadedPlayback else { return }
         preloadedPlayback = nil
+        slot.statusObservation?.invalidate()
+        slot.statusObservation = nil
         slot.prerollPlayer.cancelPendingPrerolls()
         slot.prerollPlayer.replaceCurrentItem(with: nil)
+    }
+
+    private func recoverPreloadAfterFailure(
+        _ slot: PreloadedPlayback
+    ) {
+        let trackID = slot.trackID
+        let failedURL = slot.url
+        invalidatePreloadedPlayback()
+        guard !failedURL.isFileURL,
+              preloadStreamRefreshTask == nil,
+              let provider = streamRefreshProvider,
+              let track = queue.first(where: { $0.id == trackID }) else {
+            return
+        }
+        let refreshKey = "\(trackID)#\(failedURL.absoluteString)"
+        guard attemptedPreloadRefreshes.insert(refreshKey).inserted else {
+            return
+        }
+        preloadStreamRefreshTrackID = trackID
+        preloadStreamRefreshTask = Task { [weak self] in
+            defer {
+                if let self,
+                   self.preloadStreamRefreshTrackID == trackID {
+                    self.preloadStreamRefreshTask = nil
+                    self.preloadStreamRefreshTrackID = nil
+                }
+            }
+            do {
+                let refreshed = try await provider(track)
+                try Task.checkCancellation()
+                guard let self,
+                      let nextIndex = PlaybackPreloadPolicy.nextIndex(
+                        queueCount: self.queue.count,
+                        currentIndex: self.currentIndex,
+                        repeatMode: self.repeatMode
+                      ),
+                      self.queue.indices.contains(nextIndex),
+                      self.queue[nextIndex].id == trackID else {
+                    return
+                }
+                self.queue[nextIndex] = refreshed
+                self.restoredTrackIDs.remove(trackID)
+                self.persistPlayback()
+                self.scheduleNeighborPreloads()
+            } catch {}
+        }
     }
 
     private func prefetchNeighborArtwork() {

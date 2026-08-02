@@ -108,8 +108,14 @@ struct CachedRemoteImage<
 }
 
 private actor ArtworkPrefetchRegistry {
+    private struct Entry {
+        let id: UUID
+        let task: Task<Void, Never>
+        var waiters: Set<UUID>
+    }
+
     static let shared = ArtworkPrefetchRegistry()
-    private var tasks: [String: Task<Void, Never>] = [:]
+    private var entries: [String: Entry] = [:]
 
     func prefetch(
         cache: ArtworkImageCache,
@@ -121,27 +127,67 @@ private actor ArtworkPrefetchRegistry {
             128
         )
         let key = "\(url.absoluteString)#\(bucket)"
-        if let existing = tasks[key] {
-            await existing.value
-            return
-        }
-        let task = Task {
-            await cache.performPrefetch(
-                url: url,
-                maxPixelSize: CGFloat(bucket)
+        let waiterID = UUID()
+        let entryID: UUID
+        let task: Task<Void, Never>
+        if var existing = entries[key] {
+            existing.waiters.insert(waiterID)
+            entries[key] = existing
+            entryID = existing.id
+            task = existing.task
+        } else {
+            entryID = UUID()
+            task = Task {
+                await cache.performPrefetch(
+                    url: url,
+                    maxPixelSize: CGFloat(bucket)
+                )
+            }
+            entries[key] = Entry(
+                id: entryID,
+                task: task,
+                waiters: [waiterID]
             )
         }
-        tasks[key] = task
         await withTaskCancellationHandler {
             await task.value
         } onCancel: {
-            Task { await self.cancel(key: key) }
+            Task {
+                await self.release(
+                    key: key,
+                    entryID: entryID,
+                    waiterID: waiterID,
+                    cancelWhenUnused: true
+                )
+            }
         }
-        tasks[key] = nil
+        release(
+            key: key,
+            entryID: entryID,
+            waiterID: waiterID,
+            cancelWhenUnused: false
+        )
     }
 
-    private func cancel(key: String) {
-        tasks.removeValue(forKey: key)?.cancel()
+    private func release(
+        key: String,
+        entryID: UUID,
+        waiterID: UUID,
+        cancelWhenUnused: Bool
+    ) {
+        guard var entry = entries[key],
+              entry.id == entryID,
+              entry.waiters.remove(waiterID) != nil else {
+            return
+        }
+        guard entry.waiters.isEmpty else {
+            entries[key] = entry
+            return
+        }
+        entries[key] = nil
+        if cancelWhenUnused {
+            entry.task.cancel()
+        }
     }
 }
 
