@@ -89,11 +89,13 @@ enum MPEGTSAudioExtractor {
             return nil
         }
         let sectionLength = Int(section[1] & 0x0F) << 8 | Int(section[2])
-        guard section.count >= 8 + max(0, sectionLength - 5) else {
+        // section_length counts bytes after the length field through CRC.
+        let sectionEnd = 3 + sectionLength
+        guard section.count >= sectionEnd, sectionEnd >= 12 else {
             return nil
         }
         var offset = 8
-        let end = min(section.count - 4, 3 + sectionLength)
+        let end = sectionEnd - 4
         while offset + 4 <= end {
             let programNumber = Int(section[offset]) << 8
                 | Int(section[offset + 1])

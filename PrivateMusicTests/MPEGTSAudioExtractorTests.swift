@@ -145,14 +145,37 @@ final class MPEGTSAudioExtractorTests: XCTestCase {
     ) -> Data {
         var packet = Data(repeating: 0xFF, count: 188)
         packet[0] = 0x47
-        packet[1] = UInt8((payloadUnitStart ? 0x40 : 0x00) | ((pid >> 8) & 0x1F))
+        packet[1] = UInt8(
+            (payloadUnitStart ? 0x40 : 0x00) | ((pid >> 8) & 0x1F)
+        )
         packet[2] = UInt8(pid & 0xFF)
-        packet[3] = 0x10 // payload only, continuity 0
-        let maxPayload = 184
-        let chunk = payload.prefix(maxPayload)
+
+        if payload.isEmpty {
+            // Adaptation-only stuffing packet.
+            packet[3] = 0x20
+            packet[4] = 183
+            packet[5] = 0x00
+            return packet
+        }
+
+        if payload.count >= 184 {
+            packet[3] = 0x10
+            packet.replaceSubrange(4..<188, with: payload.prefix(184))
+            return packet
+        }
+
+        // Pad short payloads with an adaptation field so 0xFF stuffing is
+        // not mistaken for PES/ADTS bytes.
+        let adaptationBody = 183 - payload.count
+        packet[3] = 0x30
+        packet[4] = UInt8(adaptationBody)
+        if adaptationBody > 0 {
+            packet[5] = 0x00
+        }
+        let payloadOffset = 5 + adaptationBody
         packet.replaceSubrange(
-            4..<(4 + chunk.count),
-            with: chunk
+            payloadOffset..<(payloadOffset + payload.count),
+            with: payload
         )
         return packet
     }
