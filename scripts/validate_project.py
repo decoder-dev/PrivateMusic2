@@ -159,6 +159,8 @@ for required_player_symbol in (
     ".background(playerBackground.ignoresSafeArea())",
     ".buttonStyle(.glassProminent)",
     "AdaptiveGlassContainer(spacing: 8)",
+    ".simultaneousGesture(fullScreenDismissGesture)",
+    "PlayerDismissGesturePolicy.shouldDismiss",
 ):
     if required_player_symbol not in player_view_source:
         fail(f"player is missing full-bleed/glass symbol: {required_player_symbol}")

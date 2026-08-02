@@ -93,6 +93,50 @@ final class PlayerActionSheetTests: XCTestCase {
     }
 }
 
+final class PlayerDismissGestureTests: XCTestCase {
+    func testFastDownwardSwipeDismissesFromPlayerSurface() {
+        XCTAssertTrue(
+            PlayerDismissGesturePolicy.shouldDismiss(
+                translation: CGSize(width: 12, height: 92),
+                predictedEndTranslation: CGSize(width: 16, height: 180)
+            )
+        )
+    }
+
+    func testLongDownwardDragDismissesWithoutVelocity() {
+        XCTAssertTrue(
+            PlayerDismissGesturePolicy.shouldDismiss(
+                translation: CGSize(width: 20, height: 150),
+                predictedEndTranslation: CGSize(width: 20, height: 150)
+            )
+        )
+    }
+
+    func testHorizontalArtworkSwipeDoesNotDismissPlayer() {
+        XCTAssertFalse(
+            PlayerDismissGesturePolicy.shouldDismiss(
+                translation: CGSize(width: 150, height: 90),
+                predictedEndTranslation: CGSize(width: 210, height: 120)
+            )
+        )
+    }
+
+    func testUpwardAndShortDragsDoNotDismissPlayer() {
+        XCTAssertFalse(
+            PlayerDismissGesturePolicy.shouldDismiss(
+                translation: CGSize(width: 0, height: -120),
+                predictedEndTranslation: CGSize(width: 0, height: -180)
+            )
+        )
+        XCTAssertFalse(
+            PlayerDismissGesturePolicy.shouldDismiss(
+                translation: CGSize(width: 0, height: 42),
+                predictedEndTranslation: CGSize(width: 0, height: 78)
+            )
+        )
+    }
+}
+
 @MainActor
 final class PlayerSleepTimerTests: XCTestCase {
     func testSleepTimerCanBeScheduledAndCancelledFromPlayer() throws {
