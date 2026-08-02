@@ -1,6 +1,8 @@
 name: PrivateMusic
 options:
   bundleIdPrefix: com.dec
+  minimumXcodeGenVersion: 2.46.0
+  postGenCommand: python3 scripts/fix_watch_embedding.py
   deploymentTarget:
     iOS: "16.0"
     watchOS: "10.0"
@@ -47,7 +49,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Private Music
         INFOPLIST_KEY_WKApplication: YES
         INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.dec.privatemusic2
-        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     scheme: {}
   PrivateMusicTests:
     type: bundle.unit-test
