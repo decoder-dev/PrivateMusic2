@@ -28,6 +28,8 @@ final class EqualizerDSP: @unchecked Sendable {
     private var supportsProcessing = false
     private var loudnessNormEnabled = false
     private var drcEnabled = false
+    private var spatialAudioEnabled = false
+    private var spatialAudioIntensity = SpatialAudioDSP.defaultIntensity
     private var loudnessGain: Float = 1.0
     private var compressorThreshold: Float = 0.5
     private var compressorRatio: Float = 4.0
@@ -40,12 +42,20 @@ final class EqualizerDSP: @unchecked Sendable {
         return enabled
     }
 
+    var requiresAudioTap: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return enabled || spatialAudioEnabled
+    }
+
     func update(
         enabled: Bool,
         gains: [Double],
         preamp: Double,
         loudnessNorm: Bool = false,
-        dynamicRangeCompression: Bool = false
+        dynamicRangeCompression: Bool = false,
+        spatialAudio: Bool = false,
+        spatialIntensity: Double = SpatialAudioDSP.defaultIntensity
     ) {
         lock.lock()
         self.enabled = enabled
@@ -55,12 +65,14 @@ final class EqualizerDSP: @unchecked Sendable {
         preampDB = min(max(preamp, -12), 6)
         loudnessNormEnabled = loudnessNorm
         drcEnabled = dynamicRangeCompression
+        spatialAudioEnabled = spatialAudio
+        spatialAudioIntensity = min(max(spatialIntensity, 0), 1)
         rebuildCoefficients()
         lock.unlock()
     }
 
     func makeTap() -> MTAudioProcessingTap? {
-        guard isEnabled else { return nil }
+        guard requiresAudioTap else { return nil }
         let retained = Unmanaged.passRetained(self)
         var callbacks = MTAudioProcessingTapCallbacks(
             version: kMTAudioProcessingTapCallbacksVersion_0,
@@ -118,15 +130,34 @@ final class EqualizerDSP: @unchecked Sendable {
         guard frameCount > 0 else { return }
         lock.lock()
         defer { lock.unlock() }
-        guard enabled,
-              supportsProcessing,
-              !coefficients.isEmpty else {
+        guard supportsProcessing,
+              enabled || spatialAudioEnabled else {
             return
         }
 
         let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
         let nonInterleaved = buffers.count > 1
+        if enabled, !coefficients.isEmpty {
+            processEqualizer(
+                buffers: buffers,
+                nonInterleaved: nonInterleaved,
+                frameCount: frameCount
+            )
+        }
+        if spatialAudioEnabled {
+            processSpatialAudio(
+                buffers: buffers,
+                nonInterleaved: nonInterleaved,
+                frameCount: frameCount
+            )
+        }
+    }
 
+    private func processEqualizer(
+        buffers: UnsafeMutableAudioBufferListPointer,
+        nonInterleaved: Bool,
+        frameCount: Int
+    ) {
         for bufferIndex in buffers.indices {
             guard let rawData = buffers[bufferIndex].mData else { continue }
             let samples = rawData.assumingMemoryBound(to: Float.self)
@@ -187,6 +218,52 @@ final class EqualizerDSP: @unchecked Sendable {
                     sampleIndex += stride
                 }
             }
+        }
+    }
+
+    private func processSpatialAudio(
+        buffers: UnsafeMutableAudioBufferListPointer,
+        nonInterleaved: Bool,
+        frameCount: Int
+    ) {
+        guard channelCount >= 2 else { return }
+
+        if nonInterleaved {
+            guard buffers.count >= 2,
+                  let leftData = buffers[0].mData,
+                  let rightData = buffers[1].mData else {
+                return
+            }
+            let left = leftData.assumingMemoryBound(to: Float.self)
+            let right = rightData.assumingMemoryBound(to: Float.self)
+            for frame in 0..<frameCount {
+                let widened = SpatialAudioDSP.process(
+                    left: left[frame],
+                    right: right[frame],
+                    intensity: spatialAudioIntensity
+                )
+                left[frame] = widened.left
+                right[frame] = widened.right
+            }
+            return
+        }
+
+        guard let buffer = buffers.first,
+              buffer.mNumberChannels >= 2,
+              let rawData = buffer.mData else {
+            return
+        }
+        let samples = rawData.assumingMemoryBound(to: Float.self)
+        let stride = Int(buffer.mNumberChannels)
+        for frame in 0..<frameCount {
+            let index = frame * stride
+            let widened = SpatialAudioDSP.process(
+                left: samples[index],
+                right: samples[index + 1],
+                intensity: spatialAudioIntensity
+            )
+            samples[index] = widened.left
+            samples[index + 1] = widened.right
         }
     }
 

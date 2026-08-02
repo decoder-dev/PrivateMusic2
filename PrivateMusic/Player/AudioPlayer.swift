@@ -202,25 +202,34 @@ final class AudioPlayer: ObservableObject {
         _ = configureAudioSession()
         configureRemoteCommands()
         observePlayer()
-        settings.$equalizerEnabled
-            .combineLatest(
-                settings.$equalizerGains,
-                settings.$equalizerPreamp,
-                settings.$loudnessNormalization
+        Publishers.CombineLatest4(
+            settings.$equalizerEnabled,
+            settings.$equalizerGains,
+            settings.$equalizerPreamp,
+            settings.$loudnessNormalization
+        )
+        .combineLatest(
+            Publishers.CombineLatest3(
+                settings.$dynamicRangeCompression,
+                settings.$spatialAudioEnabled,
+                settings.$spatialAudioIntensity
             )
-            .combineLatest(settings.$dynamicRangeCompression)
-            .sink { [weak self] pair, drc in
-                let (enabled, gains, preamp, loudness) = pair
+        )
+            .sink { [weak self] equalizerSettings, effectsSettings in
+                let (enabled, gains, preamp, loudness) = equalizerSettings
+                let (drc, spatialAudio, spatialIntensity) = effectsSettings
                 guard let self else { return }
-                let wasEnabled = self.equalizer.isEnabled
+                let requiredTap = self.equalizer.requiresAudioTap
                 self.equalizer.update(
                     enabled: enabled,
                     gains: gains,
                     preamp: preamp,
                     loudnessNorm: loudness,
-                    dynamicRangeCompression: drc
+                    dynamicRangeCompression: drc,
+                    spatialAudio: spatialAudio,
+                    spatialIntensity: spatialIntensity
                 )
-                if wasEnabled != enabled,
+                if requiredTap != self.equalizer.requiresAudioTap,
                    self.player.currentItem != nil {
                     self.reloadCurrentItemForAudioProcessing()
                 }
