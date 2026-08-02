@@ -77,6 +77,9 @@ mini_player_source = (
 cached_image_source = (
     SOURCE / "Features" / "Shared" / "CachedRemoteImage.swift"
 ).read_text(encoding="utf-8")
+library_view_source = (
+    SOURCE / "Features" / "Library" / "LibraryView.swift"
+).read_text(encoding="utf-8")
 glass_source = (
     SOURCE / "Features" / "Shared" / "AdaptiveGlass.swift"
 ).read_text(encoding="utf-8")
@@ -155,6 +158,8 @@ if ".simultaneousGesture(miniPlayerGesture)" not in mini_player_source:
     fail("mini-player swipe gesture must not intercept its open button")
 if "loadedIdentity == loadIdentity ? image : nil" not in cached_image_source:
     fail("cached artwork must never display a stale request identity")
+if "Text(track.duration.formattedDuration)" not in library_view_source:
+    fail("library track rows must display track duration")
 for required_player_symbol in (
     ".background(playerBackground.ignoresSafeArea())",
     ".buttonStyle(.glassProminent)",
