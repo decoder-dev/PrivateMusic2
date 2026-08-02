@@ -138,25 +138,28 @@ jobs:
           test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.27.0-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.0-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.27.0"
+          test "$GITHUB_REF_NAME" = "v3.28.0"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.27.0
+          Private Music 3.28.0
 
-          - Добавлен настраиваемый пространственный звук для стереотреков.
-          - Эквалайзер работает с динамиком, наушниками, Bluetooth и AirPlay.
-          - Воспроизведение возобновляется после повышения громкости с нуля.
-          - Плеер закрывается свайпом вниз из любой области экрана.
-          - В плеере видны соседние обложки текущей очереди.
-          - Треки удаляются из очереди свайпом без потери текущей позиции.
-          - Длительность теперь отображается и в основном списке медиатеки.
+          - Добавлена предзагрузка следующих треков и обложек без пауз.
+          - Появились поиск, экран, медиатека и отправка ссылок для альбомов.
+          - Миксы загружают расширенную очередь, а автомикс — сразу после запуска.
+          - Главная сохраняет данные, обновляется в фоне и поддерживает свайп.
+          - История учитывает трек после 30% фактического прослушивания.
+          - Лайки видны в списках, карточках, очереди и мини-плеере.
+          - В меню плеера появилась сохраняемая громкость с паузой на нуле.
+          - Повторное нажатие активной вкладки прокручивает экран наверх.
+          - Улучшены меню, анимации воспроизведения и оформление миксов.
+          - Усилена упаковка и автоматическая установка приложения Apple Watch.
           - Офлайн-загрузки по-прежнему временно скрыты.
 
           IPA не подписан. Перед установкой подпишите его собственным
@@ -165,15 +168,15 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.27.0-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.28.0-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.27.0" \
+              --title "Private Music 3.28.0" \
               --notes-file "$NOTES"
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.27.0-unsigned.ipa" \
-              --title "Private Music 3.27.0" \
+              "$PWD/artifacts/PrivateMusic-3.28.0-unsigned.ipa" \
+              --title "Private Music 3.28.0" \
               --notes-file "$NOTES"
           fi
 
@@ -181,7 +184,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.27.0-unsigned
-          path: artifacts/PrivateMusic-3.27.0-unsigned.ipa
+          name: PrivateMusic-3.28.0-unsigned
+          path: artifacts/PrivateMusic-3.28.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
