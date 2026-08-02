@@ -147,6 +147,24 @@ for required_cache_symbol in (
 ):
     if required_cache_symbol not in all_source:
         fail(f"automatic offline cache is missing: {required_cache_symbol}")
+for required_share_session_symbol in (
+    "beginShareSession",
+    "endShareSession",
+    "isShareSessionActive",
+):
+    if required_share_session_symbol not in all_source:
+        fail(
+            "share session bandwidth guard is missing: "
+            f"{required_share_session_symbol}"
+        )
+for required_route_symbol in (
+    "shouldPauseAfterRouteLoss",
+    "setPrefersInterruptionOnRouteDisconnect",
+    "oldDeviceUnavailable",
+    "responding-to-audio-route-changes",
+):
+    if required_route_symbol not in all_source:
+        fail(f"headphone route pause is missing: {required_route_symbol}")
 if ".clipped()" in player_view_source:
     fail("full-screen player must not clip its safe-area background")
 if ".clear.interactive" in glass_source:
