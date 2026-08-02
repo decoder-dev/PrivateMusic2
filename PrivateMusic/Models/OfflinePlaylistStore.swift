@@ -277,10 +277,14 @@ final class OfflinePlaylistStore: ObservableObject {
     private let fileManager: FileManager
     private let rootURL: URL
     private let artworkSession: URLSession
+    private let manifestWriter = OfflineManifestWriteQueue()
     private var activeAccountID: Int?
     private var activeTasks: [String: ActiveTask] = [:]
     private var isSaveScheduled = false
     private var hasPendingSave = false
+    private var deferredManifestWrites: [
+        (url: URL, records: [OfflinePlaylistRecord])
+    ] = []
 
     init(
         fileManager: FileManager = .default,
@@ -318,25 +322,33 @@ final class OfflinePlaylistStore: ObservableObject {
         let transientRecords = records.filter {
             OfflinePlaylistStatus.status(for: $0.value).isActive
         }
+        var didNormalize = false
         for (id, var record) in transientRecords {
-            if record.completedCount == 0 && record.tracks.isEmpty {
+            if record.completedCount == 0 {
                 records.removeValue(forKey: id)
             } else {
                 record.state = .partial
                 record.errorMessage = L10n.text("Загрузка прервана")
                 records[id] = record
             }
+            didNormalize = true
         }
         // Flush against the old account directory before changing the key.
         // Delayed persistence intentionally resolves `manifestURL` at write
         // time, so changing accounts first could strand the old snapshot.
-        if activeAccountID != nil, hasPendingSave {
-            try? saveManifestSync()
-            hasPendingSave = false
+        if activeAccountID != nil, hasPendingSave || didNormalize {
+            do {
+                try saveManifestSync()
+                hasPendingSave = false
+            } catch {
+                deferCurrentManifestWrite()
+                hasPendingSave = false
+            }
         }
         activeAccountID = accountID
-        records = loadManifest()
-        reconcileFiles()
+        let loaded = loadManifest()
+        records = loaded.records
+        reconcileFiles(canPersist: loaded.isTrusted)
     }
 
     func record(for playlist: Playlist) -> OfflinePlaylistRecord? {
@@ -417,9 +429,10 @@ final class OfflinePlaylistStore: ObservableObject {
         return task
     }
 
-    func cancelDownload(for playlist: Playlist) {
+    @discardableResult
+    func cancelDownload(for playlist: Playlist) -> Task<Void, Never>? {
         let identifier = OfflinePlaylistRecord.identifier(for: playlist)
-        guard let active = activeTasks[identifier] else { return }
+        guard let active = activeTasks[identifier] else { return nil }
         active.task.cancel()
         // Remove immediately so a restart is not blocked by the dying task.
         activeTasks.removeValue(forKey: identifier)
@@ -427,12 +440,13 @@ final class OfflinePlaylistStore: ObservableObject {
               record.state == .resolvingTracks
                 || record.state == .queued
                 || record.state == .downloading else {
-            return
+            return active.task
         }
         record.state = .cancelled
         record.updatedAt = updatedNow()
         records[identifier] = record
         requestSave()
+        return active.task
     }
 
     func remove(_ playlist: Playlist) {
@@ -527,7 +541,13 @@ final class OfflinePlaylistStore: ObservableObject {
     func flushPendingSave() async throws {
         hasPendingSave = false
         isSaveScheduled = false
-        try await persistToDisk()
+        do {
+            try await flushDeferredManifestWrites()
+            try await persistToDisk()
+        } catch {
+            hasPendingSave = true
+            throw error
+        }
     }
 
     private func runDownload(
@@ -879,23 +899,44 @@ final class OfflinePlaylistStore: ObservableObject {
         accountDirectory?.appendingPathComponent("index.json")
     }
 
-    private func loadManifest() -> [String: OfflinePlaylistRecord] {
-        guard let manifestURL,
-              let data = try? Data(contentsOf: manifestURL) else {
-            return [:]
+    private struct ManifestLoadResult {
+        let records: [String: OfflinePlaylistRecord]
+        let isTrusted: Bool
+    }
+
+    private func loadManifest() -> ManifestLoadResult {
+        guard let manifestURL else {
+            return ManifestLoadResult(records: [:], isTrusted: false)
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let decoded = try? decoder.decode(
-            [OfflinePlaylistRecord].self,
-            from: data
-        ) else {
-            return [:]
+        let candidates = [
+            manifestURL,
+            OfflineManifestWriteQueue.backupURL(for: manifestURL)
+        ]
+        for candidate in candidates {
+            guard let data = try? Data(contentsOf: candidate),
+                  let decoded = try? decoder.decode(
+                    [OfflinePlaylistRecord].self,
+                    from: data
+                  ) else {
+                continue
+            }
+            var result: [String: OfflinePlaylistRecord] = [:]
+            for record in decoded {
+                if let existing = result[record.id],
+                   existing.updatedAt > record.updatedAt {
+                    continue
+                }
+                result[record.id] = record
+            }
+            return ManifestLoadResult(records: result, isTrusted: true)
         }
-        return Dictionary(uniqueKeysWithValues: decoded.map { ($0.id, $0) })
+        return ManifestLoadResult(records: [:], isTrusted: false)
     }
 
     private func persistToDisk() async throws {
+        try await flushDeferredManifestWrites()
         guard let directory = accountDirectory,
               let manifestURL else {
             throw APIError.unauthorized
@@ -903,15 +944,9 @@ final class OfflinePlaylistStore: ObservableObject {
         try createDirectory(directory)
         let values = records.values.sorted { $0.id < $1.id }
         let writeURL = manifestURL
-        let data = try await Task.detached(priority: .utility) { () -> Data in
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            return try encoder.encode(values)
-        }.value
-        try await Task.detached(priority: .utility) {
-            try data.write(to: writeURL, options: .atomic)
-        }.value
+        try await manifestWriter.write(values, to: writeURL)
         protect(writeURL)
+        protect(OfflineManifestWriteQueue.backupURL(for: writeURL))
     }
 
     private func requestSave() {
@@ -927,7 +962,7 @@ final class OfflinePlaylistStore: ObservableObject {
             do {
                 try await self.persistToDisk()
             } catch {
-                // The next request or terminal flush retries the write.
+                self.hasPendingSave = true
             }
             if self.hasPendingSave {
                 self.requestSave()
@@ -935,7 +970,7 @@ final class OfflinePlaylistStore: ObservableObject {
         }
     }
 
-    private func reconcileFiles() {
+    private func reconcileFiles(canPersist: Bool = true) {
         guard let directory = accountDirectory else { return }
         var result = records
         for (id, var record) in records {
@@ -959,7 +994,13 @@ final class OfflinePlaylistStore: ObservableObject {
         }
         records = result
         refreshArtworkBytesSnapshot()
-        try? saveManifestSync()
+        guard canPersist else { return }
+        do {
+            try saveManifestSync()
+            hasPendingSave = false
+        } catch {
+            hasPendingSave = true
+        }
     }
 
     private func saveManifestSync() throws {
@@ -969,11 +1010,24 @@ final class OfflinePlaylistStore: ObservableObject {
         }
         try createDirectory(directory)
         let values = records.values.sorted { $0.id < $1.id }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(values)
-        try data.write(to: manifestURL, options: .atomic)
+        try manifestWriter.writeSync(values, to: manifestURL)
         protect(manifestURL)
+        protect(OfflineManifestWriteQueue.backupURL(for: manifestURL))
+    }
+
+    private func deferCurrentManifestWrite() {
+        guard let manifestURL else { return }
+        deferredManifestWrites.append((
+            manifestURL,
+            records.values.sorted { $0.id < $1.id }
+        ))
+    }
+
+    private func flushDeferredManifestWrites() async throws {
+        while let pending = deferredManifestWrites.first {
+            try await manifestWriter.write(pending.records, to: pending.url)
+            deferredManifestWrites.removeFirst()
+        }
     }
 
     private func createDirectory(_ url: URL) throws {
