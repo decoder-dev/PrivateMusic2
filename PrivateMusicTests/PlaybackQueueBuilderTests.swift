@@ -267,6 +267,92 @@ final class AudioPlayerTransitionTests: XCTestCase {
         XCTAssertNil(context.player.errorMessage)
     }
 
+    func testRemovingTrackBeforeCurrentPreservesCurrentTrack() {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        let second = track(id: 2, duration: 200, streamURL: silentWAVURL)
+        let third = track(id: 3, duration: 220, streamURL: silentWAVURL)
+        context.player.play(second, in: [first, second, third])
+
+        context.player.removeFromQueue(at: 0)
+
+        XCTAssertEqual(context.player.queue.map(\.id), [second.id, third.id])
+        XCTAssertEqual(context.player.currentIndex, 0)
+        XCTAssertEqual(context.player.currentTrack?.id, second.id)
+    }
+
+    func testRemovingTrackAfterCurrentPreservesCurrentIndex() {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        let second = track(id: 2, duration: 200, streamURL: silentWAVURL)
+        let third = track(id: 3, duration: 220, streamURL: silentWAVURL)
+        context.player.play(second, in: [first, second, third])
+
+        context.player.removeFromQueue(at: 2)
+
+        XCTAssertEqual(context.player.queue.map(\.id), [first.id, second.id])
+        XCTAssertEqual(context.player.currentIndex, 1)
+        XCTAssertEqual(context.player.currentTrack?.id, second.id)
+    }
+
+    func testRemovingCurrentTrackAdvancesAndPreservesPauseState() {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        let second = track(id: 2, duration: 200, streamURL: silentWAVURL)
+        let third = track(id: 3, duration: 220, streamURL: silentWAVURL)
+        context.player.play(second, in: [first, second, third])
+        context.player.pause()
+
+        context.player.removeFromQueue(at: 1)
+
+        XCTAssertEqual(context.player.queue.map(\.id), [first.id, third.id])
+        XCTAssertEqual(context.player.currentIndex, 1)
+        XCTAssertEqual(context.player.currentTrack?.id, third.id)
+        XCTAssertEqual(context.player.elapsedTime, 0)
+        XCTAssertFalse(context.player.isPlaying)
+    }
+
+    func testRemovingLastCurrentTrackFallsBackToPrevious() {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        let second = track(id: 2, duration: 200, streamURL: silentWAVURL)
+        context.player.play(second, in: [first, second])
+
+        context.player.removeFromQueue(at: 1)
+
+        XCTAssertEqual(context.player.queue.map(\.id), [first.id])
+        XCTAssertEqual(context.player.currentIndex, 0)
+        XCTAssertEqual(context.player.currentTrack?.id, first.id)
+    }
+
+    func testRemovingOnlyQueueItemStopsPlayback() {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        let only = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        context.player.play(only, in: [only])
+
+        context.player.removeFromQueue(at: 0)
+
+        XCTAssertTrue(context.player.queue.isEmpty)
+        XCTAssertNil(context.player.currentIndex)
+        XCTAssertNil(context.player.currentTrack)
+        XCTAssertFalse(context.player.isPlaying)
+    }
+
     func testFailedContinuationDoesNotExposeModalError() async {
         let context = makePlayer()
         defer {

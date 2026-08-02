@@ -384,6 +384,43 @@ final class AudioPlayer: ObservableObject {
         publishNowPlayingQueue()
     }
 
+    func removeFromQueue(at index: Int) {
+        guard queue.indices.contains(index),
+              let currentIndex,
+              queue.indices.contains(currentIndex) else {
+            return
+        }
+        cancelContinuation()
+        let removesCurrentTrack = index == currentIndex
+        let shouldResume = isPlaying
+        let removedTrack = queue[index]
+        queue.remove(at: index)
+        restoredTrackIDs.remove(removedTrack.id)
+
+        guard !queue.isEmpty else {
+            stop()
+            return
+        }
+
+        if index < currentIndex {
+            self.currentIndex = currentIndex - 1
+        } else if removesCurrentTrack {
+            self.currentIndex = min(currentIndex, queue.count - 1)
+        }
+
+        if removesCurrentTrack {
+            cancelStreamRefresh()
+            requiresStreamRefresh = false
+            didAttemptStreamRefresh = false
+            resetProgressForTrackTransition()
+            persistPlayback()
+            loadCurrent(autoplay: shouldResume, startAt: 0)
+        } else {
+            persistPlayback()
+            publishNowPlayingQueue()
+        }
+    }
+
     func jump(to index: Int) {
         guard queue.indices.contains(index) else { return }
         resumeAfterRouteTransfer = false

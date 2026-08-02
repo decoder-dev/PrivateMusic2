@@ -25,6 +25,7 @@
 "Исполнитель" = "Artist";
 "Микс" = "Mix";
 "Очередь" = "Queue";
+"Удалить из очереди" = "Remove from Queue";
 "История" = "History";
 "Добавить в плейлист" = "Add to Playlist";
 
