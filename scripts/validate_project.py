@@ -107,6 +107,8 @@ if "options: [.allowAirPlay, .allowBluetoothA2DP]" in audio_player_source:
 for required_processing_route_symbol in (
     "enum AudioProcessingRoutePolicy",
     "player.allowsExternalPlayback = AudioProcessingRoutePolicy",
+    "shouldResumeAfterMinimumVolumePause",
+    "pausedForMinimumVolume = true",
 ):
     if required_processing_route_symbol not in audio_player_source:
         fail(

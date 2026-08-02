@@ -39,6 +39,29 @@ enum AudioRoutePolicy {
             && !outputPortTypes.contains(where: isExternalPlayback)
     }
 
+    static func shouldResumeAfterMinimumVolumePause(
+        volume: Float,
+        enabled: Bool,
+        pausedForMinimumVolume: Bool,
+        playbackIntended: Bool,
+        hasCurrentTrack: Bool,
+        isPlaying: Bool,
+        outputPortTypes: [AVAudioSession.Port]
+    ) -> Bool {
+        guard pausedForMinimumVolume,
+              playbackIntended,
+              hasCurrentTrack,
+              !isPlaying else {
+            return false
+        }
+        let remainsMutedOnLocalOutput =
+            enabled
+            && volume <= minimumAudibleVolume
+            && outputPortTypes.contains(where: supportsSystemVolumePause)
+            && !outputPortTypes.contains(where: isExternalPlayback)
+        return !remainsMutedOnLocalOutput
+    }
+
     /// Returns true when an external listening route disappeared and playback
     /// must pause (wired headphones, AirPods / Bluetooth, AirPlay, car audio).
     static func shouldPauseAfterRouteLoss(
@@ -170,6 +193,7 @@ final class AudioPlayer: ObservableObject {
     private var advanceOnPlaybackError = true
     private var lastNowPlayingSecond = -1
     private var playbackIntended = false
+    private var pausedForMinimumVolume = false
     private var wasPlayingBeforeInterruption = false
     private var resumeAfterRouteTransfer = false
     private var routeDisconnectPending = false
@@ -418,6 +442,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     func resume() {
+        pausedForMinimumVolume = false
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         playbackIntended = true
@@ -442,6 +467,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     func pause() {
+        pausedForMinimumVolume = false
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         playbackIntended = false
@@ -512,6 +538,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     func stop() {
+        pausedForMinimumVolume = false
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         playbackIntended = false
@@ -547,6 +574,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func loadCurrentAndPlay() {
+        pausedForMinimumVolume = false
         playbackIntended = true
         if let track = currentTrack,
            restoredTrackIDs.contains(track.id),
@@ -952,21 +980,21 @@ final class AudioPlayer: ObservableObject {
             resumeAfterRouteTransfer = false
             let currentOutputs = AVAudioSession.sharedInstance()
                 .currentRoute.outputs.map(\.portType)
-            guard AudioRoutePolicy.shouldResumeAfterRouteTransfer(
+            if AudioRoutePolicy.shouldResumeAfterRouteTransfer(
                 pendingResume: pendingResume,
                 playbackIntended: playbackIntended,
                 hasCurrentTrack: currentTrack != nil,
                 isPlaying: isPlaying,
                 resumeBluetoothEnabled: resumeOnBluetoothConnection,
                 currentOutputPortTypes: currentOutputs
-            ) else {
-                return
+            ) {
+                routeDisconnectPending = false
+                resume()
             }
-            routeDisconnectPending = false
-            resume()
         default:
             break
         }
+        handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
     }
 
     private func handleMediaServicesReset() {
@@ -1019,15 +1047,27 @@ final class AudioPlayer: ObservableObject {
     private func handleOutputVolume(_ volume: Float) {
         let outputPortTypes = AVAudioSession.sharedInstance()
             .currentRoute.outputs.map(\.portType)
-        guard AudioRoutePolicy.shouldPause(
+        if AudioRoutePolicy.shouldPause(
             volume: volume,
             enabled: pauseAtMinimumVolume,
             isPlaying: isPlaying,
             outputPortTypes: outputPortTypes
-        ) else {
+        ) {
+            pausedForMinimumVolume = true
+            pausePreservingIntent()
             return
         }
-        pause()
+        guard AudioRoutePolicy.shouldResumeAfterMinimumVolumePause(
+            volume: volume,
+            enabled: pauseAtMinimumVolume,
+            pausedForMinimumVolume: pausedForMinimumVolume,
+            playbackIntended: playbackIntended,
+            hasCurrentTrack: currentTrack != nil,
+            isPlaying: isPlaying,
+            outputPortTypes: outputPortTypes
+        ) else { return }
+        pausedForMinimumVolume = false
+        resume()
     }
 
     private func advanceAfterCompletion() {
