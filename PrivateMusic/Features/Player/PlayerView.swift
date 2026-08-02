@@ -124,7 +124,6 @@ struct PlayerView: View {
         let metrics = PlayerLayoutMetrics.resolve(
             containerSize: size,
             safeBottom: safeInsets.bottom,
-            safeTop: safeInsets.top,
             safeLeading: safeInsets.leading,
             safeTrailing: safeInsets.trailing,
             usesAccessibilityText: dynamicTypeSize.isAccessibilitySize,
@@ -132,19 +131,10 @@ struct PlayerView: View {
         )
 
         Group {
-            if metrics.requiresVerticalScrolling(
-                containerHeight: size.height
-            ) {
-                ScrollView(.vertical) {
-                    playerContentForCurrentMode(track, metrics: metrics)
-                        .frame(
-                            minHeight: metrics.minimumContentHeight,
-                            alignment: .top
-                        )
-                }
-                .scrollIndicators(.hidden)
+            if metrics.mode == .landscape {
+                landscapePlayerContent(track, metrics: metrics)
             } else {
-                playerContentForCurrentMode(track, metrics: metrics)
+                portraitPlayerContent(track, metrics: metrics)
             }
         }
         .frame(
@@ -154,18 +144,6 @@ struct PlayerView: View {
         .padding(.leading, metrics.leadingPadding)
         .padding(.trailing, metrics.trailingPadding)
         .foregroundStyle(playerForeground)
-    }
-
-    @ViewBuilder
-    private func playerContentForCurrentMode(
-        _ track: Track,
-        metrics: PlayerLayoutMetrics
-    ) -> some View {
-        if metrics.mode == .landscape {
-            landscapePlayerContent(track, metrics: metrics)
-        } else {
-            portraitPlayerContent(track, metrics: metrics)
-        }
     }
 
     private func portraitPlayerContent(
@@ -196,10 +174,7 @@ struct PlayerView: View {
 
             Spacer(minLength: metrics.quickActionsTopSpacing)
 
-            quickActions(
-                track,
-                usesAccessibilityLayout: metrics.usesAccessibilityText
-            )
+            quickActions(track)
                 .frame(height: metrics.quickActionsHeight)
 
             Color.clear
@@ -240,10 +215,7 @@ struct PlayerView: View {
 
             Spacer(minLength: metrics.quickActionsTopSpacing)
 
-            quickActions(
-                track,
-                usesAccessibilityLayout: metrics.usesAccessibilityText
-            )
+            quickActions(track)
                 .frame(height: metrics.quickActionsHeight)
 
             Color.clear
@@ -578,49 +550,28 @@ struct PlayerView: View {
         )
     }
 
-    @ViewBuilder
-    private func quickActions(
-        _ track: Track,
-        usesAccessibilityLayout: Bool
-    ) -> some View {
+    private func quickActions(_ track: Track) -> some View {
         AdaptiveGlassContainer(spacing: 14) {
-            if usesAccessibilityLayout {
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: 10),
-                        GridItem(.flexible(), spacing: 10),
-                    ],
-                    spacing: 8
-                ) {
-                    quickActionButtons(track)
+            HStack(spacing: 0) {
+                quickAction("quote.bubble", title: "Текст") {
+                    present(.lyrics(track))
                 }
-            } else {
-                HStack(spacing: 0) {
-                    quickActionButtons(track)
+                quickAction("list.bullet", title: "Очередь") {
+                    present(.queue)
+                }
+                quickAction(
+                    "rectangle.stack.badge.plus",
+                    title: "Плейлист"
+                ) {
+                    present(.playlists(track))
+                }
+                quickAction(
+                    "square.and.arrow.up",
+                    title: "Поделиться файлом"
+                ) {
+                    startShare(track)
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private func quickActionButtons(_ track: Track) -> some View {
-        quickAction("quote.bubble", title: "Текст") {
-            present(.lyrics(track))
-        }
-        quickAction("list.bullet", title: "Очередь") {
-            present(.queue)
-        }
-        quickAction(
-            "rectangle.stack.badge.plus",
-            title: "Плейлист"
-        ) {
-            present(.playlists(track))
-        }
-        quickAction(
-            "square.and.arrow.up",
-            title: "Поделиться файлом"
-        ) {
-            startShare(track)
         }
     }
 
@@ -637,7 +588,7 @@ struct PlayerView: View {
                     .adaptiveGlass(in: Circle(), interactive: true)
                 Text(L10n.text(title))
                     .font(.caption2.weight(.semibold))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
             .foregroundStyle(playerForeground.opacity(0.72))
@@ -982,14 +933,12 @@ struct PlayerLayoutMetrics: Equatable {
     let quickActionsTopSpacing: CGFloat
     let quickActionsHeight: CGFloat
     let bottomPadding: CGFloat
-    let safeTop: CGFloat
     let landscapeColumnSpacing: CGFloat
     let minimumContentHeight: CGFloat
 
     static func resolve(
         containerSize: CGSize,
         safeBottom: CGFloat = 0,
-        safeTop: CGFloat = 0,
         safeLeading: CGFloat = 0,
         safeTrailing: CGFloat = 0,
         usesAccessibilityText: Bool = false,
@@ -1021,21 +970,12 @@ struct PlayerLayoutMetrics: Equatable {
         let baseHorizontalPadding: CGFloat = mode == .landscape
             ? 14
             : portraitValue(18, 22)
-        let maximumContentWidth: CGFloat = mode == .landscape ? 1_000 : 560
-        let centeredInset = max(
-            (containerSize.width - maximumContentWidth) / 2,
-            0
-        )
-        let preferredHorizontalInset = max(
-            baseHorizontalPadding,
-            centeredInset
-        )
         let leadingPadding = max(
-            preferredHorizontalInset,
+            baseHorizontalPadding,
             safeLeading + (mode == .landscape ? 8 : 0)
         )
         let trailingPadding = max(
-            preferredHorizontalInset,
+            baseHorizontalPadding,
             safeTrailing + (mode == .landscape ? 8 : 0)
         )
         let contentWidth = max(
@@ -1053,7 +993,7 @@ struct PlayerLayoutMetrics: Equatable {
         let artworkRatio: CGFloat
 
         if mode == .landscape {
-            headerTopPadding = max(safeTop, 2)
+            headerTopPadding = 2
             artworkTopSpacing = 2
             metadataTopSpacing = 0
             progressTopSpacing = 4
@@ -1061,7 +1001,7 @@ struct PlayerLayoutMetrics: Equatable {
             quickActionsTopSpacing = 4
             artworkRatio = 0.55
         } else {
-            headerTopPadding = max(safeTop, portraitValue(4, 10))
+            headerTopPadding = portraitValue(4, 10)
             artworkTopSpacing = portraitValue(8, 20)
             metadataTopSpacing = portraitValue(8, 12)
             progressTopSpacing = portraitValue(6, 10)
@@ -1072,7 +1012,7 @@ struct PlayerLayoutMetrics: Equatable {
 
         let primaryControlsHeight: CGFloat = 60
         let quickActionsHeight: CGFloat =
-            usesAccessibilityText ? 200 : 64
+            usesAccessibilityText ? 72 : 64
         let bottomPadding = max(
             safeBottom,
             mode == .landscape ? 6 : 10
@@ -1112,7 +1052,7 @@ struct PlayerLayoutMetrics: Equatable {
                     ),
                     availableMainHeight
                 ),
-                112
+                min(112, availableMainHeight)
             )
             minimumContentHeight =
                 headerTopPadding
@@ -1148,7 +1088,7 @@ struct PlayerLayoutMetrics: Equatable {
                     ),
                     availableArtworkHeight
                 ),
-                112
+                min(112, availableArtworkHeight)
             )
             minimumContentHeight = fixedWithoutArtwork + artworkSize
         }
@@ -1170,7 +1110,6 @@ struct PlayerLayoutMetrics: Equatable {
             quickActionsTopSpacing: quickActionsTopSpacing,
             quickActionsHeight: quickActionsHeight,
             bottomPadding: bottomPadding,
-            safeTop: safeTop,
             landscapeColumnSpacing: mode == .landscape ? 20 : 0,
             minimumContentHeight: minimumContentHeight
         )
@@ -1178,10 +1117,6 @@ struct PlayerLayoutMetrics: Equatable {
 
     func quickActionsBottomY(containerHeight: CGFloat) -> CGFloat {
         max(containerHeight - bottomPadding, 0)
-    }
-
-    func requiresVerticalScrolling(containerHeight: CGFloat) -> Bool {
-        minimumContentHeight > containerHeight + 0.5
     }
 }
 

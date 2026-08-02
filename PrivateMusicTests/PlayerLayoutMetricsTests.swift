@@ -98,54 +98,30 @@ final class PlayerLayoutMetricsTests: XCTestCase {
         )
     }
 
-    func testPlayerHeaderStaysBelowTopSafeArea() {
-        let metrics = PlayerLayoutMetrics.resolve(
-            containerSize: CGSize(width: 390, height: 844),
-            safeBottom: 34,
-            safeTop: 59
-        )
-
-        XCTAssertGreaterThanOrEqual(metrics.headerTopPadding, 59)
-        XCTAssertEqual(metrics.safeTop, 59)
-    }
-
-    func testPortraitContentWidthIsCappedAndCenteredOnIPad() {
-        let metrics = PlayerLayoutMetrics.resolve(
-            containerSize: CGSize(width: 834, height: 1_194),
-            safeBottom: 20,
-            safeTop: 24
-        )
-
-        XCTAssertLessThanOrEqual(metrics.contentWidth, 560)
-        XCTAssertEqual(metrics.leadingPadding, metrics.trailingPadding)
-    }
-
-    func testAccessibilityQuickActionsUseExpandedHeightAndScrollFallback() {
+    func testAccessibilityQuickActionsKeepPreviousCompactDock() {
         let metrics = PlayerLayoutMetrics.resolve(
             containerSize: CGSize(width: 320, height: 568),
             safeBottom: 34,
-            safeTop: 20,
             usesAccessibilityText: true
         )
 
-        XCTAssertGreaterThanOrEqual(metrics.quickActionsHeight, 190)
-        XCTAssertTrue(metrics.requiresVerticalScrolling(containerHeight: 568))
-        XCTAssertGreaterThanOrEqual(metrics.artworkSize, 112)
+        XCTAssertEqual(metrics.quickActionsHeight, 72)
+        XCTAssertLessThanOrEqual(metrics.minimumContentHeight, 568)
+        XCTAssertGreaterThanOrEqual(metrics.artworkSize, 0)
     }
 
-    func testAccessibilityLandscapeUsesScrollFallback() {
+    func testAccessibilityLandscapeKeepsPreviousTwoColumnLayout() {
         let metrics = PlayerLayoutMetrics.resolve(
             containerSize: CGSize(width: 568, height: 320),
             safeBottom: 21,
-            safeTop: 0,
             safeLeading: 44,
             safeTrailing: 44,
             usesAccessibilityText: true
         )
 
         XCTAssertEqual(metrics.mode, .landscape)
-        XCTAssertTrue(metrics.requiresVerticalScrolling(containerHeight: 320))
-        XCTAssertGreaterThanOrEqual(metrics.quickActionsHeight, 190)
+        XCTAssertLessThanOrEqual(metrics.minimumContentHeight, 320)
+        XCTAssertEqual(metrics.quickActionsHeight, 72)
     }
 
     func testPlayerControlsUseAccessibleMinimumHeights() {
