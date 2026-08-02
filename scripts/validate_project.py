@@ -74,6 +74,9 @@ root_view_source = (
 mini_player_source = (
     SOURCE / "Features" / "Player" / "MiniPlayerView.swift"
 ).read_text(encoding="utf-8")
+main_tab_source = (
+    SOURCE / "Features" / "Root" / "MainTabView.swift"
+).read_text(encoding="utf-8")
 cached_image_source = (
     SOURCE / "Features" / "Shared" / "CachedRemoteImage.swift"
 ).read_text(encoding="utf-8")
@@ -128,6 +131,18 @@ for required_processing_route_symbol in (
         )
 if "player.allowsExternalPlayback = true" in audio_player_source:
     fail("external AVPlayer handoff must not bypass active audio processing")
+if ".preroll(" in audio_player_source:
+    fail("track preloading must not use exception-prone AVPlayer preroll")
+for forbidden_system_tab_symbol in (
+    "SystemLiquidGlassTabView",
+    "tabViewBottomAccessory",
+    "role: .search",
+):
+    if forbidden_system_tab_symbol in main_tab_source:
+        fail(
+            "main navigation must reserve space with the stable custom dock: "
+            f"{forbidden_system_tab_symbol}"
+        )
 if "kAudioFormatFlagIsNonInterleaved" not in equalizer_source:
     fail("audio processing must use the declared PCM interleaving format")
 if "let nonInterleaved = buffers.count > 1" in equalizer_source:
@@ -172,7 +187,7 @@ for required_player_symbol in (
         fail(f"player is missing full-bleed/glass symbol: {required_player_symbol}")
 for required_preload_symbol in (
     "PlaybackPreloadPolicy.nextIndex",
-    "prerollPlayer.preroll(atRate: 1)",
+    "asset.load(.isPlayable)",
     "takePreloadedPlayback",
     "invalidatePreloadedPlayback",
     "ArtworkImageCache.shared.prefetch",

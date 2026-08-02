@@ -20,7 +20,6 @@ struct SearchView: View {
     @State private var scope: Scope = .tracks
     @State private var pendingLibraryTrackIDs = Set<String>()
     @State private var pendingAlbumIDs = Set<String>()
-    @State private var isSystemSearchPresented = false
     @FocusState private var isSearchFocused: Bool
     let isActive: Bool
 
@@ -30,22 +29,7 @@ struct SearchView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            Group {
-                if #available(iOS 26.5, *) {
-                    searchLayout(showsCustomField: false)
-                        .searchable(
-                            text: $model.query,
-                            isPresented: $isSystemSearchPresented,
-                            placement: .automatic,
-                            prompt: Text(L10n.text("Трек, исполнитель или альбом"))
-                        )
-                        .onSubmit(of: .search) {
-                            submitSearch()
-                        }
-                } else {
-                    searchLayout(showsCustomField: true)
-                }
-            }
+            searchLayout
             .onReceive(scrollCoordinator.$request) { request in
                 guard request?.destination == .search else { return }
                 isSearchFocused = false
@@ -70,7 +54,6 @@ struct SearchView: View {
         .onChange(of: isActive) { active in
             guard !active else { return }
             isSearchFocused = false
-            isSystemSearchPresented = false
         }
         .alert(
             "Не удалось изменить медиатеку",
@@ -85,16 +68,12 @@ struct SearchView: View {
         }
     }
 
-    private func searchLayout(
-        showsCustomField: Bool
-    ) -> some View {
+    private var searchLayout: some View {
         VStack(spacing: 0) {
-            if showsCustomField {
-                searchField
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
-            }
+            searchField
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
 
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
