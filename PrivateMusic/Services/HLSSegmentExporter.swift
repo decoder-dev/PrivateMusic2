@@ -1573,22 +1573,18 @@ actor HLSSegmentExporter {
         }
     }
 
-    /// Reads sample rate / channel count without `unsafeDowncast`, which
-    /// traps when AVFoundation hands back an unexpected format box.
+    /// Reads sample rate / channel count via the typed async property so we
+    /// never force-cast opaque `formatDescriptions` boxes.
     private static func audioStreamBasicDescription(
         from track: AVAssetTrack
-    ) -> AudioStreamBasicDescription? {
-        for item in track.formatDescriptions {
-            // CF bridging makes `as? CMFormatDescription` always succeed, so
-            // validate the type ID before reading the audio ASBD.
-            let cfItem = item as CFTypeRef
-            guard CFGetTypeID(cfItem) == CMFormatDescriptionGetTypeID() else {
-                continue
-            }
-            let formatDescription = unsafeBitCast(
-                cfItem,
-                to: CMFormatDescription.self
-            )
+    ) async -> AudioStreamBasicDescription? {
+        let descriptions: [CMFormatDescription]
+        do {
+            descriptions = try await track.load(.formatDescriptions)
+        } catch {
+            return nil
+        }
+        for formatDescription in descriptions {
             guard let pointer = CMAudioFormatDescriptionGetStreamBasicDescription(
                 formatDescription
             ) else {
@@ -1667,7 +1663,7 @@ actor HLSSegmentExporter {
             throw HLSExportError.noAudioTrack
         }
 
-        let asbd = Self.audioStreamBasicDescription(from: track)
+        let asbd = await Self.audioStreamBasicDescription(from: track)
         let sampleRate = asbd?.mSampleRate ?? 44100
         let sourceChannels = UInt32(asbd?.mChannelsPerFrame ?? 2)
         let channels: UInt32 = min(2, max(1, sourceChannels))

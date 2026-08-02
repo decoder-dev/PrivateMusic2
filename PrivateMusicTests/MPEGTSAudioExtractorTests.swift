@@ -20,7 +20,7 @@ final class MPEGTSAudioExtractorTests: XCTestCase {
         XCTAssertNil(MPEGTSAudioExtractor.extractAudio(from: adts))
     }
 
-    func testExtractAudioFileWritesElementaryWithoutRequiringHeapCopyAPI() throws {
+    func testStreamingFileExtractionWritesElementaryAudio() throws {
         let adts = Self.adtsFrame(length: 64)
         let ts = Self.tsStream(
             audioPID: 0x0100,
