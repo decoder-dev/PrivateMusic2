@@ -87,6 +87,103 @@ final class DownloadCoordinatorTests: XCTestCase {
         coordinator.unblockQueue()
         try await coordinator.download(id: "new") {}
     }
+
+    func testCancellingOnlySubscriberCancelsUnderlyingOperation() async {
+        let coordinator = DownloadCoordinator()
+        let started = expectation(description: "operation started")
+        let stopped = expectation(description: "operation stopped")
+        let download = Task { @MainActor in
+            try await coordinator.download(id: "cancel-me") {
+                started.fulfill()
+                defer { stopped.fulfill() }
+                try await Task.sleep(for: .seconds(5))
+            }
+        }
+        await fulfillment(of: [started], timeout: 1)
+        download.cancel()
+
+        do {
+            try await download.value
+            XCTFail("Expected CancellationError")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        await fulfillment(of: [stopped], timeout: 1)
+    }
+
+    func testCancellingOneSubscriberDoesNotCancelOtherSubscriber() async throws {
+        let coordinator = DownloadCoordinator()
+        let started = expectation(description: "shared operation started")
+        let counter = Counter()
+        let first = Task { @MainActor in
+            try await coordinator.download(id: "shared-cancel") {
+                counter.increment()
+                started.fulfill()
+                try await Task.sleep(for: .milliseconds(150))
+            }
+        }
+        await fulfillment(of: [started], timeout: 1)
+        let second = Task { @MainActor in
+            try await coordinator.download(id: "shared-cancel") {
+                XCTFail("Duplicate operation must not run")
+            }
+        }
+        await Task.yield()
+        first.cancel()
+
+        do {
+            try await first.value
+            XCTFail("Cancelled subscriber must receive CancellationError")
+        } catch is CancellationError {
+        }
+        try await second.value
+        XCTAssertEqual(counter.value, 1)
+    }
+
+    func testQueuedDuplicatesDoNotConsumeConcurrencySlots() async throws {
+        let coordinator = DownloadCoordinator()
+        let blockersStarted = expectation(description: "three blockers started")
+        blockersStarted.expectedFulfillmentCount = 3
+        let blockers = (0..<3).map { index in
+            Task { @MainActor in
+                try await coordinator.download(id: "blocker-\(index)") {
+                    blockersStarted.fulfill()
+                    try await Task.sleep(for: .milliseconds(180))
+                }
+            }
+        }
+        await fulfillment(of: [blockersStarted], timeout: 1)
+
+        let duplicateCounter = Counter()
+        let duplicates = (0..<5).map { _ in
+            Task { @MainActor in
+                try await coordinator.download(id: "queued-duplicate") {
+                    duplicateCounter.increment()
+                    try await Task.sleep(for: .milliseconds(40))
+                }
+            }
+        }
+        for task in blockers + duplicates {
+            try await task.value
+        }
+        XCTAssertEqual(duplicateCounter.value, 1)
+
+        let restoredPeak = PeakTracker()
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for index in 0..<3 {
+                group.addTask { @MainActor in
+                    try await coordinator.download(id: "after-\(index)") {
+                        restoredPeak.enter()
+                        try await Task.sleep(for: .milliseconds(80))
+                        restoredPeak.exit()
+                    }
+                }
+            }
+            try await group.waitForAll()
+        }
+        XCTAssertEqual(restoredPeak.maximum, 3)
+    }
 }
 
 private final class Counter: @unchecked Sendable {
