@@ -50,6 +50,8 @@ jobs:
               "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5" \
             -destination-timeout 120 \
             -parallel-testing-enabled NO \
+            -retry-tests-on-failure \
+            -test-iterations 2 \
             CODE_SIGNING_ALLOWED=NO \
             test 2>&1 | tee test.log
 
