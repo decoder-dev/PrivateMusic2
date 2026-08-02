@@ -265,6 +265,7 @@ final class AudioPlayer: ObservableObject {
     private var preloadGeneration = 0
     private var preloadStreamRefreshTask: Task<Void, Never>?
     private var preloadStreamRefreshTrackID: String?
+    private var preloadStreamRefreshID: UUID?
     private var attemptedPreloadRefreshes = Set<String>()
     private var canPreloadPlayback: () -> Bool = { true }
     private var artworkPrefetchHandler: (([Track]) async -> Void)?
@@ -395,6 +396,7 @@ final class AudioPlayer: ObservableObject {
         preloadStreamRefreshTask?.cancel()
         preloadStreamRefreshTask = nil
         preloadStreamRefreshTrackID = nil
+        preloadStreamRefreshID = nil
         artworkPrefetchTask?.cancel()
         artworkPrefetchTask = nil
     }
@@ -909,6 +911,7 @@ final class AudioPlayer: ObservableObject {
             preloadStreamRefreshTask?.cancel()
             preloadStreamRefreshTask = nil
             preloadStreamRefreshTrackID = nil
+            preloadStreamRefreshID = nil
         }
         let offlineURL = offlineURLProvider?(track)
         guard (offlineURL != nil || remotePreloadingAllowed),
@@ -1052,19 +1055,23 @@ final class AudioPlayer: ObservableObject {
         guard attemptedPreloadRefreshes.insert(refreshKey).inserted else {
             return
         }
+        let refreshID = UUID()
         preloadStreamRefreshTrackID = trackID
+        preloadStreamRefreshID = refreshID
         preloadStreamRefreshTask = Task { [weak self] in
             defer {
                 if let self,
-                   self.preloadStreamRefreshTrackID == trackID {
+                   self.preloadStreamRefreshID == refreshID {
                     self.preloadStreamRefreshTask = nil
                     self.preloadStreamRefreshTrackID = nil
+                    self.preloadStreamRefreshID = nil
                 }
             }
             do {
                 let refreshed = try await provider(track)
                 try Task.checkCancellation()
                 guard let self,
+                      self.preloadStreamRefreshID == refreshID,
                       let nextIndex = PlaybackPreloadPolicy.nextIndex(
                         queueCount: self.queue.count,
                         currentIndex: self.currentIndex,
@@ -1078,6 +1085,8 @@ final class AudioPlayer: ObservableObject {
                 self.restoredTrackIDs.remove(trackID)
                 self.persistPlayback()
                 self.scheduleNeighborPreloads()
+            } catch is CancellationError {
+                self?.attemptedPreloadRefreshes.remove(refreshKey)
             } catch {}
         }
     }
