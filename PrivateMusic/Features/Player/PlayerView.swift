@@ -1364,8 +1364,7 @@ private struct PlayerActionsSheet: View {
             .buttonStyle(PremiumPressStyle())
             .accessibilityLabel(L10n.text("Таймер сна"))
         }
-        .adaptiveGlass(
-            in: RoundedRectangle(
+        .adaptiveGlass(in: RoundedRectangle(
                 cornerRadius: PremiumLayout.compactRadius,
                 style: .continuous
             )
@@ -1487,8 +1486,7 @@ private struct PlayerActionsSheet: View {
         }
         .buttonStyle(PremiumPressStyle())
         .foregroundStyle(Color.primary)
-        .adaptiveGlass(
-            in: RoundedRectangle(
+        .adaptiveGlass(in: RoundedRectangle(
                 cornerRadius: PremiumLayout.compactRadius,
                 style: .continuous
             ),
@@ -1539,8 +1537,7 @@ private struct PlayerActionsSheet: View {
         }
         .buttonStyle(PremiumPressStyle())
         .foregroundStyle(Color.primary)
-        .adaptiveGlass(
-            in: RoundedRectangle(
+        .adaptiveGlass(in: RoundedRectangle(
                 cornerRadius: PremiumLayout.compactRadius,
                 style: .continuous
             ),
