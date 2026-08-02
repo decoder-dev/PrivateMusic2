@@ -411,7 +411,8 @@ struct VKMusicService: MusicService {
             streamURL: track.streamURL,
             artworkURL: track.artworkURL,
             accessKey: nil,
-            lyricsID: track.lyricsID
+            lyricsID: track.lyricsID,
+            albumReference: track.albumReference
         )
     }
 

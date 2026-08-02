@@ -488,3 +488,5 @@
 "Неизвестный исполнитель" = "Unknown Artist";
 "Трек, исполнитель или альбом" = "Track, artist, or album";
 "На паузе" = "Paused";
+"VK не вернул данные альбома для этого трека." = "VK did not return album data for this track.";
+"Не удалось открыть альбом: %@" = "Could not open album: %@";

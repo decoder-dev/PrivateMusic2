@@ -10,6 +10,9 @@ struct CatalogView: View {
     @State private var loadingMixID: String?
     @State private var actionErrorMessage: String?
     @State private var sharingTrack: Track?
+    @State private var selectedAlbum: Album?
+    @State private var loadingAlbumTrackID: String?
+    @State private var albumLookupTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { proxy in
@@ -49,6 +52,16 @@ struct CatalogView: View {
         .navigationBarTitleDisplayMode(.inline)
         .dynamicTypeSize(...DynamicTypeSize.large)
         .trackShareSheet(track: $sharingTrack)
+        .navigationDestination(
+            isPresented: Binding(
+                get: { selectedAlbum != nil },
+                set: { if !$0 { selectedAlbum = nil } }
+            )
+        ) {
+            if let selectedAlbum {
+                AlbumDetailView(album: selectedAlbum)
+            }
+        }
         .refreshable { await load(force: true) }
         .task(id: sessionStore.resolvedOfflineAccountID) {
             await load()
@@ -197,16 +210,11 @@ struct CatalogView: View {
                     spacing: metrics.cardSpacing
                 ) {
                     ForEach(recommendations.prefix(14)) { track in
-                        Button {
-                            player.play(track, in: recommendations)
-                        } label: {
-                            homeTrackCard(
-                                track,
-                                artworkSize: metrics.trackWidth,
-                                showsPlayButton: true
-                            )
-                        }
-                        .buttonStyle(PremiumPressStyle())
+                        homeTrackItem(
+                            track,
+                            queue: recommendations,
+                            artworkSize: metrics.trackWidth
+                        )
                         .contextMenu {
                             trackContextMenu(track, queue: recommendations)
                         }
@@ -228,16 +236,11 @@ struct CatalogView: View {
                     spacing: metrics.cardSpacing
                 ) {
                     ForEach(history.entries.prefix(12)) { entry in
-                        Button {
-                            let tracks = history.entries.map(\.track)
-                            player.play(entry.track, in: tracks)
-                        } label: {
-                            homeTrackCard(
-                                entry.track,
-                                artworkSize: metrics.recentWidth
-                            )
-                        }
-                        .buttonStyle(PremiumPressStyle())
+                        homeTrackItem(
+                            entry.track,
+                            queue: history.entries.map(\.track),
+                            artworkSize: metrics.recentWidth
+                        )
                         .contextMenu {
                             trackContextMenu(
                                 entry.track,
@@ -380,33 +383,13 @@ struct CatalogView: View {
 
     private func homeTrackCard(
         _ track: Track,
-        artworkSize: CGFloat,
-        showsPlayButton: Bool = false
+        artworkSize: CGFloat
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            ZStack(alignment: .bottomTrailing) {
-                HomeTrackArtwork(
-                    url: track.artworkURL,
-                    size: artworkSize
-                )
-                if showsPlayButton {
-                    Group {
-                        if player.currentTrack?.id == track.id {
-                            PlaybackIndicatorView(
-                                isPlaying: player.isPlaying,
-                                color: settings.theme.buttonForeground
-                            )
-                        } else {
-                            Image(systemName: "play.fill")
-                        }
-                    }
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(settings.theme.buttonForeground)
-                        .frame(width: 30, height: 30)
-                        .background(settings.theme.accent, in: Circle())
-                        .padding(7)
-                }
-            }
+            HomeTrackArtwork(
+                url: track.artworkURL,
+                size: artworkSize
+            )
             Text(track.title)
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(
@@ -425,6 +408,127 @@ struct CatalogView: View {
         }
         .frame(width: artworkSize, alignment: .topLeading)
         .accessibilityElement(children: .combine)
+    }
+
+    private func homeTrackItem(
+        _ track: Track,
+        queue: [Track],
+        artworkSize: CGFloat
+    ) -> some View {
+        ZStack(alignment: .topLeading) {
+            Button {
+                openAlbum(for: track)
+            } label: {
+                homeTrackCard(track, artworkSize: artworkSize)
+            }
+            .buttonStyle(PremiumPressStyle())
+            .disabled(loadingAlbumTrackID == track.id)
+
+            if loadingAlbumTrackID == track.id {
+                ProgressView()
+                    .tint(.white)
+                    .frame(width: artworkSize, height: artworkSize)
+                    .background(.black.opacity(0.18))
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius:
+                                PremiumLayout.artworkRadius(for: artworkSize),
+                            style: .continuous
+                        )
+                    )
+                    .allowsHitTesting(false)
+            }
+
+            Button {
+                Haptics.selection()
+                player.play(track, in: queue)
+            } label: {
+                Group {
+                    if player.currentTrack?.id == track.id {
+                        PlaybackIndicatorView(
+                            isPlaying: player.isPlaying,
+                            color: settings.theme.buttonForeground
+                        )
+                    } else {
+                        Image(systemName: "play.fill")
+                    }
+                }
+                .font(.caption.weight(.bold))
+                .foregroundStyle(settings.theme.buttonForeground)
+                .frame(width: 32, height: 32)
+                .background(settings.theme.accent, in: Circle())
+            }
+            .buttonStyle(PremiumPressStyle())
+            .offset(x: artworkSize - 39, y: artworkSize - 39)
+            .accessibilityLabel(L10n.text("Воспроизвести трек"))
+        }
+        .frame(width: artworkSize, alignment: .topLeading)
+    }
+
+    private func openAlbum(for track: Track) {
+        albumLookupTask?.cancel()
+        albumLookupTask = nil
+        loadingAlbumTrackID = nil
+        if let reference = track.albumReference,
+           let title = track.albumTitle,
+           !title.isEmpty {
+            selectedAlbum = reference.album(
+                title: title,
+                artist: track.artist,
+                artworkURL: track.artworkURL
+            )
+            return
+        }
+        guard let title = track.albumTitle, !title.isEmpty else {
+            actionErrorMessage = L10n.text(
+                "VK не вернул данные альбома для этого трека."
+            )
+            return
+        }
+        loadingAlbumTrackID = track.id
+        let requestedTrackID = track.id
+        albumLookupTask = Task {
+            defer {
+                if loadingAlbumTrackID == requestedTrackID {
+                    loadingAlbumTrackID = nil
+                    albumLookupTask = nil
+                }
+            }
+            do {
+                let page = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.searchAlbums(
+                        query: title,
+                        accessToken: token,
+                        offset: 0,
+                        count: 20
+                    )
+                }
+                let exact = page.items.first {
+                    $0.title.localizedCaseInsensitiveCompare(title)
+                        == .orderedSame
+                        && ($0.artists.isEmpty
+                            || $0.artistText.localizedCaseInsensitiveContains(
+                                track.artist
+                            ))
+                }
+                try Task.checkCancellation()
+                guard loadingAlbumTrackID == requestedTrackID else {
+                    return
+                }
+                guard let album = exact else {
+                    throw APIError.invalidResponse
+                }
+                selectedAlbum = album
+                actionErrorMessage = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                actionErrorMessage = L10n.format(
+                    "Не удалось открыть альбом: %@",
+                    error.localizedDescription
+                )
+            }
+        }
     }
 
     @ViewBuilder

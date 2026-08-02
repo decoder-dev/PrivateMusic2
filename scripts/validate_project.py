@@ -188,6 +188,8 @@ for required_catalog_symbol in (
     "AlbumDetailView",
     "AlbumShareLinkBuilder",
     "likedAlbumsStore",
+    "albumReference",
+    "openAlbum(for: track)",
 ):
     if required_catalog_symbol not in all_source:
         fail(f"catalog/album support is missing: {required_catalog_symbol}")

@@ -11,6 +11,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
     let artworkURL: URL?
     let accessKey: String?
     let lyricsID: Int?
+    let albumReference: AlbumReference?
 
     var id: String { "\(ownerID)_\(trackID)" }
 
@@ -24,7 +25,8 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         streamURL: URL?,
         artworkURL: URL?,
         accessKey: String? = nil,
-        lyricsID: Int? = nil
+        lyricsID: Int? = nil,
+        albumReference: AlbumReference? = nil
     ) {
         self.trackID = trackID
         self.ownerID = ownerID
@@ -36,6 +38,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         self.artworkURL = artworkURL
         self.accessKey = accessKey
         self.lyricsID = lyricsID
+        self.albumReference = albumReference
     }
 
     enum CodingKeys: String, CodingKey {
@@ -52,6 +55,9 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
     }
 
     enum AlbumKeys: String, CodingKey {
+        case id
+        case ownerID = "owner_id"
+        case accessKey = "access_key"
         case thumb
         case title
     }
@@ -97,6 +103,24 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         } else {
             artworkURL = nil
         }
+        if let album = try? container.nestedContainer(
+            keyedBy: AlbumKeys.self,
+            forKey: .album
+        ), let albumID = try album.decodeIfPresent(Int.self, forKey: .id) {
+            albumReference = AlbumReference(
+                albumID: albumID,
+                ownerID: try album.decodeIfPresent(
+                    Int.self,
+                    forKey: .ownerID
+                ) ?? ownerID,
+                accessKey: try album.decodeIfPresent(
+                    String.self,
+                    forKey: .accessKey
+                )
+            )
+        } else {
+            albumReference = nil
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -110,6 +134,32 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(streamURL?.absoluteString, forKey: .url)
         try container.encodeIfPresent(accessKey, forKey: .accessKey)
         try container.encodeIfPresent(lyricsID, forKey: .lyricsID)
+        if albumTitle != nil || albumReference != nil || artworkURL != nil {
+            var album = container.nestedContainer(
+                keyedBy: AlbumKeys.self,
+                forKey: .album
+            )
+            try album.encodeIfPresent(albumTitle, forKey: .title)
+            try album.encodeIfPresent(albumReference?.albumID, forKey: .id)
+            try album.encodeIfPresent(
+                albumReference?.ownerID,
+                forKey: .ownerID
+            )
+            try album.encodeIfPresent(
+                albumReference?.accessKey,
+                forKey: .accessKey
+            )
+            if let artworkURL {
+                var thumb = album.nestedContainer(
+                    keyedBy: ThumbKeys.self,
+                    forKey: .thumb
+                )
+                try thumb.encode(
+                    artworkURL.absoluteString,
+                    forKey: .photo600
+                )
+            }
+        }
     }
 
     func resolvingStreamURL(userID: Int?) -> Track {
@@ -126,7 +176,8 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
             ),
             artworkURL: artworkURL,
             accessKey: accessKey,
-            lyricsID: lyricsID
+            lyricsID: lyricsID,
+            albumReference: albumReference
         )
     }
 }

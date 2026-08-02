@@ -47,6 +47,37 @@ final class AlbumDecodingTests: XCTestCase {
             "https://vk.com/music/album/-3_9?access_key=key"
         )
     }
+
+    func testTrackDecodesAndPersistsAlbumReference() throws {
+        let data = """
+        {
+          "id": 7,
+          "owner_id": 8,
+          "title": "Track",
+          "artist": "Artist",
+          "duration": 120,
+          "album": {
+            "id": 9,
+            "owner_id": -10,
+            "access_key": "album-key",
+            "title": "Album",
+            "thumb": {"photo_600": "https://example.com/cover.jpg"}
+          }
+        }
+        """.data(using: .utf8)!
+
+        let track = try JSONDecoder().decode(Track.self, from: data)
+        XCTAssertEqual(track.albumReference?.albumID, 9)
+        XCTAssertEqual(track.albumReference?.ownerID, -10)
+        XCTAssertEqual(track.albumReference?.accessKey, "album-key")
+
+        let restored = try JSONDecoder().decode(
+            Track.self,
+            from: JSONEncoder().encode(track)
+        )
+        XCTAssertEqual(restored.albumReference, track.albumReference)
+        XCTAssertEqual(restored.artworkURL, track.artworkURL)
+    }
 }
 
 @MainActor

@@ -99,9 +99,11 @@ struct AlbumDetailView: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
-                Text(L10n.trackCount(album.count))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if displayedTrackCount > 0 {
+                    Text(L10n.trackCount(displayedTrackCount))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             HStack(spacing: 12) {
                 Button(action: playAlbum) {
@@ -136,6 +138,10 @@ struct AlbumDetailView: View {
 
     private var shareURL: URL? {
         AlbumShareLinkBuilder.url(for: album)
+    }
+
+    private var displayedTrackCount: Int {
+        album.count > 0 ? album.count : model.tracks.count
     }
 
     private func playAlbum() {

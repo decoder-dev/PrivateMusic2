@@ -1,5 +1,27 @@
 import Foundation
 
+struct AlbumReference: Codable, Hashable, Sendable {
+    let albumID: Int
+    let ownerID: Int
+    let accessKey: String?
+
+    func album(
+        title: String,
+        artist: String,
+        artworkURL: URL?
+    ) -> Album {
+        Album(
+            id: albumID,
+            ownerID: ownerID,
+            title: title,
+            count: 0,
+            artworkURL: artworkURL,
+            accessKey: accessKey,
+            artists: artist.isEmpty ? [] : [artist]
+        )
+    }
+}
+
 struct Album: Decodable, Hashable, Identifiable, Sendable {
     struct Artist: Decodable, Hashable, Sendable {
         let name: String
