@@ -501,27 +501,43 @@ actor HLSSegmentExporter {
         for (index, sample) in samples.enumerated() {
             try Task.checkCancellation()
             var blockBuffer: CMBlockBuffer?
-            let blockStatus = sample.data.withUnsafeBytes { bytes in
-                CMBlockBufferCreateWithMemoryBlock(
-                    allocator: nil,
-                    memoryBlock: UnsafeMutableRawPointer(
-                        mutating: bytes.baseAddress
-                    ),
-                    blockLength: sample.data.count,
-                    blockAllocator: nil,
-                    customBlockSource: nil,
-                    offsetToData: 0,
-                    dataLength: sample.data.count,
-                    flags: 0,
-                    blockBufferOut: &blockBuffer
-                )
-            }
+            let blockStatus = CMBlockBufferCreateWithMemoryBlock(
+                allocator: kCFAllocatorDefault,
+                memoryBlock: nil,
+                blockLength: sample.data.count,
+                blockAllocator: kCFAllocatorDefault,
+                customBlockSource: nil,
+                offsetToData: 0,
+                dataLength: sample.data.count,
+                flags: 0,
+                blockBufferOut: &blockBuffer
+            )
             guard blockStatus == noErr, let blockBuffer else {
                 throw HLSDiagnosticError(
                     stage: .appendingSample,
                     publicCode: "HLS-SAMPLE-BUFFER",
                     underlyingDomain: "CoreMedia",
                     underlyingCode: Int(blockStatus),
+                    safeDetail: "sample #\(index)"
+                )
+            }
+            let copyStatus = sample.data.withUnsafeBytes { bytes in
+                guard let source = bytes.baseAddress else {
+                    return kCMBlockBufferBadCustomBlockSourceErr
+                }
+                return CMBlockBufferReplaceDataBytes(
+                    with: source,
+                    blockBuffer: blockBuffer,
+                    offsetIntoDestination: 0,
+                    dataLength: sample.data.count
+                )
+            }
+            guard copyStatus == noErr else {
+                throw HLSDiagnosticError(
+                    stage: .appendingSample,
+                    publicCode: "HLS-SAMPLE-COPY",
+                    underlyingDomain: "CoreMedia",
+                    underlyingCode: Int(copyStatus),
                     safeDetail: "sample #\(index)"
                 )
             }
@@ -1883,4 +1899,3 @@ struct HLSDiagnosticError: LocalizedError, Sendable {
         }
     }
 }
-
