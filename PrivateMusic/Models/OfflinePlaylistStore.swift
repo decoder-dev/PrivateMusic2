@@ -311,6 +311,22 @@ final class OfflinePlaylistStore: ObservableObject {
         guard activeAccountID != accountID else { return }
         activeTasks.values.forEach { $0.task.cancel() }
         activeTasks.removeAll()
+        // Do not persist empty transient jobs. A partially completed playlist
+        // remains useful and is saved as partial; a resolving job with no
+        // downloaded tracks should disappear instead of returning as a
+        // confusing cancelled card after the user switches accounts.
+        let transientRecords = records.filter {
+            OfflinePlaylistStatus.status(for: $0.value).isActive
+        }
+        for (id, var record) in transientRecords {
+            if record.completedCount == 0 && record.tracks.isEmpty {
+                records.removeValue(forKey: id)
+            } else {
+                record.state = .partial
+                record.errorMessage = L10n.text("Загрузка прервана")
+                records[id] = record
+            }
+        }
         // Flush against the old account directory before changing the key.
         // Delayed persistence intentionally resolves `manifestURL` at write
         // time, so changing accounts first could strand the old snapshot.
