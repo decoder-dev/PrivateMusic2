@@ -9,6 +9,8 @@ struct LibraryView: View {
     @EnvironmentObject private var offlineStore: OfflineTrackStore
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var networkMonitor: NetworkMonitor
+    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var offlinePlaylists =
         OfflinePlaylistStore.shared
     @StateObject private var tracks = TrackCollectionViewModel(source: .library)
@@ -18,53 +20,69 @@ struct LibraryView: View {
     @State private var sharingTrack: Track?
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 24) {
-                if playlists.isLoading && playlists.playlists.isEmpty {
-                    playlistSkeleton
-                } else if !playlists.playlists.isEmpty {
-                    playlistShelf
-                }
-                if !likedAlbumsStore.albums.isEmpty {
-                    albumShelf
-                }
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    if playlists.isLoading && playlists.playlists.isEmpty {
+                        playlistSkeleton
+                    } else if !playlists.playlists.isEmpty {
+                        playlistShelf
+                    }
+                    if !likedAlbumsStore.albums.isEmpty {
+                        albumShelf
+                    }
 
-                HStack {
-                    Text("Треки")
-                        .font(.title2.weight(.bold))
-                    Spacer()
-                    Text("\(tracks.totalCount)")
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
+                    HStack {
+                        Text("Треки")
+                            .font(.title2.weight(.bold))
+                        Spacer()
+                        Text("\(tracks.totalCount)")
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
 
-                if tracks.isLoading && tracks.tracks.isEmpty {
-                    trackSkeleton
-                } else if tracks.tracks.isEmpty {
-                    EmptyStateView(
-                        title: "Медиатека пуста",
-                        systemImage: "music.note",
-                        description: "Добавленные во VK треки появятся здесь."
-                    )
-                    .frame(height: 260)
-                } else {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(tracks.tracks.enumerated()), id: \.element.id) {
-                            index, track in
-                            libraryRow(track)
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                                .onAppear {
-                                    loadMoreIfNeeded(after: track)
+                    if tracks.isLoading && tracks.tracks.isEmpty {
+                        trackSkeleton
+                    } else if tracks.tracks.isEmpty {
+                        EmptyStateView(
+                            title: "Медиатека пуста",
+                            systemImage: "music.note",
+                            description: "Добавленные во VK треки появятся здесь."
+                        )
+                        .frame(height: 260)
+                    } else {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(tracks.tracks.enumerated()), id: \.element.id) {
+                                index, track in
+                                libraryRow(track)
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                                    .onAppear {
+                                        loadMoreIfNeeded(after: track)
+                                    }
+                                if index < tracks.tracks.count - 1 {
+                                    Divider().padding(.leading, 66)
                                 }
-                            if index < tracks.tracks.count - 1 {
-                                Divider().padding(.leading, 66)
                             }
                         }
+                        .animation(.easeInOut(duration: 0.3), value: tracks.tracks.map(\.id))
                     }
-                    .animation(.easeInOut(duration: 0.3), value: tracks.tracks.map(\.id))
+                }
+                .id(MainTabScrollDestination.library)
+                .padding(.horizontal, 16)
+            }
+            .onReceive(scrollCoordinator.$request) { request in
+                guard request?.destination == .library else { return }
+                if reduceMotion {
+                    proxy.scrollTo(MainTabScrollDestination.library, anchor: .top)
+                } else {
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        proxy.scrollTo(
+                            MainTabScrollDestination.library,
+                            anchor: .top
+                        )
+                    }
                 }
             }
-            .padding(.horizontal, 16)
         }
         .background(ThemeBackground())
         .navigationTitle("Медиатека")

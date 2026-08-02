@@ -14,6 +14,8 @@ struct SearchView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var libraryStore: MusicLibraryStore
     @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
+    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var model = SearchViewModel()
     @State private var scope: Scope = .tracks
     @State private var pendingLibraryTrackIDs = Set<String>()
@@ -27,20 +29,36 @@ struct SearchView: View {
     }
 
     var body: some View {
-        Group {
-            if #available(iOS 26.5, *) {
-                searchLayout(showsCustomField: false)
-                    .searchable(
-                        text: $model.query,
-                        isPresented: $isSystemSearchPresented,
-                        placement: .automatic,
-                        prompt: Text(L10n.text("Трек, исполнитель или альбом"))
-                    )
-                    .onSubmit(of: .search) {
-                        submitSearch()
+        ScrollViewReader { proxy in
+            Group {
+                if #available(iOS 26.5, *) {
+                    searchLayout(showsCustomField: false)
+                        .searchable(
+                            text: $model.query,
+                            isPresented: $isSystemSearchPresented,
+                            placement: .automatic,
+                            prompt: Text(L10n.text("Трек, исполнитель или альбом"))
+                        )
+                        .onSubmit(of: .search) {
+                            submitSearch()
+                        }
+                } else {
+                    searchLayout(showsCustomField: true)
+                }
+            }
+            .onReceive(scrollCoordinator.$request) { request in
+                guard request?.destination == .search else { return }
+                isSearchFocused = false
+                if reduceMotion {
+                    proxy.scrollTo(MainTabScrollDestination.search, anchor: .top)
+                } else {
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        proxy.scrollTo(
+                            MainTabScrollDestination.search,
+                            anchor: .top
+                        )
                     }
-            } else {
-                searchLayout(showsCustomField: true)
+                }
             }
         }
         .background(ThemeBackground())
@@ -170,6 +188,15 @@ struct SearchView: View {
         }
     }
 
+    private var searchTopAnchor: some View {
+        Color.clear
+            .frame(height: 0)
+            .listRowInsets(EdgeInsets())
+            .listRowSeparator(.hidden)
+            .id(MainTabScrollDestination.search)
+            .accessibilityHidden(true)
+    }
+
     private var searchLanding: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -193,6 +220,7 @@ struct SearchView: View {
                     recentQueries
                 }
             }
+            .id(MainTabScrollDestination.search)
             .padding(.horizontal, 16)
             .padding(.top, 18)
             .padding(.bottom, 32)
@@ -330,6 +358,7 @@ struct SearchView: View {
 
     private var trackResults: some View {
         List {
+            searchTopAnchor
             ForEach(model.tracks) { track in
                 TrackRow(track: track, queue: model.tracks)
                     .listRowBackground(Color.clear)
@@ -382,6 +411,7 @@ struct SearchView: View {
 
     private var artistResults: some View {
         List {
+            searchTopAnchor
             ForEach(model.artists, id: \.self) { artist in
                 NavigationLink {
                     ArtistView(artist: artist)
@@ -416,6 +446,7 @@ struct SearchView: View {
 
     private var albumResults: some View {
         List {
+            searchTopAnchor
             ForEach(model.albums) { album in
                 NavigationLink {
                     AlbumDetailView(album: album)

@@ -7,6 +7,8 @@ struct CatalogView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var history: ListeningHistoryStore
     @EnvironmentObject private var homeCatalog: HomeCatalogStore
+    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var loadingMixID: String?
     @State private var actionErrorMessage: String?
     @State private var sharingTrack: Track?
@@ -15,36 +17,43 @@ struct CatalogView: View {
     @State private var albumLookupTask: Task<Void, Never>?
 
     var body: some View {
-        GeometryReader { proxy in
-            let metrics = HomeMetrics(containerWidth: proxy.size.width)
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 22) {
-                    welcomeHeader
+        ScrollViewReader { scrollProxy in
+            GeometryReader { proxy in
+                let metrics = HomeMetrics(containerWidth: proxy.size.width)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 22) {
+                        welcomeHeader
+                            .id(MainTabScrollDestination.home)
 
-                    if !history.entries.isEmpty {
-                        recentlyPlayedSection(metrics: metrics)
+                        if !history.entries.isEmpty {
+                            recentlyPlayedSection(metrics: metrics)
+                        }
+                        if isLoading && contentIsEmpty {
+                            catalogSkeleton(metrics: metrics)
+                        } else {
+                            if !mixes.isEmpty {
+                                mixesSection(metrics: metrics)
+                            }
+                            if !recommendations.isEmpty {
+                                recommendationsSection(metrics: metrics)
+                                trackListSection
+                            }
+                            if !playlists.isEmpty {
+                                playlistsSection(metrics: metrics)
+                            }
+                            if contentIsEmpty { unavailableView }
+                            if let errorMessage, !contentIsEmpty {
+                                retryRow(errorMessage)
+                            }
+                        }
                     }
-                    if isLoading && contentIsEmpty {
-                        catalogSkeleton(metrics: metrics)
-                    } else {
-                        if !mixes.isEmpty {
-                            mixesSection(metrics: metrics)
-                        }
-                        if !recommendations.isEmpty {
-                            recommendationsSection(metrics: metrics)
-                            trackListSection
-                        }
-                        if !playlists.isEmpty {
-                            playlistsSection(metrics: metrics)
-                        }
-                        if contentIsEmpty { unavailableView }
-                        if let errorMessage, !contentIsEmpty {
-                            retryRow(errorMessage)
-                        }
-                    }
+                    .padding(.horizontal, metrics.horizontalPadding)
+                    .padding(.top, 4)
                 }
-                .padding(.horizontal, metrics.horizontalPadding)
-                .padding(.top, 4)
+            }
+            .onReceive(scrollCoordinator.$request) { request in
+                guard request?.destination == .home else { return }
+                scrollToTop(scrollProxy, destination: .home)
             }
         }
         .background(ThemeBackground())
@@ -65,6 +74,19 @@ struct CatalogView: View {
         .refreshable { await load(force: true) }
         .task(id: sessionStore.resolvedOfflineAccountID) {
             await load()
+        }
+    }
+
+    private func scrollToTop(
+        _ proxy: ScrollViewProxy,
+        destination: MainTabScrollDestination
+    ) {
+        if reduceMotion {
+            proxy.scrollTo(destination, anchor: .top)
+        } else {
+            withAnimation(.easeOut(duration: 0.28)) {
+                proxy.scrollTo(destination, anchor: .top)
+            }
         }
     }
 

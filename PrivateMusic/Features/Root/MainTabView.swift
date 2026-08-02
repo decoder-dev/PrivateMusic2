@@ -23,6 +23,15 @@ private enum MainTab: CaseIterable, Hashable {
         case .profile: "person.crop.circle"
         }
     }
+
+    var scrollDestination: MainTabScrollDestination {
+        switch self {
+        case .home: .home
+        case .library: .library
+        case .search: .search
+        case .profile: .profile
+        }
+    }
 }
 
 struct MainTabView: View {
@@ -32,6 +41,7 @@ struct MainTabView: View {
     @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: MainTab = .home
+    @StateObject private var scrollCoordinator = MainTabScrollCoordinator()
 
     var body: some View {
         Group {
@@ -59,6 +69,7 @@ struct MainTabView: View {
                 }
             }
         }
+        .environmentObject(scrollCoordinator)
         .task(id: sessionStore.accessToken) {
             async let library: Void = refreshLibraryIndex()
             async let albums: Void = refreshLikedAlbums()
@@ -142,10 +153,11 @@ struct MainTabView: View {
 @available(iOS 26.5, *)
 private struct SystemLiquidGlassTabView: View {
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
     @Binding var selection: MainTab
 
     var body: some View {
-        TabView(selection: $selection) {
+        TabView(selection: reselectionAwareSelection) {
             Tab(
                 MainTab.home.title,
                 systemImage: MainTab.home.image,
@@ -188,6 +200,24 @@ private struct SystemLiquidGlassTabView: View {
         ) {
             SystemPlaybackAccessory()
         }
+    }
+
+    private var reselectionAwareSelection: Binding<MainTab> {
+        Binding(
+            get: { selection },
+            set: { tapped in
+                if TabReselectionPolicy.isReselection(
+                    current: selection,
+                    tapped: tapped
+                ) {
+                    scrollCoordinator.scrollToTop(
+                        tapped.scrollDestination
+                    )
+                } else {
+                    selection = tapped
+                }
+            }
+        )
     }
 }
 
@@ -326,6 +356,7 @@ private struct SystemPlaybackAccessory: View {
 private struct PlaybackTabDock: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selection: MainTab
 
@@ -369,6 +400,13 @@ private struct PlaybackTabDock: View {
     private func tabButton(_ tab: MainTab) -> some View {
         Button {
             Haptics.selection()
+            if TabReselectionPolicy.isReselection(
+                current: selection,
+                tapped: tab
+            ) {
+                scrollCoordinator.scrollToTop(tab.scrollDestination)
+                return
+            }
             if reduceMotion {
                 selection = tab
             } else {
