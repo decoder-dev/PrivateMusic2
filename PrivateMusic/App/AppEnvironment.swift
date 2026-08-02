@@ -12,6 +12,7 @@ final class AppEnvironment: ObservableObject {
     let offlineStore: OfflineTrackStore
     let trackShareService: TrackShareService
     let player: AudioPlayer
+    let watchRemoteCoordinator: WatchRemoteCoordinator
     let musicService: any MusicService
     let webAuthService: VKWebAuthService
     @Published private(set) var isRecoveringSession = false
@@ -57,6 +58,8 @@ final class AppEnvironment: ObservableObject {
             userAgent: sessionStore.userAgent
         )
         self.player = player
+        let watchRemoteCoordinator = WatchRemoteCoordinator(player: player)
+        self.watchRemoteCoordinator = watchRemoteCoordinator
         offlineStore.configureEvictionProtection { [weak player] in
             player?.currentTrack?.id
         }
@@ -134,6 +137,7 @@ final class AppEnvironment: ObservableObject {
             predictivePreDownloadTask?.cancel()
             predictivePreDownloadTask = nil
         }
+        watchRemoteCoordinator.start()
     }
 
     func configureOfflineAccount() {
