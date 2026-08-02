@@ -16,6 +16,8 @@ SwiftUI. Проект развивает **decoder-dev**.
   файлы по-прежнему могут воспроизводиться;
 - edge-to-edge плеер без системных чёрных полей, фоновое аудио,
   экран блокировки, AirPlay и Bluetooth;
+- companion-пульт для Apple Watch (watchOS 10+): обложка, прогресс,
+  пауза/воспроизведение, предыдущий и следующий трек через WatchConnectivity;
 - пауза при снятии наушников / AirPods по
   [Responding to audio route changes](https://developer.apple.com/documentation/avfaudio/responding-to-audio-route-changes)
   (`routeChangeNotification`, `oldDeviceUnavailable`) и Automatic Ear Detection;
@@ -41,13 +43,13 @@ bash ./scripts/bootstrap.sh
 open PrivateMusic.xcodeproj
 ```
 
-CI прогоняет unit-тесты на Xcode 26.5 и собирает релизный IPA на
-GitHub-hosted runner `xcode-27` с iOS 27 SDK.
+CI прогоняет unit-тесты и собирает watchOS-пульт на Xcode 26.5, затем
+собирает релизный IPA на GitHub-hosted runner `xcode-27` с iOS 27 SDK.
 
 Для установки на физический iPhone укажите свою команду разработчика в
 Signing & Capabilities. Репозиторий также собирает неподписанный IPA через
 GitHub Actions. Такой архив перед установкой необходимо подписать собственным
-сертификатом.
+сертификатом: сначала вложенный Watch bundle, затем приложение iPhone.
 
 Структурные проверки можно запустить на Windows, Linux или macOS:
 

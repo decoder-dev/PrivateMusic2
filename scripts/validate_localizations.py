@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RESOURCES = ROOT / "PrivateMusic" / "Resources"
+WATCH_RESOURCES = ROOT / "PrivateMusicWatch" / "Resources"
 LOCALES = ("ru", "en")
 ENTRY = re.compile(r'^"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)";\s*$')
 PLACEHOLDER = re.compile(r"%(?:\d+\$)?[@d]")
@@ -56,8 +57,11 @@ REQUIRED_ACCESSIBILITY_KEYS = {
 }
 
 
-def read_strings(locale: str) -> dict[str, str]:
-    path = RESOURCES / f"{locale}.lproj" / "Localizable.strings"
+def read_strings(
+    locale: str,
+    resources: Path = RESOURCES,
+) -> dict[str, str]:
+    path = resources / f"{locale}.lproj" / "Localizable.strings"
     result: dict[str, str] = {}
     for number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = raw_line.strip()
@@ -116,6 +120,18 @@ def main() -> int:
             f"{sorted(missing_accessibility)!r}"
         )
 
+    watch_strings = {
+        locale: read_strings(locale, WATCH_RESOURCES)
+        for locale in LOCALES
+    }
+    watch_reference = set(watch_strings[LOCALES[0]])
+    for locale in LOCALES[1:]:
+        keys = set(watch_strings[locale])
+        if keys != watch_reference:
+            raise ValueError(
+                f"watch {locale}: keys differ from {LOCALES[0]}"
+            )
+
     plural_reference = set(dictionaries[LOCALES[0]])
     for locale in LOCALES[1:]:
         keys = set(dictionaries[locale])
@@ -128,7 +144,8 @@ def main() -> int:
         "Localization validation passed: "
         f"{len(reference)} strings, "
         f"{len(plural_reference)} plural keys, "
-        f"{len(LOCALES)} locales."
+        f"{len(LOCALES)} locales; "
+        f"{len(watch_reference)} Watch strings."
     )
     return 0
 

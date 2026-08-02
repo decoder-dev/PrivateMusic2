@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -69,6 +69,8 @@ jobs:
     name: Build IPA (Xcode 27)
     needs: test
     runs-on: xcode-27
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
 
@@ -121,6 +123,13 @@ jobs:
                 echo "::error title=Xcode compiler::$safe"
               done
 
+      - name: Validate embedded Apple Watch application
+        run: |
+          APP_PATH="$(find "$PWD/build/Build/Products/Release-iphoneos" \
+            -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          python3 scripts/validate_watch_bundle.py "$APP_PATH"
+
       - name: Package unsigned IPA
         run: |
           APP_PATH="$(find "$PWD/build/Build/Products/Release-iphoneos" \
@@ -135,6 +144,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          test "$GITHUB_REF_NAME" = "v3.26.0"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
           Private Music 3.26.0
