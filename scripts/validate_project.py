@@ -170,6 +170,15 @@ for required_player_symbol in (
 ):
     if required_player_symbol not in player_view_source:
         fail(f"player is missing full-bleed/glass symbol: {required_player_symbol}")
+for required_preload_symbol in (
+    "PlaybackPreloadPolicy.nextIndex",
+    "prerollPlayer.preroll(atRate: 1)",
+    "takePreloadedPlayback",
+    "invalidatePreloadedPlayback",
+    "ArtworkImageCache.shared.prefetch",
+):
+    if required_preload_symbol not in all_source:
+        fail(f"next-track preload is missing: {required_preload_symbol}")
 for required_queue_symbol in (
     "func removeFromQueue(at index: Int)",
     ".swipeActions(",

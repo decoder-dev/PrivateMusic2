@@ -132,6 +132,39 @@ enum AudioProcessingRoutePolicy {
     }
 }
 
+enum PlaybackPreloadPolicy {
+    static let maximumAge: TimeInterval = 5 * 60
+
+    static func nextIndex(
+        queueCount: Int,
+        currentIndex: Int?,
+        repeatMode: RepeatMode
+    ) -> Int? {
+        guard queueCount > 1,
+              let currentIndex,
+              (0..<queueCount).contains(currentIndex) else {
+            return nil
+        }
+        if currentIndex + 1 < queueCount {
+            return currentIndex + 1
+        }
+        return repeatMode == .all ? 0 : nil
+    }
+
+    static func isValid(
+        trackID: String,
+        url: URL,
+        preparedTrackID: String,
+        preparedURL: URL,
+        preparedAt: Date,
+        now: Date = Date()
+    ) -> Bool {
+        trackID == preparedTrackID
+            && url == preparedURL
+            && now.timeIntervalSince(preparedAt) < maximumAge
+    }
+}
+
 enum AudioInterruptionPolicy {
     static func shouldResume(
         wasPlayingBeforeInterruption: Bool,
@@ -148,6 +181,29 @@ enum AudioInterruptionPolicy {
 
 @MainActor
 final class AudioPlayer: ObservableObject {
+    private final class PreloadedPlayback {
+        let trackID: String
+        let url: URL
+        let item: AVPlayerItem
+        let prerollPlayer: AVPlayer
+        let preparedAt: Date
+        var isReady = false
+
+        init(
+            trackID: String,
+            url: URL,
+            item: AVPlayerItem,
+            prerollPlayer: AVPlayer,
+            preparedAt: Date = Date()
+        ) {
+            self.trackID = trackID
+            self.url = url
+            self.item = item
+            self.prerollPlayer = prerollPlayer
+            self.preparedAt = preparedAt
+        }
+    }
+
     @Published private(set) var queue: [Track] = []
     @Published private(set) var currentIndex: Int?
     @Published private(set) var isPlaying = false
@@ -203,6 +259,11 @@ final class AudioPlayer: ObservableObject {
     private var isAudioInterrupted = false
     private var resumeAfterRouteTransfer = false
     private var routeDisconnectPending = false
+    private var preloadedPlayback: PreloadedPlayback?
+    private var preloadGeneration = 0
+    private var canPreloadPlayback: () -> Bool = { true }
+    private var artworkPrefetchHandler: (([Track]) async -> Void)?
+    private var artworkPrefetchTask: Task<Void, Never>?
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -315,6 +376,25 @@ final class AudioPlayer: ObservableObject {
         streamRefreshProvider = provider
     }
 
+    func configurePreloading(
+        isAllowed: @escaping () -> Bool,
+        artworkPrefetch: @escaping ([Track]) async -> Void
+    ) {
+        canPreloadPlayback = isAllowed
+        artworkPrefetchHandler = artworkPrefetch
+        scheduleNeighborPreloads()
+    }
+
+    func cancelPreloading() {
+        invalidatePreloadedPlayback()
+        artworkPrefetchTask?.cancel()
+        artworkPrefetchTask = nil
+    }
+
+    func resumePreloading() {
+        scheduleNeighborPreloads()
+    }
+
     func configureOfflinePlayback(
         lookup: @escaping (Track) -> URL?,
         invalidate: @escaping (Track) -> Void,
@@ -336,6 +416,8 @@ final class AudioPlayer: ObservableObject {
             in: .whitespacesAndNewlines
         )
         streamUserAgent = cleaned?.isEmpty == false ? cleaned : nil
+        invalidatePreloadedPlayback()
+        scheduleNeighborPreloads()
     }
 
     func play(
@@ -373,15 +455,24 @@ final class AudioPlayer: ObservableObject {
     }
 
     func playNext(_ track: Track) {
-        guard let currentIndex else {
+        guard let currentIndex, let currentTrack else {
             play(track, in: [track])
             return
         }
+        guard track.id != currentTrack.id else { return }
         cancelContinuation()
         queue.removeAll { $0.id == track.id }
-        queue.insert(track, at: min(currentIndex + 1, queue.count))
+        let adjustedCurrentIndex = queue.firstIndex {
+            $0.id == currentTrack.id
+        } ?? min(currentIndex, max(queue.count - 1, 0))
+        self.currentIndex = adjustedCurrentIndex
+        queue.insert(
+            track,
+            at: min(adjustedCurrentIndex + 1, queue.count)
+        )
         persistPlayback()
         publishNowPlayingQueue()
+        scheduleNeighborPreloads()
     }
 
     func removeFromQueue(at index: Int) {
@@ -418,6 +509,7 @@ final class AudioPlayer: ObservableObject {
         } else {
             persistPlayback()
             publishNowPlayingQueue()
+            scheduleNeighborPreloads()
         }
     }
 
@@ -447,6 +539,7 @@ final class AudioPlayer: ObservableObject {
         currentIndex = 0
         persistPlayback()
         publishNowPlayingQueue()
+        scheduleNeighborPreloads()
     }
 
     func cycleRepeatMode() {
@@ -456,6 +549,7 @@ final class AudioPlayer: ObservableObject {
         case .one: repeatMode = .off
         }
         defaults.set(repeatMode.rawValue, forKey: "player.repeat")
+        scheduleNeighborPreloads()
     }
 
     func scheduleSleepTimer(minutes: Int) {
@@ -603,6 +697,7 @@ final class AudioPlayer: ObservableObject {
         sleepTimerEndDate = nil
         cancelContinuation()
         cancelStreamRefresh()
+        cancelPreloading()
         player.pause()
         player.replaceCurrentItem(with: nil)
         itemStatusObservation?.invalidate()
@@ -680,23 +775,9 @@ final class AudioPlayer: ObservableObject {
         playbackGeneration += 1
         let generation = playbackGeneration
         let isOffline = offlineURL != nil
-        let asset: AVURLAsset
-        if isOffline {
-            asset = AVURLAsset(url: url)
-        } else {
-            var headers = [
-                "Referer": "https://vk.com/",
-                "Origin": "https://vk.com"
-            ]
-            if let streamUserAgent {
-                headers["User-Agent"] = streamUserAgent
-            }
-            asset = AVURLAsset(
-                url: url,
-                options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
-            )
-        }
-        let item = AVPlayerItem(asset: asset)
+        let item = takePreloadedPlayback(for: track, url: url)
+            ?? makePlaybackItem(url: url, isOffline: isOffline)
+        configureAudioProcessing(for: item)
         itemStatusObservation?.invalidate()
         itemStatusObservation = item.observe(
             \.status,
@@ -715,6 +796,7 @@ final class AudioPlayer: ObservableObject {
                         self.offlinePlayedHandler?(track)
                     }
                     self.playbackReadyHandler?(track, isOffline)
+                    self.scheduleNeighborPreloads()
                     if position > 0 {
                         self.seek(to: min(position, self.duration))
                     }
@@ -729,14 +811,6 @@ final class AudioPlayer: ObservableObject {
                 }
             }
         }
-        if let tap = equalizer.makeTap() {
-            let parameters = AVMutableAudioMixInputParameters()
-            parameters.audioTapProcessor = tap
-            let mix = AVMutableAudioMix()
-            mix.inputParameters = [parameters]
-            item.audioMix = mix
-        }
-        item.preferredForwardBufferDuration = 8
         player.replaceCurrentItem(with: item)
         loadedTrackID = track.id
         loadedOfflineTrackID = isOffline ? track.id : nil
@@ -764,6 +838,179 @@ final class AudioPlayer: ObservableObject {
             queueIndex: currentIndex ?? 0
         )
         persistPlayback()
+    }
+
+    private func makePlaybackItem(
+        url: URL,
+        isOffline: Bool
+    ) -> AVPlayerItem {
+        let asset: AVURLAsset
+        if isOffline {
+            asset = AVURLAsset(url: url)
+        } else {
+            var headers = [
+                "Referer": "https://vk.com/",
+                "Origin": "https://vk.com"
+            ]
+            if let streamUserAgent {
+                headers["User-Agent"] = streamUserAgent
+            }
+            asset = AVURLAsset(
+                url: url,
+                options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
+            )
+        }
+        let item = AVPlayerItem(asset: asset)
+        item.preferredForwardBufferDuration = 12
+        return item
+    }
+
+    private func configureAudioProcessing(for item: AVPlayerItem) {
+        item.audioMix = nil
+        guard let tap = equalizer.makeTap() else { return }
+        let parameters = AVMutableAudioMixInputParameters()
+        parameters.audioTapProcessor = tap
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = [parameters]
+        item.audioMix = mix
+    }
+
+    private func scheduleNeighborPreloads() {
+        let lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+        let remotePreloadingAllowed = canPreloadPlayback()
+        if !lowPowerMode, remotePreloadingAllowed {
+            prefetchNeighborArtwork()
+        } else {
+            artworkPrefetchTask?.cancel()
+            artworkPrefetchTask = nil
+        }
+        guard !lowPowerMode,
+              let nextIndex = PlaybackPreloadPolicy.nextIndex(
+                queueCount: queue.count,
+                currentIndex: currentIndex,
+                repeatMode: repeatMode
+              ),
+              queue.indices.contains(nextIndex) else {
+            invalidatePreloadedPlayback()
+            return
+        }
+        let track = queue[nextIndex]
+        let offlineURL = offlineURLProvider?(track)
+        guard (offlineURL != nil || remotePreloadingAllowed),
+              offlineURL != nil || !restoredTrackIDs.contains(track.id),
+              let url = offlineURL ?? track.streamURL else {
+            invalidatePreloadedPlayback()
+            return
+        }
+        if let existing = preloadedPlayback,
+           PlaybackPreloadPolicy.isValid(
+            trackID: track.id,
+            url: url,
+            preparedTrackID: existing.trackID,
+            preparedURL: existing.url,
+            preparedAt: existing.preparedAt
+           ) {
+            return
+        }
+
+        invalidatePreloadedPlayback()
+        let item = makePlaybackItem(
+            url: url,
+            isOffline: offlineURL != nil
+        )
+        let prerollPlayer = AVPlayer(playerItem: item)
+        prerollPlayer.automaticallyWaitsToMinimizeStalling = true
+        prerollPlayer.allowsExternalPlayback = false
+        prerollPlayer.isMuted = true
+        prerollPlayer.volume = 0
+        let slot = PreloadedPlayback(
+            trackID: track.id,
+            url: url,
+            item: item,
+            prerollPlayer: prerollPlayer
+        )
+        preloadedPlayback = slot
+        preloadGeneration += 1
+        let generation = preloadGeneration
+        let trackID = track.id
+        prerollPlayer.preroll(atRate: 1) { [weak self] success in
+            Task { @MainActor in
+                guard let self,
+                      generation == self.preloadGeneration,
+                      self.preloadedPlayback?.trackID == trackID else {
+                    return
+                }
+                guard success else {
+                    self.invalidatePreloadedPlayback()
+                    return
+                }
+                self.preloadedPlayback?.isReady = true
+            }
+        }
+    }
+
+    private func takePreloadedPlayback(
+        for track: Track,
+        url: URL
+    ) -> AVPlayerItem? {
+        guard let slot = preloadedPlayback,
+              slot.isReady,
+              PlaybackPreloadPolicy.isValid(
+                trackID: track.id,
+                url: url,
+                preparedTrackID: slot.trackID,
+                preparedURL: slot.url,
+                preparedAt: slot.preparedAt
+              ) else {
+            if preloadedPlayback != nil {
+                invalidatePreloadedPlayback()
+            }
+            return nil
+        }
+        preloadGeneration += 1
+        preloadedPlayback = nil
+        slot.prerollPlayer.cancelPendingPrerolls()
+        slot.prerollPlayer.replaceCurrentItem(with: nil)
+        return slot.item
+    }
+
+    private func invalidatePreloadedPlayback() {
+        preloadGeneration += 1
+        guard let slot = preloadedPlayback else { return }
+        preloadedPlayback = nil
+        slot.prerollPlayer.cancelPendingPrerolls()
+        slot.prerollPlayer.replaceCurrentItem(with: nil)
+    }
+
+    private func prefetchNeighborArtwork() {
+        guard let currentIndex,
+              queue.indices.contains(currentIndex) else {
+            return
+        }
+        var neighbors: [Track] = []
+        if currentIndex > 0 {
+            neighbors.append(queue[currentIndex - 1])
+        } else if repeatMode == .all, queue.count > 1 {
+            neighbors.append(queue[queue.count - 1])
+        }
+        if let nextIndex = PlaybackPreloadPolicy.nextIndex(
+            queueCount: queue.count,
+            currentIndex: currentIndex,
+            repeatMode: repeatMode
+        ) {
+            let next = queue[nextIndex]
+            if !neighbors.contains(where: { $0.id == next.id }) {
+                neighbors.append(next)
+            }
+        }
+        artworkPrefetchTask?.cancel()
+        guard let artworkPrefetchHandler, !neighbors.isEmpty else {
+            artworkPrefetchTask = nil
+            return
+        }
+        artworkPrefetchTask = Task {
+            await artworkPrefetchHandler(neighbors)
+        }
     }
 
     @discardableResult
@@ -1080,6 +1327,7 @@ final class AudioPlayer: ObservableObject {
 
         cancelContinuation()
         cancelStreamRefresh()
+        cancelPreloading()
         playbackGeneration += 1
         itemStatusObservation?.invalidate()
         itemStatusObservation = nil

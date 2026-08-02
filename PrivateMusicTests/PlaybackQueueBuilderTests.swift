@@ -59,6 +59,86 @@ final class PlaybackQueueBuilderTests: XCTestCase {
     }
 }
 
+final class PlaybackPreloadPolicyTests: XCTestCase {
+    func testPreloadsOnlyImmediateNextTrack() {
+        XCTAssertEqual(
+            PlaybackPreloadPolicy.nextIndex(
+                queueCount: 4,
+                currentIndex: 1,
+                repeatMode: .off
+            ),
+            2
+        )
+    }
+
+    func testRepeatAllPreloadsFirstTrackAtQueueEnd() {
+        XCTAssertEqual(
+            PlaybackPreloadPolicy.nextIndex(
+                queueCount: 4,
+                currentIndex: 3,
+                repeatMode: .all
+            ),
+            0
+        )
+        XCTAssertNil(
+            PlaybackPreloadPolicy.nextIndex(
+                queueCount: 4,
+                currentIndex: 3,
+                repeatMode: .off
+            )
+        )
+    }
+
+    func testSingleTrackDoesNotCreateSpeculativePreload() {
+        XCTAssertNil(
+            PlaybackPreloadPolicy.nextIndex(
+                queueCount: 1,
+                currentIndex: 0,
+                repeatMode: .all
+            )
+        )
+    }
+
+    func testPreparedTrackExpiresAndRejectsChangedURL() {
+        let original = URL(string: "https://example.com/original.m3u8")!
+        let changed = URL(string: "https://example.com/refreshed.m3u8")!
+        let now = Date(timeIntervalSince1970: 10_000)
+
+        XCTAssertTrue(
+            PlaybackPreloadPolicy.isValid(
+                trackID: "track",
+                url: original,
+                preparedTrackID: "track",
+                preparedURL: original,
+                preparedAt: now.addingTimeInterval(-30),
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            PlaybackPreloadPolicy.isValid(
+                trackID: "track",
+                url: changed,
+                preparedTrackID: "track",
+                preparedURL: original,
+                preparedAt: now.addingTimeInterval(-30),
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            PlaybackPreloadPolicy.isValid(
+                trackID: "track",
+                url: original,
+                preparedTrackID: "track",
+                preparedURL: original,
+                preparedAt: now.addingTimeInterval(
+                    -PlaybackPreloadPolicy.maximumAge - 1
+                ),
+                now: now
+            )
+        )
+    }
+}
+
 @MainActor
 final class AudioPlayerTransitionTests: XCTestCase {
     func testPlayerPresentationIsIdempotentAndStopAlwaysDismisses() {
@@ -280,6 +360,26 @@ final class AudioPlayerTransitionTests: XCTestCase {
         context.player.removeFromQueue(at: 0)
 
         XCTAssertEqual(context.player.queue.map(\.id), [second.id, third.id])
+        XCTAssertEqual(context.player.currentIndex, 0)
+        XCTAssertEqual(context.player.currentTrack?.id, second.id)
+    }
+
+    func testMovingEarlierTrackToPlayNextPreservesCurrentTrack() {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        let second = track(id: 2, duration: 200, streamURL: silentWAVURL)
+        let third = track(id: 3, duration: 220, streamURL: silentWAVURL)
+        context.player.play(second, in: [first, second, third])
+
+        context.player.playNext(first)
+
+        XCTAssertEqual(
+            context.player.queue.map(\.id),
+            [second.id, first.id, third.id]
+        )
         XCTAssertEqual(context.player.currentIndex, 0)
         XCTAssertEqual(context.player.currentTrack?.id, second.id)
     }

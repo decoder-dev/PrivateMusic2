@@ -107,7 +107,45 @@ struct CachedRemoteImage<
     }
 }
 
-private final class ArtworkImageCache: @unchecked Sendable {
+private actor ArtworkPrefetchRegistry {
+    static let shared = ArtworkPrefetchRegistry()
+    private var tasks: [String: Task<Void, Never>] = [:]
+
+    func prefetch(
+        cache: ArtworkImageCache,
+        url: URL,
+        maxPixelSize: CGFloat
+    ) async {
+        let bucket = max(
+            Int((maxPixelSize / 128).rounded(.up)) * 128,
+            128
+        )
+        let key = "\(url.absoluteString)#\(bucket)"
+        if let existing = tasks[key] {
+            await existing.value
+            return
+        }
+        let task = Task {
+            await cache.performPrefetch(
+                url: url,
+                maxPixelSize: CGFloat(bucket)
+            )
+        }
+        tasks[key] = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            Task { await self.cancel(key: key) }
+        }
+        tasks[key] = nil
+    }
+
+    private func cancel(key: String) {
+        tasks.removeValue(forKey: key)?.cancel()
+    }
+}
+
+final class ArtworkImageCache: @unchecked Sendable {
     static let shared = ArtworkImageCache()
 
     let session: URLSession
@@ -144,6 +182,49 @@ private final class ArtworkImageCache: @unchecked Sendable {
             forKey: key(for: url, maxPixelSize: maxPixelSize),
             cost: width * height * 4
         )
+    }
+
+    func prefetch(url: URL?, maxPixelSize: CGFloat) async {
+        guard let url else { return }
+        await ArtworkPrefetchRegistry.shared.prefetch(
+            cache: self,
+            url: url,
+            maxPixelSize: maxPixelSize
+        )
+    }
+
+    fileprivate func performPrefetch(
+        url: URL,
+        maxPixelSize: CGFloat
+    ) async {
+        guard image(for: url, maxPixelSize: maxPixelSize) == nil else {
+            return
+        }
+        do {
+            let data: Data
+            if url.isFileURL {
+                data = try await Task.detached(priority: .utility) {
+                    try Data(contentsOf: url, options: .mappedIfSafe)
+                }.value
+            } else {
+                let (remoteData, response) = try await session.data(from: url)
+                guard let http = response as? HTTPURLResponse,
+                      (200..<300).contains(http.statusCode) else {
+                    return
+                }
+                data = remoteData
+            }
+            guard !Task.isCancelled,
+                  let artwork = await Self.downsample(
+                    data,
+                    maxPixelSize: maxPixelSize
+                  ) else {
+                return
+            }
+            insert(artwork, for: url, maxPixelSize: maxPixelSize)
+        } catch {
+            return
+        }
     }
 
     static func downsample(

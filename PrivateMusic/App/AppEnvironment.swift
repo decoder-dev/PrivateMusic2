@@ -101,6 +101,24 @@ final class AppEnvironment: ObservableObject {
                 offlineStore?.markPlayed(track)
             }
         )
+        player.configurePreloading(
+            isAllowed: { [weak self] in
+                guard let self else { return false }
+                return !self.isShareSessionActive
+                    && self.networkMonitor.state == .online
+            },
+            artworkPrefetch: { tracks in
+                for track in tracks {
+                    for size in [CGFloat(1_024), 768, 256] {
+                        guard !Task.isCancelled else { return }
+                        await ArtworkImageCache.shared.prefetch(
+                            url: track.artworkURL,
+                            maxPixelSize: size
+                        )
+                    }
+                }
+            }
+        )
         player.configurePlaybackReady { [weak self] track, isOffline in
             guard OfflineDownloadsFeature.isEnabled else { return }
             guard !isOffline else { return }
@@ -118,6 +136,12 @@ final class AppEnvironment: ObservableObject {
             .sink { [weak self] enabled in
                 guard !enabled else { return }
                 self?.pendingAutomaticCacheTrack = nil
+            }
+            .store(in: &cancellables)
+        networkMonitor.$revision
+            .sink { [weak player] _ in
+                player?.cancelPreloading()
+                player?.resumePreloading()
             }
             .store(in: &cancellables)
 
@@ -163,6 +187,7 @@ final class AppEnvironment: ObservableObject {
         predictivePreDownloadTask?.cancel()
         predictivePreDownloadTask = nil
         DownloadCoordinator.shared.cancelAll()
+        player.cancelPreloading()
         // Free media services for HLS demux / AVAssetReader. Without this,
         // stitched MPEG-TS often fails with HLS-SOURCE-11828.
         resumePlaybackAfterShare = player.isPlaying
@@ -181,6 +206,7 @@ final class AppEnvironment: ObservableObject {
             resumePlaybackAfterShare = false
             player.resume()
         }
+        player.resumePreloading()
     }
 
     /// Prepares a shareable audio file, preferring the already-downloaded
