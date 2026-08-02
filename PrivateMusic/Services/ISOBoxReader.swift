@@ -40,8 +40,21 @@ struct ISOBoxReader {
     /// Iterates through the payload of a container box (e.g. `moov`,
     /// `trak`, `minf`, `stbl`, `mvex`, `moof`, `traf`).
     func children(of box: ISOBox) throws -> [ISOBox] {
-        try walk(
-            from: box.range.lowerBound + box.headerSize,
+        try children(of: box, skipping: 0)
+    }
+
+    /// Iterates through a container after a fixed non-box prefix. Full boxes
+    /// such as `stsd` begin with version/flags and entry count; sample entries
+    /// contain a fixed audio header before their nested codec boxes.
+    func children(
+        of box: ISOBox,
+        skipping prefixByteCount: Int
+    ) throws -> [ISOBox] {
+        guard prefixByteCount >= 0 else {
+            throw ISOBoxReaderError.invalidBox("negative child prefix")
+        }
+        return try walk(
+            from: box.range.lowerBound + box.headerSize + prefixByteCount,
             to: box.range.upperBound
         )
     }
@@ -49,16 +62,16 @@ struct ISOBoxReader {
     /// Returns the first direct child with the given four-character code
     /// or nil if there is none.
     func child(_ type: String, in box: ISOBox) throws -> ISOBox? {
-        var offset = box.range.lowerBound + box.headerSize
-        var seen = 0
-        while offset + 8 <= box.range.upperBound, seen < containerLimit {
-            seen += 1
-            let child = try parseBox(at: offset, within: box.range.upperBound)
-            if child.type == type { return child }
-            offset += child.range.count
-            if child.range.count == 0 { break }
-        }
-        return nil
+        try child(type, in: box, skipping: 0)
+    }
+
+    func child(
+        _ type: String,
+        in box: ISOBox,
+        skipping prefixByteCount: Int
+    ) throws -> ISOBox? {
+        try children(of: box, skipping: prefixByteCount)
+            .first(where: { $0.type == type })
     }
 
     // MARK: - Typed big-endian payload readers
