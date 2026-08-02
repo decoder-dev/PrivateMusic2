@@ -28,6 +28,17 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Build Apple Watch remote
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project PrivateMusic.xcodeproj \
+            -scheme PrivateMusicWatch \
+            -sdk watchsimulator \
+            -destination 'generic/platform=watchOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee watch-build.log
+
       - name: Build simulator target
         run: |
           set -o pipefail
@@ -56,7 +67,7 @@ jobs:
       - name: Report compiler errors
         if: failure()
         run: |
-          grep -E '(^| )error:' simulator-build.log test.log \
+          grep -E '(^| )error:' watch-build.log simulator-build.log test.log \
             | tail -30 \
             | while IFS= read -r line; do
                 safe="${line//'%'/'%25'}"
@@ -87,7 +98,7 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.24.3-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.26.0-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -95,17 +106,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.24.3-unsigned.ipa" \
-            --title "Private Music 3.24.3" \
+            "$PWD/artifacts/PrivateMusic-3.26.0-unsigned.ipa" \
+            --title "Private Music 3.26.0" \
             --notes-file - <<'EOF'
-          Private Music 3.24.3
+          Private Music 3.26.0
 
-          - Добавлена корректная реакция на Automatic Ear Detection AirPods:
-            системные команды гарнитуры ставят музыку на паузу и продолжают её.
-          - Отключение проводных или Bluetooth-наушников больше не может
-            случайно возобновить воспроизведение через динамик телефона.
-          - Для iOS 17+ включена системная политика прерывания при потере
-            аудиомаршрута; на iOS 16 работает совместимый обработчик.
+          - Добавлен пульт Private Music для Apple Watch.
+          - На часах отображаются трек, исполнитель, обложка и прогресс.
+          - Доступны пауза/воспроизведение, следующий и предыдущий трек.
+          - Команды и состояние синхронизируются с iPhone через
+            WatchConnectivity.
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом.
@@ -114,7 +124,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.24.3-unsigned
-          path: artifacts/PrivateMusic-3.24.3-unsigned.ipa
+          name: PrivateMusic-3.26.0-unsigned
+          path: artifacts/PrivateMusic-3.26.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
