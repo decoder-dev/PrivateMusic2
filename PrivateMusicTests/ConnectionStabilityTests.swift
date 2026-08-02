@@ -377,6 +377,7 @@ final class ConnectionStabilityTests: XCTestCase {
             AudioInterruptionPolicy.shouldResume(
                 wasPlayingBeforeInterruption: true,
                 playbackIntended: true,
+                routeDisconnectPending: false,
                 options: [.shouldResume]
             )
         )
@@ -384,6 +385,7 @@ final class ConnectionStabilityTests: XCTestCase {
             AudioInterruptionPolicy.shouldResume(
                 wasPlayingBeforeInterruption: true,
                 playbackIntended: false,
+                routeDisconnectPending: false,
                 options: [.shouldResume]
             )
         )
@@ -391,8 +393,18 @@ final class ConnectionStabilityTests: XCTestCase {
             AudioInterruptionPolicy.shouldResume(
                 wasPlayingBeforeInterruption: true,
                 playbackIntended: true,
+                routeDisconnectPending: false,
                 options: []
             )
+        )
+        XCTAssertFalse(
+            AudioInterruptionPolicy.shouldResume(
+                wasPlayingBeforeInterruption: true,
+                playbackIntended: true,
+                routeDisconnectPending: true,
+                options: [.shouldResume]
+            ),
+            "Headphone disconnect must not resume through the phone speaker"
         )
     }
 
