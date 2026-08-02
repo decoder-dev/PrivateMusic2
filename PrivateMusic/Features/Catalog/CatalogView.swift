@@ -6,12 +6,10 @@ struct CatalogView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var history: ListeningHistoryStore
-    @State private var recommendations: [Track] = []
-    @State private var mixes: [MusicMix] = []
-    @State private var playlists: [Playlist] = []
-    @State private var isLoading = true
+    @EnvironmentObject private var homeCatalog: HomeCatalogStore
     @State private var loadingMixID: String?
-    @State private var errorMessage: String?
+    @State private var actionErrorMessage: String?
+    @State private var sharingTrack: Track?
 
     var body: some View {
         GeometryReader { proxy in
@@ -50,10 +48,19 @@ struct CatalogView: View {
         .navigationTitle("Главная")
         .navigationBarTitleDisplayMode(.inline)
         .dynamicTypeSize(...DynamicTypeSize.large)
+        .trackShareSheet(track: $sharingTrack)
         .refreshable { await load(force: true) }
-        .task(id: sessionStore.accessToken) {
-            await load(force: true)
+        .task(id: sessionStore.resolvedOfflineAccountID) {
+            await load()
         }
+    }
+
+    private var recommendations: [Track] { homeCatalog.recommendations }
+    private var mixes: [MusicMix] { homeCatalog.mixes }
+    private var playlists: [Playlist] { homeCatalog.playlists }
+    private var isLoading: Bool { homeCatalog.isRefreshing }
+    private var errorMessage: String? {
+        actionErrorMessage ?? homeCatalog.errorMessage
     }
 
     private var contentIsEmpty: Bool {
@@ -109,7 +116,9 @@ struct CatalogView: View {
                                 MixArtworkView(
                                     mix: mix,
                                     tracks: recommendations,
-                                    size: metrics.mixWidth
+                                    size: metrics.mixWidth,
+                                    height: metrics.mixHeight,
+                                    cornerRadius: 12
                                 )
                                 LinearGradient(
                                     colors: [
@@ -148,16 +157,15 @@ struct CatalogView: View {
                                 width: metrics.mixWidth,
                                 height: metrics.mixHeight
                             )
-                            .clipped()
                             .clipShape(
                                 RoundedRectangle(
-                                    cornerRadius: PremiumLayout.compactRadius,
+                                    cornerRadius: 12,
                                     style: .continuous
                                 )
                             )
                             .overlay {
                                 RoundedRectangle(
-                                    cornerRadius: PremiumLayout.compactRadius,
+                                    cornerRadius: 12,
                                     style: .continuous
                                 )
                                 .stroke(.primary.opacity(0.08), lineWidth: 0.5)
@@ -165,6 +173,11 @@ struct CatalogView: View {
                             .accessibilityElement(children: .combine)
                         }
                         .buttonStyle(PremiumPressStyle())
+                        .contextMenu {
+                            Button { start(mix) } label: {
+                                Label("Воспроизвести микс", systemImage: "play.fill")
+                            }
+                        }
                         .disabled(loadingMixID != nil)
                     }
                 }
@@ -194,6 +207,9 @@ struct CatalogView: View {
                             )
                         }
                         .buttonStyle(PremiumPressStyle())
+                        .contextMenu {
+                            trackContextMenu(track, queue: recommendations)
+                        }
                     }
                 }
             }
@@ -222,6 +238,12 @@ struct CatalogView: View {
                             )
                         }
                         .buttonStyle(PremiumPressStyle())
+                        .contextMenu {
+                            trackContextMenu(
+                                entry.track,
+                                queue: history.entries.map(\.track)
+                            )
+                        }
                     }
                 }
             }
@@ -368,7 +390,16 @@ struct CatalogView: View {
                     size: artworkSize
                 )
                 if showsPlayButton {
-                    Image(systemName: "play.fill")
+                    Group {
+                        if player.currentTrack?.id == track.id {
+                            PlaybackIndicatorView(
+                                isPlaying: player.isPlaying,
+                                color: settings.theme.buttonForeground
+                            )
+                        } else {
+                            Image(systemName: "play.fill")
+                        }
+                    }
                         .font(.caption.weight(.bold))
                         .foregroundStyle(settings.theme.buttonForeground)
                         .frame(width: 30, height: 30)
@@ -378,7 +409,11 @@ struct CatalogView: View {
             }
             Text(track.title)
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(
+                    player.currentTrack?.id == track.id
+                        ? settings.theme.accent
+                        : Color.primary
+                )
                 .lineLimit(2)
                 .frame(height: 34, alignment: .topLeading)
             Text(track.artist)
@@ -390,6 +425,29 @@ struct CatalogView: View {
         }
         .frame(width: artworkSize, alignment: .topLeading)
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func trackContextMenu(
+        _ track: Track,
+        queue: [Track]
+    ) -> some View {
+        Button {
+            player.playNext(track)
+        } label: {
+            Label("Играть следующим", systemImage: "text.badge.plus")
+        }
+        Button {
+            player.play(track, in: queue)
+            player.presentPlayer()
+        } label: {
+            Label("Открыть плеер", systemImage: "play.circle")
+        }
+        Button {
+            sharingTrack = track
+        } label: {
+            Label("Поделиться аудиофайлом", systemImage: "square.and.arrow.up")
+        }
     }
 
     private var unavailableView: some View {
@@ -450,11 +508,11 @@ struct CatalogView: View {
                         )
                     }
                 }
-                errorMessage = nil
+                actionErrorMessage = nil
             } catch is CancellationError {
                 return
             } catch {
-                errorMessage = L10n.format(
+                actionErrorMessage = L10n.format(
                     "Не удалось запустить «%@»: %@",
                     mix.title,
                     error.localizedDescription
@@ -464,64 +522,7 @@ struct CatalogView: View {
     }
 
     private func load(force: Bool = false) async {
-        guard sessionStore.accessToken != nil,
-              force || contentIsEmpty else {
-            isLoading = false
-            return
-        }
-        isLoading = true
-        defer { isLoading = false }
-        var failures: [String] = []
-
-        do {
-            recommendations = try await environment.withAuthorizedToken {
-                token in
-                try await environment.musicService.recommendations(
-                    accessToken: token
-                )
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            failures.append(
-                L10n.format(
-                    "Рекомендации: %@",
-                    error.localizedDescription
-                )
-            )
-        }
-
-        do {
-            mixes = try await environment.withAuthorizedToken { token in
-                try await environment.musicService.mixes(
-                    accessToken: token
-                )
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            failures.append(
-                L10n.format("Миксы: %@", error.localizedDescription)
-            )
-        }
-
-        do {
-            playlists = try await environment.withAuthorizedToken { token in
-                try await environment.musicService.playlists(
-                    accessToken: token,
-                    offset: 0,
-                    count: 30
-                )
-            }.items
-        } catch is CancellationError {
-            return
-        } catch {
-            failures.append(
-                L10n.format("Плейлисты: %@", error.localizedDescription)
-            )
-        }
-
-        errorMessage = failures.first
+        await environment.refreshHomeCatalog(force: force)
     }
 }
 

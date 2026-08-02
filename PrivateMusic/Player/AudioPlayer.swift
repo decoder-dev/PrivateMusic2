@@ -239,6 +239,9 @@ final class AudioPlayer: ObservableObject {
     private var offlinePlayedHandler: ((Track) -> Void)?
     private var playbackReadyHandler: ((Track, Bool) -> Void)?
     private var loadedOfflineTrackID: String?
+    private var listenedTrackID: String?
+    private var listenedPlaybackDuration: TimeInterval = 0
+    private var lastListeningElapsedTime: TimeInterval?
     private var continuationTask: Task<Void, Never>?
     private var streamRefreshTask: Task<Void, Never>?
     private var lastPersistedSecond = -1
@@ -685,6 +688,7 @@ final class AudioPlayer: ObservableObject {
     func seek(to seconds: TimeInterval) {
         let upperBound = duration > 0 ? duration : seconds
         let targetSeconds = min(max(0, seconds), upperBound)
+        lastListeningElapsedTime = targetSeconds
         let target = CMTime(
             seconds: targetSeconds,
             preferredTimescale: 600
@@ -717,6 +721,9 @@ final class AudioPlayer: ObservableObject {
         currentIndex = nil
         loadedTrackID = nil
         loadedOfflineTrackID = nil
+        listenedTrackID = nil
+        listenedPlaybackDuration = 0
+        lastListeningElapsedTime = nil
         elapsedTime = 0
         duration = 0
         isPlaying = false
@@ -803,9 +810,6 @@ final class AudioPlayer: ObservableObject {
                 switch item.status {
                 case .readyToPlay:
                     self.isBuffering = false
-                    if isOffline {
-                        self.offlinePlayedHandler?(track)
-                    }
                     self.playbackReadyHandler?(track, isOffline)
                     self.scheduleNeighborPreloads()
                     if position > 0 {
@@ -833,7 +837,6 @@ final class AudioPlayer: ObservableObject {
             player.play()
             isPlaying = true
             isBuffering = true
-            historyStore.record(track)
             handleOutputVolume(
                 AVAudioSession.sharedInstance().outputVolume
             )
@@ -1311,6 +1314,7 @@ final class AudioPlayer: ObservableObject {
                    seconds.isFinite {
                     self.duration = seconds
                 }
+                self.sampleListeningProgress()
                 self.isBuffering = self.isPlaying
                     && self.player.timeControlStatus
                         == .waitingToPlayAtSpecifiedRate
@@ -1782,6 +1786,39 @@ final class AudioPlayer: ObservableObject {
         duration = currentTrack?.duration ?? 0
         lastPersistedSecond = -1
         lastNowPlayingSecond = -1
+        listenedTrackID = nil
+        listenedPlaybackDuration = 0
+        lastListeningElapsedTime = nil
+    }
+
+    private func sampleListeningProgress() {
+        let sample = elapsedTime
+        defer { lastListeningElapsedTime = sample }
+        guard isPlaying,
+              player.timeControlStatus == .playing,
+              let previous = lastListeningElapsedTime else {
+            return
+        }
+        let delta = sample - previous
+        guard delta > 0, delta <= 1.5 else { return }
+        listenedPlaybackDuration += delta
+        markCurrentTrackListenedIfNeeded()
+    }
+
+    private func markCurrentTrackListenedIfNeeded() {
+        guard let track = currentTrack,
+              ListeningProgressPolicy.shouldMarkListened(
+                accumulatedPlayback: listenedPlaybackDuration,
+                duration: duration,
+                alreadyMarked: listenedTrackID == track.id
+              ) else {
+            return
+        }
+        listenedTrackID = track.id
+        historyStore.record(track)
+        if loadedOfflineTrackID == track.id {
+            offlinePlayedHandler?(track)
+        }
     }
 
     private func restorePlayback() {

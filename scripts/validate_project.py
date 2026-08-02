@@ -179,6 +179,18 @@ for required_preload_symbol in (
 ):
     if required_preload_symbol not in all_source:
         fail(f"next-track preload is missing: {required_preload_symbol}")
+for required_catalog_symbol in (
+    "PlaybackIndicatorView",
+    "ListeningProgressPolicy.shouldMarkListened",
+    "HomeCatalogStore",
+    "audio.searchAlbums",
+    "audio.followPlaylist",
+    "AlbumDetailView",
+    "AlbumShareLinkBuilder",
+    "likedAlbumsStore",
+):
+    if required_catalog_symbol not in all_source:
+        fail(f"catalog/album support is missing: {required_catalog_symbol}")
 for required_queue_symbol in (
     "func removeFromQueue(at index: Int)",
     ".swipeActions(",

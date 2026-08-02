@@ -9,6 +9,8 @@ final class AppEnvironment: ObservableObject {
     let networkMonitor: NetworkMonitor
     let historyStore: ListeningHistoryStore
     let libraryStore: MusicLibraryStore
+    let homeCatalogStore: HomeCatalogStore
+    let likedAlbumsStore: LikedAlbumsStore
     let offlineStore: OfflineTrackStore
     let trackShareService: TrackShareService
     let player: AudioPlayer
@@ -39,6 +41,8 @@ final class AppEnvironment: ObservableObject {
         self.networkMonitor = NetworkMonitor()
         self.historyStore = ListeningHistoryStore()
         self.libraryStore = MusicLibraryStore()
+        self.homeCatalogStore = HomeCatalogStore()
+        self.likedAlbumsStore = LikedAlbumsStore()
         let trackShareService = TrackShareService()
         self.trackShareService = trackShareService
 
@@ -171,6 +175,63 @@ final class AppEnvironment: ObservableObject {
         let accountID = sessionStore.resolvedOfflineAccountID
         offlineStore.configure(accountID: accountID)
         OfflinePlaylistStore.shared.configure(accountID: accountID)
+    }
+
+    func refreshHomeCatalog(force: Bool = false) async {
+        homeCatalogStore.prepare(
+            accountID: sessionStore.resolvedOfflineAccountID
+        )
+        guard sessionStore.accessToken != nil,
+              homeCatalogStore.shouldRefresh(force: force) else {
+            return
+        }
+        let refreshID = homeCatalogStore.beginRefreshing()
+        var recommendations: [Track]?
+        var mixes: [MusicMix]?
+        var playlists: [Playlist]?
+        var failures: [String] = []
+        do {
+            recommendations = try await withAuthorizedToken { token in
+                try await musicService.recommendations(accessToken: token)
+            }
+        } catch is CancellationError {
+            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
+            return
+        } catch {
+            failures.append(error.localizedDescription)
+        }
+        do {
+            mixes = try await withAuthorizedToken { token in
+                try await musicService.mixes(accessToken: token)
+            }
+        } catch is CancellationError {
+            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
+            return
+        } catch {
+            failures.append(error.localizedDescription)
+        }
+        do {
+            playlists = try await withAuthorizedToken { token in
+                let page = try await musicService.playlists(
+                    accessToken: token,
+                    offset: 0,
+                    count: 30
+                )
+                return page.items
+            }
+        } catch is CancellationError {
+            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
+            return
+        } catch {
+            failures.append(error.localizedDescription)
+        }
+        homeCatalogStore.finish(
+            recommendations: recommendations,
+            mixes: mixes,
+            playlists: playlists,
+            errorMessage: failures.first,
+            refreshID: refreshID
+        )
     }
 
     private var resumePlaybackAfterShare = false

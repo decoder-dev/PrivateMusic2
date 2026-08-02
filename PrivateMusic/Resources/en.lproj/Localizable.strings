@@ -483,3 +483,8 @@
 "Не удалось подготовить аудиофайл." = "Could not prepare the audio file.";
 
 "Скопировать код ошибки" = "Copy error code";
+
+"Альбомы" = "Albums";
+"Неизвестный исполнитель" = "Unknown Artist";
+"Трек, исполнитель или альбом" = "Track, artist, or album";
+"На паузе" = "Paused";

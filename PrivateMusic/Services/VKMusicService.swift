@@ -177,17 +177,37 @@ struct VKMusicService: MusicService {
         _ mix: MusicMix,
         accessToken: String
     ) async throws -> [Track] {
-        let envelope: VKResponse<JSONValue> = try await client.post(
-            path: "/method/audio.getStreamMixAudios",
-            form: common(accessToken).merging([
-                "mix_id": mix.id,
-                "count": "100"
-            ]) { _, new in new },
-            responseType: VKResponse<JSONValue>.self
-        )
         let userID = await context.userID
-        let tracks = envelope.response.tracks.map {
-            $0.resolvingStreamURL(userID: userID)
+        var tracks: [Track] = []
+        var known = Set<String>()
+        var offset = 0
+        var duplicateOnlyPages = 0
+        // Stream mixes commonly return only three items per response even
+        // when a larger count is requested. Fill the initial queue from
+        // several pages so playback does not stop after that first triplet.
+        for _ in 0..<10 {
+            try Task.checkCancellation()
+            let envelope: VKResponse<JSONValue> = try await client.post(
+                path: "/method/audio.getStreamMixAudios",
+                form: common(accessToken).merging([
+                    "mix_id": mix.id,
+                    "count": "100",
+                    "offset": String(offset)
+                ]) { _, new in new },
+                responseType: VKResponse<JSONValue>.self
+            )
+            let rawTracks = envelope.response.tracks
+            guard !rawTracks.isEmpty else { break }
+            offset += rawTracks.count
+            let additions = rawTracks
+                .map { $0.resolvingStreamURL(userID: userID) }
+                .filter { known.insert($0.id).inserted }
+            tracks.append(contentsOf: additions)
+            duplicateOnlyPages = additions.isEmpty
+                ? duplicateOnlyPages + 1
+                : 0
+            if duplicateOnlyPages >= 2 { break }
+            if tracks.count >= 30 { break }
         }
         guard !tracks.isEmpty else { throw APIError.invalidResponse }
         return tracks
@@ -218,6 +238,98 @@ struct VKMusicService: MusicService {
             }
         )
         return page(resolved, offset: offset, requested: count)
+    }
+
+    func searchAlbums(
+        query: String,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Album> {
+        let envelope: VKResponse<VKItems<Album>> = try await client.post(
+            path: "/method/audio.searchAlbums",
+            form: common(accessToken).merging([
+                "q": query,
+                "count": String(count),
+                "offset": String(offset)
+            ]) { _, new in new },
+            responseType: VKResponse<VKItems<Album>>.self
+        )
+        return page(envelope.response, offset: offset, requested: count)
+    }
+
+    func likedAlbums(
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Album> {
+        let userID = await context.userID
+        var parameters = [
+            "count": String(count),
+            "offset": String(offset),
+            "filters": "followed,albums"
+        ]
+        if let userID {
+            parameters["owner_id"] = String(userID)
+        }
+        let envelope: VKResponse<VKItems<Album>> = try await client.post(
+            path: "/method/audio.getPlaylists",
+            form: common(accessToken).merging(parameters) { _, new in new },
+            responseType: VKResponse<VKItems<Album>>.self
+        )
+        return page(envelope.response, offset: offset, requested: count)
+    }
+
+    func albumTracks(
+        _ album: Album,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Track> {
+        var parameters = [
+            "owner_id": String(album.ownerID),
+            "album_id": String(album.albumID),
+            "count": String(count),
+            "offset": String(offset)
+        ]
+        if let accessKey = album.accessKey {
+            parameters["access_key"] = accessKey
+        }
+        let envelope: VKResponse<VKItems<Track>> = try await client.post(
+            path: "/method/audio.get",
+            form: common(accessToken).merging(parameters) { _, new in new },
+            responseType: VKResponse<VKItems<Track>>.self
+        )
+        let userID = await context.userID
+        let resolved = VKItems(
+            count: envelope.response.count,
+            items: envelope.response.items.map {
+                $0.resolvingStreamURL(userID: userID)
+            }
+        )
+        return page(resolved, offset: offset, requested: count)
+    }
+
+    func toggleAlbumFollow(
+        _ album: Album,
+        accessToken: String
+    ) async throws {
+        var parameters = [
+            "owner_id": String(album.ownerID),
+            "playlist_id": String(album.albumID)
+        ]
+        if let followHash = album.followHash {
+            parameters["hash"] = followHash
+        }
+        if let accessKey = album.accessKey {
+            parameters["access_key"] = accessKey
+        }
+        let _: VKResponse<VKIgnored> = try await client.post(
+            path: "/method/audio.followPlaylist",
+            form: common(accessToken).merging(parameters) { _, new in new },
+            retryPolicy: .never,
+            responseType: VKResponse<VKIgnored>.self
+        )
     }
 
     func playlists(

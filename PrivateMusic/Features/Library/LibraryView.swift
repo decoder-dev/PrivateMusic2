@@ -5,6 +5,7 @@ struct LibraryView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var libraryStore: MusicLibraryStore
+    @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
     @EnvironmentObject private var offlineStore: OfflineTrackStore
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var networkMonitor: NetworkMonitor
@@ -23,6 +24,9 @@ struct LibraryView: View {
                     playlistSkeleton
                 } else if !playlists.playlists.isEmpty {
                     playlistShelf
+                }
+                if !likedAlbumsStore.albums.isEmpty {
+                    albumShelf
                 }
 
                 HStack {
@@ -176,6 +180,11 @@ struct LibraryView: View {
             tracks.removeLocally(track)
             libraryStore.markRemoved(track)
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .likedAlbumsDidChange)
+        ) { _ in
+            Task { await loadAlbums() }
+        }
     }
 
     private func isCurrent(_ track: Track) -> Bool {
@@ -247,6 +256,36 @@ struct LibraryView: View {
         }
     }
 
+    private var albumShelf: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Альбомы")
+                .font(.title2.weight(.bold))
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 14) {
+                    ForEach(likedAlbumsStore.albums) { album in
+                        NavigationLink {
+                            AlbumDetailView(album: album)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                AsyncArtwork(url: album.artworkURL, size: 136)
+                                Text(album.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(album.artistText)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 136, alignment: .leading)
+                        }
+                        .buttonStyle(PremiumPressStyle())
+                    }
+                }
+            }
+        }
+    }
+
     private func libraryRow(_ track: Track) -> some View {
         HStack(spacing: 12) {
             Button {
@@ -273,10 +312,9 @@ struct LibraryView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                 if isCurrent(track) {
-                    Image(
-                        systemName: player.isPlaying
-                            ? "waveform"
-                            : "pause.fill"
+                    PlaybackIndicatorView(
+                        isPlaying: player.isPlaying,
+                        color: currentTrackColor
                     )
                     .font(.caption)
                     .foregroundStyle(currentTrackColor)
@@ -440,6 +478,26 @@ struct LibraryView: View {
                     count: 100
                 )
             }
+        }
+        await loadAlbums()
+    }
+
+    private func loadAlbums() async {
+        likedAlbumsStore.prepare(
+            accountID: sessionStore.resolvedOfflineAccountID
+        )
+        guard sessionStore.accessToken != nil else { return }
+        do {
+            let page = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.likedAlbums(
+                    accessToken: token,
+                    offset: 0,
+                    count: 100
+                )
+            }
+            likedAlbumsStore.replace(with: page.items)
+        } catch {
+            return
         }
     }
 

@@ -4,6 +4,7 @@ struct SearchView: View {
     private enum Scope: String, CaseIterable {
         case tracks = "Треки"
         case artists = "Исполнители"
+        case albums = "Альбомы"
 
         var title: String { L10n.text(rawValue) }
     }
@@ -12,9 +13,11 @@ struct SearchView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var libraryStore: MusicLibraryStore
+    @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
     @StateObject private var model = SearchViewModel()
     @State private var scope: Scope = .tracks
     @State private var pendingLibraryTrackIDs = Set<String>()
+    @State private var pendingAlbumIDs = Set<String>()
     @State private var isSystemSearchPresented = false
     @FocusState private var isSearchFocused: Bool
     let isActive: Bool
@@ -31,7 +34,7 @@ struct SearchView: View {
                         text: $model.query,
                         isPresented: $isSystemSearchPresented,
                         placement: .automatic,
-                        prompt: Text(L10n.text("Трек или исполнитель"))
+                        prompt: Text(L10n.text("Трек, исполнитель или альбом"))
                     )
                     .onSubmit(of: .search) {
                         submitSearch()
@@ -87,7 +90,7 @@ struct SearchView: View {
                 .accessibilityHidden(true)
 
             TextField(
-                L10n.text("Трек или исполнитель"),
+                L10n.text("Трек, исполнитель или альбом"),
                 text: $model.query
             )
             .focused($isSearchFocused)
@@ -292,9 +295,35 @@ struct SearchView: View {
             }
 
             if scope == .tracks {
-                trackResults
+                if model.tracks.isEmpty {
+                    SearchStatusView(
+                        title: "Треки не найдены",
+                        systemImage: "music.note",
+                        description: "Попробуйте вкладку альбомов или исполнителей."
+                    )
+                } else {
+                    trackResults
+                }
+            } else if scope == .artists {
+                if model.artists.isEmpty {
+                    SearchStatusView(
+                        title: "Исполнители не найдены",
+                        systemImage: "person.wave.2",
+                        description: "Попробуйте изменить запрос."
+                    )
+                } else {
+                    artistResults
+                }
             } else {
-                artistResults
+                if model.albums.isEmpty {
+                    SearchStatusView(
+                        title: "Альбомы не найдены",
+                        systemImage: "square.stack",
+                        description: "Попробуйте изменить запрос."
+                    )
+                } else {
+                    albumResults
+                }
             }
         }
     }
@@ -385,6 +414,80 @@ struct SearchView: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
+    private var albumResults: some View {
+        List {
+            ForEach(model.albums) { album in
+                NavigationLink {
+                    AlbumDetailView(album: album)
+                } label: {
+                    HStack(spacing: 12) {
+                        AsyncArtwork(url: album.artworkURL, size: 56)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(album.title)
+                                .font(.headline)
+                                .lineLimit(2)
+                            Text(album.artistText)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Text(L10n.trackCount(album.count))
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        Spacer()
+                        if likedAlbumsStore.isFollowed(album) {
+                            Image(systemName: "heart.fill")
+                                .foregroundStyle(settings.theme.accent)
+                        }
+                    }
+                }
+                .listRowBackground(Color.clear)
+                .contextMenu {
+                    Button {
+                        toggleAlbum(album)
+                    } label: {
+                        Label(
+                            likedAlbumsStore.isFollowed(album)
+                                ? "Удалить альбом из медиатеки"
+                                : "Добавить альбом в медиатеку",
+                            systemImage: likedAlbumsStore.isFollowed(album)
+                                ? "heart.slash"
+                                : "heart"
+                        )
+                    }
+                    .disabled(pendingAlbumIDs.contains(album.compositeID))
+                    if let url = AlbumShareLinkBuilder.url(for: album) {
+                        ShareLink(item: url) {
+                            Label(
+                                "Поделиться ссылкой",
+                                systemImage: "square.and.arrow.up"
+                            )
+                        }
+                    }
+                }
+                .onAppear {
+                    if album.id == model.albums.last?.id {
+                        loadMoreAlbums()
+                    }
+                }
+            }
+            if model.isLoadingMoreAlbums {
+                HStack {
+                    Spacer()
+                    ProgressView("Загружаем ещё…")
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+            } else if let message = model.albumErrorMessage {
+                inlineRetry(message: message, action: loadMoreAlbums)
+                    .listRowBackground(Color.clear)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+    }
+
     private func inlineRetry(
         message: String,
         action: @escaping () -> Void
@@ -433,11 +536,13 @@ struct SearchView: View {
     private func scheduleSearch() {
         guard sessionStore.accessToken != nil else { return }
         model.schedule(operation: search)
+        model.scheduleAlbums(operation: searchAlbums)
     }
 
     private func submitSearch() {
         guard sessionStore.accessToken != nil else { return }
         model.submit(operation: search)
+        model.submitAlbums(operation: searchAlbums)
     }
 
     private func search(
@@ -447,6 +552,21 @@ struct SearchView: View {
     ) async throws -> MusicPage<Track> {
         try await environment.withAuthorizedToken { token in
             try await environment.musicService.search(
+                query: query,
+                accessToken: token,
+                offset: offset,
+                count: count
+            )
+        }
+    }
+
+    private func searchAlbums(
+        query: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Album> {
+        try await environment.withAuthorizedToken { token in
+            try await environment.musicService.searchAlbums(
                 query: query,
                 accessToken: token,
                 offset: offset,
@@ -482,6 +602,39 @@ struct SearchView: View {
         guard sessionStore.accessToken != nil else { return }
         Task {
             await model.loadMore(operation: search)
+        }
+    }
+
+    private func loadMoreAlbums() {
+        guard sessionStore.accessToken != nil else { return }
+        Task {
+            await model.loadMoreAlbums(operation: searchAlbums)
+        }
+    }
+
+    private func toggleAlbum(_ album: Album) {
+        guard pendingAlbumIDs.insert(album.compositeID).inserted else {
+            return
+        }
+        let desired = !likedAlbumsStore.isFollowed(album)
+        Task {
+            defer { pendingAlbumIDs.remove(album.compositeID) }
+            do {
+                try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.toggleAlbumFollow(
+                        album,
+                        accessToken: token
+                    )
+                }
+                if desired {
+                    likedAlbumsStore.markFollowed(album)
+                } else {
+                    likedAlbumsStore.markUnfollowed(album)
+                }
+                NotificationCenter.default.post(name: .likedAlbumsDidChange)
+            } catch {
+                model.actionErrorMessage = error.localizedDescription
+            }
         }
     }
 }
