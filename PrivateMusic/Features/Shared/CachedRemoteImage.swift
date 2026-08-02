@@ -6,7 +6,6 @@ struct CachedRemoteImage<
     Content: View,
     Placeholder: View
 >: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let url: URL?
     var maxPixelSize: CGFloat = 1_200
     @ViewBuilder let content: (Image) -> Content
@@ -16,17 +15,15 @@ struct CachedRemoteImage<
     @State private var loadedIdentity: LoadIdentity?
 
     var body: some View {
+        let displayedImage = loadedIdentity == loadIdentity ? image : nil
+
         ZStack {
             placeholder()
-                .opacity(image == nil ? 1 : 0)
-            if let image {
+                .opacity(displayedImage == nil ? 1 : 0)
+            if let image = displayedImage {
                 content(Image(uiImage: image))
             }
         }
-        .animation(
-            reduceMotion ? nil : .easeOut(duration: 0.18),
-            value: loadedIdentity
-        )
         .task(id: loadIdentity) {
             await load(loadIdentity)
         }
@@ -43,9 +40,14 @@ struct CachedRemoteImage<
 
     @MainActor
     private func load(_ identity: LoadIdentity) async {
-        guard let url = identity.url else {
+        // SwiftUI keeps @State when this view receives another URL. Clear the
+        // previous bitmap before either the cache or network path can finish.
+        if loadedIdentity != identity {
             image = nil
             loadedIdentity = nil
+        }
+
+        guard let url = identity.url else {
             return
         }
         let pixelSize = CGFloat(identity.pixelSize)
@@ -57,11 +59,6 @@ struct CachedRemoteImage<
             loadedIdentity = identity
             return
         }
-
-        // Never leave artwork from the previous track visible while the new
-        // request is in flight.
-        image = nil
-        loadedIdentity = nil
 
         do {
             let data: Data
