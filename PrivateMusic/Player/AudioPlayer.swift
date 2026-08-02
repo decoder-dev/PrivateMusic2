@@ -38,6 +38,26 @@ enum AudioRoutePolicy {
             && !currentOutputPortTypes.contains(where: isExternalPlayback)
     }
 
+    static func shouldResumeAfterRouteTransfer(
+        pendingResume: Bool,
+        playbackIntended: Bool,
+        hasCurrentTrack: Bool,
+        isPlaying: Bool,
+        resumeBluetoothEnabled: Bool,
+        currentOutputPortTypes: [AVAudioSession.Port]
+    ) -> Bool {
+        guard pendingResume,
+              playbackIntended,
+              hasCurrentTrack,
+              !isPlaying,
+              currentOutputPortTypes.contains(where: isExternalPlayback)
+        else {
+            return false
+        }
+        let usesBluetooth = currentOutputPortTypes.contains(where: isBluetooth)
+        return !usesBluetooth || resumeBluetoothEnabled
+    }
+
     private static func supportsSystemVolumePause(
         _ portType: AVAudioSession.Port
     ) -> Bool {
@@ -89,7 +109,7 @@ final class AudioPlayer: ObservableObject {
     @Published var isPlayerPresented = false
     @Published var errorMessage: String?
 
-    private let player = AVPlayer()
+    private var player = AVPlayer()
     private let nowPlaying = NowPlayingController()
     private let equalizer = EqualizerDSP()
     private let historyStore: ListeningHistoryStore
@@ -127,6 +147,7 @@ final class AudioPlayer: ObservableObject {
     private var lastNowPlayingSecond = -1
     private var playbackIntended = false
     private var wasPlayingBeforeInterruption = false
+    private var resumeAfterRouteTransfer = false
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -161,8 +182,7 @@ final class AudioPlayer: ObservableObject {
         repeatMode = RepeatMode(
             rawValue: defaults.string(forKey: "player.repeat") ?? ""
         ) ?? .off
-        player.automaticallyWaitsToMinimizeStalling = true
-        player.allowsExternalPlayback = true
+        configurePlayerInstance()
         _ = configureAudioSession()
         configureRemoteCommands()
         observePlayer()
@@ -254,6 +274,7 @@ final class AudioPlayer: ObservableObject {
         in tracks: [Track],
         continuation: (() async throws -> [Track])? = nil
     ) {
+        resumeAfterRouteTransfer = false
         playbackIntended = true
         cancelContinuation()
         cancelStreamRefresh()
@@ -295,6 +316,7 @@ final class AudioPlayer: ObservableObject {
 
     func jump(to index: Int) {
         guard queue.indices.contains(index) else { return }
+        resumeAfterRouteTransfer = false
         playbackIntended = true
         cancelContinuation()
         cancelStreamRefresh()
@@ -355,6 +377,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     func resume() {
+        resumeAfterRouteTransfer = false
         playbackIntended = true
         if requiresStreamRefresh {
             refreshCurrentStream(autoplay: true)
@@ -377,6 +400,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     func pause() {
+        resumeAfterRouteTransfer = false
         playbackIntended = false
         pausePreservingIntent()
     }
@@ -438,6 +462,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     func stop() {
+        resumeAfterRouteTransfer = false
         playbackIntended = false
         playbackGeneration += 1
         dismissPlayer()
@@ -684,38 +709,13 @@ final class AudioPlayer: ObservableObject {
         ]
     }
 
+    private func configurePlayerInstance() {
+        player.automaticallyWaitsToMinimizeStalling = true
+        player.allowsExternalPlayback = true
+    }
+
     private func observePlayer() {
-        timeObserver = player.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
-            queue: .main
-        ) { [weak self] time in
-            Task { @MainActor in
-                guard let self,
-                      self.loadedTrackID == self.currentTrack?.id,
-                      self.player.currentItem != nil else {
-                    return
-                }
-                self.elapsedTime = max(
-                    0,
-                    time.seconds.isFinite ? time.seconds : 0
-                )
-                if let seconds = self.player.currentItem?.duration.seconds,
-                   seconds.isFinite {
-                    self.duration = seconds
-                }
-                self.isBuffering = self.isPlaying
-                    && self.player.timeControlStatus
-                        == .waitingToPlayAtSpecifiedRate
-                self.publishPlaybackState()
-                let wholeSecond = Int(self.elapsedTime)
-                if wholeSecond > 0,
-                   wholeSecond % 5 == 0,
-                   wholeSecond != self.lastPersistedSecond {
-                    self.lastPersistedSecond = wholeSecond
-                    self.persistPlayback()
-                }
-            }
-        }
+        installPeriodicTimeObserver()
 
         let center = NotificationCenter.default
         notificationObservers.append(center.addObserver(
@@ -789,6 +789,42 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
+    private func installPeriodicTimeObserver() {
+        let observedPlayer = player
+        timeObserver = observedPlayer.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] time in
+            Task { @MainActor in
+                guard let self,
+                      self.player === observedPlayer,
+                      self.loadedTrackID == self.currentTrack?.id,
+                      self.player.currentItem != nil else {
+                    return
+                }
+                self.elapsedTime = max(
+                    0,
+                    time.seconds.isFinite ? time.seconds : 0
+                )
+                if let seconds = self.player.currentItem?.duration.seconds,
+                   seconds.isFinite {
+                    self.duration = seconds
+                }
+                self.isBuffering = self.isPlaying
+                    && self.player.timeControlStatus
+                        == .waitingToPlayAtSpecifiedRate
+                self.publishPlaybackState()
+                let wholeSecond = Int(self.elapsedTime)
+                if wholeSecond > 0,
+                   wholeSecond % 5 == 0,
+                   wholeSecond != self.lastPersistedSecond {
+                    self.lastPersistedSecond = wholeSecond
+                    self.persistPlayback()
+                }
+            }
+        }
+    }
+
     private func handleInterruption(_ notification: Notification) {
         guard let rawType = notification.userInfo?[
             AVAudioSessionInterruptionTypeKey
@@ -844,13 +880,22 @@ final class AudioPlayer: ObservableObject {
                 previousOutputPortTypes: previousOutputs,
                 currentOutputPortTypes: currentOutputs
             ) {
-                pause()
+                resumeAfterRouteTransfer = playbackIntended && isPlaying
+                pausePreservingIntent()
             }
         case .newDeviceAvailable:
-            guard resumeOnBluetoothConnection,
-                  currentTrack != nil,
-                  !isPlaying,
-                  hasBluetoothOutput else {
+            let pendingResume = resumeAfterRouteTransfer
+            resumeAfterRouteTransfer = false
+            let currentOutputs = AVAudioSession.sharedInstance()
+                .currentRoute.outputs.map(\.portType)
+            guard AudioRoutePolicy.shouldResumeAfterRouteTransfer(
+                pendingResume: pendingResume,
+                playbackIntended: playbackIntended,
+                hasCurrentTrack: currentTrack != nil,
+                isPlaying: isPlaying,
+                resumeBluetoothEnabled: resumeOnBluetoothConnection,
+                currentOutputPortTypes: currentOutputs
+            ) else {
                 return
             }
             resume()
@@ -860,17 +905,43 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func handleMediaServicesReset() {
-        let shouldResume = isPlaying
         let position = elapsedTime
+        playbackIntended = false
+        wasPlayingBeforeInterruption = false
+        resumeAfterRouteTransfer = false
+        isPlaying = false
+        isBuffering = false
+        publishPlaybackState(force: true)
+
+        cancelContinuation()
+        cancelStreamRefresh()
+        playbackGeneration += 1
+        itemStatusObservation?.invalidate()
+        itemStatusObservation = nil
+
+        let orphanedPlayer = player
+        if let timeObserver {
+            orphanedPlayer.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
+        orphanedPlayer.pause()
+        orphanedPlayer.replaceCurrentItem(with: nil)
+
+        player = AVPlayer()
+        configurePlayerInstance()
+        installPeriodicTimeObserver()
+        loadedTrackID = nil
+        loadedOfflineTrackID = nil
+
         audioSessionConfigured = false
-        guard configureAudioSession() else {
+        let audioSessionRestored = configureAudioSession()
+        guard currentTrack != nil else { return }
+        loadCurrent(autoplay: false, startAt: position)
+        if !audioSessionRestored {
             errorMessage = L10n.text(
                 "Не удалось восстановить аудиовыход."
             )
-            return
         }
-        guard currentTrack != nil else { return }
-        loadCurrent(autoplay: shouldResume, startAt: position)
     }
 
     private func reloadCurrentItemForAudioProcessing() {
@@ -878,12 +949,6 @@ final class AudioPlayer: ObservableObject {
         let shouldResume = isPlaying
         let position = elapsedTime
         loadCurrent(autoplay: shouldResume, startAt: position)
-    }
-
-    private var hasBluetoothOutput: Bool {
-        AVAudioSession.sharedInstance().currentRoute.outputs.contains {
-            AudioRoutePolicy.isBluetooth($0.portType)
-        }
     }
 
     private func handleOutputVolume(_ volume: Float) {

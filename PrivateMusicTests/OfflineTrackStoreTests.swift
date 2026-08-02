@@ -50,6 +50,33 @@ final class OfflineTrackStoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: localURL.path))
     }
 
+    func testCorruptManifestNeverDeletesExistingAudioDirectory() throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let account = root.appendingPathComponent("42", isDirectory: true)
+        let trackDirectory = account
+            .appendingPathComponent("tracks", isDirectory: true)
+            .appendingPathComponent("-42_7", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: trackDirectory,
+            withIntermediateDirectories: true
+        )
+        let audioURL = trackDirectory.appendingPathComponent("audio.mp3")
+        try Data("ID3audio".utf8).write(to: audioURL)
+        try Data("{truncated".utf8).write(
+            to: account.appendingPathComponent("index.json")
+        )
+
+        let store = OfflineTrackStore(
+            rootURL: root,
+            downloadService: makeDownloadService()
+        )
+        store.configure(accountID: 42)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
+        XCTAssertTrue(store.records.isEmpty)
+    }
+
     func testLegacyManifestDefaultsToDirectFileStorage() throws {
         let json = """
         [{
@@ -567,6 +594,13 @@ final class OfflineTrackStoreTests: XCTestCase {
         XCTAssertEqual(store.downloadedTrackCount, 2)
         XCTAssertTrue(store.contains(hls))
         XCTAssertTrue(store.contains(direct))
+
+        let restored = OfflineTrackStore(
+            rootURL: root,
+            downloadService: try makeHLSDownloadService()
+        )
+        restored.configure(accountID: 42)
+        XCTAssertEqual(restored.downloadedTrackCount, 2)
     }
 
     func testFailedTrackProducesPartialBatch() async throws {

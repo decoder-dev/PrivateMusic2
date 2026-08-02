@@ -1,5 +1,55 @@
 import Foundation
 
+/// A per-store FIFO writer. Enqueuing happens synchronously, so manifest
+/// snapshots cannot overtake each other while their caller is suspended.
+/// `writeSync` also acts as a drain before an account switch.
+final class OfflineManifestWriteQueue: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "PrivateMusic.OfflineManifestWriter")
+
+    func write<Record: Encodable & Sendable>(
+        _ records: [Record],
+        to url: URL
+    ) async throws {
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, Error>) in
+            queue.async {
+                do {
+                    try Self.writeSnapshot(records, to: url)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    func writeSync<Record: Encodable & Sendable>(
+        _ records: [Record],
+        to url: URL
+    ) throws {
+        try queue.sync {
+            try Self.writeSnapshot(records, to: url)
+        }
+    }
+
+    private static func writeSnapshot<Record: Encodable>(
+        _ records: [Record],
+        to url: URL
+    ) throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(records)
+        try data.write(to: url, options: .atomic)
+        // The backup contains a complete known-good snapshot rather than the
+        // previous main file, which may itself have been truncated.
+        try data.write(to: backupURL(for: url), options: .atomic)
+    }
+
+    static func backupURL(for url: URL) -> URL {
+        url.appendingPathExtension("backup")
+    }
+}
+
 struct OfflineTrackRecord: Codable, Identifiable, Equatable, Sendable {
     let track: Track
     let relativePath: String
@@ -135,11 +185,15 @@ final class OfflineTrackStore: ObservableObject {
     private let rootURL: URL
     private let downloadService: TrackShareService
     private let downloadCoordinator: DownloadCoordinator
+    private let manifestWriter = OfflineManifestWriteQueue()
     private let artworkByteCountProvider: () -> Int64
     private var activeAccountID: Int?
     private var protectedTrackIDProvider: (() -> String?)?
     private var isSaveScheduled = false
     private var hasPendingSave = false
+    private var deferredManifestWrites: [
+        (url: URL, records: [OfflineTrackRecord])
+    ] = []
 
     private struct AuxiliaryUsage {
         var artworkBytes: Int64 = 0
@@ -186,13 +240,19 @@ final class OfflineTrackStore: ObservableObject {
         // old account. A delayed save resolves its destination lazily, so
         // switching first could otherwise lose a recent removal/promotion.
         if activeAccountID != nil, hasPendingSave {
-            try? saveManifestSync()
-            hasPendingSave = false
+            do {
+                try saveManifestSync()
+                hasPendingSave = false
+            } catch {
+                deferCurrentManifestWrite()
+                hasPendingSave = false
+            }
         }
         activeAccountID = accountID
         downloadingTrackIDs.removeAll()
-        records = loadManifest()
-        reconcile()
+        let loaded = loadManifest()
+        records = loaded.records
+        reconcile(canDeleteOrphans: loaded.isTrusted)
     }
 
     func configureStorage(limitGB: Int) {
@@ -546,7 +606,7 @@ final class OfflineTrackStore: ObservableObject {
     /// Reconciles records against the real file system: drops metadata whose
     /// file is missing, validates HLS packages, removes safe orphan files,
     /// recalculates byte counts and publishes one consistent snapshot.
-    func reconcile() {
+    func reconcile(canDeleteOrphans: Bool = true) {
         guard let directory = accountDirectory else { return }
         var reconciled = records
         for (id, record) in records {
@@ -581,17 +641,26 @@ final class OfflineTrackStore: ObservableObject {
                 )
             }
         }
-        removeSafeOrphans(
-            directory: directory,
-            referencedIDs: Set(reconciled.keys)
-        )
+        if canDeleteOrphans {
+            removeSafeOrphans(
+                directory: directory,
+                referencedIDs: Set(reconciled.keys)
+            )
+        }
         if let staging = accountDirectory?
             .appendingPathComponent(".staging", isDirectory: true) {
             try? fileManager.removeItem(at: staging)
         }
         records = reconciled
         refreshAuxiliaryUsage()
-        try? saveManifestSync()
+        if canDeleteOrphans {
+            do {
+                try saveManifestSync()
+                hasPendingSave = false
+            } catch {
+                hasPendingSave = true
+            }
+        }
     }
 
     /// Throttled manifest persistence (defect 21): removes and play-count
@@ -599,7 +668,13 @@ final class OfflineTrackStore: ObservableObject {
     func flushPendingSave() async throws {
         hasPendingSave = false
         isSaveScheduled = false
-        try await persistNow()
+        do {
+            try await flushDeferredManifestWrites()
+            try await persistNow()
+        } catch {
+            hasPendingSave = true
+            throw error
+        }
     }
 
     private func requestSave() {
@@ -619,7 +694,7 @@ final class OfflineTrackStore: ObservableObject {
             do {
                 try await self.persistNow()
             } catch {
-                // The next request or a terminal flush retries the write.
+                self.hasPendingSave = true
             }
             if self.hasPendingSave {
                 self.requestSave()
@@ -630,6 +705,7 @@ final class OfflineTrackStore: ObservableObject {
     /// Immediate off-main encode + write of the current snapshot. Throws so
     /// callers can roll back a just-committed file (defect 19).
     private func persistNow() async throws {
+        try await flushDeferredManifestWrites()
         guard let directory = accountDirectory,
               let manifestURL else {
             throw APIError.unauthorized
@@ -637,26 +713,9 @@ final class OfflineTrackStore: ObservableObject {
         try createProtectedDirectory(directory)
         let values = records.values.sorted { $0.id < $1.id }
         let writeURL = manifestURL
-        let data = try await Task.detached(priority: .utility) { () -> Data in
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            return try encoder.encode(values)
-        }.value
-        try await Task.detached(priority: .utility) {
-            try data.write(to: writeURL, options: .atomic)
-            var values = URLResourceValues()
-            values.isExcludedFromBackup = true
-            var mutable = writeURL
-            try? mutable.setResourceValues(values)
-            try? FileManager.default.setAttributes(
-                [
-                    .protectionKey:
-                        FileProtectionType
-                            .completeUntilFirstUserAuthentication
-                ],
-                ofItemAtPath: writeURL.path
-            )
-        }.value
+        try await manifestWriter.write(values, to: writeURL)
+        try setFileAttributes(writeURL)
+        try setFileAttributes(OfflineManifestWriteQueue.backupURL(for: writeURL))
     }
 
     private var accountDirectory: URL? {
@@ -669,18 +728,41 @@ final class OfflineTrackStore: ObservableObject {
         accountDirectory?.appendingPathComponent("index.json")
     }
 
-    private func loadManifest() -> [String: OfflineTrackRecord] {
-        guard let manifestURL,
-              let data = try? Data(contentsOf: manifestURL) else {
-            return [:]
+    private struct ManifestLoadResult {
+        let records: [String: OfflineTrackRecord]
+        let isTrusted: Bool
+    }
+
+    private func loadManifest() -> ManifestLoadResult {
+        guard let manifestURL else {
+            return ManifestLoadResult(records: [:], isTrusted: false)
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let values = try? decoder.decode(
-            [OfflineTrackRecord].self,
-            from: data
-        ) else { return [:] }
-        return Dictionary(uniqueKeysWithValues: values.map { ($0.id, $0) })
+        let candidates = [
+            manifestURL,
+            OfflineManifestWriteQueue.backupURL(for: manifestURL)
+        ]
+        for candidate in candidates {
+            guard let data = try? Data(contentsOf: candidate),
+                  let values = try? decoder.decode(
+                    [OfflineTrackRecord].self,
+                    from: data
+                  ) else {
+                continue
+            }
+            var result: [String: OfflineTrackRecord] = [:]
+            for record in values {
+                if let existing = result[record.id],
+                   existing.downloadedAt > record.downloadedAt {
+                    continue
+                }
+                result[record.id] = record
+            }
+            return ManifestLoadResult(records: result, isTrusted: true)
+        }
+        // A missing or corrupt index must never authorize orphan deletion.
+        return ManifestLoadResult(records: [:], isTrusted: false)
     }
 
     private func saveManifestSync() throws {
@@ -690,11 +772,24 @@ final class OfflineTrackStore: ObservableObject {
         }
         try createProtectedDirectory(directory)
         let values = records.values.sorted { $0.id < $1.id }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(values)
-        try data.write(to: manifestURL, options: .atomic)
+        try manifestWriter.writeSync(values, to: manifestURL)
         try setFileAttributes(manifestURL)
+        try setFileAttributes(OfflineManifestWriteQueue.backupURL(for: manifestURL))
+    }
+
+    private func deferCurrentManifestWrite() {
+        guard let manifestURL else { return }
+        deferredManifestWrites.append((
+            manifestURL,
+            records.values.sorted { $0.id < $1.id }
+        ))
+    }
+
+    private func flushDeferredManifestWrites() async throws {
+        while let pending = deferredManifestWrites.first {
+            try await manifestWriter.write(pending.records, to: pending.url)
+            deferredManifestWrites.removeFirst()
+        }
     }
 
     /// Removes unreferenced directories inside `tracks/` (safe orphans: a
@@ -784,7 +879,9 @@ final class OfflineTrackStore: ObservableObject {
                 of: directory.path + "/",
                 with: ""
             )
-            if relative == "index.json" || referenced.contains(relative) {
+            if relative == "index.json"
+                || relative == "index.json.backup"
+                || referenced.contains(relative) {
                 continue
             }
             let values = try? fileURL.resourceValues(forKeys: keys)

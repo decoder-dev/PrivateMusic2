@@ -87,7 +87,7 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.23.6-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.24.0-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -95,18 +95,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.23.6-unsigned.ipa" \
-            --title "Private Music 3.23.6" \
+            "$PWD/artifacts/PrivateMusic-3.24.0-unsigned.ipa" \
+            --title "Private Music 3.24.0" \
             --notes-file - <<'EOF'
-          Private Music 3.23.6
+          Private Music 3.24.0
 
-          - Экспорт HLS fMP4/CMAF через прямой demux (`moof`/`mdat` → AAC
-            passthrough), без склейки, которая на устройстве давала
-            `-11800`/`-17913`.
-          - Восстановлена CMAF-фикстура для тестов (plain AAC m4a →
-            hand-built init + fragments).
-          - Корректная обработка mid-playlist смены `#EXT-X-MAP` и
-            коротких MPEG-TS BYTERANGE при детекции контейнера.
+          - Адаптивный полноэкранный плеер без наложений на компактных
+            устройствах, в landscape и при увеличенном размере текста.
+          - Надёжные аудиомаршруты для AirPlay, Bluetooth, автомобильных и
+            USB/HDMI-систем, корректные прерывания и сброс медиасервисов.
+          - Безопасные офлайн-загрузки треков и плейлистов: ограниченная
+            параллельность, отмена, восстановление и защищённые манифесты.
+          - Быстрые обложки с асинхронным downsampling, стабильный офлайн-хаб
+            и согласованный чёрно-белый интерфейс.
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом.
@@ -115,7 +116,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.23.6-unsigned
-          path: artifacts/PrivateMusic-3.23.6-unsigned.ipa
+          name: PrivateMusic-3.24.0-unsigned
+          path: artifacts/PrivateMusic-3.24.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

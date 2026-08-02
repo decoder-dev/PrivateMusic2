@@ -306,6 +306,72 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    func testRouteTransferResumeRequiresPendingPlaybackIntent() {
+        XCTAssertTrue(
+            AudioRoutePolicy.shouldResumeAfterRouteTransfer(
+                pendingResume: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                resumeBluetoothEnabled: true,
+                currentOutputPortTypes: [.bluetoothA2DP]
+            )
+        )
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldResumeAfterRouteTransfer(
+                pendingResume: false,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                resumeBluetoothEnabled: true,
+                currentOutputPortTypes: [.bluetoothA2DP]
+            )
+        )
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldResumeAfterRouteTransfer(
+                pendingResume: true,
+                playbackIntended: false,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                resumeBluetoothEnabled: true,
+                currentOutputPortTypes: [.bluetoothA2DP]
+            )
+        )
+    }
+
+    func testBluetoothPreferenceAndExternalRouteGateTransferResume() {
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldResumeAfterRouteTransfer(
+                pendingResume: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                resumeBluetoothEnabled: false,
+                currentOutputPortTypes: [.bluetoothA2DP]
+            )
+        )
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldResumeAfterRouteTransfer(
+                pendingResume: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                resumeBluetoothEnabled: true,
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+        XCTAssertTrue(
+            AudioRoutePolicy.shouldResumeAfterRouteTransfer(
+                pendingResume: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                resumeBluetoothEnabled: false,
+                currentOutputPortTypes: [.carAudio]
+            )
+        )
+    }
+
     func testInterruptionResumeRequiresSystemPermissionAndPlaybackIntent() {
         XCTAssertTrue(
             AudioInterruptionPolicy.shouldResume(

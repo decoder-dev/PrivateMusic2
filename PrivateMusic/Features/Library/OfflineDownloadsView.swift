@@ -277,7 +277,6 @@ struct OfflineDownloadsView: View {
 
     private var allPlaylistSections: [PlaylistSection] {
         offlinePlaylists.records.values
-            .sorted { $0.updatedAt > $1.updatedAt }
             .map { record in
                 PlaylistSection(
                     id: record.id,
@@ -295,6 +294,7 @@ struct OfflineDownloadsView: View {
         allPlaylistSections.filter {
             OfflinePlaylistStatus.status(for: $0.record).isActive
         }
+        .sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
     }
 
     /// Finished playlists plus errored records that still carry local
@@ -310,14 +310,24 @@ struct OfflineDownloadsView: View {
                 hasLocalTracks: !section.tracks.isEmpty
             )
         }
+        .sorted { $0.record.updatedAt > $1.record.updatedAt }
     }
 
     private var activeDownloadCount: Int {
-        offlineStore.downloadingTrackIDs.count + activeSections.count
+        let playlistTrackIDs = Set(
+            activeSections.flatMap(\.allTracks).map(\.id)
+        )
+        return OfflineDownloadsPresentation.activeDownloadCount(
+            downloadingTrackIDs: offlineStore.downloadingTrackIDs,
+            activePlaylistTrackIDs: playlistTrackIDs,
+            activePlaylistCount: activeSections.count
+        )
     }
 
     private var contentSnapshot: [String] {
-        validRecords.map(\.id) + allPlaylistSections.map(\.id)
+        validRecords.map(\.id)
+            + activeSections.map(\.id)
+            + downloadedSections.map(\.id)
     }
 
     // MARK: - Sections
@@ -803,6 +813,18 @@ struct OfflineDownloadsView: View {
     }
 }
 
+enum OfflineDownloadsPresentation {
+    static func activeDownloadCount(
+        downloadingTrackIDs: Set<String>,
+        activePlaylistTrackIDs: Set<String>,
+        activePlaylistCount: Int
+    ) -> Int {
+        downloadingTrackIDs
+            .subtracting(activePlaylistTrackIDs)
+            .count + max(activePlaylistCount, 0)
+    }
+}
+
 // MARK: - Playlist download visibility
 
 /// Decides whether a finished playlist download is shown in the
@@ -1038,26 +1060,19 @@ private struct DownloadStorageSummary: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            HStack(spacing: 10) {
-                Button(action: onClearCache) {
-                    Label(
-                        L10n.text("Очистить автокэш"),
-                        systemImage: "broom"
-                    )
-                    .font(.caption.weight(.semibold))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    clearCacheButton
+                    deleteAllButton
+                    Spacer(minLength: 0)
                 }
-                .disabled(usage.automaticBytes <= 0)
-
-                Button(role: .destructive, action: onDeleteAll) {
-                    Label(
-                        L10n.text("Удалить всё"),
-                        systemImage: "trash"
-                    )
-                    .font(.caption.weight(.semibold))
+                .fixedSize(horizontal: true, vertical: false)
+                VStack(spacing: 8) {
+                    clearCacheButton
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    deleteAllButton
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .disabled(usage.totalCount <= 0)
-
-                Spacer()
             }
             .buttonStyle(.bordered)
         }
@@ -1085,6 +1100,28 @@ private struct DownloadStorageSummary: View {
         Text(value)
             .font(.subheadline.monospacedDigit())
             .foregroundStyle(.secondary)
+    }
+
+    private var clearCacheButton: some View {
+        Button(action: onClearCache) {
+            Label(
+                L10n.text("Очистить автокэш"),
+                systemImage: "broom"
+            )
+            .font(.caption.weight(.semibold))
+        }
+        .disabled(usage.automaticBytes <= 0)
+    }
+
+    private var deleteAllButton: some View {
+        Button(role: .destructive, action: onDeleteAll) {
+            Label(
+                L10n.text("Удалить всё"),
+                systemImage: "trash"
+            )
+            .font(.caption.weight(.semibold))
+        }
+        .disabled(usage.totalCount <= 0)
     }
 }
 

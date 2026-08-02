@@ -112,7 +112,7 @@ final class OfflinePlaylistStoreTests: XCTestCase {
         let store = OfflinePlaylistStore(rootURL: root)
         store.configure(accountID: 1)
 
-        store.startDownload(
+        let task = store.startDownload(
             playlist: playlist,
             fetchPage: { _ in
                 MusicPage(items: tracks, totalCount: 20, nextOffset: nil)
@@ -123,8 +123,9 @@ final class OfflinePlaylistStoreTests: XCTestCase {
             }
         )
         await fulfillment(of: [started], timeout: 1)
-        store.cancelDownload(for: playlist)
-        await store.waitForDownload(of: playlist)
+        let cancelledTask = store.cancelDownload(for: playlist)
+        await cancelledTask?.value
+        await task.value
 
         XCTAssertEqual(store.record(for: playlist)?.state, .cancelled)
         XCTAssertLessThan(
@@ -375,6 +376,36 @@ final class OfflinePlaylistStoreTests: XCTestCase {
         await store.waitForDownload(of: playlist)
 
         XCTAssertNil(store.record(for: playlist))
+    }
+
+    func testAccountSwitchRemovesResolvedJobWithNoCompletedTracks() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let playlist = try makePlaylist(id: 29, ownerID: 2)
+        let track = makeTrack(1)
+        let started = expectation(description: "track download started")
+        started.assertForOverFulfill = false
+        let store = OfflinePlaylistStore(rootURL: root)
+        store.configure(accountID: 1)
+
+        let task = store.startDownload(
+            playlist: playlist,
+            fetchPage: { _ in
+                MusicPage(items: [track], totalCount: 1, nextOffset: nil)
+            },
+            downloadTrack: { _ in
+                started.fulfill()
+                try await Task.sleep(for: .seconds(5))
+            }
+        )
+        await fulfillment(of: [started], timeout: 1)
+        try await Task.sleep(for: .milliseconds(400))
+        store.configure(accountID: 2)
+        await task.value
+
+        let restored = OfflinePlaylistStore(rootURL: root)
+        restored.configure(accountID: 1)
+        XCTAssertNil(restored.record(for: playlist))
     }
 
     func testConfigureFlushesPendingRemovalForPreviousAccount() async throws {
