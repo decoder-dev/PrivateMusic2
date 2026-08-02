@@ -1,6 +1,36 @@
 import Foundation
 import UIKit
 
+private actor PlaylistDownloadWorkPool {
+    private let tracks: [Track]
+    private var nextIndex = 0
+    private var completed = 0
+    private var failed = 0
+
+    init(tracks: [Track]) {
+        self.tracks = tracks
+    }
+
+    func next() -> Track? {
+        guard nextIndex < tracks.count else { return nil }
+        defer { nextIndex += 1 }
+        return tracks[nextIndex]
+    }
+
+    func record(success: Bool) -> (completed: Int, failed: Int) {
+        if success {
+            completed += 1
+        } else {
+            failed += 1
+        }
+        return (completed, failed)
+    }
+
+    func counts() -> (completed: Int, failed: Int) {
+        (completed, failed)
+    }
+}
+
 enum OfflinePlaylistDownloadState: String, Codable, Sendable {
     case idle
     case resolvingTracks
@@ -281,6 +311,13 @@ final class OfflinePlaylistStore: ObservableObject {
         guard activeAccountID != accountID else { return }
         activeTasks.values.forEach { $0.task.cancel() }
         activeTasks.removeAll()
+        // Flush against the old account directory before changing the key.
+        // Delayed persistence intentionally resolves `manifestURL` at write
+        // time, so changing accounts first could strand the old snapshot.
+        if activeAccountID != nil, hasPendingSave {
+            try? saveManifestSync()
+            hasPendingSave = false
+        }
         activeAccountID = accountID
         records = loadManifest()
         reconcileFiles()
@@ -704,40 +741,40 @@ final class OfflinePlaylistStore: ObservableObject {
         identifier: String,
         generation: UUID
     ) async -> (completed: Int, failed: Int) {
-        await withTaskGroup(of: Bool.self) { group in
-            var completed = 0
-            var failed = 0
+        guard !tracks.isEmpty else { return (0, 0) }
+        let pool = PlaylistDownloadWorkPool(tracks: tracks)
+        let workerCount = min(
+            DownloadCoordinator.maximumConcurrentDownloads,
+            tracks.count
+        )
 
-            for track in tracks {
-                group.addTask {
-                    guard !Task.isCancelled else { return false }
-                    do {
-                        try await downloadTrack(track)
-                        return true
-                    } catch {
-                        return false
+        return await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<workerCount {
+                group.addTask { [weak self] in
+                    while !Task.isCancelled,
+                          let track = await pool.next() {
+                        let success: Bool
+                        do {
+                            try await downloadTrack(track)
+                            success = true
+                        } catch is CancellationError where Task.isCancelled {
+                            return
+                        } catch {
+                            success = false
+                        }
+                        let counts = await pool.record(success: success)
+                        await self?.updateProgress(
+                            identifier: identifier,
+                            generation: generation,
+                            completed: counts.completed,
+                            failed: counts.failed
+                        )
                     }
                 }
             }
 
-            while let success = await group.next() {
-                if Task.isCancelled {
-                    group.cancelAll()
-                    break
-                }
-                if success {
-                    completed += 1
-                } else {
-                    failed += 1
-                }
-                updateProgress(
-                    identifier: identifier,
-                    generation: generation,
-                    completed: completed,
-                    failed: failed
-                )
-            }
-            return (completed, failed)
+            await group.waitForAll()
+            return await pool.counts()
         }
     }
 
