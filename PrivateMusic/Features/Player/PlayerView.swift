@@ -699,7 +699,8 @@ struct PlayerView: View {
                 offlineState: offlineStore.state(for: track),
                 availability: PlayerActionAvailability(
                     hasSession: sessionStore.accessToken != nil,
-                    isUpdatingLibrary: isUpdatingLibrary
+                    isUpdatingLibrary: isUpdatingLibrary,
+                    showsOfflineControls: !environment.isShareSessionActive
                 ),
                 equalizerEnabled: $settings.equalizerEnabled,
                 onDismiss: {
@@ -1170,15 +1171,18 @@ struct PlayerActionAvailability: Equatable {
     let canAddToPlaylist: Bool
     let canShare: Bool
     let showsLibraryProgress: Bool
+    let showsOfflineControls: Bool
 
     init(
         hasSession: Bool,
-        isUpdatingLibrary: Bool
+        isUpdatingLibrary: Bool,
+        showsOfflineControls: Bool = true
     ) {
         canModifyLibrary = hasSession && !isUpdatingLibrary
         canAddToPlaylist = hasSession
         canShare = true
         showsLibraryProgress = isUpdatingLibrary
+        self.showsOfflineControls = showsOfflineControls
     }
 }
 
@@ -1241,12 +1245,14 @@ private struct PlayerActionsSheet: View {
                             systemImage: "link",
                             action: onCopyLink
                         )
-                        actionTile(
-                            offlineTitle,
-                            systemImage: offlineImage,
-                            enabled: offlineState != .downloading,
-                            action: onOffline
-                        )
+                        if availability.showsOfflineControls {
+                            actionTile(
+                                offlineTitle,
+                                systemImage: offlineImage,
+                                enabled: offlineState != .downloading,
+                                action: onOffline
+                            )
+                        }
                         actionTile(
                             "Настройки звука",
                             systemImage: "slider.horizontal.3",

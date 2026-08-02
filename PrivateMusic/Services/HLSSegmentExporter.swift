@@ -38,8 +38,8 @@ actor HLSSegmentExporter {
             self.session = session
         } else {
             let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 60
-            configuration.timeoutIntervalForResource = 300
+            configuration.timeoutIntervalForRequest = 120
+            configuration.timeoutIntervalForResource = 600
             self.session = URLSession(configuration: configuration)
         }
         self.fileManager = fileManager
@@ -1234,7 +1234,7 @@ actor HLSSegmentExporter {
         for attempt in 0...retries {
             try Task.checkCancellation()
             var request = URLRequest(url: url)
-            request.timeoutInterval = 60
+            request.timeoutInterval = 120
             for (field, value) in headers {
                 request.setValue(value, forHTTPHeaderField: field)
             }

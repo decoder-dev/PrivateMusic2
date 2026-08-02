@@ -10,12 +10,12 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-26
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v5
 
-      - name: Select Xcode 26.5
-        run: sudo xcode-select -s /Applications/Xcode_26.5.app
+      - name: Select Xcode 27
+        run: sudo xcode-select -s /Applications/Xcode_27.0.app
 
       - name: Validate source package
         run: |
@@ -47,7 +47,7 @@ jobs:
             -scheme PrivateMusic \
             -sdk iphonesimulator \
             -destination \
-              "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5" \
+              "platform=iOS Simulator,name=iPhone 17 Pro,OS=27.0" \
             -destination-timeout 120 \
             -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -87,7 +87,7 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.24.3-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.25.0-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -95,17 +95,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.24.3-unsigned.ipa" \
-            --title "Private Music 3.24.3" \
+            "$PWD/artifacts/PrivateMusic-3.25.0-unsigned.ipa" \
+            --title "Private Music 3.25.0" \
             --notes-file - <<'EOF'
-          Private Music 3.24.3
+          Private Music 3.25.0
 
-          - Добавлена корректная реакция на Automatic Ear Detection AirPods:
-            системные команды гарнитуры ставят музыку на паузу и продолжают её.
-          - Отключение проводных или Bluetooth-наушников больше не может
-            случайно возобновить воспроизведение через динамик телефона.
-          - Для iOS 17+ включена системная политика прерывания при потере
-            аудиомаршрута; на iOS 16 работает совместимый обработчик.
+          - Сборка на Xcode 27 / iOS 27 SDK.
+          - Исправлена ошибка шаринга PM-NSURLErrorDomain--1001: увеличены
+            таймауты экспорта, один повтор при обрыве и понятное сообщение.
+          - Во время «Поделиться» офлайн-загрузки и автокэш временно
+            останавливаются и скрываются из интерфейса, чтобы не мешать
+            передаче файла.
+          - Пауза при снятии наушников / AirPods подтверждена по Apple
+            Responding to audio route changes
+            (routeChangeNotification + oldDeviceUnavailable) и Automatic
+            Ear Detection.
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом.
@@ -114,7 +118,7 @@ jobs:
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.24.3-unsigned
-          path: artifacts/PrivateMusic-3.24.3-unsigned.ipa
+          name: PrivateMusic-3.25.0-unsigned
+          path: artifacts/PrivateMusic-3.25.0-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
