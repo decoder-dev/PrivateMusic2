@@ -43,7 +43,8 @@ bash ./scripts/bootstrap.sh
 open PrivateMusic.xcodeproj
 ```
 
-CI собирает проект на GitHub-hosted runner `xcode-27` с iOS 27 SDK.
+CI прогоняет unit-тесты на Xcode 26.5 и собирает релизный IPA на
+GitHub-hosted runner `xcode-27` с iOS 27 SDK.
 
 Для установки на физический iPhone укажите свою команду разработчика в
 Signing & Capabilities. Репозиторий также собирает неподписанный IPA через
