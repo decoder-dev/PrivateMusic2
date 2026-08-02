@@ -1579,11 +1579,12 @@ actor HLSSegmentExporter {
         from track: AVAssetTrack
     ) -> AudioStreamBasicDescription? {
         for item in track.formatDescriptions {
-            // `formatDescriptions` is `[Any]` of CMFormatDescription values.
-            // Prefer CM APIs over force-casts that trap on unexpected boxes.
-            guard let formatDescription = item as? CMFormatDescription,
+            // CF bridging makes `as? CMFormatDescription` always succeed, so
+            // validate the type ID before reading the audio ASBD.
+            let candidate = item as CMFormatDescription
+            guard CFGetTypeID(candidate) == CMFormatDescriptionGetTypeID(),
                   let pointer = CMAudioFormatDescriptionGetStreamBasicDescription(
-                    formatDescription
+                    candidate
                   ) else {
                 continue
             }
