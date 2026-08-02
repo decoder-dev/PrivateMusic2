@@ -413,6 +413,8 @@ for required_setting in (
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2.watchkitapp",
     "INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.dec.privatemusic2",
+    "INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: NO",
+    "TARGETED_DEVICE_FAMILY: 4",
     "postGenCommand: python3 scripts/fix_watch_embedding.py",
     "GENERATE_INFOPLIST_FILE: NO",
     "INFOPLIST_FILE: PrivateMusic/Resources/Info.plist",

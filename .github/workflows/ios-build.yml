@@ -99,7 +99,7 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Build unsigned iPhone application
+      - name: Archive unsigned iPhone and Watch applications
         run: |
           set -o pipefail
           xcodebuild \
@@ -108,10 +108,11 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$PWD/build" \
+            -archivePath "$PWD/build/PrivateMusic.xcarchive" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee release-build.log
+            archive 2>&1 | tee release-build.log
 
       - name: Report compiler errors
         if: failure()
@@ -127,16 +128,14 @@ jobs:
 
       - name: Validate embedded Apple Watch application
         run: |
-          APP_PATH="$(find "$PWD/build/Build/Products/Release-iphoneos" \
-            -maxdepth 1 -type d -name '*.app' -print -quit)"
-          test -n "$APP_PATH"
+          APP_PATH="$PWD/build/PrivateMusic.xcarchive/Products/Applications/PrivateMusic.app"
+          test -d "$APP_PATH"
           python3 scripts/validate_watch_bundle.py "$APP_PATH"
 
       - name: Package unsigned IPA
         run: |
-          APP_PATH="$(find "$PWD/build/Build/Products/Release-iphoneos" \
-            -maxdepth 1 -type d -name '*.app' -print -quit)"
-          test -n "$APP_PATH"
+          APP_PATH="$PWD/build/PrivateMusic.xcarchive/Products/Applications/PrivateMusic.app"
+          test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
             "$PWD/artifacts/PrivateMusic-3.27.0-unsigned.ipa"
@@ -161,7 +160,8 @@ jobs:
           - Офлайн-загрузки по-прежнему временно скрыты.
 
           IPA не подписан. Перед установкой подпишите его собственным
-          сертификатом.
+          сертификатом. Подписыватель должен сохранить и сначала подписать
+          PlugIns/PrivateMusicWatch.app, затем основное приложение iPhone.
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
