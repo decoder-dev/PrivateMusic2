@@ -35,6 +35,33 @@ final class TrackShareViewModelTests: XCTestCase {
         }
     }
 
+    func testNSURLTimeoutMapsToFriendlyShareFailure() async throws {
+        let (vm, preparer) = makePreparer()
+        preparer.result = .failure(
+            NSError(
+                domain: NSURLErrorDomain,
+                code: NSURLErrorTimedOut
+            )
+        )
+
+        vm.start(track: makeTrack(), environment: preparer)
+        await vm.waitForCurrentOperation()
+
+        switch vm.state {
+        case .failed(let failure):
+            XCTAssertEqual(
+                failure.message,
+                APIError.timedOut.errorDescription
+            )
+            XCTAssertEqual(
+                failure.diagnosticCode,
+                "PM-NSURLErrorDomain--1001"
+            )
+        default:
+            XCTFail("Expected failed state, got \(vm.state)")
+        }
+    }
+
     func testCancellationErrorDoesNotBecomeFailed() async throws {
         let (vm, preparer) = makePreparer()
         preparer.result = .failure(CancellationError())
