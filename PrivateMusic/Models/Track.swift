@@ -102,15 +102,43 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
                 keyedBy: ThumbKeys.self,
                 forKey: .photo
             )
-            let raw = try thumb?.decodeIfPresent(
-                String.self,
-                forKey: .photo600
-            )
-                ?? thumb?.decodeIfPresent(String.self, forKey: .photo300)
-                ?? thumb?.decodeIfPresent(String.self, forKey: .photo270)
-                ?? photo?.decodeIfPresent(String.self, forKey: .photo600)
-                ?? photo?.decodeIfPresent(String.self, forKey: .photo300)
-                ?? photo?.decodeIfPresent(String.self, forKey: .photo270)
+            var raw: String?
+            if let thumb {
+                raw = try thumb.decodeIfPresent(
+                    String.self,
+                    forKey: .photo600
+                )
+                if raw == nil {
+                    raw = try thumb.decodeIfPresent(
+                        String.self,
+                        forKey: .photo300
+                    )
+                }
+                if raw == nil {
+                    raw = try thumb.decodeIfPresent(
+                        String.self,
+                        forKey: .photo270
+                    )
+                }
+            }
+            if raw == nil, let photo {
+                raw = try photo.decodeIfPresent(
+                    String.self,
+                    forKey: .photo600
+                )
+                if raw == nil {
+                    raw = try photo.decodeIfPresent(
+                        String.self,
+                        forKey: .photo300
+                    )
+                }
+                if raw == nil {
+                    raw = try photo.decodeIfPresent(
+                        String.self,
+                        forKey: .photo270
+                    )
+                }
+            }
             artworkURL = raw.flatMap(URL.secureRemoteURL)
         } else {
             artworkURL = nil
