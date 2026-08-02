@@ -166,15 +166,12 @@ final class PlayerContentLayoutTests: XCTestCase {
         )
 
         XCTAssertTrue(accessible.usesAccessibilityText)
-        XCTAssertEqual(accessible.quickActionsHeight, 72)
-        XCTAssertLessThanOrEqual(
-            accessible.minimumContentHeight,
-            667
+        XCTAssertEqual(accessible.quickActionsHeight, 148)
+        XCTAssertTrue(
+            accessible.requiresVerticalScrolling(containerHeight: 667)
         )
-        XCTAssertLessThanOrEqual(
-            accessible.artworkSize,
-            normal.artworkSize
-        )
+        XCTAssertGreaterThanOrEqual(accessible.artworkSize, 112)
+        XCTAssertLessThanOrEqual(normal.quickActionsHeight, 64)
         XCTAssertEqual(
             accessible.quickActionsBottomY(containerHeight: 667),
             normal.quickActionsBottomY(containerHeight: 667)
