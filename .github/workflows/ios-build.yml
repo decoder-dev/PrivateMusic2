@@ -15,7 +15,19 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Select Xcode 27
-        run: sudo xcode-select -s /Applications/Xcode_27.0.app
+        run: |
+          if [ -d /Applications/Xcode_27.0.app ]; then
+            sudo xcode-select -s /Applications/Xcode_27.0.app
+          else
+            sudo xcode-select -s /Applications/Xcode.app
+          fi
+          xcodebuild -version
+
+      - name: Prepare Metal toolchain
+        run: |
+          # Preview xcode-27 images have shipped without MetalToolchain;
+          # SwiftUI test hosts can hang without it.
+          sudo xcodebuild -downloadComponent MetalToolchain || true
 
       - name: Validate source package
         run: |
@@ -27,6 +39,52 @@ jobs:
 
       - name: Generate Xcode project
         run: xcodegen generate
+
+      - name: Resolve iOS 27 simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > /tmp/pm-sim-udid.txt
+          import json
+          import subprocess
+          import sys
+
+          raw = subprocess.check_output(
+              ["xcrun", "simctl", "list", "devices", "available", "-j"],
+              text=True,
+          )
+          data = json.loads(raw)
+          preferred = (
+              "iPhone 17 Pro",
+              "iPhone 17",
+              "iPhone 17 Pro Max",
+              "iPhone Air",
+              "iPhone 17e",
+          )
+          candidates = []
+          for runtime, devices in data.get("devices", {}).items():
+              if "iOS-27" not in runtime and "iOS 27" not in runtime:
+                  continue
+              for device in devices:
+                  if not device.get("isAvailable", True):
+                      continue
+                  candidates.append((device.get("name", ""), device["udid"]))
+          for name in preferred:
+              for candidate_name, udid in candidates:
+                  if candidate_name == name:
+                      print(udid)
+                      sys.exit(0)
+          if candidates:
+              print(candidates[0][1])
+              sys.exit(0)
+          raise SystemExit("No available iOS 27 iPhone simulator found")
+          PY
+          UDID="$(cat /tmp/pm-sim-udid.txt)"
+          test -n "$UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "Using simulator $UDID"
 
       - name: Build simulator target
         run: |
@@ -47,8 +105,8 @@ jobs:
             -scheme PrivateMusic \
             -sdk iphonesimulator \
             -destination \
-              "platform=iOS Simulator,name=iPhone 17 Pro,OS=27.0" \
-            -destination-timeout 120 \
+              "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -destination-timeout 60 \
             -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO \
             test 2>&1 | tee test.log
