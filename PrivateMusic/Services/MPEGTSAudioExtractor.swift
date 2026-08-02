@@ -41,6 +41,28 @@ enum MPEGTSAudioExtractor {
         )
     }
 
+    /// Demuxes a stitched MPEG-TS file without copying it into a contiguous
+    /// heap buffer. The source is memory-mapped; only the much smaller
+    /// elementary stream is materialized and written next to it.
+    ///
+    /// Loading a full stitch with plain `Data(contentsOf:)` (up to
+    /// ~150 MB) is a common jetsam cause during Share on device.
+    static func extractAudioFile(
+        from sourceURL: URL,
+        toDirectory directory: URL
+    ) throws -> (url: URL, kind: OutputKind)? {
+        let mapped = try Data(contentsOf: sourceURL, options: [.mappedIfSafe])
+        guard let extracted = extractAudio(from: mapped),
+              extracted.kind != .unknown else {
+            return nil
+        }
+        let url = directory
+            .appendingPathComponent("elementary")
+            .appendingPathExtension(extracted.kind.fileExtension)
+        try extracted.data.write(to: url, options: .atomic)
+        return (url, extracted.kind)
+    }
+
     // MARK: - Discovery
 
     private struct ProgramInfo {
@@ -116,10 +138,14 @@ enum MPEGTSAudioExtractor {
             return nil
         }
         let sectionLength = Int(section[1] & 0x0F) << 8 | Int(section[2])
+        let sectionEnd = 3 + sectionLength
+        guard section.count >= sectionEnd, sectionEnd >= 16 else {
+            return nil
+        }
         let programInfoLength = Int(section[10] & 0x0F) << 8
             | Int(section[11])
         var offset = 12 + programInfoLength
-        let end = min(section.count - 4, 3 + sectionLength)
+        let end = sectionEnd - 4
         var preferred: ProgramInfo?
         while offset + 5 <= end {
             let streamType = section[offset]

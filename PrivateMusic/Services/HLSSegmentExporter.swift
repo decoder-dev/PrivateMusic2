@@ -218,19 +218,22 @@ actor HLSSegmentExporter {
         // Stitched MPEG-TS with discontinuities often fails AVAssetReader with
         // AVError.fileFailedToParse (-11828 / HLS-SOURCE-11828). Demux to a
         // raw ADTS/MP3 elementary stream first — that opens reliably.
+        //
+        // Important: never `Data(contentsOf:)` the full stitch into a heap
+        // buffer here — stitches can be up to `maximumStitchedSize` and that
+        // allocation jetsams the app during Share on device.
         let transcodeURL: URL
         if container == .mpegTransportStream,
-           let stitched = try? Data(contentsOf: sourceURL),
-           let extracted = MPEGTSAudioExtractor.extractAudio(from: stitched),
-           extracted.kind != .unknown {
-            let elementaryURL = stagingDirectory
-                .appendingPathComponent("elementary")
-                .appendingPathExtension(extracted.kind.fileExtension)
-            try extracted.data.write(to: elementaryURL, options: .atomic)
+           let demuxed = try? MPEGTSAudioExtractor.extractAudioFile(
+            from: sourceURL,
+            toDirectory: stagingDirectory
+           ) {
+            let elementarySize = (try? demuxed.url
+                .resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             logger.info(
-                "HLS export: demuxed MPEG-TS to \(extracted.kind.fileExtension, privacy: .public), \(extracted.data.count) bytes"
+                "HLS export: demuxed MPEG-TS to \(demuxed.kind.fileExtension, privacy: .public), \(elementarySize) bytes"
             )
-            transcodeURL = elementaryURL
+            transcodeURL = demuxed.url
         } else {
             transcodeURL = sourceURL
         }
@@ -1570,6 +1573,26 @@ actor HLSSegmentExporter {
         }
     }
 
+    /// Reads sample rate / channel count without `unsafeDowncast`, which
+    /// traps when AVFoundation hands back an unexpected format box.
+    private static func audioStreamBasicDescription(
+        from track: AVAssetTrack
+    ) -> AudioStreamBasicDescription? {
+        for item in track.formatDescriptions {
+            // `formatDescriptions` is `[Any]` of CMFormatDescription values.
+            // Prefer CM APIs over `unsafeDowncast` to CMAudioFormatDescription,
+            // which traps when the box is unexpected.
+            let formatDescription = item as! CMFormatDescription
+            guard let pointer = CMAudioFormatDescriptionGetStreamBasicDescription(
+                formatDescription
+            ) else {
+                continue
+            }
+            return pointer.pointee
+        }
+        return nil
+    }
+
     /// Loads audio tracks with one retry. Media-services contention (active
     /// playback) and freshly written files sometimes fail the first
     /// `loadTracks` with `AVError.fileFailedToParse` (-11828).
@@ -1638,12 +1661,7 @@ actor HLSSegmentExporter {
             throw HLSExportError.noAudioTrack
         }
 
-        let asbd = track.formatDescriptions.first
-            .map { unsafeDowncast(
-                $0 as AnyObject,
-                to: CMAudioFormatDescription.self
-            ) }
-            .flatMap { $0.audioStreamBasicDescription }
+        let asbd = Self.audioStreamBasicDescription(from: track)
         let sampleRate = asbd?.mSampleRate ?? 44100
         let sourceChannels = UInt32(asbd?.mChannelsPerFrame ?? 2)
         let channels: UInt32 = min(2, max(1, sourceChannels))

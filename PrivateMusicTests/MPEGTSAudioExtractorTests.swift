@@ -20,6 +20,33 @@ final class MPEGTSAudioExtractorTests: XCTestCase {
         XCTAssertNil(MPEGTSAudioExtractor.extractAudio(from: adts))
     }
 
+    func testExtractAudioFileWritesElementaryWithoutRequiringHeapCopyAPI() throws {
+        let adts = Self.adtsFrame(length: 64)
+        let ts = Self.tsStream(
+            audioPID: 0x0100,
+            streamType: 0x0F,
+            elementaryPayload: adts
+        )
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mpegts-extract-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let sourceURL = directory.appendingPathComponent("stitch.ts")
+        try ts.write(to: sourceURL)
+
+        let demuxed = try MPEGTSAudioExtractor.extractAudioFile(
+            from: sourceURL,
+            toDirectory: directory
+        )
+        XCTAssertEqual(demuxed?.kind, .adtsAAC)
+        let written = try Data(contentsOf: try XCTUnwrap(demuxed?.url))
+        XCTAssertEqual(written, adts)
+    }
+
     func testPESScanFallbackWithoutPAT() {
         let adts = Self.adtsFrame(length: 80)
         // Only PES packets on audio PID — no PAT/PMT tables.
