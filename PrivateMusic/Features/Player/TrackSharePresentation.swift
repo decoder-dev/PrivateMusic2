@@ -87,10 +87,25 @@ final class TrackShareViewModel: ObservableObject {
         case let apiError as APIError:
             baseMessage = apiError.errorDescription
                 ?? L10n.text("Не удалось подготовить аудиофайл.")
-            code = "VK-\(nsError.code)"
+            if apiError == .timedOut {
+                code = "PM-NSURLErrorDomain--1001"
+            } else {
+                code = "VK-\(nsError.code)"
+            }
+        case let urlError as URLError where urlError.code == .timedOut:
+            baseMessage = APIError.timedOut.errorDescription
+                ?? L10n.text("Не удалось подготовить аудиофайл.")
+            code = "PM-\(NSURLErrorDomain)-\(URLError.timedOut.rawValue)"
         default:
-            baseMessage = L10n.text("Не удалось подготовить аудиофайл.")
-            code = "PM-\(nsError.domain)-\(nsError.code)"
+            if nsError.domain == NSURLErrorDomain,
+               nsError.code == NSURLErrorTimedOut {
+                baseMessage = APIError.timedOut.errorDescription
+                    ?? L10n.text("Не удалось подготовить аудиофайл.")
+                code = "PM-\(nsError.domain)-\(nsError.code)"
+            } else {
+                baseMessage = L10n.text("Не удалось подготовить аудиофайл.")
+                code = "PM-\(nsError.domain)-\(nsError.code)"
+            }
         }
 
         return TrackShareFailure(
@@ -106,6 +121,19 @@ final class TrackShareViewModel: ObservableObject {
         task = nil
         cleanupPayload(using: environment)
         state = .idle
+    }
+
+    /// Transfers ownership of the prepared file out of the view model so the
+    /// preparing sheet can dismiss without deleting it. The caller must
+    /// remove the payload after the system share sheet finishes.
+    func takePayloadForSystemShare() -> TrackSharePayload? {
+        let value = payload
+        payload = nil
+        generation = UUID()
+        task?.cancel()
+        task = nil
+        state = .idle
+        return value
     }
 
     func activityFinished(
@@ -187,19 +215,14 @@ struct TrackShareFlowView: View {
     @Environment(\.dismiss) private var dismiss
 
     let track: Track
+
     @StateObject private var model = TrackShareViewModel()
 
     var body: some View {
         Group {
             switch model.state {
             case let .ready(payload):
-                ActivityViewController(
-                    activityItems: [payload.fileURL]
-                ) { _ in
-                    model.activityFinished(environment: environment)
-                    dismiss()
-                }
-                .ignoresSafeArea()
+                readyScreen(payload: payload)
 
             case let .preparing(progress):
                 statusScreen(progress: progress)
@@ -212,12 +235,61 @@ struct TrackShareFlowView: View {
                 statusScreen(progress: .resolvingSource)
             }
         }
+        .onAppear {
+            environment.beginShareSession()
+        }
         .task(id: track.id) {
             model.start(track: track, environment: environment)
         }
         .onDisappear {
             model.cancel(environment: environment)
+            environment.endShareSession()
         }
+    }
+
+    private func readyScreen(payload: TrackSharePayload) -> some View {
+        NavigationStack {
+            VStack(spacing: 22) {
+                AsyncArtwork(url: track.artworkURL, size: 112)
+
+                VStack(spacing: 5) {
+                    Text(track.title)
+                        .font(.headline)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                    Text(track.artist)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Text(L10n.text("Файл готов. Нажмите кнопку ниже."))
+                    .font(.subheadline.weight(.semibold))
+                    .multilineTextAlignment(.center)
+
+                // Let SwiftUI own the activity-controller lifecycle. Every
+                // previous crash happened in custom programmatic UIKit
+                // presentation while another sheet was transitioning.
+                ShareLink(item: payload.fileURL) {
+                    Label(
+                        L10n.text("Поделиться"),
+                        systemImage: "square.and.arrow.up"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button(L10n.text("Закрыть"), role: .cancel) {
+                    model.cancel(environment: environment)
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(24)
+            .navigationTitle(L10n.text("Поделиться файлом"))
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .presentationDetents([.medium, .large])
     }
 
     private func statusScreen(
@@ -332,53 +404,6 @@ struct TrackShareFlowView: View {
             ?? "unknown"
         return "Private Music \(marketing) (\(build))\n\(code)"
     }
-}
-
-// MARK: - System share sheet
-
-struct ActivityViewController: UIViewControllerRepresentable {
-    let activityItems: [Any]
-    let completion: @MainActor (Bool) -> Void
-
-    final class Coordinator: NSObject {
-        let completion: @MainActor (Bool) -> Void
-        var didFinish = false
-
-        init(completion: @escaping @MainActor (Bool) -> Void) {
-            self.completion = completion
-        }
-
-        func finish(_ completed: Bool) {
-            guard !didFinish else { return }
-            didFinish = true
-            Task { @MainActor in
-                completion(completed)
-            }
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(completion: completion)
-    }
-
-    func makeUIViewController(
-        context: Context
-    ) -> UIActivityViewController {
-        let controller = UIActivityViewController(
-            activityItems: activityItems,
-            applicationActivities: nil
-        )
-        controller.completionWithItemsHandler = {
-            _, completed, _, _ in
-            context.coordinator.finish(completed)
-        }
-        return controller
-    }
-
-    func updateUIViewController(
-        _ uiViewController: UIActivityViewController,
-        context: Context
-    ) {}
 }
 
 // MARK: - Modifier
