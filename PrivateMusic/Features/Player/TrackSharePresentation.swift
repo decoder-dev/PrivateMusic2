@@ -488,7 +488,7 @@ enum SystemSharePresenter {
         }
 
         if let popover = activity.popoverPresentationController {
-            let view = presenter.view
+            let view = presenter.view!
             popover.sourceView = view
             popover.sourceRect = CGRect(
                 x: view.bounds.midX,
