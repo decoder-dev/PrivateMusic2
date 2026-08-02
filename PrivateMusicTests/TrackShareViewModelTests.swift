@@ -35,6 +35,33 @@ final class TrackShareViewModelTests: XCTestCase {
         }
     }
 
+    func testNSURLTimeoutMapsToFriendlyShareFailure() async throws {
+        let (vm, preparer) = makePreparer()
+        preparer.result = .failure(
+            NSError(
+                domain: NSURLErrorDomain,
+                code: NSURLErrorTimedOut
+            )
+        )
+
+        vm.start(track: makeTrack(), environment: preparer)
+        await vm.waitForCurrentOperation()
+
+        switch vm.state {
+        case .failed(let failure):
+            XCTAssertEqual(
+                failure.message,
+                APIError.timedOut.errorDescription
+            )
+            XCTAssertEqual(
+                failure.diagnosticCode,
+                "PM-NSURLErrorDomain--1001"
+            )
+        default:
+            XCTFail("Expected failed state, got \(vm.state)")
+        }
+    }
+
     func testCancellationErrorDoesNotBecomeFailed() async throws {
         let (vm, preparer) = makePreparer()
         preparer.result = .failure(CancellationError())
@@ -59,6 +86,27 @@ final class TrackShareViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.state, .idle)
         try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(preparer.removedPayloads, [payload])
+    }
+
+    func testTakePayloadForSystemShareTransfersOwnershipWithoutDeleting() async throws {
+        let (vm, preparer) = makePreparer()
+        let payload = try makePayload()
+        preparer.result = .success(payload)
+
+        vm.start(track: makeTrack(), environment: preparer)
+        await vm.waitForCurrentOperation()
+        XCTAssertEqual(vm.state, .ready(payload))
+
+        let taken = vm.takePayloadForSystemShare()
+        XCTAssertEqual(taken, payload)
+        XCTAssertEqual(vm.state, .idle)
+        XCTAssertNil(vm.takePayloadForSystemShare())
+
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(preparer.removedPayloads.isEmpty)
+
+        await preparer.removeSharePayload(payload)
         XCTAssertEqual(preparer.removedPayloads, [payload])
     }
 
