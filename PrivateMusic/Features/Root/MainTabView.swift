@@ -211,6 +211,10 @@ private struct SystemPlaybackAccessory: View {
                                 url: track.artworkURL,
                                 size: placement == .inline ? 28 : 40
                             )
+                            .overlay(alignment: .topTrailing) {
+                                LikedTrackBadge(track: track)
+                                    .padding(2)
+                            }
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(track.title)
                                     .font(
