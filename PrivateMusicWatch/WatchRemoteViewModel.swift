@@ -1,12 +1,15 @@
 import Foundation
 import WatchConnectivity
+import WatchKit
 
 @MainActor
 final class WatchRemoteViewModel: NSObject, ObservableObject {
     @Published private(set) var state: WatchRemoteState = .empty
     @Published private(set) var isReachable = false
+    @Published private(set) var commandFailed = false
 
     private let session: WCSession?
+    private var feedbackTask: Task<Void, Never>?
 
     override init() {
         self.session = WCSession.isSupported() ? .default : nil
@@ -21,29 +24,54 @@ final class WatchRemoteViewModel: NSObject, ObservableObject {
     }
 
     func send(_ command: WatchRemoteCommand) {
-        guard let session else { return }
-        let message = [WatchRemoteMessageKey.command: command.rawValue]
-        if session.isReachable {
-            session.sendMessage(
-                message,
-                replyHandler: { [weak self] context in
-                    guard let state = WatchRemoteState(context: context) else {
-                        return
-                    }
-                    Task { @MainActor in
-                        self?.state = state
-                    }
-                },
-                errorHandler: nil
-            )
-        } else {
-            session.transferUserInfo(message)
+        guard let session, session.isReachable else {
+            showCommandFailure()
+            return
         }
+        let envelope = WatchRemoteCommandEnvelope(
+            command: command,
+            trackID: state.trackID
+        )
+        session.sendMessage(
+            envelope.message,
+            replyHandler: { [weak self] context in
+                Task { @MainActor in
+                    self?.applyReply(context)
+                }
+            },
+            errorHandler: { [weak self] _ in
+                Task { @MainActor in
+                    self?.showCommandFailure()
+                }
+            }
+        )
     }
 
     private func receive(_ context: [String: Any]) {
         guard let state = WatchRemoteState(context: context) else { return }
         self.state = state
+    }
+
+    private func applyReply(_ context: [String: Any]) {
+        if let state = WatchRemoteState(context: context) {
+            self.state = state
+        }
+        guard context[WatchRemoteMessageKey.accepted] as? Bool == true else {
+            showCommandFailure()
+            return
+        }
+        commandFailed = false
+    }
+
+    private func showCommandFailure() {
+        commandFailed = true
+        WKInterfaceDevice.current().play(.failure)
+        feedbackTask?.cancel()
+        feedbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            self?.commandFailed = false
+        }
     }
 }
 
