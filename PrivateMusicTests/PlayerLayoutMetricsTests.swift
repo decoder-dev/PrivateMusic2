@@ -128,9 +128,24 @@ final class PlayerLayoutMetricsTests: XCTestCase {
             usesAccessibilityText: true
         )
 
-        XCTAssertGreaterThanOrEqual(metrics.quickActionsHeight, 140)
+        XCTAssertGreaterThanOrEqual(metrics.quickActionsHeight, 190)
         XCTAssertTrue(metrics.requiresVerticalScrolling(containerHeight: 568))
         XCTAssertGreaterThanOrEqual(metrics.artworkSize, 112)
+    }
+
+    func testAccessibilityLandscapeUsesScrollFallback() {
+        let metrics = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 568, height: 320),
+            safeBottom: 21,
+            safeTop: 0,
+            safeLeading: 44,
+            safeTrailing: 44,
+            usesAccessibilityText: true
+        )
+
+        XCTAssertEqual(metrics.mode, .landscape)
+        XCTAssertTrue(metrics.requiresVerticalScrolling(containerHeight: 320))
+        XCTAssertGreaterThanOrEqual(metrics.quickActionsHeight, 190)
     }
 
     func testPlayerControlsUseAccessibleMinimumHeights() {
