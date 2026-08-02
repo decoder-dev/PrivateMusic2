@@ -647,8 +647,8 @@ final class HLSSegmentExporterTests: XCTestCase {
         #EXTM3U
         #EXT-X-VERSION:7
         #EXT-X-MEDIA-SEQUENCE:0
-        #EXT-X-KEY:METHOD=AES-128,URI="key.bin",IV=0x00000000000000000000000000000000
         #EXT-X-MAP:URI="init.mp4"
+        #EXT-X-KEY:METHOD=AES-128,URI="key.bin",IV=0x00000000000000000000000000000000
         #EXTINF:0.1,
         frag1.m4s
         #EXT-X-ENDLIST
