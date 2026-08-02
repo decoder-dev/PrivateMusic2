@@ -706,6 +706,7 @@ struct PlayerView: View {
                         && !environment.isShareSessionActive
                 ),
                 equalizerEnabled: $settings.equalizerEnabled,
+                spatialAudioEnabled: $settings.spatialAudioEnabled,
                 onDismiss: {
                     presentedSheet = nil
                 },
@@ -1206,6 +1207,7 @@ private struct PlayerActionsSheet: View {
     let offlineState: OfflineTrackState
     let availability: PlayerActionAvailability
     @Binding var equalizerEnabled: Bool
+    @Binding var spatialAudioEnabled: Bool
     @EnvironmentObject private var player: AudioPlayer
     @State private var showsSleepTimerOptions = false
     let onDismiss: () -> Void
@@ -1331,6 +1333,19 @@ private struct PlayerActionsSheet: View {
                 actionRowLabel(
                     "Эквалайзер",
                     systemImage: "waveform"
+                )
+            }
+            .tint(.accentColor)
+            .padding(.horizontal, 16)
+            .frame(minHeight: PlayerActionSheetMetrics.minimumTapTarget)
+
+            Divider()
+                .padding(.leading, 58)
+
+            Toggle(isOn: $spatialAudioEnabled) {
+                actionRowLabel(
+                    "Пространственный звук",
+                    systemImage: "airpodspro"
                 )
             }
             .tint(.accentColor)
