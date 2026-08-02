@@ -328,6 +328,36 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    func testMinimumVolumePauseDoesNotResumeDuringInterruption() {
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldResumeAfterMinimumVolumePause(
+                volume: 0.5,
+                enabled: true,
+                pausedForMinimumVolume: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                outputPortTypes: [.builtInSpeaker],
+                isAudioInterrupted: true
+            )
+        )
+    }
+
+    func testRoutePreferenceCanSuppressMinimumVolumeResume() {
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldResumeAfterMinimumVolumePause(
+                volume: 0.5,
+                enabled: true,
+                pausedForMinimumVolume: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                outputPortTypes: [.bluetoothA2DP],
+                allowsAutomaticResume: false
+            )
+        )
+    }
+
     func testMinimumVolumeNeverPausesExternalPlaybackRoutes() {
         for port in [
             AVAudioSession.Port.bluetoothA2DP,

@@ -59,6 +59,12 @@ all_source = "\n".join(path.read_text(encoding="utf-8") for path in swift_files)
 audio_player_source = (
     SOURCE / "Player" / "AudioPlayer.swift"
 ).read_text(encoding="utf-8")
+equalizer_source = (
+    SOURCE / "Player" / "EqualizerDSP.swift"
+).read_text(encoding="utf-8")
+spatial_audio_source = (
+    SOURCE / "Player" / "SpatialAudioDSP.swift"
+).read_text(encoding="utf-8")
 player_view_source = (
     SOURCE / "Features" / "Player" / "PlayerView.swift"
 ).read_text(encoding="utf-8")
@@ -109,6 +115,8 @@ for required_processing_route_symbol in (
     "player.allowsExternalPlayback = AudioProcessingRoutePolicy",
     "shouldResumeAfterMinimumVolumePause",
     "pausedForMinimumVolume = true",
+    "minimumVolumeResumeSuppressed",
+    "isAudioInterrupted: isAudioInterrupted",
 ):
     if required_processing_route_symbol not in audio_player_source:
         fail(
@@ -117,6 +125,12 @@ for required_processing_route_symbol in (
         )
 if "player.allowsExternalPlayback = true" in audio_player_source:
     fail("external AVPlayer handoff must not bypass active audio processing")
+if "kAudioFormatFlagIsNonInterleaved" not in equalizer_source:
+    fail("audio processing must use the declared PCM interleaving format")
+if "let nonInterleaved = buffers.count > 1" in equalizer_source:
+    fail("audio buffer count must not be used to infer PCM interleaving")
+if "if peak > 1" in spatial_audio_source:
+    fail("spatial audio must not use a sample-by-sample peak limiter")
 configure_audio_session = audio_player_source.split(
     "private func configureAudioSession()", 1
 )[1].split("private func activateAudioSession()", 1)[0]

@@ -13,7 +13,7 @@ final class SpatialAudioDSPTests: XCTestCase {
         XCTAssertEqual(output.right, -0.18, accuracy: 0.000_001)
     }
 
-    func testSpatialAudioWidensSideSignalAndPreservesCenter() {
+    func testSpatialAudioWidensSideToCenterRatio() {
         let left: Float = 0.4
         let right: Float = 0.1
         let output = SpatialAudioDSP.process(
@@ -22,26 +22,26 @@ final class SpatialAudioDSPTests: XCTestCase {
             intensity: 1
         )
 
+        let inputRatio = abs(left - right) / abs(left + right)
+        let outputRatio =
+            abs(output.left - output.right)
+            / abs(output.left + output.right)
         XCTAssertGreaterThan(
-            abs(output.left - output.right),
-            abs(left - right)
-        )
-        XCTAssertEqual(
-            output.left + output.right,
-            left + right,
-            accuracy: 0.000_001
+            outputRatio,
+            inputRatio
         )
     }
 
-    func testMonoSignalRemainsCentered() {
+    func testMonoSignalRemainsCenteredWithoutClipping() {
         let output = SpatialAudioDSP.process(
             left: 0.35,
             right: 0.35,
             intensity: 1
         )
 
-        XCTAssertEqual(output.left, 0.35, accuracy: 0.000_001)
-        XCTAssertEqual(output.right, 0.35, accuracy: 0.000_001)
+        XCTAssertEqual(output.left, output.right, accuracy: 0.000_001)
+        XCTAssertGreaterThan(output.left, 0)
+        XCTAssertLessThan(output.left, 0.35)
     }
 
     func testWideningPreventsClipping() {
@@ -55,6 +55,22 @@ final class SpatialAudioDSPTests: XCTestCase {
         XCTAssertLessThanOrEqual(abs(output.right), 1)
         XCTAssertTrue(output.left.isFinite)
         XCTAssertTrue(output.right.isFinite)
+    }
+
+    func testWideningRemainsLinearNearPeakLevel() {
+        let quiet = SpatialAudioDSP.process(
+            left: 0.4,
+            right: -0.4,
+            intensity: 1
+        )
+        let loud = SpatialAudioDSP.process(
+            left: 0.8,
+            right: -0.8,
+            intensity: 1
+        )
+
+        XCTAssertEqual(loud.left, quiet.left * 2, accuracy: 0.000_001)
+        XCTAssertEqual(loud.right, quiet.right * 2, accuracy: 0.000_001)
     }
 
     func testSpatialAudioAloneRequiresProcessingTap() {
@@ -88,5 +104,26 @@ final class SpatialAudioDSPTests: XCTestCase {
                 requiresAudioTap: processor.requiresAudioTap
             )
         )
+    }
+
+    func testZeroIntensitySpatialAudioDoesNotInstallProcessingTap() {
+        let processor = EqualizerDSP()
+        processor.update(
+            enabled: false,
+            gains: EqualizerPreset.flat.gains,
+            preamp: 0,
+            spatialAudio: true,
+            spatialIntensity: 0
+        )
+        XCTAssertFalse(processor.requiresAudioTap)
+
+        processor.update(
+            enabled: false,
+            gains: EqualizerPreset.flat.gains,
+            preamp: 0,
+            spatialAudio: true,
+            spatialIntensity: 0.05
+        )
+        XCTAssertTrue(processor.requiresAudioTap)
     }
 }
