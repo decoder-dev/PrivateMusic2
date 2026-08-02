@@ -139,6 +139,10 @@
 "Если VK не смог обновить аудиопоток, плеер продолжит очередь со следующей песни." = "If VK cannot refresh an audio stream, the player continues with the next track in the queue.";
 "Эквалайзер" = "Equalizer";
 "Обработка звука" = "Audio Processing";
+"Пространственный звук" = "Spatial Audio";
+"Расширенная стереосцена" = "Expanded Stereo Soundstage";
+"Интенсивность" = "Intensity";
+"Расширяет стереосцену обычных треков. Эффект лучше всего слышен в наушниках." = "Widens the soundstage of standard stereo tracks. The effect works best with headphones.";
 "Профиль эквалайзера" = "Equalizer Preset";
 "Предусилитель" = "Preamp";
 "дБ" = "dB";
