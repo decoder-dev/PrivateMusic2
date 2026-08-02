@@ -3,6 +3,16 @@ import XCTest
 
 @MainActor
 final class OfflinePlaylistStoreTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        OfflineDownloadsFeature.testingOverride = true
+    }
+
+    override func tearDown() {
+        OfflineDownloadsFeature.testingOverride = nil
+        super.tearDown()
+    }
+
     func testDownloadsAllPagesPreservesOrderAndPersists() async throws {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }

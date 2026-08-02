@@ -324,6 +324,7 @@
 "Загрузка" = "Downloading";
 "Загрузка…" = "Downloading…";
 "Не удалось сохранить трек офлайн: %@" = "Could not save the track offline: %@";
+"Офлайн-загрузки временно отключены. Используйте «Поделиться»." = "Offline downloads are temporarily disabled. Use Share instead.";
 "Не удалось подготовить аудиофайл: %@" = "Could not prepare the audio file: %@";
 "VK не предоставил прямой аудиофайл для этого трека." = "VK did not provide a direct audio file for this track.";
 "Этот трек нельзя экспортировать в MP3." = "This track cannot be exported as an MP3.";

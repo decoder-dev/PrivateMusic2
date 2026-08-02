@@ -130,7 +130,7 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.25.0-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.25.1-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -139,33 +139,28 @@ jobs:
         run: |
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.25.0
+          Private Music 3.25.1
 
-          - Сборка на Xcode 27 / iOS 27 SDK.
-          - Исправлена ошибка шаринга PM-NSURLErrorDomain--1001: увеличены
-            таймауты экспорта, один повтор при обрыве и понятное сообщение.
-          - Во время «Поделиться» офлайн-загрузки и автокэш временно
-            останавливаются и скрываются из интерфейса, чтобы не мешать
-            передаче файла.
-          - Пауза при снятии наушников / AirPods подтверждена по Apple
-            Responding to audio route changes
-            (routeChangeNotification + oldDeviceUnavailable) и Automatic
-            Ear Detection.
+          - Стабильная vacation-сборка: офлайн-загрузки треков, плейлистов
+            и автокэш временно убраны из интерфейса.
+          - Основной способ сохранить трек — «Поделиться» (MP3/M4A), с
+            защитой от PM-NSURLErrorDomain--1001.
+          - Сборка IPA на Xcode 27 / iOS 27 SDK; unit-тесты на Xcode 26.5.
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом.
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.25.0-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.25.1-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.25.0" \
+              --title "Private Music 3.25.1" \
               --notes-file "$NOTES"
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.25.0-unsigned.ipa" \
-              --title "Private Music 3.25.0" \
+              "$PWD/artifacts/PrivateMusic-3.25.1-unsigned.ipa" \
+              --title "Private Music 3.25.1" \
               --notes-file "$NOTES"
           fi
 
@@ -173,7 +168,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.25.0-unsigned
-          path: artifacts/PrivateMusic-3.25.0-unsigned.ipa
+          name: PrivateMusic-3.25.1-unsigned
+          path: artifacts/PrivateMusic-3.25.1-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
