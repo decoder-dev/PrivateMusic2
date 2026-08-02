@@ -89,6 +89,27 @@ final class TrackShareViewModelTests: XCTestCase {
         XCTAssertEqual(preparer.removedPayloads, [payload])
     }
 
+    func testTakePayloadForSystemShareTransfersOwnershipWithoutDeleting() async throws {
+        let (vm, preparer) = makePreparer()
+        let payload = try makePayload()
+        preparer.result = .success(payload)
+
+        vm.start(track: makeTrack(), environment: preparer)
+        await vm.waitForCurrentOperation()
+        XCTAssertEqual(vm.state, .ready(payload))
+
+        let taken = vm.takePayloadForSystemShare()
+        XCTAssertEqual(taken, payload)
+        XCTAssertEqual(vm.state, .idle)
+        XCTAssertNil(vm.takePayloadForSystemShare())
+
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(preparer.removedPayloads.isEmpty)
+
+        await preparer.removeSharePayload(payload)
+        XCTAssertEqual(preparer.removedPayloads, [payload])
+    }
+
     func testCancelInvalidatesGenerationAndCleansUp() async throws {
         let (vm, preparer) = makePreparer()
         let payload = try makePayload()

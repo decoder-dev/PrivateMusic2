@@ -818,6 +818,12 @@ struct PlayerView: View {
 
     private func startShare(_ track: Track) {
         Haptics.open()
+        // Never present the share preparation sheet on top of another
+        // player sheet — nested modal presentations crash on device.
+        if presentedSheet != nil {
+            deferFromActionSheet(.share(track))
+            return
+        }
         sharingTrack = track
     }
 
