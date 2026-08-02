@@ -208,13 +208,12 @@ struct TrackShareFlowView: View {
         Group {
             switch model.state {
             case let .ready(payload):
-                ActivityViewController(
-                    activityItems: [payload.fileURL]
-                ) { _ in
-                    model.activityFinished(environment: environment)
-                    dismiss()
-                }
-                .ignoresSafeArea()
+                // Keep a normal SwiftUI sheet host and present
+                // UIActivityViewController from it. Embedding the activity
+                // controller as the sheet root crashes on some iOS versions
+                // (missing popover source / nested presentation).
+                readyScreen(payload: payload)
+                    .interactiveDismissDisabled()
 
             case let .preparing(progress):
                 statusScreen(progress: progress)
@@ -305,6 +304,51 @@ struct TrackShareFlowView: View {
         .presentationDetents([.medium, .large])
     }
 
+    private func readyScreen(payload: TrackSharePayload) -> some View {
+        NavigationStack {
+            VStack(spacing: 22) {
+                AsyncArtwork(url: track.artworkURL, size: 112)
+
+                VStack(spacing: 5) {
+                    Text(track.title)
+                        .font(.headline)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                    Text(track.artist)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                ProgressView()
+                    .controlSize(.large)
+
+                Text(L10n.text("Открываем меню «Поделиться»…"))
+                    .font(.subheadline.weight(.semibold))
+                    .multilineTextAlignment(.center)
+
+                Button(role: .cancel) {
+                    model.cancel(environment: environment)
+                    dismiss()
+                } label: {
+                    Text(L10n.text("Отменить"))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(24)
+            .navigationTitle(L10n.text("Поделиться файлом"))
+            .navigationBarTitleDisplayMode(.inline)
+            .background {
+                ActivityViewController(activityItems: [payload.fileURL]) { _ in
+                    model.activityFinished(environment: environment)
+                    dismiss()
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
     private func failureScreen(failure: TrackShareFailure) -> some View {
         NavigationStack {
             VStack(spacing: 16) {
@@ -355,12 +399,17 @@ struct TrackShareFlowView: View {
 
 // MARK: - System share sheet
 
+/// Host that presents `UIActivityViewController` once. Using the activity
+/// controller itself as a `UIViewControllerRepresentable` root inside a
+/// SwiftUI `.sheet` is undefined on iPad (popover source) and has crashed
+/// when SwiftUI swaps preparing → ready content.
 struct ActivityViewController: UIViewControllerRepresentable {
     let activityItems: [Any]
     let completion: @MainActor (Bool) -> Void
 
     final class Coordinator: NSObject {
         let completion: @MainActor (Bool) -> Void
+        var didPresent = false
         var didFinish = false
 
         init(completion: @escaping @MainActor (Bool) -> Void) {
@@ -380,24 +429,62 @@ struct ActivityViewController: UIViewControllerRepresentable {
         Coordinator(completion: completion)
     }
 
-    func makeUIViewController(
-        context: Context
-    ) -> UIActivityViewController {
-        let controller = UIActivityViewController(
-            activityItems: activityItems,
-            applicationActivities: nil
-        )
-        controller.completionWithItemsHandler = {
-            _, completed, _, _ in
-            context.coordinator.finish(completed)
-        }
-        return controller
+    func makeUIViewController(context: Context) -> UIViewController {
+        let host = UIViewController()
+        host.view.backgroundColor = .clear
+        host.view.isUserInteractionEnabled = false
+        return host
     }
 
     func updateUIViewController(
-        _ uiViewController: UIActivityViewController,
+        _ uiViewController: UIViewController,
         context: Context
-    ) {}
+    ) {
+        let coordinator = context.coordinator
+        guard !coordinator.didPresent,
+              uiViewController.presentedViewController == nil,
+              uiViewController.view.window != nil
+                || uiViewController.isViewLoaded else {
+            return
+        }
+
+        let present = { [activityItems] in
+            guard !coordinator.didPresent,
+                  uiViewController.presentedViewController == nil else {
+                return
+            }
+            coordinator.didPresent = true
+
+            let activity = UIActivityViewController(
+                activityItems: activityItems,
+                applicationActivities: nil
+            )
+            activity.completionWithItemsHandler = {
+                _, completed, _, _ in
+                coordinator.finish(completed)
+            }
+            if let popover = activity.popoverPresentationController {
+                let view = uiViewController.view!
+                popover.sourceView = view
+                popover.sourceRect = CGRect(
+                    x: view.bounds.midX,
+                    y: view.bounds.midY,
+                    width: 1,
+                    height: 1
+                )
+                popover.permittedArrowDirections = []
+            }
+            uiViewController.present(activity, animated: true)
+        }
+
+        if uiViewController.view.window != nil {
+            DispatchQueue.main.async(execute: present)
+        } else {
+            DispatchQueue.main.async {
+                DispatchQueue.main.async(execute: present)
+            }
+        }
+    }
 }
 
 // MARK: - Modifier
