@@ -67,6 +67,41 @@ final class OfflinePlaylistStoreTests: XCTestCase {
         XCTAssertEqual(record.progress, 1)
     }
 
+    func testPlaylistDownloadUsesAtMostThreeWorkers() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let playlist = try makePlaylist(id: 27, ownerID: 2)
+        let tracks = (0..<30).map(makeTrack)
+        let concurrency = PlaylistConcurrencyTracker()
+        let store = OfflinePlaylistStore(rootURL: root)
+        store.configure(accountID: 1)
+
+        store.startDownload(
+            playlist: playlist,
+            fetchPage: { _ in
+                MusicPage(
+                    items: tracks,
+                    totalCount: tracks.count,
+                    nextOffset: nil
+                )
+            },
+            downloadTrack: { _ in
+                concurrency.enter()
+                defer { concurrency.exit() }
+                try await Task.sleep(for: .milliseconds(25))
+            }
+        )
+        await store.waitForDownload(of: playlist)
+
+        XCTAssertEqual(store.record(for: playlist)?.state, .available)
+        XCTAssertEqual(store.record(for: playlist)?.completedCount, tracks.count)
+        XCTAssertLessThanOrEqual(
+            concurrency.maximum,
+            DownloadCoordinator.maximumConcurrentDownloads
+        )
+        XCTAssertGreaterThan(concurrency.maximum, 1)
+    }
+
     func testCancellationStopsActiveWork() async throws {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -342,6 +377,29 @@ final class OfflinePlaylistStoreTests: XCTestCase {
         XCTAssertNil(store.record(for: playlist))
     }
 
+    func testConfigureFlushesPendingRemovalForPreviousAccount() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let playlist = try makePlaylist(id: 28, ownerID: 2)
+        let store = OfflinePlaylistStore(rootURL: root)
+        store.configure(accountID: 1)
+        let track = makeTrack(1)
+        store.startDownload(
+            playlist: playlist,
+            fetchPage: { _ in
+                MusicPage(items: [track], totalCount: 1, nextOffset: nil)
+            },
+            downloadTrack: { _ in }
+        )
+        await store.waitForDownload(of: playlist)
+        store.remove(playlist)
+        store.configure(accountID: 2)
+
+        let restored = OfflinePlaylistStore(rootURL: root)
+        restored.configure(accountID: 1)
+        XCTAssertNil(restored.record(for: playlist))
+    }
+
     func testPlaylistStatusMapping() throws {
         let playlist = try makePlaylist(id: 26, ownerID: 2)
 
@@ -461,6 +519,27 @@ final class OfflinePlaylistStoreTests: XCTestCase {
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC"
                 + "AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
         )!
+    }
+}
+
+private final class PlaylistConcurrencyTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var active = 0
+    private var peak = 0
+
+    var maximum: Int {
+        lock.withLock { peak }
+    }
+
+    func enter() {
+        lock.withLock {
+            active += 1
+            peak = max(peak, active)
+        }
+    }
+
+    func exit() {
+        lock.withLock { active -= 1 }
     }
 }
 

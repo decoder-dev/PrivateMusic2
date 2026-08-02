@@ -229,28 +229,102 @@ final class ConnectionStabilityTests: XCTestCase {
             AudioRoutePolicy.shouldPause(
                 volume: 0,
                 enabled: true,
-                isPlaying: true
+                isPlaying: true,
+                outputPortTypes: [.builtInSpeaker]
             )
         )
         XCTAssertFalse(
             AudioRoutePolicy.shouldPause(
                 volume: 0.5,
                 enabled: true,
-                isPlaying: true
+                isPlaying: true,
+                outputPortTypes: [.builtInSpeaker]
             )
         )
         XCTAssertFalse(
             AudioRoutePolicy.shouldPause(
                 volume: 0,
                 enabled: false,
-                isPlaying: true
+                isPlaying: true,
+                outputPortTypes: [.builtInSpeaker]
             )
         )
         XCTAssertFalse(
             AudioRoutePolicy.shouldPause(
                 volume: 0,
                 enabled: true,
-                isPlaying: false
+                isPlaying: false,
+                outputPortTypes: [.builtInSpeaker]
+            )
+        )
+    }
+
+    func testMinimumVolumeNeverPausesExternalPlaybackRoutes() {
+        for port in [
+            AVAudioSession.Port.bluetoothA2DP,
+            .bluetoothHFP,
+            .bluetoothLE,
+            .airPlay,
+            .carAudio,
+            .HDMI,
+            .usbAudio
+        ] {
+            XCTAssertFalse(
+                AudioRoutePolicy.shouldPause(
+                    volume: 0,
+                    enabled: true,
+                    isPlaying: true,
+                    outputPortTypes: [port]
+                ),
+                "External route \(port.rawValue) must control its own volume"
+            )
+        }
+    }
+
+    func testRouteLossPausesOnlyWhenExternalOutputFallsBackToDevice() {
+        XCTAssertTrue(
+            AudioRoutePolicy.shouldPauseAfterRouteLoss(
+                wasPlaying: true,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldPauseAfterRouteLoss(
+                wasPlaying: true,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.airPlay]
+            )
+        )
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldPauseAfterRouteLoss(
+                wasPlaying: false,
+                previousOutputPortTypes: [.headphones],
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+    }
+
+    func testInterruptionResumeRequiresSystemPermissionAndPlaybackIntent() {
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldResume(
+                wasPlayingBeforeInterruption: true,
+                playbackIntended: true,
+                options: [.shouldResume]
+            )
+        )
+        XCTAssertFalse(
+            AudioInterruptionPolicy.shouldResume(
+                wasPlayingBeforeInterruption: true,
+                playbackIntended: false,
+                options: [.shouldResume]
+            )
+        )
+        XCTAssertFalse(
+            AudioInterruptionPolicy.shouldResume(
+                wasPlayingBeforeInterruption: true,
+                playbackIntended: true,
+                options: []
             )
         )
     }

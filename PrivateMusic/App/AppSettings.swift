@@ -263,7 +263,7 @@ final class AppSettings: ObservableObject {
         ) as? Bool ?? true
         pauseAtMinimumVolume = defaults.object(
             forKey: Keys.pauseAtMinimumVolume
-        ) as? Bool ?? true
+        ) as? Bool ?? false
         advanceOnPlaybackError = defaults.object(
             forKey: Keys.advanceOnPlaybackError
         ) as? Bool ?? true

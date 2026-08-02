@@ -20,7 +20,12 @@ struct RootView: View {
                 ConnectView()
             } else {
                 MainTabView()
-                    .fullScreenCover(isPresented: $player.isPlayerPresented) {
+                    .fullScreenCover(
+                        isPresented: $player.isPlayerPresented,
+                        onDismiss: {
+                            player.dismissPlayer()
+                        }
+                    ) {
                         PlayerView()
                             .playerPresentationBackground()
                     }
@@ -60,7 +65,14 @@ struct RootView: View {
             }
         }
         .onChange(of: scenePhase) { phase in
-            guard phase == .active, sessionStore.session != nil else {
+            if phase == .background || phase == .inactive {
+                Task { @MainActor in
+                    try? await environment.offlineStore.flushPendingSave()
+                    try? await OfflinePlaylistStore.shared.flushPendingSave()
+                }
+            }
+            guard phase == .active,
+                  sessionStore.session != nil else {
                 return
             }
             Task { await recoverActiveSession() }

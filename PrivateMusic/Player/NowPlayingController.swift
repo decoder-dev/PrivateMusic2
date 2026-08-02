@@ -18,7 +18,9 @@ final class NowPlayingController {
     func update(
         track: Track,
         elapsedTime: TimeInterval,
-        rate: Float
+        rate: Float,
+        queueCount: Int,
+        queueIndex: Int
     ) {
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
@@ -30,7 +32,12 @@ final class NowPlayingController {
             MPNowPlayingInfoPropertyMediaType:
                 MPNowPlayingInfoMediaType.audio.rawValue,
             MPNowPlayingInfoPropertyExternalContentIdentifier: track.id,
-            MPNowPlayingInfoPropertyServiceIdentifier: "Private Music"
+            MPNowPlayingInfoPropertyServiceIdentifier: "Private Music",
+            MPNowPlayingInfoPropertyPlaybackQueueCount: max(queueCount, 1),
+            MPNowPlayingInfoPropertyPlaybackQueueIndex: min(
+                max(queueIndex, 0),
+                max(queueCount - 1, 0)
+            )
         ]
         if let albumTitle = track.albumTitle, !albumTitle.isEmpty {
             info[MPMediaItemPropertyAlbumTitle] = albumTitle
@@ -77,6 +84,16 @@ final class NowPlayingController {
         info[MPNowPlayingInfoPropertyPlaybackRate] = rate
         center.nowPlayingInfo = info
         center.playbackState = rate > 0 ? .playing : .paused
+    }
+
+    func updateQueue(count: Int, index: Int) {
+        guard var info = center.nowPlayingInfo, count > 0 else { return }
+        info[MPNowPlayingInfoPropertyPlaybackQueueCount] = count
+        info[MPNowPlayingInfoPropertyPlaybackQueueIndex] = min(
+            max(index, 0),
+            count - 1
+        )
+        center.nowPlayingInfo = info
     }
 
     func clear() {

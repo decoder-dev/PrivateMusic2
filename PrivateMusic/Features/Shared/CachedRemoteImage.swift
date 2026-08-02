@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import ImageIO
 
 struct CachedRemoteImage<
     Content: View,
@@ -7,6 +8,7 @@ struct CachedRemoteImage<
 >: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let url: URL?
+    var maxPixelSize: CGFloat = 1_200
     @ViewBuilder let content: (Image) -> Content
     @ViewBuilder let placeholder: () -> Placeholder
 
@@ -37,7 +39,11 @@ struct CachedRemoteImage<
             loadedURL = nil
             return
         }
-        if let cached = ArtworkImageCache.shared.image(for: url) {
+        let pixelSize = max(maxPixelSize, 64)
+        if let cached = ArtworkImageCache.shared.image(
+            for: url,
+            maxPixelSize: pixelSize
+        ) {
             image = cached
             loadedURL = url
             return
@@ -51,7 +57,10 @@ struct CachedRemoteImage<
             }
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode),
-                  let loaded = UIImage(data: data) else {
+                  let loaded = await ArtworkImageCache.downsample(
+                    data,
+                    maxPixelSize: pixelSize
+                  ) else {
                 if loadedURL != url {
                     withAnimation(.easeOut(duration: 0.16)) {
                         image = nil
@@ -60,7 +69,11 @@ struct CachedRemoteImage<
                 }
                 return
             }
-            ArtworkImageCache.shared.insert(loaded, for: url)
+            ArtworkImageCache.shared.insert(
+                loaded,
+                for: url,
+                maxPixelSize: pixelSize
+            )
             image = loaded
             loadedURL = url
         } catch is CancellationError {
@@ -78,29 +91,71 @@ private final class ArtworkImageCache: @unchecked Sendable {
     static let shared = ArtworkImageCache()
 
     let session: URLSession
-    private let cache = NSCache<NSURL, UIImage>()
+    private let cache = NSCache<NSString, UIImage>()
 
     private init() {
         cache.countLimit = 180
         cache.totalCostLimit = 96 * 1_024 * 1_024
 
-        let configuration = URLSessionConfiguration.ephemeral
+        let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 20
         configuration.requestCachePolicy = .returnCacheDataElseLoad
         configuration.urlCache = URLCache(
             memoryCapacity: 48 * 1_024 * 1_024,
-            diskCapacity: 0,
-            diskPath: nil
+            diskCapacity: 192 * 1_024 * 1_024,
+            diskPath: "PrivateMusic.Artwork"
         )
         session = URLSession(configuration: configuration)
     }
 
-    func image(for url: URL) -> UIImage? {
-        cache.object(forKey: url as NSURL)
+    func image(for url: URL, maxPixelSize: CGFloat) -> UIImage? {
+        cache.object(forKey: key(for: url, maxPixelSize: maxPixelSize))
     }
 
-    func insert(_ image: UIImage, for url: URL) {
-        let cost = Int(image.size.width * image.size.height * 4)
-        cache.setObject(image, forKey: url as NSURL, cost: cost)
+    func insert(
+        _ image: UIImage,
+        for url: URL,
+        maxPixelSize: CGFloat
+    ) {
+        let width = image.cgImage?.width ?? Int(image.size.width * image.scale)
+        let height = image.cgImage?.height ?? Int(image.size.height * image.scale)
+        cache.setObject(
+            image,
+            forKey: key(for: url, maxPixelSize: maxPixelSize),
+            cost: width * height * 4
+        )
+    }
+
+    static func downsample(
+        _ data: Data,
+        maxPixelSize: CGFloat
+    ) async -> UIImage? {
+        await Task.detached(priority: .utility) {
+            guard let source = CGImageSourceCreateWithData(
+                data as CFData,
+                nil
+            ) else {
+                return nil
+            }
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceThumbnailMaxPixelSize: Int(maxPixelSize.rounded(.up))
+            ]
+            guard let image = CGImageSourceCreateThumbnailAtIndex(
+                source,
+                0,
+                options as CFDictionary
+            ) else {
+                return nil
+            }
+            return UIImage(cgImage: image)
+        }.value
+    }
+
+    private func key(for url: URL, maxPixelSize: CGFloat) -> NSString {
+        let bucket = Int((maxPixelSize / 128).rounded(.up)) * 128
+        return "\(url.absoluteString)#\(bucket)" as NSString
     }
 }

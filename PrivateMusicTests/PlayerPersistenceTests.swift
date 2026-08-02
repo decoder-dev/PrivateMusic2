@@ -3,6 +3,14 @@ import XCTest
 
 @MainActor
 final class PlayerPersistenceTests: XCTestCase {
+    func testMinimumVolumePauseIsOptIn() {
+        let suite = "PlayerPersistenceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertFalse(AppSettings(defaults: defaults).pauseAtMinimumVolume)
+    }
+
     func testPlaybackErrorPolicyPersistsAcrossSettingsInstances() {
         let suite = "PlayerPersistenceTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

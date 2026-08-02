@@ -182,6 +182,13 @@ final class OfflineTrackStore: ObservableObject {
 
     func configure(accountID: Int?) {
         guard activeAccountID != accountID else { return }
+        // Persist the snapshot while `accountDirectory` still points at the
+        // old account. A delayed save resolves its destination lazily, so
+        // switching first could otherwise lose a recent removal/promotion.
+        if activeAccountID != nil, hasPendingSave {
+            try? saveManifestSync()
+            hasPendingSave = false
+        }
         activeAccountID = accountID
         downloadingTrackIDs.removeAll()
         records = loadManifest()
@@ -317,6 +324,18 @@ final class OfflineTrackStore: ObservableObject {
                 userAgent: userAgent,
                 retention: retention
             )
+        }
+        // A manual request may have joined an automatic-cache request already
+        // running in DownloadCoordinator. In that case the shared operation
+        // stores the automatic retention, so honor the stronger caller intent
+        // after the shared task completes.
+        if retention == .manual,
+           activeAccountID == accountID,
+           var record = records[track.id],
+           record.resolvedRetention == .automaticCache {
+            record.retention = .manual
+            records[track.id] = record
+            requestSave()
         }
     }
 

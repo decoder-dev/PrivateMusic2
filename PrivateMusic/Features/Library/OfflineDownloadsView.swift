@@ -44,7 +44,8 @@ struct OfflineDownloadsView: View {
                     systemImage: "arrow.down.circle",
                     description:
                         "Скачайте треки самостоятельно — они останутся "
-                            + "навсегда, или включите автокэш в Настройках, "
+                            + "на устройстве, пока вы их не удалите. "
+                            + "Или включите автокэш в Настройках, "
                             + "и прослушанное будет сохраняться само."
                 )
                 .padding()
@@ -1015,31 +1016,33 @@ private struct DownloadStorageSummary: View {
             formatBytes: Self.formattedBytes
         )
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(L10n.text("Загрузки на устройстве"))
-                    .font(.headline)
-                Spacer()
-                Text(lines.subtitle)
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(.secondary)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline) {
+                    storageTitle
+                    Spacer(minLength: 12)
+                    storageSubtitle(lines.subtitle)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    storageTitle
+                    storageSubtitle(lines.subtitle)
+                }
             }
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(Color.secondary.opacity(0.2))
-                    Capsule()
-                        .fill(
-                            usage.usageRatio > 0.9
-                                ? Color.red
-                                : Color.accentColor
-                        )
-                        .frame(
-                            width: max(
-                                proxy.size.width * usage.usageRatio,
-                                6
+                    if clampedUsageRatio > 0 {
+                        Capsule()
+                            .fill(
+                                clampedUsageRatio > 0.9
+                                    ? Color.red
+                                    : Color.accentColor
                             )
-                        )
+                            .frame(
+                                width: proxy.size.width * clampedUsageRatio
+                            )
+                    }
                 }
             }
             .frame(height: 6)
@@ -1088,6 +1091,21 @@ private struct DownloadStorageSummary: View {
 
     private static func formattedBytes(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    private var clampedUsageRatio: CGFloat {
+        CGFloat(min(max(usage.usageRatio, 0), 1))
+    }
+
+    private var storageTitle: some View {
+        Text(L10n.text("Загрузки на устройстве"))
+            .font(.headline)
+    }
+
+    private func storageSubtitle(_ value: String) -> some View {
+        Text(value)
+            .font(.subheadline.monospacedDigit())
+            .foregroundStyle(.secondary)
     }
 }
 

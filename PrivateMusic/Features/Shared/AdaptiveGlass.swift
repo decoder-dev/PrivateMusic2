@@ -21,15 +21,25 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content
-                .clipShape(shape)
-                .glassEffect(
-                    .regular
-                        .tint(tint ?? .primary.opacity(0.06))
-                        .interactive(interactive),
-                    in: shape
-                )
-                .contentShape(shape)
+            if let tint {
+                content
+                    .clipShape(shape)
+                    .glassEffect(
+                        .regular
+                            .tint(tint)
+                            .interactive(interactive),
+                        in: shape
+                    )
+                    .contentShape(shape)
+            } else {
+                content
+                    .clipShape(shape)
+                    .glassEffect(
+                        .regular.interactive(interactive),
+                        in: shape
+                    )
+                    .contentShape(shape)
+            }
         } else {
             content
                 .clipShape(shape)
