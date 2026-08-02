@@ -38,8 +38,8 @@ actor HLSSegmentExporter {
             self.session = session
         } else {
             let configuration = URLSessionConfiguration.ephemeral
-            configuration.timeoutIntervalForRequest = 60
-            configuration.timeoutIntervalForResource = 300
+            configuration.timeoutIntervalForRequest = 120
+            configuration.timeoutIntervalForResource = 600
             self.session = URLSession(configuration: configuration)
         }
         self.fileManager = fileManager
@@ -214,9 +214,33 @@ actor HLSSegmentExporter {
 
         try Task.checkCancellation()
         await progress?(.convertingToM4A)
+
+        // Stitched MPEG-TS with discontinuities often fails AVAssetReader with
+        // AVError.fileFailedToParse (-11828 / HLS-SOURCE-11828). Demux to a
+        // raw ADTS/MP3 elementary stream first — that opens reliably.
+        //
+        // Important: never `Data(contentsOf:)` the full stitch into a heap
+        // buffer here — stitches can be up to `maximumStitchedSize` and that
+        // allocation jetsams the app during Share on device.
+        let transcodeURL: URL
+        if container == .mpegTransportStream,
+           let demuxed = try? MPEGTSAudioExtractor.extractAudioFile(
+            from: sourceURL,
+            toDirectory: stagingDirectory
+           ) {
+            let elementarySize = (try? demuxed.url
+                .resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            logger.info(
+                "HLS export: demuxed MPEG-TS to \(demuxed.kind.fileExtension, privacy: .public), \(elementarySize) bytes"
+            )
+            transcodeURL = demuxed.url
+        } else {
+            transcodeURL = sourceURL
+        }
+
         do {
             try await transcodeToM4A(
-                source: AVURLAsset(url: sourceURL),
+                source: AVURLAsset(url: transcodeURL),
                 destination: destination
             )
             try enforceSizeLimit(destination, limit: fileSizeLimit)
@@ -1234,7 +1258,7 @@ actor HLSSegmentExporter {
         for attempt in 0...retries {
             try Task.checkCancellation()
             var request = URLRequest(url: url)
-            request.timeoutInterval = 60
+            request.timeoutInterval = 120
             for (field, value) in headers {
                 request.setValue(value, forHTTPHeaderField: field)
             }
@@ -1549,6 +1573,60 @@ actor HLSSegmentExporter {
         }
     }
 
+    /// Reads sample rate / channel count via the typed async property so we
+    /// never force-cast opaque `formatDescriptions` boxes.
+    private static func audioStreamBasicDescription(
+        from track: AVAssetTrack
+    ) async -> AudioStreamBasicDescription? {
+        let descriptions: [CMFormatDescription]
+        do {
+            descriptions = try await track.load(.formatDescriptions)
+        } catch {
+            return nil
+        }
+        for formatDescription in descriptions {
+            guard let pointer = CMAudioFormatDescriptionGetStreamBasicDescription(
+                formatDescription
+            ) else {
+                continue
+            }
+            return pointer.pointee
+        }
+        return nil
+    }
+
+    /// Loads audio tracks with one retry. Media-services contention (active
+    /// playback) and freshly written files sometimes fail the first
+    /// `loadTracks` with `AVError.fileFailedToParse` (-11828).
+    private func loadAudioTracks(
+        from source: AVURLAsset
+    ) async throws -> [AVAssetTrack] {
+        var lastError: Error?
+        for attempt in 0..<2 {
+            try Task.checkCancellation()
+            do {
+                _ = try await source.load(.isPlayable, .duration)
+                let tracks = try await source.loadTracks(withMediaType: .audio)
+                if !tracks.isEmpty {
+                    return tracks
+                }
+                // Empty tracks are not a parse failure — let the caller map
+                // that to `noAudioTrack` without inventing a SOURCE code.
+                return []
+            } catch {
+                lastError = error
+                logger.error(
+                    "stage=openingLinearSource attempt=\(attempt) error=\(String(describing: error), privacy: .public)"
+                )
+            }
+            if attempt == 0 {
+                try await Task.sleep(for: .milliseconds(250))
+            }
+        }
+        if let lastError { throw lastError }
+        return []
+    }
+
     // MARK: - Transcode (any AVFoundation asset) → AAC M4A
 
     /// Universal path: decode the source to linear PCM with AVAssetReader
@@ -1565,7 +1643,9 @@ actor HLSSegmentExporter {
     ) async throws {
         let tracks: [AVAssetTrack]
         do {
-            tracks = try await source.loadTracks(withMediaType: .audio)
+            tracks = try await loadAudioTracks(from: source)
+        } catch let error as HLSDiagnosticError {
+            throw error
         } catch let error as NSError {
             logger.error(
                 "stage=openingLinearSource domain=\(error.domain, privacy: .public) code=\(error.code)"
@@ -1583,12 +1663,7 @@ actor HLSSegmentExporter {
             throw HLSExportError.noAudioTrack
         }
 
-        let asbd = track.formatDescriptions.first
-            .map { unsafeDowncast(
-                $0 as AnyObject,
-                to: CMAudioFormatDescription.self
-            ) }
-            .flatMap { $0.audioStreamBasicDescription }
+        let asbd = await Self.audioStreamBasicDescription(from: track)
         let sampleRate = asbd?.mSampleRate ?? 44100
         let sourceChannels = UInt32(asbd?.mChannelsPerFrame ?? 2)
         let channels: UInt32 = min(2, max(1, sourceChannels))
@@ -1881,6 +1956,12 @@ struct HLSDiagnosticError: LocalizedError, Sendable {
              .creatingReader,
              .startingReader,
              .validatingOutput:
+            if publicCode == "HLS-SOURCE-11828" {
+                return L10n.text(
+                    "Не удалось разобрать собранный аудиопоток. "
+                        + "Попробуйте ещё раз или выберите другой трек."
+                )
+            }
             return L10n.text("Не удалось открыть собранный аудиопоток.")
         default:
             return L10n.text("Не удалось создать аудиофайл из этого потока.")

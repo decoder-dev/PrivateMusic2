@@ -81,8 +81,10 @@ struct PlaylistDetailView: View {
         .navigationTitle(playlist.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                offlineButton
+            if OfflineDownloadsFeature.showsControls {
+                ToolbarItem(placement: .topBarTrailing) {
+                    offlineButton
+                }
             }
         }
         .task { await load() }
@@ -115,7 +117,8 @@ struct PlaylistDetailView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if let record = offlinePlaylists.record(for: playlist) {
+            if OfflineDownloadsFeature.showsControls,
+               let record = offlinePlaylists.record(for: playlist) {
                 let status = OfflinePlaylistStatus.status(for: record)
                 if status.isActive {
                     VStack(alignment: .trailing, spacing: 3) {

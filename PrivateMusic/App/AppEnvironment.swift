@@ -15,11 +15,15 @@ final class AppEnvironment: ObservableObject {
     let musicService: any MusicService
     let webAuthService: VKWebAuthService
     @Published private(set) var isRecoveringSession = false
+    /// While a share export is active, offline downloads and automatic
+    /// caching are paused and hidden so the share transfer gets bandwidth.
+    @Published private(set) var isShareSessionActive = false
     private struct SessionRecovery {
         let id: UUID
         let task: Task<String, Error>
     }
     private var sessionRecovery: SessionRecovery?
+    private var shareSessionDepth = 0
     private var cancellables = Set<AnyCancellable>()
     private var automaticCacheTask: Task<Void, Never>?
     private var pendingAutomaticCacheTrack: Track?
@@ -95,6 +99,7 @@ final class AppEnvironment: ObservableObject {
             }
         )
         player.configurePlaybackReady { [weak self] track, isOffline in
+            guard OfflineDownloadsFeature.isEnabled else { return }
             guard !isOffline else { return }
             self?.scheduleAutomaticCache(for: track)
             self?.schedulePredictivePreDownload()
@@ -116,12 +121,59 @@ final class AppEnvironment: ObservableObject {
         Task {
             await trackShareService.removeStaleExports()
         }
+
+        if !OfflineDownloadsFeature.isEnabled {
+            // Vacation-stable build: stop any leftover offline jobs so share
+            // and playback are not competing with download workers.
+            DownloadCoordinator.shared.cancelAll()
+            OfflinePlaylistStore.shared.cancelAllDownloads()
+            DownloadCoordinator.shared.unblockQueue()
+            pendingAutomaticCacheTrack = nil
+            automaticCacheTask?.cancel()
+            automaticCacheTask = nil
+            predictivePreDownloadTask?.cancel()
+            predictivePreDownloadTask = nil
+        }
     }
 
     func configureOfflineAccount() {
         let accountID = sessionStore.resolvedOfflineAccountID
         offlineStore.configure(accountID: accountID)
         OfflinePlaylistStore.shared.configure(accountID: accountID)
+    }
+
+    private var resumePlaybackAfterShare = false
+
+    /// Begins a share-export session: pauses offline downloads / auto-cache
+    /// and hides those controls until `endShareSession()` balances it out.
+    func beginShareSession() {
+        shareSessionDepth += 1
+        guard shareSessionDepth == 1 else { return }
+        isShareSessionActive = true
+        pendingAutomaticCacheTrack = nil
+        automaticCacheTask?.cancel()
+        automaticCacheTask = nil
+        predictivePreDownloadTask?.cancel()
+        predictivePreDownloadTask = nil
+        DownloadCoordinator.shared.cancelAll()
+        // Free media services for HLS demux / AVAssetReader. Without this,
+        // stitched MPEG-TS often fails with HLS-SOURCE-11828.
+        resumePlaybackAfterShare = player.isPlaying
+        if resumePlaybackAfterShare {
+            player.pauseForShareExport()
+        }
+    }
+
+    func endShareSession() {
+        guard shareSessionDepth > 0 else { return }
+        shareSessionDepth -= 1
+        guard shareSessionDepth == 0 else { return }
+        isShareSessionActive = false
+        DownloadCoordinator.shared.unblockQueue()
+        if resumePlaybackAfterShare {
+            resumePlaybackAfterShare = false
+            player.resume()
+        }
     }
 
     /// Prepares a shareable audio file, preferring the already-downloaded
@@ -168,6 +220,14 @@ final class AppEnvironment: ObservableObject {
         _ track: Track,
         retention: OfflineTrackRetention = .manual
     ) async throws {
+        guard OfflineDownloadsFeature.isEnabled else {
+            throw APIError.server(
+                code: 503,
+                message: L10n.text(
+                    "Офлайн-загрузки временно отключены. Используйте «Поделиться»."
+                )
+            )
+        }
         let refreshed = try await withAuthorizedToken { token in
             try await musicService.refreshedTrack(
                 track,
@@ -182,7 +242,9 @@ final class AppEnvironment: ObservableObject {
     }
 
     private func scheduleAutomaticCache(for track: Track) {
-        guard settings.automaticOfflineCacheEnabled,
+        guard OfflineDownloadsFeature.isEnabled,
+              !isShareSessionActive,
+              settings.automaticOfflineCacheEnabled,
               networkMonitor.state == .online,
               networkMonitor.transport == .wifi
                 || networkMonitor.transport == .wired,
@@ -204,7 +266,8 @@ final class AppEnvironment: ObservableObject {
             while !Task.isCancelled,
                   let next = pendingAutomaticCacheTrack {
                 pendingAutomaticCacheTrack = nil
-                guard settings.automaticOfflineCacheEnabled,
+                guard !isShareSessionActive,
+                      settings.automaticOfflineCacheEnabled,
                       networkMonitor.state == .online,
                       networkMonitor.transport == .wifi
                         || networkMonitor.transport == .wired,
@@ -230,7 +293,9 @@ final class AppEnvironment: ObservableObject {
     private var predictivePreDownloadTask: Task<Void, Never>?
 
     private func schedulePredictivePreDownload() {
-        guard settings.automaticOfflineCacheEnabled,
+        guard OfflineDownloadsFeature.isEnabled,
+              !isShareSessionActive,
+              settings.automaticOfflineCacheEnabled,
               networkMonitor.state == .online,
               (networkMonitor.transport == .wifi
                 || networkMonitor.transport == .wired),

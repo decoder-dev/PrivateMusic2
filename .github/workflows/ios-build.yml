@@ -9,13 +9,70 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  test:
+    name: Unit tests (Xcode 26.5)
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
 
       - name: Select Xcode 26.5
         run: sudo xcode-select -s /Applications/Xcode_26.5.app
+
+      - name: Validate source package
+        run: |
+          python3 scripts/validate_project.py
+          python3 scripts/validate_localizations.py
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Run unit tests
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project PrivateMusic.xcodeproj \
+            -scheme PrivateMusic \
+            -sdk iphonesimulator \
+            -destination \
+              "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5" \
+            -destination-timeout 120 \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO \
+            test 2>&1 | tee test.log
+
+      - name: Report compiler errors
+        if: failure()
+        run: |
+          grep -E '(^| )error:' test.log \
+            | tail -30 \
+            | while IFS= read -r line; do
+                safe="${line//'%'/'%25'}"
+                safe="${safe//$'\r'/'%0D'}"
+                safe="${safe//$'\n'/'%0A'}"
+                echo "::error title=Xcode compiler::$safe"
+              done
+
+  build:
+    name: Build IPA (Xcode 27)
+    needs: test
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode 27
+        run: |
+          if [ -d /Applications/Xcode_27.0.app ]; then
+            sudo xcode-select -s /Applications/Xcode_27.0.app
+          else
+            sudo xcode-select -s /Applications/Xcode.app
+          fi
+          xcodebuild -version
+
+      - name: Prepare Metal toolchain
+        run: sudo xcodebuild -downloadComponent MetalToolchain || true
 
       - name: Validate source package
         run: |
@@ -39,24 +96,10 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build 2>&1 | tee simulator-build.log
 
-      - name: Run unit tests
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -project PrivateMusic.xcodeproj \
-            -scheme PrivateMusic \
-            -sdk iphonesimulator \
-            -destination \
-              "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5" \
-            -destination-timeout 120 \
-            -parallel-testing-enabled NO \
-            CODE_SIGNING_ALLOWED=NO \
-            test 2>&1 | tee test.log
-
       - name: Report compiler errors
         if: failure()
         run: |
-          grep -E '(^| )error:' simulator-build.log test.log \
+          grep -E '(^| )error:' simulator-build.log \
             | tail -30 \
             | while IFS= read -r line; do
                 safe="${line//'%'/'%25'}"
@@ -87,34 +130,46 @@ jobs:
           test -n "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.24.3-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.25.5-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            "$PWD/artifacts/PrivateMusic-3.24.3-unsigned.ipa" \
-            --title "Private Music 3.24.3" \
-            --notes-file - <<'EOF'
-          Private Music 3.24.3
+          NOTES="$(mktemp)"
+          cat > "$NOTES" <<'EOF'
+          Private Music 3.25.5
 
-          - Добавлена корректная реакция на Automatic Ear Detection AirPods:
-            системные команды гарнитуры ставят музыку на паузу и продолжают её.
-          - Отключение проводных или Bluetooth-наушников больше не может
-            случайно возобновить воспроизведение через динамик телефона.
-          - Для iOS 17+ включена системная политика прерывания при потере
-            аудиомаршрута; на iOS 16 работает совместимый обработчик.
+          - Удалена вся ручная презентация UIActivityViewController:
+            готовый файл открывается штатным SwiftUI ShareLink только
+            после явного нажатия пользователя.
+          - MPEG-TS demux теперь полностью потоковый (файл → файл);
+            полный исходный или выходной аудиобуфер не хранится в RAM.
+          - Офлайн-загрузки по-прежнему временно скрыты.
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом.
           EOF
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              "$PWD/artifacts/PrivateMusic-3.25.5-unsigned.ipa" \
+              --clobber
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "Private Music 3.25.5" \
+              --notes-file "$NOTES"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              "$PWD/artifacts/PrivateMusic-3.25.5-unsigned.ipa" \
+              --title "Private Music 3.25.5" \
+              --notes-file "$NOTES"
+          fi
 
       - name: Upload unsigned IPA
+        if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.24.3-unsigned
-          path: artifacts/PrivateMusic-3.24.3-unsigned.ipa
+          name: PrivateMusic-3.25.5-unsigned
+          path: artifacts/PrivateMusic-3.25.5-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
