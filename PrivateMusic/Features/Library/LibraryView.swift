@@ -269,6 +269,9 @@ struct LibraryView: View {
                         .lineLimit(1)
                 }
                 Spacer()
+                Text(track.duration.formattedDuration)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
                 if isCurrent(track) {
                     Image(
                         systemName: player.isPlaying
