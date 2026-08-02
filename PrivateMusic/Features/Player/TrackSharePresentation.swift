@@ -123,6 +123,19 @@ final class TrackShareViewModel: ObservableObject {
         state = .idle
     }
 
+    /// Transfers ownership of the prepared file out of the view model so the
+    /// preparing sheet can dismiss without deleting it. The caller must
+    /// remove the payload after the system share sheet finishes.
+    func takePayloadForSystemShare() -> TrackSharePayload? {
+        let value = payload
+        payload = nil
+        generation = UUID()
+        task?.cancel()
+        task = nil
+        state = .idle
+        return value
+    }
+
     func activityFinished(
         environment: any TrackSharePreparing
     ) {
@@ -202,17 +215,19 @@ struct TrackShareFlowView: View {
     @Environment(\.dismiss) private var dismiss
 
     let track: Track
+    /// Clears the parent `.sheet(item:)` binding after a successful hand-off.
+    var onHandedOff: (() -> Void)? = nil
+
     @StateObject private var model = TrackShareViewModel()
+    @State private var didHandOffToSystemShare = false
 
     var body: some View {
         Group {
             switch model.state {
-            case let .ready(payload):
-                // Keep a normal SwiftUI sheet host and present
-                // UIActivityViewController from it. Embedding the activity
-                // controller as the sheet root crashes on some iOS versions
-                // (missing popover source / nested presentation).
-                readyScreen(payload: payload)
+            case .ready:
+                // Brief placeholder while we dismiss this sheet and present
+                // UIActivityViewController from the UIKit root.
+                statusScreen(progress: .convertingToM4A)
                     .interactiveDismissDisabled()
 
             case let .preparing(progress):
@@ -232,10 +247,34 @@ struct TrackShareFlowView: View {
         .task(id: track.id) {
             model.start(track: track, environment: environment)
         }
+        .onChange(of: model.state) { newState in
+            guard case .ready = newState else { return }
+            handOffToSystemShare()
+        }
         .onDisappear {
-            model.cancel(environment: environment)
+            if !didHandOffToSystemShare {
+                model.cancel(environment: environment)
+            }
             environment.endShareSession()
         }
+    }
+
+    private func handOffToSystemShare() {
+        guard !didHandOffToSystemShare else { return }
+        guard let payload = model.takePayloadForSystemShare() else { return }
+        didHandOffToSystemShare = true
+
+        SystemSharePresenter.dismissPresentedThenShare(
+            fileURL: payload.fileURL,
+            onPreparationDismissed: {
+                onHandedOff?()
+            },
+            completion: { _ in
+                Task {
+                    await environment.removeSharePayload(payload)
+                }
+            }
+        )
     }
 
     private func statusScreen(
@@ -304,51 +343,6 @@ struct TrackShareFlowView: View {
         .presentationDetents([.medium, .large])
     }
 
-    private func readyScreen(payload: TrackSharePayload) -> some View {
-        NavigationStack {
-            VStack(spacing: 22) {
-                AsyncArtwork(url: track.artworkURL, size: 112)
-
-                VStack(spacing: 5) {
-                    Text(track.title)
-                        .font(.headline)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                    Text(track.artist)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                ProgressView()
-                    .controlSize(.large)
-
-                Text(L10n.text("Открываем меню «Поделиться»…"))
-                    .font(.subheadline.weight(.semibold))
-                    .multilineTextAlignment(.center)
-
-                Button(role: .cancel) {
-                    model.cancel(environment: environment)
-                    dismiss()
-                } label: {
-                    Text(L10n.text("Отменить"))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding(24)
-            .navigationTitle(L10n.text("Поделиться файлом"))
-            .navigationBarTitleDisplayMode(.inline)
-            .background {
-                ActivityViewController(activityItems: [payload.fileURL]) { _ in
-                    model.activityFinished(environment: environment)
-                    dismiss()
-                }
-            }
-        }
-        .presentationDetents([.medium])
-    }
-
     private func failureScreen(failure: TrackShareFailure) -> some View {
         NavigationStack {
             VStack(spacing: 16) {
@@ -397,93 +391,144 @@ struct TrackShareFlowView: View {
     }
 }
 
-// MARK: - System share sheet
+// MARK: - UIKit system share
 
-/// Host that presents `UIActivityViewController` once. Using the activity
-/// controller itself as a `UIViewControllerRepresentable` root inside a
-/// SwiftUI `.sheet` is undefined on iPad (popover source) and has crashed
-/// when SwiftUI swaps preparing → ready content.
-struct ActivityViewController: UIViewControllerRepresentable {
-    let activityItems: [Any]
-    let completion: @MainActor (Bool) -> Void
-
-    final class Coordinator: NSObject {
-        let completion: @MainActor (Bool) -> Void
-        var didPresent = false
-        var didFinish = false
-
-        init(completion: @escaping @MainActor (Bool) -> Void) {
-            self.completion = completion
+/// Presents `UIActivityViewController` from the real UIKit presenter after
+/// dismissing any preparation sheet. Embedding the activity controller inside
+/// a SwiftUI `.sheet` (as root or via `.background`) has crashed on device.
+enum SystemSharePresenter {
+    @MainActor
+    static func dismissPresentedThenShare(
+        fileURL: URL,
+        onPreparationDismissed: (() -> Void)? = nil,
+        completion: @escaping @MainActor (Bool) -> Void
+    ) {
+        guard let top = topViewController() else {
+            onPreparationDismissed?()
+            completion(false)
+            return
         }
 
-        func finish(_ completed: Bool) {
-            guard !didFinish else { return }
-            didFinish = true
+        if let presenter = top.presentingViewController {
+            presenter.dismiss(animated: true) {
+                onPreparationDismissed?()
+                presentActivity(
+                    from: presenter,
+                    fileURL: fileURL,
+                    completion: completion
+                )
+            }
+            return
+        }
+
+        // No UIKit presenter relationship (unusual SwiftUI hosting). Clear
+        // the sheet binding and wait for tear-down before presenting.
+        onPreparationDismissed?()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            let host = topViewController() ?? top
+            presentActivity(
+                from: host,
+                fileURL: fileURL,
+                completion: completion
+            )
+        }
+    }
+
+    @MainActor
+    private static func presentActivity(
+        from presenter: UIViewController,
+        fileURL: URL,
+        completion: @escaping @MainActor (Bool) -> Void
+    ) {
+        // If something is still presented (SwiftUI tear-down lag), wait one
+        // run-loop turn and try the current top-most controller instead.
+        if presenter.presentedViewController != nil {
+            DispatchQueue.main.async {
+                let host = topViewController() ?? presenter
+                if host.presentedViewController != nil {
+                    host.dismiss(animated: true) {
+                        presentActivityNow(
+                            from: host,
+                            fileURL: fileURL,
+                            completion: completion
+                        )
+                    }
+                } else {
+                    presentActivityNow(
+                        from: host,
+                        fileURL: fileURL,
+                        completion: completion
+                    )
+                }
+            }
+            return
+        }
+
+        presentActivityNow(
+            from: presenter,
+            fileURL: fileURL,
+            completion: completion
+        )
+    }
+
+    @MainActor
+    private static func presentActivityNow(
+        from presenter: UIViewController,
+        fileURL: URL,
+        completion: @escaping @MainActor (Bool) -> Void
+    ) {
+        let activity = UIActivityViewController(
+            activityItems: [fileURL],
+            applicationActivities: nil
+        )
+        activity.completionWithItemsHandler = { _, completed, _, _ in
             Task { @MainActor in
                 completion(completed)
             }
         }
-    }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(completion: completion)
-    }
-
-    func makeUIViewController(context: Context) -> UIViewController {
-        let host = UIViewController()
-        host.view.backgroundColor = .clear
-        host.view.isUserInteractionEnabled = false
-        return host
-    }
-
-    func updateUIViewController(
-        _ uiViewController: UIViewController,
-        context: Context
-    ) {
-        let coordinator = context.coordinator
-        guard !coordinator.didPresent,
-              uiViewController.presentedViewController == nil,
-              uiViewController.view.window != nil
-                || uiViewController.isViewLoaded else {
-            return
-        }
-
-        let present = { [activityItems] in
-            guard !coordinator.didPresent,
-                  uiViewController.presentedViewController == nil else {
-                return
-            }
-            coordinator.didPresent = true
-
-            let activity = UIActivityViewController(
-                activityItems: activityItems,
-                applicationActivities: nil
+        if let popover = activity.popoverPresentationController {
+            let view = presenter.view
+            popover.sourceView = view
+            popover.sourceRect = CGRect(
+                x: view.bounds.midX,
+                y: view.bounds.midY,
+                width: 1,
+                height: 1
             )
-            activity.completionWithItemsHandler = {
-                _, completed, _, _ in
-                coordinator.finish(completed)
-            }
-            if let popover = activity.popoverPresentationController {
-                let view = uiViewController.view!
-                popover.sourceView = view
-                popover.sourceRect = CGRect(
-                    x: view.bounds.midX,
-                    y: view.bounds.midY,
-                    width: 1,
-                    height: 1
-                )
-                popover.permittedArrowDirections = []
-            }
-            uiViewController.present(activity, animated: true)
+            popover.permittedArrowDirections = []
         }
 
-        if uiViewController.view.window != nil {
-            DispatchQueue.main.async(execute: present)
-        } else {
-            DispatchQueue.main.async {
-                DispatchQueue.main.async(execute: present)
+        presenter.present(activity, animated: true)
+    }
+
+    @MainActor
+    private static func topViewController() -> UIViewController? {
+        let windows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+        let window = windows.first(where: \.isKeyWindow) ?? windows.first
+        guard let root = window?.rootViewController else { return nil }
+
+        var top = root
+        while true {
+            if let presented = top.presentedViewController {
+                top = presented
+                continue
             }
+            if let nav = top as? UINavigationController,
+               let visible = nav.visibleViewController {
+                top = visible
+                continue
+            }
+            if let tab = top as? UITabBarController,
+               let selected = tab.selectedViewController {
+                top = selected
+                continue
+            }
+            break
         }
+        return top
     }
 }
 
@@ -494,7 +539,9 @@ private struct TrackShareSheetModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content.sheet(item: $track) { selectedTrack in
-            TrackShareFlowView(track: selectedTrack)
+            TrackShareFlowView(track: selectedTrack) {
+                track = nil
+            }
         }
     }
 }

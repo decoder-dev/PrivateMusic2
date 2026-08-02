@@ -1580,12 +1580,11 @@ actor HLSSegmentExporter {
     ) -> AudioStreamBasicDescription? {
         for item in track.formatDescriptions {
             // `formatDescriptions` is `[Any]` of CMFormatDescription values.
-            // Prefer CM APIs over `unsafeDowncast` to CMAudioFormatDescription,
-            // which traps when the box is unexpected.
-            let formatDescription = item as! CMFormatDescription
-            guard let pointer = CMAudioFormatDescriptionGetStreamBasicDescription(
-                formatDescription
-            ) else {
+            // Prefer CM APIs over force-casts that trap on unexpected boxes.
+            guard let formatDescription = item as? CMFormatDescription,
+                  let pointer = CMAudioFormatDescriptionGetStreamBasicDescription(
+                    formatDescription
+                  ) else {
                 continue
             }
             return pointer.pointee
