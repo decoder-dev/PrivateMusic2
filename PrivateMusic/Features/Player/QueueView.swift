@@ -38,9 +38,11 @@ struct QueueView: View {
                                             .lineLimit(1)
                                     }
                                     Spacer()
+                                    LikedTrackBadge(track: track)
                                     if index == player.currentIndex {
-                                        Image(systemName: "waveform")
-                                            .foregroundStyle(.tint)
+                                        PlaybackIndicatorView(
+                                            isPlaying: player.isPlaying
+                                        )
                                     }
                                 }
                             }

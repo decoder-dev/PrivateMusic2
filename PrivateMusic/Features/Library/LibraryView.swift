@@ -308,6 +308,7 @@ struct LibraryView: View {
                         .lineLimit(1)
                 }
                 Spacer()
+                LikedTrackBadge(track: track)
                 Text(track.duration.formattedDuration)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)

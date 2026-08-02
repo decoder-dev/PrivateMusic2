@@ -390,6 +390,10 @@ struct CatalogView: View {
                 url: track.artworkURL,
                 size: artworkSize
             )
+            .overlay(alignment: .topTrailing) {
+                LikedTrackBadge(track: track, style: .artwork)
+                    .padding(7)
+            }
             Text(track.title)
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(

@@ -52,6 +52,8 @@ struct TrackRow: View {
                     }
                 }
 
+                LikedTrackBadge(track: track)
+
                 Text(track.duration.formattedDuration)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)

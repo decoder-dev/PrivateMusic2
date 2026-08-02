@@ -166,6 +166,13 @@ struct MixView: View {
                                         url: track.artworkURL,
                                         size: 166
                                     )
+                                    .overlay(alignment: .topTrailing) {
+                                        LikedTrackBadge(
+                                            track: track,
+                                            style: .artwork
+                                        )
+                                        .padding(8)
+                                    }
                                     Group {
                                         if player.currentTrack?.id == track.id {
                                             PlaybackIndicatorView(
