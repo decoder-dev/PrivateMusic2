@@ -660,6 +660,11 @@ final class AudioPlayer: ObservableObject {
         routeDisconnectPending = false
         playbackIntended = true
         guard !isAudioInterrupted else { return }
+        guard appVolume > AudioRoutePolicy.minimumAudibleVolume else {
+            pausedForAppVolumeZero = true
+            pausePreservingIntent()
+            return
+        }
         if requiresStreamRefresh {
             refreshCurrentStream(autoplay: true)
             return
