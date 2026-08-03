@@ -510,6 +510,7 @@ struct LibraryView: View {
             accountID: sessionStore.resolvedOfflineAccountID
         )
         guard sessionStore.accessToken != nil else { return }
+        let refreshID = likedAlbumsStore.beginRefresh()
         do {
             var albums: [Album] = []
             var offset = 0
@@ -526,7 +527,7 @@ struct LibraryView: View {
                 offset = next
             }
             guard !Task.isCancelled else { return }
-            likedAlbumsStore.replace(with: albums)
+            likedAlbumsStore.replace(with: albums, refreshID: refreshID)
         } catch {
             return
         }
