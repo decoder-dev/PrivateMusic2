@@ -288,13 +288,18 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var queueSeedTrackTitle: String?
     @Published private(set) var isPlaying = false
     @Published private(set) var isBuffering = false
-    @Published private(set) var elapsedTime: TimeInterval = 0
+    /// Exact transport clock. Not `@Published` — UI observes `progress` so
+    /// catalog/library EnvironmentObject consumers are not invalidated at 2 Hz.
+    private(set) var elapsedTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var shuffleEnabled: Bool
     @Published private(set) var repeatMode: RepeatMode
     @Published private(set) var sleepTimerEndDate: Date?
     @Published var isPlayerPresented = false
     @Published var errorMessage: String?
+
+    /// Scrubber / mini-player / lyrics clock (see `PlaybackProgressModel`).
+    let progress = PlaybackProgressModel()
 
     private var player = AVPlayer()
     private let nowPlaying = NowPlayingController()
@@ -347,6 +352,9 @@ final class AudioPlayer: ObservableObject {
     private var routeDisconnectPending = false
     private var outputsAtInterruptionBegan: [AVAudioSession.Port] = []
     private var interruptionResumeTask: Task<Void, Never>?
+    private var pendingRemoteCommand: RemoteCommandCoalescing.Command?
+    private var remoteCommandFlushTask: Task<Void, Never>?
+    private var lastPersistedQueueSignature = ""
     private var preloadedPlayback: PreloadedPlayback?
     private var preloadAssetTask: Task<Void, Never>?
     private var preloadGeneration = 0
@@ -721,6 +729,8 @@ final class AudioPlayer: ObservableObject {
             pausedForAppVolumeZero = false
         }
         playbackIntended = true
+        interruptionResumeTask?.cancel()
+        interruptionResumeTask = nil
         // While another app still owns the session, keep transfer intent so a
         // later interruption-end / route settle can resume. Clearing the flags
         // here used to drop CarKit / BT reconnect resumes permanently.
@@ -828,7 +838,7 @@ final class AudioPlayer: ObservableObject {
             preferredTimescale: 600
         )
         player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
-        elapsedTime = targetSeconds
+        updateElapsedTime(targetSeconds, forceProgressPublish: true)
         persistPlayback()
         publishPlaybackState(force: true)
     }
@@ -861,7 +871,7 @@ final class AudioPlayer: ObservableObject {
         listenedTrackID = nil
         listenedPlaybackDuration = 0
         lastListeningElapsedTime = nil
-        elapsedTime = 0
+        updateElapsedTime(0, forceProgressPublish: true)
         duration = 0
         isPlaying = false
         isBuffering = false
@@ -870,7 +880,9 @@ final class AudioPlayer: ObservableObject {
         restoredTrackIDs.removeAll()
         nowPlaying.clear()
         lastNowPlayingSecond = -1
+        lastPersistedQueueSignature = ""
         defaults.removeObject(forKey: PlaybackSnapshot.key)
+        defaults.removeObject(forKey: PlaybackSnapshot.elapsedKey)
         try? AVAudioSession.sharedInstance().setActive(
             false,
             options: .notifyOthersOnDeactivation
@@ -911,7 +923,7 @@ final class AudioPlayer: ObservableObject {
                 }
             }
             loadedTrackID = track.id
-            elapsedTime = 0
+            updateElapsedTime(0, forceProgressPublish: true)
             duration = track.duration
             errorMessage = L10n.text(
                 "Для этого трека отсутствует доступный аудиопоток."
@@ -967,7 +979,7 @@ final class AudioPlayer: ObservableObject {
         player.replaceCurrentItem(with: item)
         loadedTrackID = track.id
         loadedOfflineTrackID = isOffline ? track.id : nil
-        elapsedTime = position
+        updateElapsedTime(position, forceProgressPublish: true)
         duration = track.duration
         let shouldAutoplay = autoplay && activateAudioSession()
         if shouldAutoplay {
@@ -1295,23 +1307,23 @@ final class AudioPlayer: ObservableObject {
 
         remoteCommandTokens = [
             center.playCommand.addTarget { [weak self] _ in
-                Task { @MainActor in self?.resume() }
+                self?.enqueueRemoteCommand(.play)
                 return .success
             },
             center.pauseCommand.addTarget { [weak self] _ in
-                Task { @MainActor in self?.pause() }
+                self?.enqueueRemoteCommand(.pause)
                 return .success
             },
             center.togglePlayPauseCommand.addTarget { [weak self] _ in
-                Task { @MainActor in self?.playPause() }
+                self?.enqueueRemoteCommand(.toggle)
                 return .success
             },
             center.nextTrackCommand.addTarget { [weak self] _ in
-                Task { @MainActor in self?.next() }
+                self?.enqueueRemoteCommand(.next)
                 return .success
             },
             center.previousTrackCommand.addTarget { [weak self] _ in
-                Task { @MainActor in self?.previous() }
+                self?.enqueueRemoteCommand(.previous)
                 return .success
             },
             center.changePlaybackPositionCommand.addTarget { [weak self] event in
@@ -1319,10 +1331,54 @@ final class AudioPlayer: ObservableObject {
                 else {
                     return .commandFailed
                 }
-                Task { @MainActor in self?.seek(to: event.positionTime) }
+                self?.enqueueRemoteCommand(.seek(event.positionTime))
                 return .success
             }
         ]
+    }
+
+    /// Headphone / CarKit remotes often deliver pause+toggle in one burst.
+    /// Coalesce on the main actor so the second command cannot undo the first.
+    nonisolated private func enqueueRemoteCommand(
+        _ command: RemoteCommandCoalescing.Command
+    ) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            pendingRemoteCommand = RemoteCommandCoalescing.merge(
+                pending: pendingRemoteCommand,
+                incoming: command
+            )
+            remoteCommandFlushTask?.cancel()
+            remoteCommandFlushTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 40_000_000)
+                guard let self,
+                      !Task.isCancelled,
+                      let command = pendingRemoteCommand else {
+                    return
+                }
+                pendingRemoteCommand = nil
+                applyRemoteCommand(command)
+            }
+        }
+    }
+
+    private func applyRemoteCommand(
+        _ command: RemoteCommandCoalescing.Command
+    ) {
+        switch command {
+        case .play:
+            resume()
+        case .pause:
+            pause()
+        case .toggle:
+            playPause()
+        case .next:
+            next()
+        case .previous:
+            previous()
+        case let .seek(time):
+            seek(to: time)
+        }
     }
 
     private func configurePlayerInstance() {
@@ -1416,9 +1472,9 @@ final class AudioPlayer: ObservableObject {
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
         ) { [weak self] time in
-            Task { @MainActor in
-                guard let self,
-                      self.player === observedPlayer,
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                guard self.player === observedPlayer,
                       self.loadedTrackID == self.currentTrack?.id,
                       self.player.currentItem != nil else {
                     return
@@ -1427,12 +1483,10 @@ final class AudioPlayer: ObservableObject {
                     0,
                     time.seconds.isFinite ? time.seconds : 0
                 )
-                if abs(self.elapsedTime - newElapsed) >= 0.01 {
-                    self.elapsedTime = newElapsed
-                }
+                self.updateElapsedTime(newElapsed)
                 if let seconds = self.player.currentItem?.duration.seconds,
                    seconds.isFinite,
-                   abs(self.duration - seconds) >= 0.05 {
+                   abs(self.duration - seconds) >= 0.25 {
                     self.duration = seconds
                 }
                 self.sampleListeningProgress()
@@ -1444,8 +1498,6 @@ final class AudioPlayer: ObservableObject {
                 }
                 self.publishPlaybackState()
                 let wholeSecond = Int(self.elapsedTime)
-                // Persist less often — encoding the full queue every 5s was a
-                // steady background heater on long listening sessions.
                 if wholeSecond > 0,
                    wholeSecond % 15 == 0,
                    wholeSecond != self.lastPersistedSecond {
@@ -2032,8 +2084,28 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    private func persistPlayback() {
+    private func updateElapsedTime(
+        _ value: TimeInterval,
+        forceProgressPublish: Bool = false
+    ) {
+        let sanitized = max(value, 0)
+        elapsedTime = sanitized
+        if forceProgressPublish {
+            progress.reset(to: sanitized)
+        } else {
+            progress.update(sanitized)
+        }
+    }
+
+    private func persistPlayback(forceFullSnapshot: Bool = false) {
         guard !queue.isEmpty, let currentIndex else { return }
+        defaults.set(elapsedTime, forKey: PlaybackSnapshot.elapsedKey)
+        let signature = queue.map(\.id).joined(separator: "|")
+            + "#\(currentIndex)"
+        guard forceFullSnapshot || signature != lastPersistedQueueSignature
+        else {
+            return
+        }
         let snapshot = PlaybackSnapshot(
             queue: queue,
             currentIndex: currentIndex,
@@ -2041,12 +2113,13 @@ final class AudioPlayer: ObservableObject {
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         defaults.set(data, forKey: PlaybackSnapshot.key)
+        lastPersistedQueueSignature = signature
     }
 
     private func resetProgressForTrackTransition() {
         loadedTrackID = nil
         loadedOfflineTrackID = nil
-        elapsedTime = 0
+        updateElapsedTime(0, forceProgressPublish: true)
         duration = currentTrack?.duration ?? 0
         lastPersistedSecond = -1
         lastNowPlayingSecond = -1
@@ -2099,10 +2172,16 @@ final class AudioPlayer: ObservableObject {
         currentIndex = snapshot.currentIndex
         loadedTrackID = nil
         duration = currentTrack?.duration ?? 0
-        let restoredPosition = max(snapshot.elapsedTime, 0)
-        elapsedTime = duration > 0
-            ? min(restoredPosition, duration)
-            : restoredPosition
+        let storedElapsed = defaults.object(
+            forKey: PlaybackSnapshot.elapsedKey
+        ) as? TimeInterval
+        let restoredPosition = max(storedElapsed ?? snapshot.elapsedTime, 0)
+        updateElapsedTime(
+            duration > 0 ? min(restoredPosition, duration) : restoredPosition,
+            forceProgressPublish: true
+        )
+        lastPersistedQueueSignature = snapshot.queue.map(\.id).joined(separator: "|")
+            + "#\(snapshot.currentIndex)"
         requiresStreamRefresh = true
         if let track = currentTrack {
             nowPlaying.update(
@@ -2118,6 +2197,7 @@ final class AudioPlayer: ObservableObject {
 
 private struct PlaybackSnapshot: Codable {
     static let key = "player.playback.snapshot.v1"
+    static let elapsedKey = "player.playback.elapsed.v1"
 
     let queue: [Track]
     let currentIndex: Int

@@ -208,6 +208,10 @@ if "shouldTreatEndAsRouteDisconnect" not in audio_player_source:
     fail("interruption end must detect headphone-disconnect races")
 if "player.volume = 1" not in audio_player_source:
     fail("playback level must follow system volume (AVPlayer at unity gain)")
+if "PlaybackProgressModel" not in all_source:
+    fail("playback progress must be isolated from AudioPlayer EnvironmentObject fan-out")
+if "RemoteCommandCoalescing" not in all_source:
+    fail("remote headphone commands must be coalesced")
 if "SystemVolumeSlider" not in all_source:
     fail("player actions must expose a system volume slider")
 if "MPVolumeView" not in all_source:

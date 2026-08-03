@@ -6,6 +6,7 @@ struct PlayerView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var progress: PlaybackProgressModel
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var libraryStore: MusicLibraryStore
     @EnvironmentObject private var offlineStore: OfflineTrackStore
@@ -469,7 +470,7 @@ struct PlayerView: View {
                 range: 0...max(player.duration, 1),
                 tintColor: UIColor(playerForeground),
                 onEditingBegan: {
-                    scrubPosition = player.elapsedTime
+                    scrubPosition = progress.elapsedTime
                 },
                 onCommit: commitScrubbing
             )
@@ -814,7 +815,7 @@ struct PlayerView: View {
     }
 
     private var displayedElapsedTime: TimeInterval {
-        scrubPosition ?? player.elapsedTime
+        scrubPosition ?? progress.elapsedTime
     }
 
     private func commitScrubbing(_ position: TimeInterval) {
@@ -1856,7 +1857,7 @@ private struct CompactPlayerSlider: UIViewRepresentable {
     func makeUIView(context: Context) -> UISlider {
         let slider = UISlider(frame: .zero)
         slider.isContinuous = true
-        configureColors(slider)
+        configureColors(slider, coordinator: context.coordinator)
         slider.addTarget(
             context.coordinator,
             action: #selector(Coordinator.valueChanged(_:)),
@@ -1877,54 +1878,68 @@ private struct CompactPlayerSlider: UIViewRepresentable {
 
     func updateUIView(_ slider: UISlider, context: Context) {
         context.coordinator.parent = self
-        configureColors(slider)
+        if context.coordinator.cachedTintColor != tintColor {
+            configureColors(slider, coordinator: context.coordinator)
+        }
         slider.minimumValue = Float(range.lowerBound)
         slider.maximumValue = Float(max(range.upperBound, range.lowerBound + 1))
         guard !slider.isTracking else { return }
         let safeValue = value.isFinite ? value : range.lowerBound
-        slider.setValue(
-            Float(min(max(safeValue, range.lowerBound), range.upperBound)),
-            animated: false
-        )
+        let next = Float(min(max(safeValue, range.lowerBound), range.upperBound))
+        if abs(slider.value - next) >= 0.05 {
+            slider.setValue(next, animated: false)
+        }
     }
 
-    private func configureColors(_ slider: UISlider) {
+    private func configureColors(
+        _ slider: UISlider,
+        coordinator: Coordinator
+    ) {
         slider.minimumTrackTintColor = tintColor
         slider.maximumTrackTintColor = tintColor.withAlphaComponent(0.18)
         slider.setThumbImage(
-            makeThumb(diameter: 12),
+            coordinator.thumb(diameter: 12, tint: tintColor),
             for: .normal
         )
         slider.setThumbImage(
-            makeThumb(diameter: 15),
+            coordinator.thumb(diameter: 15, tint: tintColor),
             for: .highlighted
         )
-    }
-
-    private func makeThumb(diameter: CGFloat) -> UIImage {
-        let size = CGSize(width: diameter, height: diameter)
-        return UIGraphicsImageRenderer(size: size).image { context in
-            context.cgContext.setShadow(
-                offset: CGSize(width: 0, height: 1),
-                blur: 3,
-                color: UIColor.black.withAlphaComponent(0.28).cgColor
-            )
-            tintColor.setFill()
-            UIBezierPath(
-                ovalIn: CGRect(origin: .zero, size: size).insetBy(
-                    dx: 0.5,
-                    dy: 0.5
-                )
-            )
-            .fill()
-        }
+        coordinator.cachedTintColor = tintColor
     }
 
     final class Coordinator: NSObject {
         var parent: CompactPlayerSlider
+        var cachedTintColor: UIColor?
+        private var thumbCache: [String: UIImage] = [:]
 
         init(parent: CompactPlayerSlider) {
             self.parent = parent
+        }
+
+        func thumb(diameter: CGFloat, tint: UIColor) -> UIImage {
+            let key = "\(diameter)-\(tint.hash)"
+            if let cached = thumbCache[key] {
+                return cached
+            }
+            let size = CGSize(width: diameter, height: diameter)
+            let image = UIGraphicsImageRenderer(size: size).image { context in
+                context.cgContext.setShadow(
+                    offset: CGSize(width: 0, height: 1),
+                    blur: 3,
+                    color: UIColor.black.withAlphaComponent(0.28).cgColor
+                )
+                tint.setFill()
+                UIBezierPath(
+                    ovalIn: CGRect(origin: .zero, size: size).insetBy(
+                        dx: 0.5,
+                        dy: 0.5
+                    )
+                )
+                .fill()
+            }
+            thumbCache[key] = image
+            return image
         }
 
         @objc

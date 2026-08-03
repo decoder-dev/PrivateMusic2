@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MiniPlayerView: View {
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var progress: PlaybackProgressModel
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @GestureState private var dragOffset: CGSize = .zero
@@ -183,13 +184,7 @@ struct MiniPlayerView: View {
                 .overlay(alignment: .leading) {
                     Capsule()
                         .fill(.tint)
-                        .frame(width: proxy.size.width * progress)
-                        .animation(
-                            reduceMotion
-                                ? nil
-                                : .linear(duration: 0.2),
-                            value: progress
-                        )
+                        .frame(width: proxy.size.width * progressFraction)
                 }
         }
         .frame(height: MiniPlayerLayoutMetrics.progressHeight)
@@ -252,10 +247,10 @@ struct MiniPlayerView: View {
         )
     }
 
-    private var progress: CGFloat {
+    private var progressFraction: CGFloat {
         CGFloat(
             MiniPlayerProgressPolicy.progress(
-                elapsedTime: player.elapsedTime,
+                elapsedTime: progress.elapsedTime,
                 duration: player.duration
             )
         )

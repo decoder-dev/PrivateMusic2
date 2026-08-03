@@ -164,6 +164,10 @@ final class EqualizerDSP: @unchecked Sendable {
         }
 
         let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
+        if isNearlySilent(buffers: buffers, frameCount: frameCount),
+           !hasSignificantFilterState {
+            return
+        }
         if enabled, !coefficients.isEmpty {
             processEqualizer(
                 buffers: buffers,
@@ -176,6 +180,32 @@ final class EqualizerDSP: @unchecked Sendable {
                 frameCount: frameCount
             )
         }
+    }
+
+    private var hasSignificantFilterState: Bool {
+        for value in states where abs(value) > 0.000_5 {
+            return true
+        }
+        return abs(envelope) > 0.000_5
+    }
+
+    private func isNearlySilent(
+        buffers: UnsafeMutableAudioBufferListPointer,
+        frameCount: Int
+    ) -> Bool {
+        var peak: Float = 0
+        for buffer in buffers {
+            guard let rawData = buffer.mData else { continue }
+            let samples = rawData.assumingMemoryBound(to: Float.self)
+            let count = frameCount * max(Int(buffer.mNumberChannels), 1)
+            var localPeak: Float = 0
+            vDSP_maxmgv(samples, 1, &localPeak, vDSP_Length(count))
+            peak = max(peak, localPeak)
+            if peak > 0.000_5 {
+                return false
+            }
+        }
+        return true
     }
 
     private func processEqualizer(

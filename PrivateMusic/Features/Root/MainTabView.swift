@@ -113,7 +113,15 @@ struct MainTabView: View {
             )
         }
         .onPreferenceChange(PlaybackDockHeightKey.self) { height in
-            dockHeight = height
+            let rounded = height.rounded()
+            // Ignore sub-point spring intermediates so tab safe-area insets
+            // do not thrash every animation frame when the mini player appears.
+            guard abs(rounded - dockHeight) >= 1 else { return }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                dockHeight = rounded
+            }
         }
     }
 
