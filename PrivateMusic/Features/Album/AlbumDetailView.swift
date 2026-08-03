@@ -90,31 +90,6 @@ struct AlbumDetailView: View {
                 .background(ThemeBackground())
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button(action: toggleFollow) {
-                        Label(
-                            isFollowed
-                                ? "Удалить альбом из медиатеки"
-                                : "Добавить альбом в медиатеку",
-                            systemImage: isFollowed ? "heart.slash" : "heart"
-                        )
-                    }
-                    .disabled(isUpdatingFollow)
-                    if let shareURL {
-                        ShareLink(item: shareURL) {
-                            Label(
-                                "Поделиться ссылкой",
-                                systemImage: "square.and.arrow.up"
-                            )
-                        }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-            }
-        }
         .task { await load(force: false) }
         .refreshable { await load(force: true) }
         .alert(
