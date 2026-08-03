@@ -442,7 +442,7 @@ struct EqualizerSettingsView: View {
                 .disabled(!settings.equalizerEnabled)
             }
 
-            Section("Полосы частот") {
+            Section {
                 ForEach(frequencies.indices, id: \.self) { index in
                     VStack(spacing: 5) {
                         HStack {
@@ -478,6 +478,8 @@ struct EqualizerSettingsView: View {
                     }
                     .disabled(!settings.equalizerEnabled)
                 }
+            } header: {
+                Text("Полосы частот")
             } footer: {
                 Text(
                     L10n.text(
