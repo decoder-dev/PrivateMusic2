@@ -127,23 +127,24 @@ jobs:
           test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.14-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.15-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.14"
+          test "$GITHUB_REF_NAME" = "v3.28.15"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.28.14
+          Private Music 3.28.15
 
-          - Плеер на iOS 26+: нативные кнопки Liquid Glass
-            (.glass / .glassProminent) для play/pause, skip, shuffle,
-            repeat, шапки и быстрых действий — как в Apple Music.
-          - Мини-плеер: play/pause тоже через glassProminent.
-          - На iOS 16–25 сохранён прежний вид с adaptiveGlass.
+          - Навигация как в iOS 26: главная/медиатека/профиль в одной
+            капсуле, поиск — отдельной круглой кнопкой справа.
+          - Мини-плеер без бейджа лайка на обложке.
+          - Альбомы: кнопка лайка/анлайка снова нажимается в List
+            (borderless + стекло внутри label) и обновляется сразу,
+            с откатом при ошибке VK.
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом. Подпись требует сначала подписать PlugIns/PrivateMusicWatch.app,
@@ -151,15 +152,15 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.14-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.28.15-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.14" \
+              --title "Private Music 3.28.15" \
               --notes-file "$NOTES"
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.14-unsigned.ipa" \
-              --title "Private Music 3.28.14" \
+              "$PWD/artifacts/PrivateMusic-3.28.15-unsigned.ipa" \
+              --title "Private Music 3.28.15" \
               --notes-file "$NOTES"
           fi
 
@@ -167,7 +168,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.14-unsigned
-          path: artifacts/PrivateMusic-3.28.14-unsigned.ipa
+          name: PrivateMusic-3.28.15-unsigned
+          path: artifacts/PrivateMusic-3.28.15-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
