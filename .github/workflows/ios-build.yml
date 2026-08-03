@@ -150,6 +150,8 @@ jobs:
           - Слайдер громкости связан с системным звуком (MPVolumeView)
           - Эквалайзер и пространственный звук работают на наушниках,
             колонках и CarKit / Bluetooth автомобиля (локальный decode + tap)
+          - EQ/spatial tap только после readyToPlay и с AVAssetTrack; HLS без
+            tap (иначе item fails на авто), после media-reset нет skip-каскада
 
           Мини-плеер
           - Apple Music–style glass panel: обложка, title/artist, play/pause,
@@ -171,6 +173,8 @@ jobs:
           - System TabView + search role на iOS 26.1+
           - Исправление пустой вкладки «Треки» в библиотеке
           - Legacy dock для iOS 16–26.0
+          - iOS 27 scene lifecycle + privacy reasons
+          - История прослушивания в заголовке «Сейчас играет»
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом. Подпись требует сначала подписать PlugIns/PrivateMusicWatch.app,
