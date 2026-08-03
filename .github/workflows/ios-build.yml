@@ -127,26 +127,25 @@ jobs:
           test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.12-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.13-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.12"
+          test "$GITHUB_REF_NAME" = "v3.28.13"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.28.12
+          Private Music 3.28.13
 
-          - Навигация: панель Liquid Glass вместе с мини-плеером теперь
-            реально резервируют место над контентом на всех вкладках и на
-            всех версиях iOS 16-27. Раньше safeAreaInset применялся снаружи
-            NavigationStack и не доходил до прокручиваемого содержимого —
-            последние строки списков уезжали под док и мини-плеер. Теперь
-            высота дока измеряется и резервируется внутри каждой вкладки.
-          - CI: отдельная сборка приложения для Apple Watch убрана из
-            пайплайна — собирается только iPhone-версия.
+          - iOS 27 SDK: добавлен UIApplicationSceneManifest и
+            configurationForConnecting в AppDelegate (TN3187) — без этого
+            сборка на Xcode 27 / iOS 27 SDK не запускается.
+          - Privacy Manifest: объявлены File Timestamp (DDA9.1) и Disk Space
+            (E174.1) рядом с UserDefaults — API уже использовались в коде.
+          - Liquid Glass уважает Reduce Transparency; AsyncArtwork берёт
+            displayScale из окружения вместо UIScreen.main.
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом. Подпись требует сначала подписать PlugIns/PrivateMusicWatch.app,
@@ -154,15 +153,15 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.12-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.28.13-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.12" \
+              --title "Private Music 3.28.13" \
               --notes-file "$NOTES"
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.12-unsigned.ipa" \
-              --title "Private Music 3.28.12" \
+              "$PWD/artifacts/PrivateMusic-3.28.13-unsigned.ipa" \
+              --title "Private Music 3.28.13" \
               --notes-file "$NOTES"
           fi
 
@@ -170,7 +169,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.12-unsigned
-          path: artifacts/PrivateMusic-3.28.12-unsigned.ipa
+          name: PrivateMusic-3.28.13-unsigned
+          path: artifacts/PrivateMusic-3.28.13-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
