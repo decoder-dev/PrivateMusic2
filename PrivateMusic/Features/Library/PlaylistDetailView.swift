@@ -29,7 +29,11 @@ struct PlaylistDetailView: View {
                 }
             } else {
                 List(model.tracks) { track in
-                    TrackRow(track: track, queue: model.tracks)
+                    TrackRow(
+                        track: track,
+                        queue: model.tracks,
+                        source: .playlist(title: playlist.title)
+                    )
                         .listRowBackground(Color.clear)
                         .swipeActions(edge: .trailing) {
                             if playlist.ownerID

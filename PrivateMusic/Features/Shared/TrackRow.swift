@@ -8,12 +8,13 @@ struct TrackRow: View {
     @EnvironmentObject private var offlineStore: OfflineTrackStore
     let track: Track
     let queue: [Track]
+    var source: QueueSource? = nil
     @State private var sharingTrack: Track?
 
     var body: some View {
         Button {
             Haptics.selection()
-            player.play(track, in: queue)
+            player.play(track, in: queue, source: source)
         } label: {
             HStack(spacing: 12) {
                 AsyncArtwork(url: track.artworkURL, size: 48)
@@ -105,7 +106,7 @@ struct TrackRow: View {
             }
             Button {
                 Haptics.open()
-                player.play(track, in: queue)
+                player.play(track, in: queue, source: source)
                 player.presentPlayer()
             } label: {
                 Label("Открыть плеер", systemImage: "play.circle")

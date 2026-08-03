@@ -243,9 +243,10 @@ struct PlayerView: View {
                         .font(.caption2.weight(.bold))
                         .tracking(1.1)
                         .foregroundStyle(playerSecondary)
-                    Text(queuePosition)
+                    Text(player.queueContextTitle.uppercased())
                         .font(.system(size: 10, weight: .medium))
-                        .monospacedDigit()
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                         .foregroundStyle(playerSecondary)
                 }
                 .accessibilityElement(children: .combine)
@@ -841,18 +842,6 @@ struct PlayerView: View {
             return true
         }
         return false
-    }
-
-    private var queuePosition: String {
-        guard let currentIndex = player.currentIndex,
-              !player.queue.isEmpty else {
-            return "PRIVATE MUSIC"
-        }
-        return L10n.format(
-            "%d ИЗ %d",
-            currentIndex + 1,
-            player.queue.count
-        )
     }
 
     private var artworkGesture: some Gesture {

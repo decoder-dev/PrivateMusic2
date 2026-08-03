@@ -642,14 +642,19 @@ struct CatalogView: View {
                     )
                 }
                 guard let first = tracks.first else { return }
-                player.play(first, in: tracks) {
-                    try await environment.withAuthorizedToken { token in
-                        try await environment.musicService.mixTracks(
-                            mix,
-                            accessToken: token
-                        )
-                    }
-                }
+                player.play(
+                    first,
+                    in: tracks,
+                    continuation: {
+                        try await environment.withAuthorizedToken { token in
+                            try await environment.musicService.mixTracks(
+                                mix,
+                                accessToken: token
+                            )
+                        }
+                    },
+                    source: .mix(title: mix.title)
+                )
                 actionErrorMessage = nil
             } catch is CancellationError {
                 return

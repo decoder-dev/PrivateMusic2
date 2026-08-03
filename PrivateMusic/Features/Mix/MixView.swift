@@ -158,7 +158,11 @@ struct MixView: View {
                 LazyHStack(spacing: 14) {
                     ForEach(tracks.prefix(12)) { track in
                         Button {
-                            play(track, queue: tracks)
+                            play(
+                                track,
+                                queue: tracks,
+                                source: .mix(title: MusicMix.common.title)
+                            )
                         } label: {
                             VStack(alignment: .leading, spacing: 8) {
                                 ZStack(alignment: .bottomTrailing) {
@@ -208,7 +212,11 @@ struct MixView: View {
                                 )
                             }
                             Button {
-                                play(track, queue: tracks)
+                                play(
+                                    track,
+                                    queue: tracks,
+                                    source: .mix(title: MusicMix.common.title)
+                                )
                                 player.presentPlayer()
                             } label: {
                                 Label("Открыть плеер", systemImage: "play.circle")
@@ -233,7 +241,11 @@ struct MixView: View {
             VStack(spacing: 0) {
                 ForEach(Array(tracks.dropFirst(12).prefix(12).enumerated()),
                         id: \.element.id) { index, track in
-                    TrackRow(track: track, queue: tracks)
+                    TrackRow(
+                        track: track,
+                        queue: tracks,
+                        source: .mix(title: MusicMix.common.title)
+                    )
                         .padding(.vertical, 7)
                     if index < min(max(tracks.count - 12, 0), 12) - 1 {
                         Divider().padding(.leading, 64)
@@ -291,7 +303,12 @@ struct MixView: View {
                     )
                 }
                 guard let first = queue.first else { return }
-                play(first, queue: queue, mix: mix)
+                play(
+                    first,
+                    queue: queue,
+                    mix: mix,
+                    source: .mix(title: mix.title)
+                )
             } catch is CancellationError {
                 return
             } catch {
@@ -303,17 +320,23 @@ struct MixView: View {
     private func play(
         _ track: Track,
         queue: [Track],
-        mix: MusicMix = .common
+        mix: MusicMix = .common,
+        source: QueueSource? = nil
     ) {
         guard sessionStore.accessToken != nil else { return }
-        player.play(track, in: queue) {
-            try await environment.withAuthorizedToken { token in
-                try await environment.musicService.mixTracks(
-                    mix,
-                    accessToken: token
-                )
-            }
-        }
+        player.play(
+            track,
+            in: queue,
+            continuation: {
+                try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.mixTracks(
+                        mix,
+                        accessToken: token
+                    )
+                }
+            },
+            source: source
+        )
     }
 
     private func load(force: Bool = false) async {

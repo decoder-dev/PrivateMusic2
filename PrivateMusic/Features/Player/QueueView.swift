@@ -15,6 +15,19 @@ struct QueueView: View {
                     )
                 } else {
                     List {
+                        if let index = player.currentIndex {
+                            Text(
+                                L10n.format(
+                                    "Трек %d из %d",
+                                    index + 1,
+                                    player.queue.count
+                                )
+                            )
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                        }
                         ForEach(
                             Array(player.queue.enumerated()),
                             id: \.element.id

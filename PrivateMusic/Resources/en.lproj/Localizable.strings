@@ -26,6 +26,9 @@
 "Микс" = "Mix";
 "Очередь" = "Queue";
 "Удалить из очереди" = "Remove from Queue";
+"Ваша очередь" = "Your Queue";
+"Микс по «%@»" = "Mix based on \"%@\"";
+"Трек %d из %d" = "Track %d of %d";
 "История" = "History";
 "Добавить в плейлист" = "Add to Playlist";
 

@@ -19,7 +19,11 @@ struct AlbumDetailView: View {
                     .listRowSeparator(.hidden)
             }
             ForEach(model.tracks) { track in
-                TrackRow(track: track, queue: model.tracks)
+                TrackRow(
+                    track: track,
+                    queue: model.tracks,
+                    source: .album(title: displayedTitle)
+                )
                     .listRowBackground(Color.clear)
                     .onAppear {
                         if track.id == model.tracks.last?.id {
@@ -156,30 +160,51 @@ struct AlbumDetailView: View {
                 }
             }
             HStack(spacing: 12) {
-                Button(action: playAlbum) {
-                    Label("Слушать", systemImage: "play.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(model.tracks.isEmpty)
+                listenButton
                 Button(action: toggleFollow) {
                     Image(systemName: isFollowed ? "heart.fill" : "heart")
-                        .frame(width: 44, height: 44)
+                        .foregroundStyle(
+                            isFollowed ? Color.red : settings.theme.accent
+                        )
+                        .frame(width: 46, height: 46)
                 }
-                .buttonStyle(.bordered)
-                .tint(settings.theme.accent)
+                .adaptiveGlass(in: Circle(), interactive: true)
+                .buttonStyle(PremiumPressStyle())
                 .disabled(isUpdatingFollow)
                 if let shareURL {
                     ShareLink(item: shareURL) {
                         Image(systemName: "square.and.arrow.up")
-                            .frame(width: 44, height: 44)
+                            .foregroundStyle(settings.theme.accent)
+                            .frame(width: 46, height: 46)
                     }
-                    .buttonStyle(.bordered)
+                    .adaptiveGlass(in: Circle(), interactive: true)
                 }
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
+    }
+
+    @ViewBuilder
+    private var listenButton: some View {
+        if #available(iOS 26.0, *) {
+            Button(action: playAlbum) {
+                Label("Слушать", systemImage: "play.fill")
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+            }
+            .buttonStyle(.glassProminent)
+            .tint(settings.theme.accent)
+            .disabled(model.tracks.isEmpty)
+        } else {
+            Button(action: playAlbum) {
+                Label("Слушать", systemImage: "play.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(settings.theme.accent)
+            .disabled(model.tracks.isEmpty)
+        }
     }
 
     private var isFollowed: Bool {
@@ -206,7 +231,11 @@ struct AlbumDetailView: View {
 
     private func playAlbum() {
         guard let first = model.tracks.first else { return }
-        player.play(first, in: model.tracks)
+        player.play(
+            first,
+            in: model.tracks,
+            source: .album(title: displayedTitle)
+        )
     }
 
     private func toggleFollow() {
