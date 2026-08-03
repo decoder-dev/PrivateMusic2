@@ -179,6 +179,26 @@ enum AudioProcessingRoutePolicy {
     }
 }
 
+/// Whether `MTAudioProcessingTap` can be attached for a given source URL.
+///
+/// Apple documents that `AVAudioMix` / audio taps work on file-based and
+/// progressive remote assets once tracks are available. HLS (`m3u8`) does
+/// not expose tap-ready tracks — attaching a mix there is a common cause of
+/// `AVPlayerItem` failures on CarKit / Bluetooth reconnects. Streaming
+/// services that keep EQ on car routes either decode locally (file / PCM)
+/// or skip in-app DSP for HLS handoff.
+enum AudioProcessingAttachPolicy {
+    static func supportsAudioTap(url: URL, isOffline: Bool) -> Bool {
+        if isOffline { return true }
+        return url.pathExtension.caseInsensitiveCompare("m3u8") != .orderedSame
+    }
+
+    /// After media-services reset (typical on car attach), suppress auto-skip
+    /// briefly so a transient item failure retries the same track instead of
+    /// jumping through the queue with error toasts.
+    static let postResetAdvanceSuppression: TimeInterval = 8
+}
+
 enum PlaybackPreloadPolicy {
     static let maximumAge: TimeInterval = 5 * 60
 
@@ -257,6 +277,14 @@ enum MediaServicesResetPolicy {
         wasActivelyPlaying: Bool
     ) -> Bool {
         playbackIntended && wasActivelyPlaying
+    }
+
+    static func shouldSuppressAdvance(
+        now: Date,
+        suppressUntil: Date?
+    ) -> Bool {
+        guard let suppressUntil else { return false }
+        return now < suppressUntil
     }
 }
 
@@ -347,6 +375,7 @@ final class AudioPlayer: ObservableObject {
     private var routeDisconnectPending = false
     private var outputsAtInterruptionBegan: [AVAudioSession.Port] = []
     private var interruptionResumeTask: Task<Void, Never>?
+    private var suppressAdvanceUntil: Date?
     private var preloadedPlayback: PreloadedPlayback?
     private var preloadAssetTask: Task<Void, Never>?
     private var preloadGeneration = 0
@@ -933,7 +962,17 @@ final class AudioPlayer: ObservableObject {
         let isOffline = offlineURL != nil
         let item = takePreloadedPlayback(for: track, url: url)
             ?? makePlaybackItem(url: url, isOffline: isOffline)
-        configureAudioProcessing(for: item)
+        let wantsAudioTap = equalizer.requiresAudioTap
+            && AudioProcessingAttachPolicy.supportsAudioTap(
+                url: url,
+                isOffline: isOffline
+            )
+        player.allowsExternalPlayback = AudioProcessingRoutePolicy
+            .allowsExternalPlayback(requiresAudioTap: wantsAudioTap)
+        // Defer mix attach until tracks exist (readyToPlay). Premature
+        // AVAudioMix on remote progressive / empty-track assets fails the
+        // item — especially after CarKit media-services resets.
+        item.audioMix = nil
         itemStatusObservation?.invalidate()
         itemStatusObservation = item.observe(
             \.status,
@@ -948,6 +987,9 @@ final class AudioPlayer: ObservableObject {
                 switch item.status {
                 case .readyToPlay:
                     self.isBuffering = false
+                    if wantsAudioTap {
+                        self.attachAudioProcessing(to: item)
+                    }
                     self.playbackReadyHandler?(track, isOffline)
                     self.scheduleNeighborPreloads()
                     if position > 0 {
@@ -1027,10 +1069,24 @@ final class AudioPlayer: ObservableObject {
         return asset
     }
 
-    private func configureAudioProcessing(for item: AVPlayerItem) {
+    private func attachAudioProcessing(to item: AVPlayerItem) {
         item.audioMix = nil
-        guard let tap = equalizer.makeTap() else { return }
-        let parameters = AVMutableAudioMixInputParameters()
+        guard equalizer.requiresAudioTap,
+              let tap = equalizer.makeTap() else {
+            return
+        }
+        // Bind the tap to a concrete audio track — required for remote
+        // progressive URLs. Empty track lists (typical HLS) mean DSP cannot
+        // run; leave the item unprocessed rather than failing playback.
+        let audioTrack = item.tracks
+            .compactMap(\.assetTrack)
+            .first { $0.mediaType == .audio }
+        guard let audioTrack else {
+            player.allowsExternalPlayback = AudioProcessingRoutePolicy
+                .allowsExternalPlayback(requiresAudioTap: false)
+            return
+        }
+        let parameters = AVMutableAudioMixInputParameters(track: audioTrack)
         parameters.audioTapProcessor = tap
         let mix = AVMutableAudioMix()
         mix.inputParameters = [parameters]
@@ -1612,6 +1668,9 @@ final class AudioPlayer: ObservableObject {
         )
         let position = elapsedTime
         let keepIntent = playbackIntended || wasActivelyPlaying
+        suppressAdvanceUntil = Date().addingTimeInterval(
+            AudioProcessingAttachPolicy.postResetAdvanceSuppression
+        )
 
         interruptionResumeTask?.cancel()
         interruptionResumeTask = nil
@@ -1746,6 +1805,18 @@ final class AudioPlayer: ObservableObject {
             refreshCurrentStream(autoplay: true)
             return
         }
+        // After CarKit media-services reset, prefer one same-track reload
+        // over cascading through the queue with skip-on-error.
+        if MediaServicesResetPolicy.shouldSuppressAdvance(
+            now: Date(),
+            suppressUntil: suppressAdvanceUntil
+        ),
+           currentTrack != nil {
+            suppressAdvanceUntil = nil
+            didAttemptStreamRefresh = false
+            loadCurrent(autoplay: playbackIntended, startAt: elapsedTime)
+            return
+        }
         if advancePastFailedTrackIfPossible() {
             return
         }
@@ -1764,6 +1835,12 @@ final class AudioPlayer: ObservableObject {
         guard advanceOnPlaybackError,
               let currentIndex,
               !queue.isEmpty else {
+            return false
+        }
+        if MediaServicesResetPolicy.shouldSuppressAdvance(
+            now: Date(),
+            suppressUntil: suppressAdvanceUntil
+        ) {
             return false
         }
 

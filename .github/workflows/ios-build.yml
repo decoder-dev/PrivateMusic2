@@ -147,6 +147,8 @@ jobs:
             восстанавливается
           - Гонки interruption/route без утечки в динамик телефона
           - Flat EQ не ставит realtime tap — меньше CPU и сбоев на external route
+          - EQ/spatial tap только после readyToPlay и с AVAssetTrack; HLS без
+            tap (иначе item fails на авто), после media-reset нет skip-каскада
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом. Подпись требует сначала подписать PlugIns/PrivateMusicWatch.app,

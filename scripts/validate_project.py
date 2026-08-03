@@ -157,6 +157,12 @@ if "enum AudioInterruptionPolicy" not in audio_player_source:
     fail("audio interruption policy must remain unit-testable")
 if "MediaServicesResetPolicy.shouldAutoplayAfterReset" not in audio_player_source:
     fail("media services reset must keep CarKit/BT autoplay intent")
+if "MediaServicesResetPolicy.shouldSuppressAdvance" not in audio_player_source:
+    fail("media services reset must suppress skip-on-error briefly")
+if "AudioProcessingAttachPolicy.supportsAudioTap" not in audio_player_source:
+    fail("HLS sources must not attach unsupported audio taps")
+if "AVMutableAudioMixInputParameters(track:" not in audio_player_source:
+    fail("audio tap must bind to an AVAssetTrack after readyToPlay")
 if "shouldTreatEndAsRouteDisconnect" not in audio_player_source:
     fail("interruption end must detect headphone-disconnect races")
 if "player.volume = 1" not in audio_player_source:
