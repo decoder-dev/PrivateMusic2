@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ThemeBackground: View {
     @EnvironmentObject private var settings: AppSettings
@@ -17,10 +18,11 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     let shape: S
     let interactive: Bool
     let tint: Color?
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), !reduceTransparency {
             // Liquid Glass samples its own shape; clipping the content
             // before handing it to glassEffect(in:) fights that sampling
             // and is a documented source of rendering artifacts. The
@@ -45,7 +47,13 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
         } else {
             content
                 .clipShape(shape)
-                .background(.ultraThinMaterial, in: shape)
+                .background {
+                    if reduceTransparency {
+                        shape.fill(Color(uiColor: .secondarySystemBackground))
+                    } else {
+                        shape.fill(.ultraThinMaterial)
+                    }
+                }
                 .overlay {
                     shape.stroke(
                         Color.primary.opacity(0.11),
@@ -60,6 +68,7 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
 struct AdaptiveGlassContainer<Content: View>: View {
     let spacing: CGFloat?
     private let content: Content
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     init(
         spacing: CGFloat? = nil,
@@ -71,7 +80,7 @@ struct AdaptiveGlassContainer<Content: View>: View {
 
     @ViewBuilder
     var body: some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), !reduceTransparency {
             GlassEffectContainer(spacing: spacing) {
                 content
             }
