@@ -75,10 +75,7 @@ struct TrackRow: View {
                             : Color.secondary
                     )
                     .frame(width: 22, height: 22)
-                    .background(
-                        Color(uiColor: .tertiarySystemFill),
-                        in: Circle()
-                    )
+                    .adaptiveGlass(in: Circle())
             }
             .contentShape(Rectangle())
         }
