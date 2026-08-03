@@ -51,10 +51,27 @@ struct MiniPlayerView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .frame(width: 44, height: 44)
                         }
-                        .buttonStyle(PremiumPressStyle())
                         .accessibilityLabel(L10n.text("Предыдущий трек"))
 
-                        miniPlayPauseButton
+                        Button {
+                            Haptics.selection()
+                            player.playPause()
+                        } label: {
+                            Image(
+                                systemName: player.isPlaying
+                                    ? "pause.fill"
+                                    : "play.fill"
+                            )
+                            .font(.headline)
+                            .frame(width: 44, height: 44)
+                        }
+                        .accessibilityLabel(
+                            L10n.text(
+                                player.isPlaying
+                                    ? "Приостановить"
+                                    : "Продолжить воспроизведение"
+                            )
+                        )
 
                         Button {
                             Haptics.trackChange()
@@ -64,9 +81,9 @@ struct MiniPlayerView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .frame(width: 44, height: 44)
                         }
-                        .buttonStyle(PremiumPressStyle())
                         .accessibilityLabel(L10n.text("Следующий трек"))
                     }
+                    .buttonStyle(PremiumPressStyle())
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
@@ -113,49 +130,6 @@ struct MiniPlayerView: View {
                 y: reduceMotion ? 0 : min(dragOffset.height * 0.08, 0)
             )
             .simultaneousGesture(miniPlayerGesture)
-        }
-    }
-
-    @ViewBuilder
-    private var miniPlayPauseButton: some View {
-        let label = L10n.text(
-            player.isPlaying
-                ? "Приостановить"
-                : "Продолжить воспроизведение"
-        )
-        if #available(iOS 26.0, *) {
-            Button {
-                Haptics.selection()
-                player.playPause()
-            } label: {
-                Image(
-                    systemName: player.isPlaying
-                        ? "pause.fill"
-                        : "play.fill"
-                )
-                .font(.headline)
-                .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.circle)
-            .clipShape(Circle())
-            .tint(settings.theme.accent)
-            .accessibilityLabel(label)
-        } else {
-            Button {
-                Haptics.selection()
-                player.playPause()
-            } label: {
-                Image(
-                    systemName: player.isPlaying
-                        ? "pause.fill"
-                        : "play.fill"
-                )
-                .font(.headline)
-                .frame(width: 44, height: 44)
-            }
-            .buttonStyle(PremiumPressStyle())
-            .accessibilityLabel(label)
         }
     }
 
