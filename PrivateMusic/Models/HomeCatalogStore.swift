@@ -7,6 +7,7 @@ final class HomeCatalogStore: ObservableObject {
     @Published private(set) var recommendations: [Track] = []
     @Published private(set) var mixes: [MusicMix] = []
     @Published private(set) var playlists: [Playlist] = []
+    @Published private(set) var newReleases: [Album] = []
     @Published private(set) var isRefreshing = false
     @Published private(set) var lastRefreshedAt: Date?
     @Published var errorMessage: String?
@@ -25,6 +26,7 @@ final class HomeCatalogStore: ObservableObject {
         recommendations = []
         mixes = []
         playlists = []
+        newReleases = []
         lastRefreshedAt = nil
         lastAttemptedAt = nil
         errorMessage = nil
@@ -51,6 +53,7 @@ final class HomeCatalogStore: ObservableObject {
         recommendations: [Track]?,
         mixes: [MusicMix]?,
         playlists: [Playlist]?,
+        newReleases: [Album]? = nil,
         errorMessage: String?,
         refreshID: Int? = nil,
         now: Date = Date()
@@ -61,6 +64,7 @@ final class HomeCatalogStore: ObservableObject {
         if let recommendations { self.recommendations = recommendations }
         if let mixes { self.mixes = mixes }
         if let playlists { self.playlists = playlists }
+        if let newReleases { self.newReleases = newReleases }
         self.errorMessage = errorMessage
         lastAttemptedAt = now
         if errorMessage == nil {
