@@ -9,6 +9,7 @@ struct MixView: View {
     @State private var isLoading = true
     @State private var loadingMixID: String?
     @State private var errorMessage: String?
+    @State private var sharingTrack: Track?
 
     var body: some View {
         ScrollView {
@@ -32,6 +33,7 @@ struct MixView: View {
         }
         .background(ThemeBackground())
         .navigationTitle("Микс")
+        .trackShareSheet(track: $sharingTrack)
         .task(id: sessionStore.accessToken) {
             await load(force: true)
         }
@@ -83,6 +85,11 @@ struct MixView: View {
             )
         }
         .buttonStyle(PremiumPressStyle())
+        .contextMenu {
+            Button { start(.common) } label: {
+                Label("Воспроизвести микс", systemImage: "play.fill")
+            }
+        }
         .disabled(loadingMixID != nil)
     }
 
@@ -113,9 +120,7 @@ struct MixView: View {
                                 .clipShape(
                                     RoundedRectangle(
                                         cornerRadius:
-                                            PremiumLayout.artworkRadius(
-                                                for: 166
-                                            ),
+                                            14,
                                         style: .continuous
                                     )
                                 )
@@ -131,6 +136,11 @@ struct MixView: View {
                             .frame(width: 166, alignment: .leading)
                         }
                         .buttonStyle(PremiumPressStyle())
+                        .contextMenu {
+                            Button { start(mix) } label: {
+                                Label("Воспроизвести микс", systemImage: "play.fill")
+                            }
+                        }
                     }
                 }
             }
@@ -156,8 +166,24 @@ struct MixView: View {
                                         url: track.artworkURL,
                                         size: 166
                                     )
-                                    Image(systemName: "play.fill")
-                                        .foregroundStyle(.black)
+                                    .overlay(alignment: .topTrailing) {
+                                        LikedTrackBadge(
+                                            track: track,
+                                            style: .artwork
+                                        )
+                                        .padding(8)
+                                    }
+                                    Group {
+                                        if player.currentTrack?.id == track.id {
+                                            PlaybackIndicatorView(
+                                                isPlaying: player.isPlaying,
+                                                color: .black
+                                            )
+                                        } else {
+                                            Image(systemName: "play.fill")
+                                                .foregroundStyle(.black)
+                                        }
+                                    }
                                         .frame(width: 42, height: 42)
                                         .background(.white, in: Circle())
                                         .padding(8)
@@ -174,6 +200,26 @@ struct MixView: View {
                             .frame(width: 166, alignment: .leading)
                         }
                         .buttonStyle(PremiumPressStyle())
+                        .contextMenu {
+                            Button { player.playNext(track) } label: {
+                                Label(
+                                    "Играть следующим",
+                                    systemImage: "text.badge.plus"
+                                )
+                            }
+                            Button {
+                                play(track, queue: tracks)
+                                player.presentPlayer()
+                            } label: {
+                                Label("Открыть плеер", systemImage: "play.circle")
+                            }
+                            Button { sharingTrack = track } label: {
+                                Label(
+                                    "Поделиться аудиофайлом",
+                                    systemImage: "square.and.arrow.up"
+                                )
+                            }
+                        }
                     }
                 }
             }

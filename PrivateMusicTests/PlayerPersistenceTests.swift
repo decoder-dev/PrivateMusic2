@@ -11,6 +11,24 @@ final class PlayerPersistenceTests: XCTestCase {
         XCTAssertFalse(AppSettings(defaults: defaults).pauseAtMinimumVolume)
     }
 
+    func testAppVolumeDefaultsToFullAndPersistsClampedValue() {
+        let suite = "PlayerPersistenceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let first = AppSettings(defaults: defaults)
+        XCTAssertEqual(first.appVolume, 1)
+        first.appVolume = 1.5
+        XCTAssertEqual(first.appVolume, 1)
+        first.appVolume = 0.35
+
+        XCTAssertEqual(
+            AppSettings(defaults: defaults).appVolume,
+            0.35,
+            accuracy: 0.001
+        )
+    }
+
     func testPlaybackErrorPolicyPersistsAcrossSettingsInstances() {
         let suite = "PlayerPersistenceTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -39,6 +57,26 @@ final class PlayerPersistenceTests: XCTestCase {
         XCTAssertEqual(restored.equalizerPreamp, -2.5)
         XCTAssertEqual(restored.equalizerPreset, .custom)
         XCTAssertEqual(restored.equalizerGains[3], 5.5)
+    }
+
+    func testSpatialAudioSettingsPersistAndClampIntensity() {
+        let suite = "PlayerPersistenceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let first = AppSettings(defaults: defaults)
+        XCTAssertFalse(first.spatialAudioEnabled)
+        XCTAssertEqual(
+            first.spatialAudioIntensity,
+            SpatialAudioDSP.defaultIntensity
+        )
+
+        first.spatialAudioEnabled = true
+        first.spatialAudioIntensity = 2
+
+        let restored = AppSettings(defaults: defaults)
+        XCTAssertTrue(restored.spatialAudioEnabled)
+        XCTAssertEqual(restored.spatialAudioIntensity, 1)
     }
 
     func testRemovingStoredTrackClearsSourceAndStoredAliases() {

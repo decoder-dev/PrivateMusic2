@@ -3,52 +3,70 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
+    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingLogoutConfirmation = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 22) {
-                profileCard
-                NavigationLink {
-                    SettingsView()
-                } label: {
-                    Label("Настройки", systemImage: "gearshape.fill")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                        .premiumCard(interactive: true)
-                }
-                .buttonStyle(.plain)
-                linksCard
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 22) {
+                    profileCard
+                    NavigationLink {
+                        SettingsView()
+                    } label: {
+                        Label("Настройки", systemImage: "gearshape.fill")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                            .premiumCard(interactive: true)
+                    }
+                    .buttonStyle(.plain)
+                    linksCard
 
-                Button(role: .destructive) {
-                    showingLogoutConfirmation = true
-                } label: {
-                    Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                        .premiumCard(interactive: true)
-                }
+                    Button(role: .destructive) {
+                        showingLogoutConfirmation = true
+                    } label: {
+                        Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                            .premiumCard(interactive: true)
+                    }
 
-                VStack(spacing: 8) {
-                    Image("AppIconPreview")
-                        .resizable()
-                        .frame(width: 60, height: 60)
-                        .clipShape(
-                            RoundedRectangle(
-                                cornerRadius: PremiumLayout.controlRadius,
-                                style: .continuous
+                    VStack(spacing: 8) {
+                        Image("AppIconPreview")
+                            .resizable()
+                            .frame(width: 60, height: 60)
+                            .clipShape(
+                                RoundedRectangle(
+                                    cornerRadius: PremiumLayout.controlRadius,
+                                    style: .continuous
+                                )
                             )
-                        )
-                    Text("Private Music \(version)")
-                        .foregroundStyle(.secondary)
-                    Text("decoder-dev")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        Text("Private Music \(version)")
+                            .foregroundStyle(.secondary)
+                        Text("decoder-dev")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.top, 28)
                 }
-                .padding(.top, 28)
+                .id(MainTabScrollDestination.profile)
+                .padding()
             }
-            .padding()
+            .onReceive(scrollCoordinator.$request) { request in
+                guard request?.destination == .profile else { return }
+                if reduceMotion {
+                    proxy.scrollTo(MainTabScrollDestination.profile, anchor: .top)
+                } else {
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        proxy.scrollTo(
+                            MainTabScrollDestination.profile,
+                            anchor: .top
+                        )
+                    }
+                }
+            }
         }
         .background(ThemeBackground())
         .navigationTitle("Профиль")

@@ -59,11 +59,29 @@ all_source = "\n".join(path.read_text(encoding="utf-8") for path in swift_files)
 audio_player_source = (
     SOURCE / "Player" / "AudioPlayer.swift"
 ).read_text(encoding="utf-8")
+equalizer_source = (
+    SOURCE / "Player" / "EqualizerDSP.swift"
+).read_text(encoding="utf-8")
+spatial_audio_source = (
+    SOURCE / "Player" / "SpatialAudioDSP.swift"
+).read_text(encoding="utf-8")
 player_view_source = (
     SOURCE / "Features" / "Player" / "PlayerView.swift"
 ).read_text(encoding="utf-8")
 root_view_source = (
     SOURCE / "Features" / "Root" / "RootView.swift"
+).read_text(encoding="utf-8")
+mini_player_source = (
+    SOURCE / "Features" / "Player" / "MiniPlayerView.swift"
+).read_text(encoding="utf-8")
+main_tab_source = (
+    SOURCE / "Features" / "Root" / "MainTabView.swift"
+).read_text(encoding="utf-8")
+cached_image_source = (
+    SOURCE / "Features" / "Shared" / "CachedRemoteImage.swift"
+).read_text(encoding="utf-8")
+library_view_source = (
+    SOURCE / "Features" / "Library" / "LibraryView.swift"
 ).read_text(encoding="utf-8")
 glass_source = (
     SOURCE / "Features" / "Shared" / "AdaptiveGlass.swift"
@@ -98,6 +116,49 @@ for required_symbol in (
 
 if "options: [.allowAirPlay, .allowBluetoothA2DP]" in audio_player_source:
     fail("playback audio session must not use incompatible route options")
+for required_processing_route_symbol in (
+    "enum AudioProcessingRoutePolicy",
+    "player.allowsExternalPlayback = AudioProcessingRoutePolicy",
+    "shouldResumeAfterMinimumVolumePause",
+    "pausedForMinimumVolume = true",
+    "minimumVolumeResumeSuppressed",
+    "isAudioInterrupted: isAudioInterrupted",
+):
+    if required_processing_route_symbol not in audio_player_source:
+        fail(
+            "audio processing must remain active on external output routes: "
+            f"{required_processing_route_symbol}"
+        )
+if "player.allowsExternalPlayback = true" in audio_player_source:
+    fail("external AVPlayer handoff must not bypass active audio processing")
+if ".preroll(" in audio_player_source:
+    fail("track preloading must not use exception-prone AVPlayer preroll")
+for forbidden_system_tab_symbol in (
+    "SystemLiquidGlassTabView",
+    "tabViewBottomAccessory",
+    "role: .search",
+):
+    if forbidden_system_tab_symbol in main_tab_source:
+        fail(
+            "main navigation must reserve space with the stable custom dock: "
+            f"{forbidden_system_tab_symbol}"
+        )
+for required_dock_glass_symbol in (
+    "AdaptiveGlassContainer(spacing: 4)",
+    "tint: settings.theme.accent.opacity(0.06)",
+    ".safeAreaInset(edge: .bottom, spacing: 0)",
+):
+    if required_dock_glass_symbol not in main_tab_source:
+        fail(
+            "custom navigation must retain native Liquid Glass and safe inset: "
+            f"{required_dock_glass_symbol}"
+        )
+if "kAudioFormatFlagIsNonInterleaved" not in equalizer_source:
+    fail("audio processing must use the declared PCM interleaving format")
+if "let nonInterleaved = buffers.count > 1" in equalizer_source:
+    fail("audio buffer count must not be used to infer PCM interleaving")
+if "if peak > 1" in spatial_audio_source:
+    fail("spatial audio must not use a sample-by-sample peak limiter")
 configure_audio_session = audio_player_source.split(
     "private func configureAudioSession()", 1
 )[1].split("private func activateAudioSession()", 1)[0]
@@ -113,13 +174,57 @@ for required_fullscreen_symbol in (
             "player presentation is not full-screen: "
             f"{required_fullscreen_symbol}"
         )
+if re.search(
+    r"\.onDisappear\s*\{\s*player\.dismissPlayer\(\)",
+    root_view_source,
+):
+    fail("player presentation must not be dismissed from content onDisappear")
+if ".simultaneousGesture(miniPlayerGesture)" not in mini_player_source:
+    fail("mini-player swipe gesture must not intercept its open button")
+if "loadedIdentity == loadIdentity ? image : nil" not in cached_image_source:
+    fail("cached artwork must never display a stale request identity")
+if "Text(track.duration.formattedDuration)" not in library_view_source:
+    fail("library track rows must display track duration")
 for required_player_symbol in (
     ".background(playerBackground.ignoresSafeArea())",
     ".buttonStyle(.glassProminent)",
     "AdaptiveGlassContainer(spacing: 8)",
+    ".simultaneousGesture(fullScreenDismissGesture)",
+    "PlayerDismissGesturePolicy.shouldDismiss",
+    "PlayerArtworkCarouselPolicy.neighborIndices",
 ):
     if required_player_symbol not in player_view_source:
         fail(f"player is missing full-bleed/glass symbol: {required_player_symbol}")
+for required_preload_symbol in (
+    "PlaybackPreloadPolicy.nextIndex",
+    "asset.load(.isPlayable)",
+    "takePreloadedPlayback",
+    "invalidatePreloadedPlayback",
+    "ArtworkImageCache.shared.prefetch",
+):
+    if required_preload_symbol not in all_source:
+        fail(f"next-track preload is missing: {required_preload_symbol}")
+for required_catalog_symbol in (
+    "PlaybackIndicatorView",
+    "ListeningProgressPolicy.shouldMarkListened",
+    "HomeCatalogStore",
+    "audio.searchAlbums",
+    "audio.followPlaylist",
+    "AlbumDetailView",
+    "AlbumShareLinkBuilder",
+    "likedAlbumsStore",
+    "albumReference",
+    "openAlbum(for: track)",
+):
+    if required_catalog_symbol not in all_source:
+        fail(f"catalog/album support is missing: {required_catalog_symbol}")
+for required_queue_symbol in (
+    "func removeFromQueue(at index: Int)",
+    ".swipeActions(",
+    "Удалить из очереди",
+):
+    if required_queue_symbol not in all_source:
+        fail(f"queue swipe removal is missing: {required_queue_symbol}")
 for required_offline_symbol in (
     "configureOfflinePlayback",
     "offlineURLProvider",
@@ -333,6 +438,8 @@ for required_setting in (
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2.watchkitapp",
     "INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.dec.privatemusic2",
+    "INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: NO",
+    "TARGETED_DEVICE_FAMILY: 4",
     "postGenCommand: python3 scripts/fix_watch_embedding.py",
     "GENERATE_INFOPLIST_FILE: NO",
     "INFOPLIST_FILE: PrivateMusic/Resources/Info.plist",
