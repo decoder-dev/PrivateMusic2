@@ -137,50 +137,38 @@ jobs:
           test "$GITHUB_REF_NAME" = "v3.28.22"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.28.22
+          # Private Music 3.28.22
 
-          Сводка main после слияния всех открытых веток.
+          Полный релиз с `main`: стабильное аудио в авто, системная громкость,
+          мини-плеер как в Apple Music и меньше нагрева.
 
-          Производительность
-          - Прогресс воспроизведения вынесен из EnvironmentObject AudioPlayer —
-            списки больше не перерисовываются 2 раза в секунду
-          - Убраны дёргания прогресса мини-плеера и thrash safe-area дока
-          - Coalesce remote commands; тихий early-out в EQ DSP
+          ## Аудио и авто
+          - Эквалайзер и пространственный звук идут через локальный decode на iPhone и доходят до наушников, колонок и CarKit / Bluetooth
+          - Громкость только системная (`MPVolumeView`), без отдельного app-level attenuation
+          - После media-services reset при подключении к машине воспроизведение продолжается
+          - Tap EQ/spatial ставится только после `readyToPlay` и на audio track; HLS без unsupported tap — без каскада ошибок и skip
+          - Flat EQ не включает realtime tap; меньше CPU на external route
+
+          ## Мини-плеер
+          - Компактная glass-панель: обложка, title/artist, play/pause, next, прогресс
+          - iOS 26.1+: expanded / inline tab accessory без обрезания
+          - Настоящий crossfade обложек
+          - Жесты с axis dominance — диагональ не дергает UI
+
+          ## Производительность
+          - Прогресс вынесен из EnvironmentObject — списки не дёргаются от тиков плеера
+          - Coalesce remote commands, тихий early-out в EQ DSP
           - Меньше artwork prefetch / Watch / persist нагрузки
 
-          Громкость / DSP
-          - Слайдер громкости связан с системным звуком (MPVolumeView)
-          - Эквалайзер и пространственный звук работают на наушниках,
-            колонках и CarKit / Bluetooth автомобиля (локальный decode + tap)
-          - EQ/spatial tap только после readyToPlay и с AVAssetTrack; HLS без
-            tap (иначе item fails на авто), после media-reset нет skip-каскада
+          ## Интерфейс и платформа
+          - System TabView + search role на iOS 26.1+, legacy dock на iOS 16–26.0
+          - iOS 27 scene lifecycle и актуальные privacy reasons
+          - В «Сейчас играет» для истории: **История прослушивания**, а не «Микс по …»
+          - Исправлена пустая вкладка «Треки» в библиотеке
 
-          Мини-плеер
-          - Apple Music–style glass panel: обложка, title/artist, play/pause,
-            next, тонкий прогресс; previous через свайп / VoiceOver
-          - iOS 26.1+: expanded vs inline tab accessory (компактный inline
-            без обрезания при minimize)
-          - Настоящий crossfade обложек без мигания placeholder
-          - Жесты с axisDominanceRatio — почти диагональ игнорируется
-
-          Аудио / CarKit / нагрев
-          - После media-services reset (часто при подключении к машине)
-            воспроизведение восстанавливается, если оно было активно
-          - Гонки interruption/route: нет утечки в динамик телефона,
-            pending resume не теряется
-          - Flat EQ не ставит realtime tap; меньше CPU и лучше external route
-          - Меньше нагрева: без лишних @Published / Watch WCSession spam
-
-          Также
-          - System TabView + search role на iOS 26.1+
-          - Исправление пустой вкладки «Треки» в библиотеке
-          - Legacy dock для iOS 16–26.0
-          - iOS 27 scene lifecycle + privacy reasons
-          - История прослушивания в заголовке «Сейчас играет»
-
-          IPA не подписан. Перед установкой подпишите его собственным
-          сертификатом. Подпись требует сначала подписать PlugIns/PrivateMusicWatch.app,
-          затем основное приложение iPhone.
+          ## Установка
+          IPA не подписан. Перед установкой подпишите собственным сертификатом:
+          сначала `PlugIns/PrivateMusicWatch.app`, затем основное iPhone-приложение.
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
@@ -189,13 +177,14 @@ jobs:
             gh release edit "$GITHUB_REF_NAME" \
               --title "Private Music 3.28.22" \
               --notes-file "$NOTES" \
-              --prerelease
+              --prerelease=false \
+              --latest
           else
             gh release create "$GITHUB_REF_NAME" \
               "$PWD/artifacts/PrivateMusic-3.28.22-unsigned.ipa" \
               --title "Private Music 3.28.22" \
               --notes-file "$NOTES" \
-              --prerelease
+              --latest
           fi
 
       - name: Upload unsigned IPA
