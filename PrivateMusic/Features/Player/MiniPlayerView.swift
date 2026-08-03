@@ -85,31 +85,12 @@ struct MiniPlayerView: View {
     }
 
     private func artwork(for track: Track) -> some View {
-        AsyncArtwork(
+        MiniPlayerArtworkView(
             url: track.artworkURL,
-            size: MiniPlayerLayoutMetrics.artworkSize
+            size: MiniPlayerLayoutMetrics.artworkSize,
+            cornerRadius: MiniPlayerLayoutMetrics.artworkCornerRadius,
+            showsShadow: true
         )
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: MiniPlayerLayoutMetrics.artworkCornerRadius,
-                style: .continuous
-            )
-        )
-        .shadow(
-            color: .black.opacity(0.18),
-            radius: MiniPlayerLayoutMetrics.artworkShadowRadius,
-            y: MiniPlayerLayoutMetrics.artworkShadowY
-        )
-        .id(track.id)
-        .animation(
-            reduceMotion
-                ? nil
-                : .easeInOut(
-                    duration: MiniPlayerLayoutMetrics.trackCrossfadeDuration
-                ),
-            value: track.id
-        )
-        .accessibilityHidden(true)
     }
 
     private func trackMetadata(_ track: Track) -> some View {
@@ -291,7 +272,7 @@ struct MiniPlayerView: View {
     }
 }
 
-private extension View {
+extension View {
     /// Marks the mini player as the visual origin for the zoom transition
     /// into PlayerView (see RootView.playerZoomTransition). No-op below
     /// iOS 18, where the full-screen cover just slides up as before.
