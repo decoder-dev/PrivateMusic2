@@ -153,6 +153,7 @@
 "Расширенная стереосцена" = "Expanded Stereo Soundstage";
 "Интенсивность" = "Intensity";
 "Расширяет стереосцену обычных треков. Работает в наушниках, на колонках и через CarKit / Bluetooth автомобиля." = "Widens the soundstage of standard stereo tracks. Works with headphones, speakers, and CarKit / car Bluetooth.";
+"Расширяет сцену в наушниках. На авто и колонках бас остаётся по центру и слегка подчищается «бочка», чтобы звук не гудел." = "Widens the soundstage on headphones. In the car and on speakers, bass stays centered and a light anti-boom cut reduces the hollow barrel sound.";
 "Профиль эквалайзера" = "Equalizer Preset";
 "Предусилитель" = "Preamp";
 "дБ" = "dB";

@@ -174,4 +174,70 @@ final class SpatialAudioDSPTests: XCTestCase {
         )
         XCTAssertTrue(processor.requiresAudioTap)
     }
+
+    func testCabinProfileAddsClarityTapWithoutUserEQ() {
+        let processor = EqualizerDSP()
+        processor.setOutputProfile(.intimate)
+        processor.update(
+            enabled: false,
+            gains: EqualizerPreset.flat.gains,
+            preamp: 0,
+            spatialAudio: false
+        )
+        XCTAssertFalse(processor.requiresAudioTap)
+
+        processor.setOutputProfile(.cabin)
+        XCTAssertTrue(processor.requiresAudioTap)
+    }
+
+    func testOutputToneProfileScalesSpatialForCabin() {
+        XCTAssertEqual(
+            PlaybackOutputToneProfile.resolve(
+                outputPortTypes: [.headphones]
+            ),
+            .intimate
+        )
+        XCTAssertEqual(
+            PlaybackOutputToneProfile.resolve(
+                outputPortTypes: [.carAudio]
+            ),
+            .cabin
+        )
+        XCTAssertEqual(
+            PlaybackOutputToneProfile.resolve(
+                outputPortTypes: [.builtInSpeaker]
+            ),
+            .room
+        )
+        XCTAssertEqual(
+            PlaybackOutputToneProfile.resolve(
+                outputPortTypes: [.bluetoothA2DP]
+            ),
+            .room
+        )
+        let cabinIntensity = SpatialAudioDSP.effectiveIntensity(
+            userIntensity: 1,
+            profile: .cabin
+        )
+        XCTAssertLessThan(cabinIntensity, 0.6)
+        XCTAssertEqual(
+            SpatialAudioDSP.effectiveIntensity(
+                userIntensity: 0.5,
+                profile: .intimate
+            ),
+            0.5,
+            accuracy: 0.000_1
+        )
+    }
+
+    func testProcessedSideKeepsMidEnergyCentered() {
+        let output = SpatialAudioDSP.process(
+            left: 0.4,
+            right: -0.1,
+            intensity: 1,
+            processedSide: 0.05
+        )
+        let mid = (output.left + output.right) * 0.5
+        XCTAssertEqual(mid, 0.15, accuracy: 0.000_1)
+    }
 }

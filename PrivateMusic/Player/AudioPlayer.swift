@@ -515,6 +515,7 @@ final class AudioPlayer: ObservableObject {
         ) ?? .off
         configurePlayerInstance()
         _ = configureAudioSession()
+        updateOutputToneProfile(reloadIfNeeded: false)
         configureRemoteCommands()
         observePlayer()
         Publishers.CombineLatest4(
@@ -1734,6 +1735,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func handleRouteChange(_ notification: Notification) {
+        updateOutputToneProfile(reloadIfNeeded: true)
         guard let rawReason = notification.userInfo?[
             AVAudioSessionRouteChangeReasonKey
         ] as? UInt,
@@ -1849,6 +1851,7 @@ final class AudioPlayer: ObservableObject {
 
         player = AVPlayer()
         configurePlayerInstance()
+        updateOutputToneProfile(reloadIfNeeded: false)
         installPeriodicTimeObserver()
         loadedTrackID = nil
         loadedOfflineTrackID = nil
@@ -1869,6 +1872,25 @@ final class AudioPlayer: ObservableObject {
         let shouldResume = isPlaying
         let position = elapsedTime
         loadCurrent(autoplay: shouldResume, startAt: position)
+    }
+
+    private func updateOutputToneProfile(reloadIfNeeded: Bool) {
+        let ports = AVAudioSession.sharedInstance()
+            .currentRoute.outputs.map(\.portType)
+        let profile = PlaybackOutputToneProfile.resolve(
+            outputPortTypes: ports
+        )
+        let requiredTap = equalizer.requiresAudioTap
+        equalizer.setOutputProfile(profile)
+        let requiresAudioTap = equalizer.requiresAudioTap
+        player.allowsExternalPlayback = AudioProcessingRoutePolicy
+            .allowsExternalPlayback(requiresAudioTap: requiresAudioTap)
+        guard reloadIfNeeded,
+              requiredTap != requiresAudioTap,
+              player.currentItem != nil else {
+            return
+        }
+        reloadCurrentItemForAudioProcessing()
     }
 
     private func handleOutputVolume(
