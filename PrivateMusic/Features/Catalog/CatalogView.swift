@@ -13,6 +13,7 @@ struct CatalogView: View {
     @State private var sharingTrack: Track?
     @State private var selectedAlbum: Album?
     @State private var loadingAlbumTrackID: String?
+    @State private var loadingPlayAlbumID: String?
     @State private var albumLookupTask: Task<Void, Never>?
 
     var body: some View {
@@ -245,33 +246,62 @@ struct CatalogView: View {
                     spacing: metrics.cardSpacing
                 ) {
                     ForEach(homeCatalog.newReleases.prefix(16)) { album in
-                        Button { selectedAlbum = album } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                AsyncArtwork(
-                                    url: album.artworkURL,
-                                    size: metrics.newReleaseWidth
-                                )
-                                Text(
-                                    Album.isUsableTitle(album.title)
-                                        ? album.title
-                                        : L10n.text("Альбом")
-                                )
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Text(album.artistText)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 6) {
+                            ZStack(alignment: .bottomTrailing) {
+                                Button { selectedAlbum = album } label: {
+                                    AsyncArtwork(
+                                        url: album.artworkURL,
+                                        size: metrics.newReleaseWidth
+                                    )
+                                }
+                                .buttonStyle(PremiumPressStyle())
+
+                                Button { playAlbum(album) } label: {
+                                    Group {
+                                        if loadingPlayAlbumID == album.id {
+                                            ProgressView()
+                                                .tint(.black)
+                                        } else {
+                                            Image(systemName: "play.fill")
+                                        }
+                                    }
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.black)
+                                    .frame(width: 30, height: 30)
+                                    .background(.white, in: Circle())
+                                }
+                                .buttonStyle(PremiumPressStyle())
+                                .padding(6)
+                                .disabled(loadingPlayAlbumID != nil)
+                                .accessibilityLabel(L10n.text("Воспроизвести альбом"))
                             }
-                            .frame(
-                                width: metrics.newReleaseWidth,
-                                alignment: .topLeading
-                            )
+                            Button { selectedAlbum = album } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(
+                                        Album.isUsableTitle(album.title)
+                                            ? album.title
+                                            : L10n.text("Альбом")
+                                    )
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(
+                                            horizontal: false,
+                                            vertical: true
+                                        )
+                                    Text(album.artistText)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(PremiumPressStyle())
+                        .frame(
+                            width: metrics.newReleaseWidth,
+                            alignment: .topLeading
+                        )
                     }
                 }
             }
@@ -540,6 +570,37 @@ struct CatalogView: View {
                     "Не удалось открыть альбом: %@",
                     error.localizedDescription
                 )
+            }
+        }
+    }
+
+    private func playAlbum(_ album: Album) {
+        guard sessionStore.accessToken != nil else { return }
+        loadingPlayAlbumID = album.id
+        Task {
+            defer { loadingPlayAlbumID = nil }
+            do {
+                let page = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.albumTracks(
+                        album,
+                        accessToken: token,
+                        offset: 0,
+                        count: 50
+                    )
+                }
+                guard let first = page.items.first else { return }
+                let title = Album.isUsableTitle(album.title)
+                    ? album.title
+                    : L10n.text("Альбом")
+                player.play(
+                    first,
+                    in: page.items,
+                    source: .album(title: title)
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                actionErrorMessage = error.localizedDescription
             }
         }
     }

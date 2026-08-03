@@ -28,8 +28,8 @@ struct MusicMix: Hashable, Identifiable, Sendable {
 
     static let common = MusicMix(
         id: "common",
-        title: L10n.text("Мой микс"),
-        subtitle: L10n.text("Бесконечная персональная подборка VK"),
+        title: L10n.text("Составлено Селеной"),
+        subtitle: L10n.text("Селена подбирает музыку под ваш вкус"),
         artworkURL: nil,
         matchPercent: nil,
         isSocial: false
