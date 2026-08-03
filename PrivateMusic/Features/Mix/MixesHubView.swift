@@ -8,6 +8,9 @@ struct MixesHubView: View {
     @EnvironmentObject private var homeCatalog: HomeCatalogStore
     @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var mixes: [MusicMix] = []
+    @State private var isLoading = false
+    @State private var loadErrorMessage: String?
     @State private var selectedMix: MusicMix?
     @State private var loadingMixID: String?
     @State private var actionError: String?
@@ -23,32 +26,36 @@ struct MixesHubView: View {
 
                         personalHero(metrics: metrics)
 
-                        if !socialMixes.isEmpty {
-                            mixShelf(
-                                title: "Слушайте друг друга",
-                                mixes: socialMixes,
-                                metrics: metrics,
-                                showsMatchBadge: true
-                            )
-                        }
-
-                        if !algorithmicMixes.isEmpty {
-                            mixShelf(
-                                title: "Собрано алгоритмами",
-                                mixes: algorithmicMixes,
-                                metrics: metrics,
-                                showsMatchBadge: false
-                            )
-                        }
-
-                        if homeCatalog.isRefreshing
-                            && socialMixes.isEmpty
-                            && algorithmicMixes.isEmpty {
+                        if isLoading && mixes.count <= 1 {
                             skeleton(metrics: metrics)
+                        } else if let loadErrorMessage,
+                                  socialMixes.isEmpty,
+                                  algorithmicMixes.isEmpty {
+                            loadErrorState(loadErrorMessage)
+                        } else {
+                            if !socialMixes.isEmpty {
+                                mixShelf(
+                                    title: "Слушайте друг друга",
+                                    mixes: socialMixes,
+                                    metrics: metrics,
+                                    showsMatchBadge: true
+                                )
+                            }
+                            if !algorithmicMixes.isEmpty {
+                                mixShelf(
+                                    title: "Собрано алгоритмами",
+                                    mixes: algorithmicMixes,
+                                    metrics: metrics,
+                                    showsMatchBadge: false
+                                )
+                            }
+                            if socialMixes.isEmpty, algorithmicMixes.isEmpty {
+                                emptyMixesState
+                            }
                         }
 
                         if let actionError {
-                            retryRow(actionError)
+                            actionErrorRow(actionError)
                         }
                     }
                     .padding(.horizontal, metrics.horizontalPadding)
@@ -84,16 +91,35 @@ struct MixesHubView: View {
             }
         }
         .refreshable {
-            await environment.refreshHomeCatalog(force: true)
+            await load(force: true)
         }
         .task(id: sessionStore.accessToken) {
-            if homeCatalog.mixes.isEmpty {
-                await environment.refreshHomeCatalog()
-            }
+            await load()
         }
     }
 
-    private var mixes: [MusicMix] { homeCatalog.mixes }
+    // Loaded independently from HomeCatalogStore: mixes used to be a Home
+    // section sharing that store's coarse, 15-minute-stale cache, which
+    // left this tab silently stuck showing just the personal mix whenever
+    // Home's own fetch happened to come back thin — with no error and no
+    // way to retry short of waiting out the cache. This tab now owns its
+    // own fetch/retry, same as MixView already does per-mix.
+    private func load(force: Bool = false) async {
+        guard sessionStore.accessToken != nil,
+              force || mixes.isEmpty else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            mixes = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.mixes(accessToken: token)
+            }
+            loadErrorMessage = nil
+        } catch is CancellationError {
+            return
+        } catch {
+            loadErrorMessage = error.localizedDescription
+        }
+    }
 
     private var socialMixes: [MusicMix] {
         mixes.filter { $0.id != MusicMix.common.id && $0.isSocial }
@@ -129,16 +155,27 @@ struct MixesHubView: View {
                     endPoint: .bottomTrailing
                 )
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     Spacer(minLength: 0)
-                    Text(heroTitle)
+                    Text(L10n.text("Экспериментальная функция"))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.72))
+                        .textCase(.uppercase)
+                        .tracking(0.55)
+                    // The bold headline stays a short, fixed mix title
+                    // (never longer than "Составлено Селеной") and the
+                    // personalized, unbounded-length greeting goes in the
+                    // smaller subtitle instead — a hero card of fixed
+                    // height and a profile first name of arbitrary length
+                    // otherwise combine into mid-word ellipsis truncation.
+                    Text(mix.title)
                         .font(.title2.weight(.bold))
-                        .lineLimit(3)
-                        .minimumScaleFactor(0.86)
-                    Text(L10n.text("Музыкальные рекомендации для вас"))
+                        .lineLimit(2)
+                    Text(heroSubtitle)
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.82))
                         .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(22)
                 .padding(.trailing, 72)
@@ -184,12 +221,12 @@ struct MixesHubView: View {
         }
     }
 
-    private var heroTitle: String {
+    private var heroSubtitle: String {
         if let name = sessionStore.profile?.firstName,
            !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return L10n.format("%@ подготовил(а) кое-что для вас", name)
+            return L10n.format("Селена подготовила подборку для %@", name)
         }
-        return L10n.text("Персональный микс для вас")
+        return L10n.text("Селена подготовила подборку специально для вас")
     }
 
     private func mixShelf(
@@ -223,33 +260,47 @@ struct MixesHubView: View {
         showsMatchBadge: Bool
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button { selectedMix = mix } label: {
-                ZStack(alignment: .topLeading) {
-                    MixArtworkView(
-                        mix: mix,
-                        tracks: homeCatalog.recommendations,
-                        size: metrics.cardWidth,
-                        height: metrics.cardHeight,
-                        cornerRadius: 16
-                    )
+            ZStack(alignment: .bottomTrailing) {
+                Button { selectedMix = mix } label: {
+                    ZStack(alignment: .topLeading) {
+                        MixArtworkView(
+                            mix: mix,
+                            tracks: homeCatalog.recommendations,
+                            size: metrics.cardWidth,
+                            height: metrics.cardHeight,
+                            cornerRadius: 16
+                        )
 
-                    if showsMatchBadge, let percent = mix.matchPercent {
-                        Text("\(percent)%")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                Capsule(style: .continuous)
-                                    .fill(.black.opacity(0.55))
-                            )
-                            .padding(10)
+                        if showsMatchBadge, let percent = mix.matchPercent {
+                            Text("\(percent)%")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(.black.opacity(0.55))
+                                )
+                                .padding(10)
+                        }
                     }
                 }
+                .buttonStyle(PremiumPressStyle())
+                .disabled(loadingMixID != nil)
+                .accessibilityLabel(mix.title)
+
+                Button { start(mix) } label: {
+                    Image(systemName: "play.fill")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 30, height: 30)
+                        .foregroundStyle(.black)
+                        .background(.white, in: Circle())
+                }
+                .buttonStyle(PremiumPressStyle())
+                .padding(8)
+                .disabled(loadingMixID != nil)
+                .accessibilityLabel(L10n.text("Воспроизвести микс"))
             }
-            .buttonStyle(PremiumPressStyle())
-            .disabled(loadingMixID != nil)
-            .accessibilityLabel(mix.title)
 
             Button { selectedMix = mix } label: {
                 VStack(alignment: .leading, spacing: 2) {
@@ -286,6 +337,65 @@ struct MixesHubView: View {
         return mix.subtitle
     }
 
+    private var emptyMixesState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary)
+            Text(L10n.text("Пока доступен только персональный микс"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
+            Text(
+                L10n.text(
+                    "VK ещё не подготовил тематические подборки для вашего аккаунта — загляните позже."
+                )
+            )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                Task { await load(force: true) }
+            } label: {
+                Text(L10n.text("Обновить"))
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .padding(.top, 6)
+            .disabled(isLoading)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 36)
+        .padding(.horizontal, 24)
+    }
+
+    private func loadErrorState(_ message: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary)
+            Text(L10n.text("Не удалось загрузить миксы"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                Task { await load(force: true) }
+            } label: {
+                Text(L10n.text("Обновить"))
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .padding(.top, 6)
+            .disabled(isLoading)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 36)
+        .padding(.horizontal, 24)
+    }
+
     private func skeleton(metrics: MixHubMetrics) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             RoundedRectangle(
@@ -314,11 +424,11 @@ struct MixesHubView: View {
         .accessibilityLabel(L10n.text("Загружаем рекомендации и миксы"))
     }
 
-    private func retryRow(_ message: String) -> some View {
+    private func actionErrorRow(_ message: String) -> some View {
         Button {
-            Task { await environment.refreshHomeCatalog(force: true) }
+            actionError = nil
         } label: {
-            Label(message, systemImage: "arrow.clockwise")
+            Label(message, systemImage: "exclamationmark.triangle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -365,7 +475,7 @@ private struct MixHubMetrics {
 
     var horizontalPadding: CGFloat { 16 }
     var cardSpacing: CGFloat { 12 }
-    var heroHeight: CGFloat { 168 }
+    var heroHeight: CGFloat { 188 }
     var cardWidth: CGFloat {
         max(148, (width - horizontalPadding * 2 - cardSpacing) * 0.42)
     }

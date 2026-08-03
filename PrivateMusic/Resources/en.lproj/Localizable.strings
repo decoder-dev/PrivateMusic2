@@ -16,6 +16,11 @@
 "VK Микс" = "VK Mix";
 "Персональная подборка VK" = "Personalized VK selection";
 "Бесконечная персональная подборка VK" = "Continuous personalized selection from VK";
+"Составлено Селеной" = "Curated by Selena";
+"Селена подбирает музыку под ваш вкус" = "Selena picks music to match your taste";
+"Экспериментальная функция" = "Experimental Feature";
+"Селена подготовила подборку для %@" = "Selena prepared a selection for %@";
+"Селена подготовила подборку специально для вас" = "Selena prepared a selection just for you";
 
 "Главная" = "Home";
 "Медиатека" = "Library";
@@ -31,6 +36,9 @@
 "Персональный микс для вас" = "A personal mix for you";
 "совпадение с вашим вкусом" = "match with your taste";
 "совпадение с вашим вкусом · %d%%" = "match with your taste · %d%%";
+"Пока доступен только персональный микс" = "Only your personal mix is available right now";
+"VK ещё не подготовил тематические подборки для вашего аккаунта — загляните позже." = "VK has not prepared themed mixes for your account yet — check back later.";
+"Не удалось загрузить миксы" = "Could not load mixes";
 "Воспроизвести микс" = "Play Mix";
 "Открыть микс" = "Open Mix";
 "Очередь" = "Queue";
@@ -123,6 +131,8 @@
 "%@ %@" = "%@ %@";
 "Сейчас играет" = "Current Track";
 "Воспроизвести трек" = "Play Track";
+"Воспроизвести альбом" = "Play Album";
+"Не удалось воспроизвести альбом" = "Could Not Play Album";
 "Воспроизвести из очереди" = "Play from Queue";
 "Перейти к этой строке" = "Seek to This Line";
 "Скопировать строку" = "Copy Line";
