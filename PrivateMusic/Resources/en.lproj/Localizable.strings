@@ -248,6 +248,7 @@
 "Очистить всю историю?" = "Clear All History?";
 "Медиатека пуста" = "Your Library Is Empty";
 "Добавленные во VK треки появятся здесь." = "Tracks added to your VK library will appear here.";
+"Не удалось загрузить треки" = "Could Not Load Tracks";
 "Плейлисты" = "Playlists";
 "Нет своих плейлистов" = "No Available Playlists";
 "Создайте плейлист в медиатеке." = "Create a playlist in your library.";
