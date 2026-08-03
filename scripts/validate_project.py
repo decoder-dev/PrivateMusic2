@@ -452,6 +452,25 @@ with plist_path.open("rb") as stream:
     plist = plistlib.load(stream)
 if plist.get("UIBackgroundModes") != ["audio"]:
     fail("Info.plist must contain only the audio background mode")
+scene_manifest = plist.get("UIApplicationSceneManifest")
+if not isinstance(scene_manifest, dict):
+    fail(
+        "Info.plist must declare UIApplicationSceneManifest "
+        "(required to launch when built with the iOS 27 SDK, TN3187)"
+    )
+if "UIApplicationSupportsMultipleScenes" not in scene_manifest:
+    fail(
+        "UIApplicationSceneManifest must declare "
+        "UIApplicationSupportsMultipleScenes"
+    )
+app_delegate = (SOURCE / "App" / "AppDelegate.swift").read_text(
+    encoding="utf-8"
+)
+if "configurationForConnecting" not in app_delegate:
+    fail(
+        "AppDelegate must implement configurationForConnecting "
+        "for iOS 27 scene lifecycle adoption"
+    )
 for key in (
     "VK_API_BASE_URL",
     "TELEGRAM_GROUP_URL",
@@ -469,14 +488,28 @@ if privacy.get("NSPrivacyTrackingDomains") != []:
     fail("privacy manifest must not declare tracking domains")
 if privacy.get("NSPrivacyCollectedDataTypes") != []:
     fail("privacy manifest must not declare collected analytics data")
-if privacy.get("NSPrivacyAccessedAPITypes") != [
-    {
-        "NSPrivacyAccessedAPIType":
-            "NSPrivacyAccessedAPICategoryUserDefaults",
-        "NSPrivacyAccessedAPITypeReasons": ["CA92.1"],
-    }
-]:
-    fail("privacy manifest must declare UserDefaults reason CA92.1")
+accessed_api_types = privacy.get("NSPrivacyAccessedAPITypes")
+if not isinstance(accessed_api_types, list):
+    fail("privacy manifest must declare NSPrivacyAccessedAPITypes")
+accessed_by_category = {
+    entry.get("NSPrivacyAccessedAPIType"): set(
+        entry.get("NSPrivacyAccessedAPITypeReasons") or []
+    )
+    for entry in accessed_api_types
+    if isinstance(entry, dict)
+}
+required_privacy_reasons = {
+    "NSPrivacyAccessedAPICategoryUserDefaults": {"CA92.1"},
+    "NSPrivacyAccessedAPICategoryFileTimestamp": {"DDA9.1"},
+    "NSPrivacyAccessedAPICategoryDiskSpace": {"E174.1"},
+}
+for category, reasons in required_privacy_reasons.items():
+    declared = accessed_by_category.get(category, set())
+    if not reasons <= declared:
+        fail(
+            "privacy manifest must declare "
+            f"{category} reason(s) {sorted(reasons)}"
+        )
 
 watch_privacy_path = (
     ROOT / "PrivateMusicWatch" / "Resources" / "PrivacyInfo.xcprivacy"
