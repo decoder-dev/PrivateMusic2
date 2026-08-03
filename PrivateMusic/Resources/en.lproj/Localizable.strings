@@ -133,7 +133,7 @@
 "Масштаб текста" = "Text Size";
 "Пример" = "Preview";
 "Liquid Glass" = "Liquid Glass";
-"На iOS 26 используется системное интерактивное стекло. На iOS 16–25 — совместимый эффект системного материала." = "iOS 26 uses the system interactive glass effect. iOS 16–25 use a compatible system material effect.";
+"На iOS 26 используется системное интерактивное стекло. На iOS 16–25 — совместимый эффект системного материала." = "iOS 26+ uses the system interactive glass effect. iOS 16–25 use a compatible system material effect.";
 "Сбросить оформление" = "Reset Appearance";
 "Плеер и аудио" = "Player & Audio";
 "Продолжать при подключении Bluetooth" = "Resume on Bluetooth Connection";

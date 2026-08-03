@@ -31,6 +31,14 @@
   <true/>
   <key>CADisableMinimumFrameDurationOnPhone</key>
   <true/>
+  <!-- Required when building with the iOS 27 SDK (TN3187): without a
+       scene manifest, UIKit fails launch. SwiftUI WindowGroup owns the
+       scene; this plist only declares adoption. -->
+  <key>UIApplicationSceneManifest</key>
+  <dict>
+    <key>UIApplicationSupportsMultipleScenes</key>
+    <false/>
+  </dict>
   <key>UILaunchScreen</key>
   <dict>
     <key>UIColorName</key>
