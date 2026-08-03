@@ -151,23 +151,24 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
             Int.self,
             forKey: .id
         )
-        let legacyAlbumID = try container.decodeIfPresent(
+        let nestedOwnerID = try nestedAlbum?.decodeIfPresent(
             Int.self,
-            forKey: .albumID
+            forKey: .ownerID
         )
-        if let albumID = nestedAlbumID ?? legacyAlbumID {
+        if let albumID = nestedAlbumID,
+           let albumOwnerID = nestedOwnerID {
             albumReference = AlbumReference(
                 albumID: albumID,
-                ownerID: try nestedAlbum?.decodeIfPresent(
-                    Int.self,
-                    forKey: .ownerID
-                ) ?? ownerID,
+                ownerID: albumOwnerID,
                 accessKey: try nestedAlbum?.decodeIfPresent(
                     String.self,
                     forKey: .accessKey
                 )
             )
         } else {
+            // A top-level album_id or nested id without owner_id is not a
+            // complete playlist locator. The audio owner can differ from the
+            // album owner, so CatalogView must resolve it by title instead.
             albumReference = nil
         }
     }

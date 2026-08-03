@@ -286,7 +286,11 @@ struct LibraryView: View {
                         } label: {
                             VStack(alignment: .leading, spacing: 8) {
                                 AsyncArtwork(url: album.artworkURL, size: 136)
-                                Text(album.title)
+                                Text(
+                                    Album.isUsableTitle(album.title)
+                                        ? album.title
+                                        : L10n.text("Альбом")
+                                )
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)

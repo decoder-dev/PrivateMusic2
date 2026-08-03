@@ -116,7 +116,7 @@ final class AlbumDecodingTests: XCTestCase {
         )
     }
 
-    func testTrackDecodesLegacyTopLevelAlbumReference() throws {
+    func testTrackDoesNotInventOwnerForLegacyAlbumID() throws {
         let data = """
         {
           "id": 7,
@@ -130,8 +130,22 @@ final class AlbumDecodingTests: XCTestCase {
 
         let track = try JSONDecoder().decode(Track.self, from: data)
 
-        XCTAssertEqual(track.albumReference?.albumID, 9)
-        XCTAssertEqual(track.albumReference?.ownerID, 8)
+        XCTAssertNil(track.albumReference)
+    }
+
+    func testAlbumWithoutTitleStillDecodesForTrackFallback() throws {
+        let data = """
+        {
+          "id": 24,
+          "owner_id": -5,
+          "size": 2
+        }
+        """.data(using: .utf8)!
+
+        let album = try JSONDecoder().decode(Album.self, from: data)
+
+        XCTAssertEqual(album.title, "")
+        XCTAssertFalse(Album.isUsableTitle(album.title))
     }
 
     func testTrackDecodesAndPersistsAlbumReference() throws {

@@ -123,7 +123,10 @@ struct Album: Decodable, Hashable, Identifiable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         albumID = try container.decode(Int.self, forKey: .albumID)
         ownerID = try container.decode(Int.self, forKey: .ownerID)
-        title = try container.decode(String.self, forKey: .title)
+        title = try container.decodeIfPresent(
+            String.self,
+            forKey: .title
+        )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         description = try container.decodeIfPresent(String.self, forKey: .description)
         count = try container.decodeIfPresent(Int.self, forKey: .count)
             ?? container.decodeIfPresent(Int.self, forKey: .size)

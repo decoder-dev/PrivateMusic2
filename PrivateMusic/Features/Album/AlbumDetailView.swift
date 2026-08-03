@@ -34,6 +34,27 @@ struct AlbumDetailView: View {
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
+            } else if let error = model.paginationErrorMessage {
+                Button {
+                    Task { await loadMore() }
+                } label: {
+                    Label(error, systemImage: "arrow.clockwise")
+                        .font(.subheadline)
+                        .multilineTextAlignment(.leading)
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            } else if let error = model.errorMessage,
+                      !model.tracks.isEmpty {
+                Button {
+                    Task { await load(force: true) }
+                } label: {
+                    Label(error, systemImage: "arrow.clockwise")
+                        .font(.subheadline)
+                        .multilineTextAlignment(.leading)
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
@@ -44,13 +65,24 @@ struct AlbumDetailView: View {
         .overlay {
             if model.isLoading && model.tracks.isEmpty {
                 ProgressView("Загружаем альбом…")
-            } else if let error = model.errorMessage,
-                      model.tracks.isEmpty {
-                EmptyStateView(
-                    title: "Не удалось открыть альбом",
-                    systemImage: "wifi.exclamationmark",
-                    description: error
-                )
+            } else if model.hasLoaded && model.tracks.isEmpty {
+                VStack(spacing: 12) {
+                    EmptyStateView(
+                        title: model.errorMessage == nil
+                            ? "В альбоме нет доступных треков"
+                            : "Не удалось открыть альбом",
+                        systemImage: model.errorMessage == nil
+                            ? "music.note.list"
+                            : "wifi.exclamationmark",
+                        description: model.errorMessage
+                            ?? "VK не вернул доступные аудиозаписи."
+                    )
+                    Button("Повторить") {
+                        Task { await load(force: true) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.bottom, 32)
+                }
                 .background(ThemeBackground())
             }
         }
@@ -240,7 +272,9 @@ private final class AlbumDetailViewModel: ObservableObject {
     @Published private(set) var tracks: [Track] = []
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingMore = false
+    @Published private(set) var hasLoaded = false
     @Published var errorMessage: String?
+    @Published var paginationErrorMessage: String?
     private var nextOffset: Int?
 
     func load(
@@ -251,16 +285,20 @@ private final class AlbumDetailViewModel: ObservableObject {
               !isLoadingMore,
               force || tracks.isEmpty else { return }
         isLoading = true
+        paginationErrorMessage = nil
         defer { isLoading = false }
         do {
             let page = try await operation()
             tracks = page.items
             nextOffset = page.nextOffset
             errorMessage = nil
+            paginationErrorMessage = nil
+            hasLoaded = true
         } catch is CancellationError {
             return
         } catch {
             errorMessage = error.localizedDescription
+            hasLoaded = true
         }
     }
 
@@ -279,11 +317,11 @@ private final class AlbumDetailViewModel: ObservableObject {
                 known.insert($0.id).inserted
             })
             nextOffset = page.nextOffset.flatMap { $0 > offset ? $0 : nil }
-            errorMessage = nil
+            paginationErrorMessage = nil
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = error.localizedDescription
+            paginationErrorMessage = error.localizedDescription
         }
     }
 }

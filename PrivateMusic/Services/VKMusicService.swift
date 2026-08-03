@@ -1,5 +1,47 @@
 import Foundation
 
+enum AlbumTrackRequestPolicy {
+    static func executeParameters(
+        album: Album,
+        offset: Int,
+        count: Int
+    ) -> [String: String] {
+        var parameters = [
+            "owner_id": String(album.ownerID),
+            "id": String(album.albumID),
+            "audio_offset": String(offset),
+            "audio_count": String(count),
+            "need_playlist": "1",
+            "need_owner": "0"
+        ]
+        if let accessKey = album.accessKey?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !accessKey.isEmpty {
+            parameters["access_key"] = accessKey
+        }
+        return parameters
+    }
+
+    static func legacyParameters(
+        album: Album,
+        offset: Int,
+        count: Int
+    ) -> [String: String] {
+        var parameters = [
+            "owner_id": String(album.ownerID),
+            "album_id": String(album.albumID),
+            "count": String(count),
+            "offset": String(offset)
+        ]
+        if let accessKey = album.accessKey?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !accessKey.isEmpty {
+            parameters["access_key"] = accessKey
+        }
+        return parameters
+    }
+}
+
 struct VKMusicService: MusicService {
     private let client: APIClient
     private let apiVersion: String
@@ -286,21 +328,62 @@ struct VKMusicService: MusicService {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Track> {
-        var parameters = [
-            "owner_id": String(album.ownerID),
-            "album_id": String(album.albumID),
-            "count": String(count),
-            "offset": String(offset)
-        ]
-        if let accessKey = album.accessKey {
-            parameters["access_key"] = accessKey
+        let userID = await context.userID
+        do {
+            let envelope: VKResponse<JSONValue> = try await client.post(
+                path: "/method/execute.getPlaylist",
+                form: common(accessToken).merging(
+                    AlbumTrackRequestPolicy.executeParameters(
+                        album: album,
+                        offset: offset,
+                        count: count
+                    )
+                ) { _, new in new },
+                responseType: VKResponse<JSONValue>.self
+            )
+            let rawAudioItems = envelope.response.directAudioItems
+            let decodedTracks = rawAudioItems.map {
+                JSONValue.array($0).tracks
+            } ?? envelope.response.tracks
+            let tracks = decodedTracks.map {
+                $0.resolvingStreamURL(userID: userID)
+            }
+            if !tracks.isEmpty {
+                let rawCount = rawAudioItems?.count ?? tracks.count
+                let consumed = offset + rawCount
+                let hasKnownRemainder = album.count > consumed
+                let hasUnknownRemainder = album.count == 0
+                    && rawCount >= count
+                return MusicPage(
+                    items: tracks,
+                    totalCount: album.count > 0 ? album.count : consumed,
+                    nextOffset: hasKnownRemainder || hasUnknownRemainder
+                        ? consumed
+                        : nil
+                )
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as APIError where error == .unauthorized {
+            throw error
+        } catch let error as APIError where error.isConnectivityFailure {
+            throw error
+        } catch {
+            // Older sessions can reject execute.getPlaylist. The canonical
+            // audio.get album query remains a compatible fallback.
         }
+
         let envelope: VKResponse<VKItems<Track>> = try await client.post(
             path: "/method/audio.get",
-            form: common(accessToken).merging(parameters) { _, new in new },
+            form: common(accessToken).merging(
+                AlbumTrackRequestPolicy.legacyParameters(
+                    album: album,
+                    offset: offset,
+                    count: count
+                )
+            ) { _, new in new },
             responseType: VKResponse<VKItems<Track>>.self
         )
-        let userID = await context.userID
         let resolved = VKItems(
             count: envelope.response.count,
             items: envelope.response.items.map {

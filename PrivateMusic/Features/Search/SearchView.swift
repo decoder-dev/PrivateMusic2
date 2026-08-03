@@ -295,7 +295,7 @@ struct SearchView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
 
-            if let error = model.errorMessage {
+            if scope == .tracks, let error = model.errorMessage {
                 inlineRetry(message: error, action: submitSearch)
                     .padding(.horizontal, PremiumLayout.screenPadding)
                     .padding(.bottom, 8)
@@ -322,7 +322,18 @@ struct SearchView: View {
                     artistResults
                 }
             } else {
-                if model.albums.isEmpty {
+                if model.isLoadingAlbums && model.albums.isEmpty {
+                    searchLoading
+                } else if let error = model.albumErrorMessage,
+                          model.albums.isEmpty {
+                    SearchStatusView(
+                        title: "Ошибка поиска альбомов",
+                        systemImage: "wifi.exclamationmark",
+                        description: error,
+                        actionTitle: "Повторить",
+                        action: submitSearch
+                    )
+                } else if model.albums.isEmpty {
                     SearchStatusView(
                         title: "Альбомы не найдены",
                         systemImage: "square.stack",
@@ -433,7 +444,11 @@ struct SearchView: View {
                     HStack(spacing: 12) {
                         AsyncArtwork(url: album.artworkURL, size: 56)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(album.title)
+                            Text(
+                                Album.isUsableTitle(album.title)
+                                    ? album.title
+                                    : L10n.text("Альбом")
+                            )
                                 .font(.headline)
                                 .lineLimit(2)
                             Text(album.artistText)
