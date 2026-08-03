@@ -241,6 +241,12 @@ if "let nonInterleaved = buffers.count > 1" in equalizer_source:
     fail("audio buffer count must not be used to infer PCM interleaving")
 if "if peak > 1" in spatial_audio_source:
     fail("spatial audio must not use a sample-by-sample peak limiter")
+if "sideHighPassFrequency" not in spatial_audio_source:
+    fail("spatial audio must keep bass mono via side high-pass")
+if "PlaybackOutputToneProfile" not in all_source:
+    fail("route-aware anti-boom tone profile must exist")
+if "setOutputProfile" not in equalizer_source:
+    fail("equalizer must adapt clarity processing to the output route")
 configure_audio_session = audio_player_source.split(
     "private func configureAudioSession()", 1
 )[1].split("private func activateAudioSession()", 1)[0]
