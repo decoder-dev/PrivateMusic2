@@ -3,84 +3,62 @@ import SwiftUI
 struct PlaylistDetailView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
+    @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var settings: AppSettings
     @ObservedObject private var offlinePlaylists =
         OfflinePlaylistStore.shared
     let playlist: Playlist
     @StateObject private var model = PlaylistDetailViewModel()
 
     var body: some View {
-        Group {
-            if model.isLoading && model.tracks.isEmpty {
-                ProgressView("Загружаем треки…")
-            } else if let error = model.errorMessage, model.tracks.isEmpty {
-                EmptyStateView(
-                    title: "Не удалось открыть плейлист",
-                    systemImage: "wifi.exclamationmark",
-                    description: error
+        List {
+            Section {
+                playlistHeader
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+            ForEach(model.tracks) { track in
+                TrackRow(
+                    track: track,
+                    queue: model.tracks,
+                    source: .playlist(title: playlist.title)
                 )
-            } else if model.tracks.isEmpty {
-                VStack(spacing: 18) {
-                    playlistHeader
-                    EmptyStateView(
-                        title: playlist.title,
-                        systemImage: "music.note",
-                        description: "В плейлисте пока нет доступных треков."
-                    )
-                }
-            } else {
-                List(model.tracks) { track in
-                    TrackRow(
-                        track: track,
-                        queue: model.tracks,
-                        source: .playlist(title: playlist.title)
-                    )
-                        .listRowBackground(Color.clear)
-                        .swipeActions(edge: .trailing) {
-                            if playlist.ownerID
-                                == sessionStore.session?.userID {
-                                Button(role: .destructive) {
-                                    Task {
-                                        await remove(track)
-                                    }
-                                } label: {
-                                    Label("Убрать", systemImage: "minus")
+                    .listRowBackground(Color.clear)
+                    .swipeActions(edge: .trailing) {
+                        if playlist.ownerID
+                            == sessionStore.session?.userID {
+                            Button(role: .destructive) {
+                                Task {
+                                    await remove(track)
                                 }
+                            } label: {
+                                Label("Убрать", systemImage: "minus")
                             }
                         }
-                        .onAppear {
-                            guard track.id == model.tracks.last?.id else {
-                                return
-                            }
-                            Task { await loadMore() }
-                        }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    VStack(spacing: 0) {
-                        if let message = model.errorMessage {
-                            // Defect 17: pagination failures surface as a
-                            // banner instead of replacing the loaded list.
-                            HStack(spacing: 8) {
-                                Image(
-                                    systemName: "exclamationmark.triangle.fill"
-                                )
-                                .foregroundStyle(.orange)
-                                Text(message)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .adaptiveGlass(in: Rectangle())
-                        }
-                        playlistHeader
-                            .padding(.bottom, 8)
                     }
+                    .onAppear {
+                        guard track.id == model.tracks.last?.id else {
+                            return
+                        }
+                        Task { await loadMore() }
+                    }
+            }
+            if !model.tracks.isEmpty, let error = model.errorMessage {
+                // Defect 17: pagination failures surface as a retry row
+                // instead of replacing the already-loaded list.
+                Button {
+                    Task { await loadMore() }
+                } label: {
+                    Label(error, systemImage: "arrow.clockwise")
+                        .font(.subheadline)
+                        .multilineTextAlignment(.leading)
                 }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle(playlist.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -89,6 +67,25 @@ struct PlaylistDetailView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     offlineButton
                 }
+            }
+        }
+        .overlay {
+            if model.isLoading && model.tracks.isEmpty {
+                ProgressView("Загружаем треки…")
+            } else if let error = model.errorMessage, model.tracks.isEmpty {
+                EmptyStateView(
+                    title: "Не удалось открыть плейлист",
+                    systemImage: "wifi.exclamationmark",
+                    description: error
+                )
+                .background(ThemeBackground())
+            } else if model.tracks.isEmpty {
+                EmptyStateView(
+                    title: playlist.title,
+                    systemImage: "music.note",
+                    description: "В плейлисте пока нет доступных треков."
+                )
+                .background(ThemeBackground())
             }
         }
         .task { await load() }
@@ -101,11 +98,13 @@ struct PlaylistDetailView: View {
     }
 
     private var playlistHeader: some View {
-        HStack(spacing: 14) {
-            PlaylistArtworkView(playlist: playlist, size: 72)
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 14) {
+            PlaylistArtworkView(playlist: playlist, size: 190)
+                .shadow(color: .black.opacity(0.22), radius: 16, y: 8)
+            VStack(spacing: 5) {
                 Text(playlist.title)
-                    .font(.headline)
+                    .font(.title2.weight(.bold))
+                    .multilineTextAlignment(.center)
                     .lineLimit(2)
                 Label(
                     L10n.format(
@@ -117,31 +116,78 @@ struct PlaylistDetailView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 Text(L10n.trackCount(playlist.count))
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if OfflineDownloadsFeature.showsControls,
-               let record = offlinePlaylists.record(for: playlist) {
-                let status = OfflinePlaylistStatus.status(for: record)
-                if status.isActive {
-                    VStack(alignment: .trailing, spacing: 3) {
-                        if let progress = status.progress {
-                            ProgressView(value: progress)
-                                .frame(width: 72)
+                if OfflineDownloadsFeature.showsControls,
+                   let record = offlinePlaylists.record(for: playlist) {
+                    let status = OfflinePlaylistStatus.status(for: record)
+                    if status.isActive {
+                        VStack(spacing: 3) {
+                            if let progress = status.progress {
+                                ProgressView(value: progress)
+                                    .frame(width: 120)
+                            }
+                            Text(status.localizedText ?? "")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
-                        Text(status.localizedText ?? "")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        .padding(.top, 2)
                     }
                 }
             }
+            listenButton
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(ThemeBackground())
-        .premiumAppear()
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+    }
+
+    /// A play icon inside a wide Label pushes the text off-center (the
+    /// icon+text group is centered as a unit, but the icon's width isn't
+    /// mirrored on the trailing side). Centering the text on its own and
+    /// pinning the icon to the leading edge keeps "Слушать" dead-center
+    /// regardless of button width.
+    private var listenButtonLabel: some View {
+        ZStack {
+            Text(L10n.text("Слушать"))
+                .font(.headline)
+            HStack {
+                Image(systemName: "play.fill")
+                    .accessibilityHidden(true)
+                Spacer()
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 46)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var listenButton: some View {
+        if #available(iOS 26.0, *) {
+            Button(action: playPlaylist) {
+                listenButtonLabel
+            }
+            .buttonStyle(.glassProminent)
+            .tint(settings.theme.accent)
+            .disabled(model.tracks.isEmpty)
+        } else {
+            Button(action: playPlaylist) {
+                listenButtonLabel
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(settings.theme.accent)
+            .disabled(model.tracks.isEmpty)
+        }
+    }
+
+    private func playPlaylist() {
+        guard let first = model.tracks.first else { return }
+        player.play(
+            first,
+            in: model.tracks,
+            source: .playlist(title: playlist.title)
+        )
     }
 
     private enum OfflineButtonState {
