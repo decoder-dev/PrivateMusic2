@@ -88,6 +88,30 @@ final class SpatialAudioDSPTests: XCTestCase {
         XCTAssertFalse(processor.isEnabled)
     }
 
+    func testSpatialAndEqualizerKeepLocalDecodeForAllSessionRoutes() {
+        // Local decode is what lets the MTAudioProcessingTap reach speaker,
+        // headphones, Bluetooth A2DP, and CarKit `.carAudio`.
+        XCTAssertFalse(
+            AudioProcessingRoutePolicy.allowsExternalPlayback(
+                requiresAudioTap: true
+            )
+        )
+        let processor = EqualizerDSP()
+        processor.update(
+            enabled: true,
+            gains: EqualizerPreset.rock.gains,
+            preamp: 0,
+            spatialAudio: true,
+            spatialIntensity: 0.5
+        )
+        XCTAssertTrue(processor.requiresAudioTap)
+        XCTAssertFalse(
+            AudioProcessingRoutePolicy.allowsExternalPlayback(
+                requiresAudioTap: processor.requiresAudioTap
+            )
+        )
+    }
+
     func testFlatEqualizerDoesNotInstallProcessingTap() {
         let processor = EqualizerDSP()
         processor.update(
