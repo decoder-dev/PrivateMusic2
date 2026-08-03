@@ -387,8 +387,9 @@ private struct PlayerAudioSettingsView: View {
 
 // MARK: - Equalizer
 
-private struct EqualizerSettingsView: View {
+struct EqualizerSettingsView: View {
     @EnvironmentObject private var settings: AppSettings
+    @Environment(\.dismiss) private var dismiss
 
     private let frequencies = [
         "31", "62", "125", "250", "500",
@@ -482,6 +483,11 @@ private struct EqualizerSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle("Эквалайзер")
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button(L10n.text("Готово")) { dismiss() }
+            }
+        }
     }
 }
 

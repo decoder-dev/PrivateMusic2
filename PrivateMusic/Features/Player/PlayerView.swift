@@ -759,7 +759,7 @@ struct PlayerView: View {
         case let .playlists(track):
             AddToPlaylistView(track: track)
         case .settings:
-            NavigationStack { SettingsView() }
+            NavigationStack { EqualizerSettingsView() }
         case let .actions(track):
             PlayerActionsSheet(
                 track: track,
@@ -1409,11 +1409,6 @@ private struct PlayerActionsSheet: View {
                                     action: onOffline
                                 )
                             }
-                            actionTile(
-                                "Настройки звука",
-                                systemImage: "slider.horizontal.3",
-                                action: onSettings
-                            )
                         }
 
                         sectionTitle("Плеер и аудио")
@@ -1489,15 +1484,35 @@ private struct PlayerActionsSheet: View {
             Divider()
                 .padding(.leading, 58)
 
-            Toggle(isOn: $equalizerEnabled) {
-                actionRowLabel(
-                    "Эквалайзер",
-                    systemImage: "waveform"
-                )
+            Button(action: onSettings) {
+                HStack(spacing: 12) {
+                    actionRowLabel(
+                        "Эквалайзер",
+                        systemImage: "waveform"
+                    )
+                    Spacer()
+                    Text(
+                        equalizerEnabled
+                            ? L10n.text("Вкл")
+                            : L10n.text("Выкл")
+                    )
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 16)
+                .frame(minHeight: PlayerActionSheetMetrics.minimumTapTarget)
+                .contentShape(Rectangle())
             }
-            .tint(.accentColor)
-            .padding(.horizontal, 16)
-            .frame(minHeight: PlayerActionSheetMetrics.minimumTapTarget)
+            .buttonStyle(PremiumPressStyle())
+            .accessibilityLabel(L10n.text("Эквалайзер"))
+            .accessibilityValue(
+                equalizerEnabled
+                    ? L10n.text("Вкл")
+                    : L10n.text("Выкл")
+            )
 
             Divider()
                 .padding(.leading, 58)
