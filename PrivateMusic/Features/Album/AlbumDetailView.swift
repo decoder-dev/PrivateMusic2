@@ -185,21 +185,38 @@ struct AlbumDetailView: View {
         .padding(.vertical, 12)
     }
 
+    /// A play icon inside a wide Label pushes the text off-center (the
+    /// icon+text group is centered as a unit, but the icon's width isn't
+    /// mirrored on the trailing side). Centering the text on its own and
+    /// pinning the icon to the leading edge keeps "Слушать" dead-center
+    /// regardless of button width.
+    private var listenButtonLabel: some View {
+        ZStack {
+            Text(L10n.text("Слушать"))
+                .font(.headline)
+            HStack {
+                Image(systemName: "play.fill")
+                    .accessibilityHidden(true)
+                Spacer()
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 46)
+        .accessibilityElement(children: .combine)
+    }
+
     @ViewBuilder
     private var listenButton: some View {
         if #available(iOS 26.0, *) {
             Button(action: playAlbum) {
-                Label("Слушать", systemImage: "play.fill")
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 46)
+                listenButtonLabel
             }
             .buttonStyle(.glassProminent)
             .tint(settings.theme.accent)
             .disabled(model.tracks.isEmpty)
         } else {
             Button(action: playAlbum) {
-                Label("Слушать", systemImage: "play.fill")
-                    .frame(maxWidth: .infinity)
+                listenButtonLabel
             }
             .buttonStyle(.borderedProminent)
             .tint(settings.theme.accent)
