@@ -4,8 +4,19 @@ import Foundation
 final class MusicLibraryStore: ObservableObject {
     @Published private(set) var signatures = Set<String>()
     private var tracksBySignature: [String: Track] = [:]
+    private var refreshGeneration = 0
 
-    func replace(with tracks: [Track]) {
+    /// Callers that fetch a full remote library page must obtain this ID and
+    /// pass it back to `replace(with:refreshID:)`. Local add/remove and newer
+    /// refreshes bump the generation so a slower empty/failed load cannot
+    /// wipe a newer successful index.
+    func beginRefresh() -> Int {
+        refreshGeneration += 1
+        return refreshGeneration
+    }
+
+    func replace(with tracks: [Track], refreshID: Int) {
+        guard refreshID == refreshGeneration else { return }
         signatures = Set(tracks.map(Self.signature))
         tracksBySignature = Dictionary(
             tracks.map { (Self.signature($0), $0) },
@@ -23,6 +34,7 @@ final class MusicLibraryStore: ObservableObject {
     }
 
     func markAdded(source: Track, stored: Track) {
+        refreshGeneration += 1
         let sourceSignature = Self.signature(source)
         let storedSignature = Self.signature(stored)
         signatures.insert(sourceSignature)
@@ -32,6 +44,7 @@ final class MusicLibraryStore: ObservableObject {
     }
 
     func markRemoved(_ track: Track) {
+        refreshGeneration += 1
         let signature = Self.signature(track)
         let storedID = tracksBySignature[signature]?.id ?? track.id
         let aliases = tracksBySignature.compactMap { key, stored in
