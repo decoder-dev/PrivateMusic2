@@ -44,6 +44,7 @@ protocol MusicService: Sendable {
     ) async throws -> MusicPage<Track>
     func toggleAlbumFollow(
         _ album: Album,
+        follow: Bool,
         accessToken: String
     ) async throws
     func playlists(

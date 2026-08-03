@@ -459,6 +459,7 @@ struct VKMusicService: MusicService {
 
     func toggleAlbumFollow(
         _ album: Album,
+        follow: Bool,
         accessToken: String
     ) async throws {
         var parameters = [
@@ -471,8 +472,14 @@ struct VKMusicService: MusicService {
         if let accessKey = album.accessKey {
             parameters["access_key"] = accessKey
         }
+        // Following and unfollowing are two distinct VK methods — calling
+        // followPlaylist for both directions means unfollow silently never
+        // reaches the server, so the heart reverts on the next refresh.
+        let path = follow
+            ? "/method/audio.followPlaylist"
+            : "/method/audio.unfollowPlaylist"
         let _: VKResponse<VKIgnored> = try await client.post(
-            path: "/method/audio.followPlaylist",
+            path: path,
             form: common(accessToken).merging(parameters) { _, new in new },
             retryPolicy: .never,
             responseType: VKResponse<VKIgnored>.self
