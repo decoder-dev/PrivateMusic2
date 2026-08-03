@@ -289,6 +289,63 @@ enum MediaServicesResetPolicy {
     }
 }
 
+/// Same-track recovery before auto-skip on flaky networks / stale CDN URLs.
+enum StreamFailureRetryPolicy {
+    static let maximumSameTrackAttempts = 3
+    static let maximumConnectivityAttempts = 8
+    static let preferredForwardBufferDuration: TimeInterval = 30
+    static let stallRecoveryThreshold: TimeInterval = 20
+    static let baseRetryDelay: TimeInterval = 1.2
+
+    static func retryDelay(forAttempt attempt: Int) -> TimeInterval {
+        let clamped = max(attempt, 1)
+        return min(baseRetryDelay * Double(clamped), 6)
+    }
+
+    static func isConnectivityFailure(_ error: Error?) -> Bool {
+        if let apiError = error as? APIError {
+            return apiError.isConnectivityFailure
+        }
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .notConnectedToInternet,
+             .networkConnectionLost,
+             .timedOut,
+             .cannotConnectToHost,
+             .cannotFindHost,
+             .dnsLookupFailed,
+             .internationalRoamingOff,
+             .dataNotAllowed,
+             .resourceUnavailable:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Keep the current track while retries remain. Connectivity failures
+    /// get a larger budget and never auto-advance the queue.
+    static func shouldRetrySameTrack(
+        attempts: Int,
+        error: Error?
+    ) -> Bool {
+        if isConnectivityFailure(error) {
+            return attempts < maximumConnectivityAttempts
+        }
+        return attempts < maximumSameTrackAttempts
+    }
+
+    static func shouldAdvance(
+        attempts: Int,
+        error: Error?,
+        advanceOnPlaybackError: Bool
+    ) -> Bool {
+        guard advanceOnPlaybackError else { return false }
+        if isConnectivityFailure(error) { return false }
+        return attempts >= maximumSameTrackAttempts
+    }
+}
+
 @MainActor
 final class AudioPlayer: ObservableObject {
     private final class PreloadedPlayback {
@@ -385,6 +442,9 @@ final class AudioPlayer: ObservableObject {
     private var remoteCommandFlushTask: Task<Void, Never>?
     private var lastPersistedQueueSignature = ""
     private var suppressAdvanceUntil: Date?
+    private var streamRecoveryAttempts = 0
+    private var streamRecoveryTask: Task<Void, Never>?
+    private var stallStartedAt: Date?
     private var preloadedPlayback: PreloadedPlayback?
     private var preloadAssetTask: Task<Void, Never>?
     private var preloadGeneration = 0
@@ -590,8 +650,11 @@ final class AudioPlayer: ObservableObject {
         playbackIntended = true
         cancelContinuation()
         cancelStreamRefresh()
+        cancelStreamRecovery()
         requiresStreamRefresh = false
         didAttemptStreamRefresh = false
+        streamRecoveryAttempts = 0
+        stallStartedAt = nil
         restoredTrackIDs.removeAll()
         attemptedPreloadRefreshes.removeAll()
         activeContinuationProvider =
@@ -945,12 +1008,20 @@ final class AudioPlayer: ObservableObject {
         let offlineURL = offlineURLProvider?(track)
         guard let url = offlineURL ?? track.streamURL else {
             if streamRefreshProvider != nil {
-                if !didAttemptStreamRefresh {
-                    requiresStreamRefresh = true
-                    refreshCurrentStream(autoplay: autoplay)
+                streamRecoveryAttempts += 1
+                if StreamFailureRetryPolicy.shouldRetrySameTrack(
+                    attempts: streamRecoveryAttempts,
+                    error: APIError.timedOut
+                ) {
+                    scheduleSameTrackRecovery(autoplay: autoplay)
                     return
                 }
-                if advancePastFailedTrackIfPossible() {
+                if StreamFailureRetryPolicy.shouldAdvance(
+                    attempts: streamRecoveryAttempts,
+                    error: APIError.invalidResponse,
+                    advanceOnPlaybackError: advanceOnPlaybackError
+                ),
+                   advancePastFailedTrackIfPossible() {
                     return
                 }
             }
@@ -1002,6 +1073,10 @@ final class AudioPlayer: ObservableObject {
                 switch item.status {
                 case .readyToPlay:
                     self.isBuffering = false
+                    self.streamRecoveryAttempts = 0
+                    self.didAttemptStreamRefresh = false
+                    self.stallStartedAt = nil
+                    self.cancelStreamRecovery()
                     if wantsAudioTap {
                         self.attachAudioProcessing(to: item)
                     }
@@ -1057,7 +1132,8 @@ final class AudioPlayer: ObservableObject {
         let item = AVPlayerItem(
             asset: makePlaybackAsset(url: url, isOffline: isOffline)
         )
-        item.preferredForwardBufferDuration = 12
+        item.preferredForwardBufferDuration =
+            StreamFailureRetryPolicy.preferredForwardBufferDuration
         return item
     }
 
@@ -1218,7 +1294,8 @@ final class AudioPlayer: ObservableObject {
         preloadAssetTask = nil
         preloadedPlayback = nil
         let item = AVPlayerItem(asset: slot.asset)
-        item.preferredForwardBufferDuration = 12
+        item.preferredForwardBufferDuration =
+            StreamFailureRetryPolicy.preferredForwardBufferDuration
         return item
     }
 
@@ -1552,6 +1629,19 @@ final class AudioPlayer: ObservableObject {
                 let buffering = self.isPlaying
                     && self.player.timeControlStatus
                         == .waitingToPlayAtSpecifiedRate
+                if buffering {
+                    if self.stallStartedAt == nil {
+                        self.stallStartedAt = Date()
+                    } else if let started = self.stallStartedAt,
+                              Date().timeIntervalSince(started)
+                                >= StreamFailureRetryPolicy
+                                .stallRecoveryThreshold {
+                        self.stallStartedAt = nil
+                        self.recoverFromExtendedStall()
+                    }
+                } else {
+                    self.stallStartedAt = nil
+                }
                 if self.isBuffering != buffering {
                     self.isBuffering = buffering
                 }
@@ -1856,10 +1946,6 @@ final class AudioPlayer: ObservableObject {
             }
             return
         }
-        if !didAttemptStreamRefresh, streamRefreshProvider != nil {
-            refreshCurrentStream(autoplay: true)
-            return
-        }
         // After CarKit media-services reset, prefer one same-track reload
         // over cascading through the queue with skip-on-error.
         if MediaServicesResetPolicy.shouldSuppressAdvance(
@@ -1869,20 +1955,85 @@ final class AudioPlayer: ObservableObject {
            currentTrack != nil {
             suppressAdvanceUntil = nil
             didAttemptStreamRefresh = false
+            streamRecoveryAttempts = 0
             loadCurrent(autoplay: playbackIntended, startAt: elapsedTime)
             return
         }
-        if advancePastFailedTrackIfPossible() {
+
+        streamRecoveryAttempts += 1
+        if StreamFailureRetryPolicy.shouldRetrySameTrack(
+            attempts: streamRecoveryAttempts,
+            error: error
+        ) {
+            scheduleSameTrackRecovery(autoplay: true)
             return
         }
+
+        if StreamFailureRetryPolicy.shouldAdvance(
+            attempts: streamRecoveryAttempts,
+            error: error,
+            advanceOnPlaybackError: advanceOnPlaybackError
+        ),
+           advancePastFailedTrackIfPossible() {
+            return
+        }
+
         let urlError = error as? URLError
         errorMessage = L10n.text(
-            urlError?.code == .cancelled
-                ? "Аудиопоток был прерван. Повторите воспроизведение."
-                : "Не удалось воспроизвести этот трек. "
-                    + "Проверьте подключение и попробуйте ещё раз."
+            StreamFailureRetryPolicy.isConnectivityFailure(error)
+                ? "Слабое соединение. Плеер продолжает пробовать этот трек."
+                : urlError?.code == .cancelled
+                    ? "Аудиопоток был прерван. Повторите воспроизведение."
+                    : "Не удалось воспроизвести этот трек. "
+                        + "Проверьте подключение и попробуйте ещё раз."
         )
+        isBuffering = StreamFailureRetryPolicy.isConnectivityFailure(error)
         Haptics.error()
+    }
+
+    private func scheduleSameTrackRecovery(autoplay: Bool) {
+        cancelStreamRecovery()
+        isPlaying = false
+        isBuffering = true
+        errorMessage = nil
+        let position = elapsedTime
+        let delay = StreamFailureRetryPolicy.retryDelay(
+            forAttempt: streamRecoveryAttempts
+        )
+        let generation = playbackGeneration
+        let trackID = currentTrack?.id
+        streamRecoveryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self,
+                  !Task.isCancelled,
+                  generation == self.playbackGeneration,
+                  self.currentTrack?.id == trackID else {
+                return
+            }
+            self.didAttemptStreamRefresh = false
+            if self.streamRefreshProvider != nil {
+                self.refreshCurrentStream(autoplay: autoplay)
+            } else {
+                self.loadCurrent(autoplay: autoplay, startAt: position)
+            }
+        }
+    }
+
+    private func recoverFromExtendedStall() {
+        guard playbackIntended,
+              currentTrack != nil,
+              streamRecoveryTask == nil,
+              streamRefreshTask == nil else {
+            return
+        }
+        streamRecoveryAttempts += 1
+        guard StreamFailureRetryPolicy.shouldRetrySameTrack(
+            attempts: streamRecoveryAttempts,
+            error: URLError(.timedOut)
+        ) else {
+            return
+        }
+        scheduleSameTrackRecovery(autoplay: true)
     }
 
     @discardableResult
@@ -1902,8 +2053,11 @@ final class AudioPlayer: ObservableObject {
         if currentIndex + 1 < queue.count {
             cancelContinuation()
             cancelStreamRefresh()
+            cancelStreamRecovery()
             requiresStreamRefresh = false
             didAttemptStreamRefresh = false
+            streamRecoveryAttempts = 0
+            stallStartedAt = nil
             self.currentIndex = currentIndex + 1
             errorMessage = nil
             resetProgressForTrackTransition()
@@ -1923,8 +2077,11 @@ final class AudioPlayer: ObservableObject {
         }
         cancelContinuation()
         cancelStreamRefresh()
+        cancelStreamRecovery()
         requiresStreamRefresh = false
         didAttemptStreamRefresh = false
+        streamRecoveryAttempts = 0
+        stallStartedAt = nil
         self.currentIndex = 0
         errorMessage = nil
         resetProgressForTrackTransition()
@@ -1975,17 +2132,16 @@ final class AudioPlayer: ObservableObject {
                     return
                 }
                 self.streamRefreshTask = nil
-                self.isBuffering = false
-                self.isPlaying = false
-                if !self.advancePastFailedTrackIfPossible() {
-                    self.errorMessage = L10n.text(
-                        "Не удалось обновить ссылку на аудиопоток. "
-                            + "Проверьте подключение и повторите попытку."
-                    )
-                    self.publishPlaybackState(force: true)
-                }
+                // Re-enter the same-track retry budget instead of skipping
+                // after the first flaky refresh.
+                self.handleItemFailure(error)
             }
         }
+    }
+
+    private func cancelStreamRecovery() {
+        streamRecoveryTask?.cancel()
+        streamRecoveryTask = nil
     }
 
     private func cancelContinuation() {
@@ -2004,6 +2160,7 @@ final class AudioPlayer: ObservableObject {
         streamRefreshGeneration += 1
         streamRefreshTask?.cancel()
         streamRefreshTask = nil
+        cancelStreamRecovery()
     }
 
     private func startContinuationIfNeeded() {
