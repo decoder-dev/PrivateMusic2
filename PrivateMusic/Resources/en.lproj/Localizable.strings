@@ -24,6 +24,15 @@
 "Настройки" = "Settings";
 "Исполнитель" = "Artist";
 "Микс" = "Mix";
+"Слушайте друг друга" = "Listen Together";
+"Собрано алгоритмами" = "Built by Algorithms";
+"Музыкальные рекомендации для вас" = "Music recommendations for you";
+"%@ подготовил(а) кое-что для вас" = "%@ prepared something for you";
+"Персональный микс для вас" = "A personal mix for you";
+"совпадение с вашим вкусом" = "match with your taste";
+"совпадение с вашим вкусом · %d%%" = "match with your taste · %d%%";
+"Воспроизвести микс" = "Play Mix";
+"Открыть микс" = "Open Mix";
 "Очередь" = "Queue";
 "Удалить из очереди" = "Remove from Queue";
 "Ваша очередь" = "Your Queue";
@@ -54,6 +63,7 @@
 "Загружаем рекомендации и миксы" = "Loading recommendations and mixes";
 "Музыка пока недоступна" = "Music is currently unavailable";
 "VK не вернул рекомендации и миксы." = "VK did not return any recommendations or mixes.";
+"VK не вернул рекомендации." = "VK did not return recommendations.";
 "Обновить" = "Refresh";
 "Рекомендации: %@" = "Recommendations: %@";
 "Миксы: %@" = "Mixes: %@";
