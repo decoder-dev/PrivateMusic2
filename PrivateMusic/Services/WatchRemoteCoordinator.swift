@@ -29,14 +29,16 @@ final class WatchRemoteCoordinator: NSObject {
             }),
             player.$currentIndex.removeDuplicates(),
             player.$isPlaying.removeDuplicates(),
-            player.$duration.removeDuplicates()
+            player.$duration
+                .map { ($0 * 4).rounded() / 4 }
+                .removeDuplicates()
         )
         .sink { [weak self] _, _, _, _ in
             self?.pushLatestState()
         }
         .store(in: &cancellables)
 
-        player.$elapsedTime
+        player.progress.$elapsedTime
             .removeDuplicates()
             .throttle(
                 for: .seconds(1),
