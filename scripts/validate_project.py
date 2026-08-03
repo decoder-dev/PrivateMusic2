@@ -143,6 +143,16 @@ for forbidden_system_tab_symbol in (
             "main navigation must reserve space with the stable custom dock: "
             f"{forbidden_system_tab_symbol}"
         )
+for required_dock_glass_symbol in (
+    "AdaptiveGlassContainer(spacing: 4)",
+    "tint: settings.theme.accent.opacity(0.06)",
+    ".safeAreaInset(edge: .bottom, spacing: 0)",
+):
+    if required_dock_glass_symbol not in main_tab_source:
+        fail(
+            "custom navigation must retain native Liquid Glass and safe inset: "
+            f"{required_dock_glass_symbol}"
+        )
 if "kAudioFormatFlagIsNonInterleaved" not in equalizer_source:
     fail("audio processing must use the declared PCM interleaving format")
 if "let nonInterleaved = buffers.count > 1" in equalizer_source:

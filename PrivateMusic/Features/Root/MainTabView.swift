@@ -152,8 +152,8 @@ private struct PlaybackTabDock: View {
     @Binding var selection: MainTab
 
     var body: some View {
-        AdaptiveGlassContainer(spacing: 10) {
-            VStack(spacing: 8) {
+        AdaptiveGlassContainer(spacing: 4) {
+            VStack(spacing: 12) {
                 if player.currentTrack != nil {
                     MiniPlayerView()
                         .transition(
@@ -172,8 +172,10 @@ private struct PlaybackTabDock: View {
                         cornerRadius: 24,
                         style: .continuous
                     ),
-                    interactive: true
+                    interactive: true,
+                    tint: settings.theme.accent.opacity(0.06)
                 )
+                .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
             }
         }
         .dynamicTypeSize(...DynamicTypeSize.large)
@@ -212,6 +214,13 @@ private struct PlaybackTabDock: View {
                 Image(systemName: tab.image)
                     .font(.system(size: 20, weight: .semibold))
                     .scaleEffect(selection == tab ? 1.04 : 0.94)
+                    .frame(width: 30, height: 26)
+                    .background {
+                        if selection == tab {
+                            Circle()
+                                .fill(settings.theme.accent.opacity(0.16))
+                        }
+                    }
                 Text(tab.title)
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
@@ -219,16 +228,10 @@ private struct PlaybackTabDock: View {
             .foregroundStyle(
                 selection == tab
                     ? selectedColor
-                    : Color.primary.opacity(0.58)
+                    : Color.primary.opacity(0.72)
             )
             .frame(maxWidth: .infinity)
             .frame(height: 48)
-            .background {
-                if selection == tab {
-                    Capsule()
-                        .fill(Color.primary.opacity(0.09))
-                }
-            }
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -236,6 +239,6 @@ private struct PlaybackTabDock: View {
     }
 
     private var selectedColor: Color {
-        settings.theme == .light ? .black : .white
+        settings.theme.accent
     }
 }

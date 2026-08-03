@@ -104,10 +104,12 @@ struct MiniPlayerView: View {
                 }
                 .frame(height: 2)
                 .padding(.horizontal, 12)
+                .accessibilityHidden(true)
             }
             .adaptiveGlass(
                 in: containerShape,
-                interactive: false
+                interactive: true,
+                tint: settings.theme.accent.opacity(0.04)
             )
             .shadow(
                 color: .black.opacity(settings.theme == .dark ? 0.24 : 0.12),
