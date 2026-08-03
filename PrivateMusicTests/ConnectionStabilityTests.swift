@@ -16,6 +16,58 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    func testAudioTapSupportedForProgressiveAndOfflineButNotHLS() {
+        let progressive = URL(string: "https://example.com/audio.mp3")!
+        let hls = URL(string: "https://example.com/index.m3u8")!
+        let offline = URL(fileURLWithPath: "/tmp/track.m4a")
+        XCTAssertTrue(
+            AudioProcessingAttachPolicy.supportsAudioTap(
+                url: progressive,
+                isOffline: false
+            )
+        )
+        XCTAssertFalse(
+            AudioProcessingAttachPolicy.supportsAudioTap(
+                url: hls,
+                isOffline: false
+            )
+        )
+        XCTAssertTrue(
+            AudioProcessingAttachPolicy.supportsAudioTap(
+                url: offline,
+                isOffline: true
+            ),
+            "Offline packages are local files even when the remote source was HLS"
+        )
+    }
+
+    func testMediaServicesResetSuppressesAdvanceWindow() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertFalse(
+            MediaServicesResetPolicy.shouldSuppressAdvance(
+                now: now,
+                suppressUntil: nil
+            )
+        )
+        XCTAssertTrue(
+            MediaServicesResetPolicy.shouldSuppressAdvance(
+                now: now,
+                suppressUntil: now.addingTimeInterval(8)
+            )
+        )
+        XCTAssertFalse(
+            MediaServicesResetPolicy.shouldSuppressAdvance(
+                now: now.addingTimeInterval(9),
+                suppressUntil: now.addingTimeInterval(8)
+            )
+        )
+        XCTAssertEqual(
+            AudioProcessingAttachPolicy.postResetAdvanceSuppression,
+            8,
+            accuracy: 0.001
+        )
+    }
+
     func testTransientPolicyRetriesOnlyConnectivityFailures() {
         XCTAssertEqual(RequestRetryPolicy.transient.maximumAttempts, 3)
         XCTAssertTrue(
