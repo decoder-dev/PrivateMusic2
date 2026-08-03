@@ -48,7 +48,7 @@ final class ConnectionStabilityTests: XCTestCase {
         )
         XCTAssertTrue(
             StreamFailureRetryPolicy.shouldAdvance(
-                attempts: StreamFailureRetryPolicy.maximumSameTrackAttempts,
+                attempts: StreamFailureRetryPolicy.maximumSameTrackAttempts + 1,
                 error: APIError.invalidResponse,
                 advanceOnPlaybackError: true
             )
@@ -56,6 +56,13 @@ final class ConnectionStabilityTests: XCTestCase {
         XCTAssertFalse(
             StreamFailureRetryPolicy.shouldAdvance(
                 attempts: StreamFailureRetryPolicy.maximumSameTrackAttempts,
+                error: APIError.invalidResponse,
+                advanceOnPlaybackError: true
+            )
+        )
+        XCTAssertFalse(
+            StreamFailureRetryPolicy.shouldAdvance(
+                attempts: StreamFailureRetryPolicy.maximumSameTrackAttempts + 1,
                 error: APIError.invalidResponse,
                 advanceOnPlaybackError: false
             )
