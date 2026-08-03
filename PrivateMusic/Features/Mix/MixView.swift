@@ -108,27 +108,11 @@ struct MixView: View {
                     ForEach(mixes.filter { $0.id != mix.id }) { mix in
                         Button { start(mix) } label: {
                             VStack(alignment: .leading, spacing: 8) {
-                                ZStack {
-                                    if let artwork = mix.artworkURL {
-                                        AsyncArtwork(url: artwork, size: 166)
-                                    } else {
-                                        LinearGradient(
-                                            colors: [.purple, .blue],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                        Image(systemName: "waveform")
-                                            .font(.system(size: 44, weight: .bold))
-                                            .foregroundStyle(.white.opacity(0.9))
-                                    }
-                                }
-                                .frame(width: 166, height: 166)
-                                .clipShape(
-                                    RoundedRectangle(
-                                        cornerRadius:
-                                            14,
-                                        style: .continuous
-                                    )
+                                MixArtworkView(
+                                    mix: mix,
+                                    tracks: tracks,
+                                    size: 166,
+                                    cornerRadius: 14
                                 )
                                 Text(mix.title)
                                     .font(.headline)
