@@ -35,7 +35,8 @@ private enum MainTab: CaseIterable, Hashable {
 }
 
 /// Measured height of the combined mini player + tab dock, used to
-/// reserve exactly that much space above each tab's content.
+/// reserve exactly that much space above each tab's content on the
+/// custom (pre–iOS 26) dock path.
 private struct PlaybackDockHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
 
@@ -59,6 +60,28 @@ struct MainTabView: View {
     let playerNamespace: Namespace.ID
 
     var body: some View {
+        Group {
+            if #available(iOS 26.0, *) {
+                SystemLiquidGlassTabView(
+                    selection: $selectedTab,
+                    playerNamespace: playerNamespace
+                )
+            } else {
+                legacyTabStack
+            }
+        }
+        .environmentObject(scrollCoordinator)
+        .task(id: sessionStore.accessToken) {
+            async let library: Void = refreshLibraryIndex()
+            async let albums: Void = refreshLikedAlbums()
+            async let home: Void = environment.refreshHomeCatalog()
+            _ = await (library, albums, home)
+        }
+    }
+
+    /// Custom floating dock for iOS 16–25. iOS 26+ uses the system
+    /// `TabView` + `tabViewBottomAccessory` path above.
+    private var legacyTabStack: some View {
         ZStack {
             tabScreen(.home) {
                 NavigationStack { CatalogView() }
@@ -92,21 +115,12 @@ struct MainTabView: View {
         .onPreferenceChange(PlaybackDockHeightKey.self) { height in
             dockHeight = height
         }
-        .environmentObject(scrollCoordinator)
-        .task(id: sessionStore.accessToken) {
-            async let library: Void = refreshLibraryIndex()
-            async let albums: Void = refreshLikedAlbums()
-            async let home: Void = environment.refreshHomeCatalog()
-            _ = await (library, albums, home)
-        }
     }
 
     /// The dock is an overlay rather than an outer `safeAreaInset` so that
     /// every tab's own `NavigationStack` gets the reservation directly:
     /// an inset applied outside a NavigationStack does not reliably reach
-    /// the scrollable content inside it, which let list rows slide under
-    /// the dock and mini player. Reserving the measured dock height here
-    /// keeps content clear of it on iOS 16 through 27 alike.
+    /// the scrollable content inside it.
     private func tabScreen<Content: View>(
         _ tab: MainTab,
         @ViewBuilder content: () -> Content
@@ -129,6 +143,7 @@ struct MainTabView: View {
 
     private func refreshLibraryIndex() async {
         guard sessionStore.accessToken != nil else { return }
+        let refreshID = libraryStore.beginRefresh()
         var collected: [Track] = []
         var offset = 0
         var pageCount = 0
@@ -144,11 +159,11 @@ struct MainTabView: View {
                 }
                 collected.append(contentsOf: page.items)
                 pageCount += 1
-                guard let next = page.nextOffset else { break }
+                guard let next = page.nextOffset, next > offset else { break }
                 offset = next
             }
             guard !Task.isCancelled else { return }
-            libraryStore.replace(with: collected)
+            libraryStore.replace(with: collected, refreshID: refreshID)
         } catch is CancellationError {
             return
         } catch {
@@ -184,6 +199,191 @@ struct MainTabView: View {
         }
     }
 }
+
+// MARK: - System Liquid Glass tabs (iOS 26+)
+
+@available(iOS 26.0, *)
+private struct SystemLiquidGlassTabView: View {
+    @EnvironmentObject private var player: AudioPlayer
+    @Binding var selection: MainTab
+    let playerNamespace: Namespace.ID
+
+    var body: some View {
+        TabView(selection: $selection) {
+            Tab(
+                MainTab.home.title,
+                systemImage: MainTab.home.image,
+                value: MainTab.home
+            ) {
+                NavigationStack { CatalogView() }
+            }
+
+            Tab(
+                MainTab.library.title,
+                systemImage: MainTab.library.image,
+                value: MainTab.library
+            ) {
+                NavigationStack { LibraryView() }
+            }
+
+            Tab(
+                MainTab.search.title,
+                systemImage: MainTab.search.image,
+                value: MainTab.search,
+                role: .search
+            ) {
+                NavigationStack {
+                    SearchView(isActive: selection == .search)
+                }
+            }
+
+            Tab(
+                MainTab.profile.title,
+                systemImage: MainTab.profile.image,
+                value: MainTab.profile
+            ) {
+                NavigationStack { ProfileView() }
+            }
+        }
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .tabViewSearchActivation(.searchTabSelection)
+        .tabViewBottomAccessory(
+            isEnabled: player.currentTrack != nil
+        ) {
+            SystemPlaybackAccessory(playerNamespace: playerNamespace)
+        }
+    }
+}
+
+@available(iOS 26.0, *)
+private struct SystemPlaybackAccessory: View {
+    @EnvironmentObject private var player: AudioPlayer
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+    let playerNamespace: Namespace.ID
+
+    var body: some View {
+        if let track = player.currentTrack {
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    Button {
+                        Haptics.open()
+                        player.presentPlayer()
+                    } label: {
+                        HStack(spacing: 10) {
+                            AsyncArtwork(
+                                url: track.artworkURL,
+                                size: placement == .inline ? 28 : 40
+                            )
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(track.title)
+                                    .font(
+                                        placement == .inline
+                                            ? .caption.weight(.semibold)
+                                            : .subheadline.weight(.semibold)
+                                    )
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                if placement != .inline {
+                                    Text(track.artist)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(
+                        L10n.format(
+                            "%@ — %@",
+                            track.title,
+                            track.artist
+                        )
+                    )
+                    .accessibilityHint(
+                        L10n.text("Открыть полноэкранный плеер")
+                    )
+
+                    if placement != .inline {
+                        accessoryButton(
+                            image: "backward.fill",
+                            label: "Предыдущий трек",
+                            action: player.previous
+                        )
+                    }
+
+                    accessoryButton(
+                        image: player.isPlaying
+                            ? "pause.fill"
+                            : "play.fill",
+                        label: player.isPlaying
+                            ? "Приостановить"
+                            : "Продолжить воспроизведение",
+                        action: player.playPause
+                    )
+
+                    if placement != .inline {
+                        accessoryButton(
+                            image: "forward.fill",
+                            label: "Следующий трек",
+                            action: player.next
+                        )
+                    }
+                }
+                .padding(.horizontal, 10)
+                .frame(height: placement == .inline ? 38 : 56)
+                .miniPlayerTransitionSource(playerNamespace)
+
+                if placement != .inline {
+                    GeometryReader { proxy in
+                        Capsule()
+                            .fill(.primary.opacity(0.1))
+                            .overlay(alignment: .leading) {
+                                Capsule()
+                                    .fill(.tint)
+                                    .frame(
+                                        width: proxy.size.width * progress
+                                    )
+                            }
+                    }
+                    .frame(height: 2)
+                    .padding(.horizontal, 10)
+                    .accessibilityHidden(true)
+                }
+            }
+            .dynamicTypeSize(...DynamicTypeSize.large)
+        }
+    }
+
+    private func accessoryButton(
+        image: String,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            Haptics.selection()
+            action()
+        } label: {
+            Image(systemName: image)
+                .font(.system(size: 17, weight: .semibold))
+                .frame(width: 40, height: 40)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L10n.text(label))
+    }
+
+    private var progress: CGFloat {
+        guard player.duration > 0 else { return 0 }
+        return CGFloat(
+            min(max(player.elapsedTime / player.duration, 0), 1)
+        )
+    }
+}
+
+// MARK: - Legacy custom dock (iOS 16–25)
 
 private struct PlaybackTabDock: View {
     @EnvironmentObject private var player: AudioPlayer
@@ -318,5 +518,21 @@ private struct PlaybackTabDock: View {
 
     private var selectedColor: Color {
         settings.theme.accent
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func miniPlayerTransitionSource(
+        _ namespace: Namespace.ID
+    ) -> some View {
+        if #available(iOS 18.0, *) {
+            matchedTransitionSource(
+                id: PlayerZoomTransition.sourceID,
+                in: namespace
+            )
+        } else {
+            self
+        }
     }
 }
