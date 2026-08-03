@@ -61,6 +61,45 @@ final class WatchRemoteProtocolTests: XCTestCase {
         )
     }
 
+    func testStateEqualityIgnoresSnapshotDate() {
+        let earlier = WatchRemoteState(
+            trackID: "1_2",
+            title: "Track",
+            artist: "Artist",
+            artworkURL: nil,
+            isPlaying: true,
+            isBuffering: false,
+            elapsed: 10,
+            duration: 20,
+            snapshotDate: Date(timeIntervalSince1970: 100)
+        )
+        let later = WatchRemoteState(
+            trackID: "1_2",
+            title: "Track",
+            artist: "Artist",
+            artworkURL: nil,
+            isPlaying: true,
+            isBuffering: false,
+            elapsed: 10,
+            duration: 20,
+            snapshotDate: Date(timeIntervalSince1970: 104)
+        )
+        XCTAssertEqual(earlier, later)
+
+        let advanced = WatchRemoteState(
+            trackID: "1_2",
+            title: "Track",
+            artist: "Artist",
+            artworkURL: nil,
+            isPlaying: true,
+            isBuffering: false,
+            elapsed: 11,
+            duration: 20,
+            snapshotDate: Date(timeIntervalSince1970: 104)
+        )
+        XCTAssertNotEqual(earlier, advanced)
+    }
+
     func testCommandEnvelopeRoundTripsThroughMessage() {
         let envelope = WatchRemoteCommandEnvelope(
             command: .next,

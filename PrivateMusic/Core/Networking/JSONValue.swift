@@ -49,6 +49,35 @@ enum JSONValue: Codable, Sendable {
         return result.filter { ids.insert($0.id).inserted }
     }
 
+    /// Top-level `audio.get` / playlist items array only — skips nested
+    /// playlist metadata tracks that recursive `tracks` would also collect.
+    var libraryAudioItems: [Track] {
+        guard case let .object(object) = self,
+              case let .array(values)? = object["items"] else {
+            return tracks
+        }
+        var result: [Track] = []
+        for value in values {
+            if case let .object(item) = value,
+               item["owner_id"] != nil,
+               item["artist"] != nil,
+               item["title"] != nil,
+               let data = try? JSONEncoder().encode(value),
+               let track = try? JSONDecoder().decode(Track.self, from: data) {
+                result.append(track)
+            }
+        }
+        return result
+    }
+
+    var libraryTotalCount: Int? {
+        guard case let .object(object) = self,
+              case let .number(value)? = object["count"] else {
+            return nil
+        }
+        return Int(value.rounded())
+    }
+
     var musicMixes: [MusicMix] {
         var result: [MusicMix] = []
         collectMixes(into: &result)

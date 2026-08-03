@@ -43,6 +43,20 @@ struct LibraryView: View {
 
                     if tracks.isLoading && tracks.tracks.isEmpty {
                         trackSkeleton
+                    } else if let error = tracks.errorMessage,
+                              tracks.tracks.isEmpty {
+                        VStack(spacing: 14) {
+                            EmptyStateView(
+                                title: "Не удалось загрузить треки",
+                                systemImage: "wifi.exclamationmark",
+                                description: error
+                            )
+                            Button("Повторить") {
+                                Task { await loadTracks(force: true) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .frame(minHeight: 260)
                     } else if tracks.tracks.isEmpty {
                         EmptyStateView(
                             title: "Медиатека пуста",
@@ -483,7 +497,8 @@ struct LibraryView: View {
     private func load(force: Bool = false) async {
         guard sessionStore.accessToken != nil else { return }
         tracks.configure(service: environment.musicService)
-        await tracks.load(force: force) {
+        let refreshID = libraryStore.beginRefresh()
+        let loaded = await tracks.load(force: force) {
             try await environment.withAuthorizedToken { token in
                 try await environment.musicService.library(
                     accessToken: token,
@@ -492,7 +507,9 @@ struct LibraryView: View {
                 )
             }
         }
-        libraryStore.replace(with: tracks.tracks)
+        if loaded {
+            libraryStore.replace(with: tracks.tracks, refreshID: refreshID)
+        }
         await playlists.load(force: force) {
             try await environment.withAuthorizedToken { token in
                 try await environment.musicService.playlists(
@@ -536,7 +553,8 @@ struct LibraryView: View {
     private func loadTracks(force: Bool) async {
         guard sessionStore.accessToken != nil else { return }
         tracks.configure(service: environment.musicService)
-        await tracks.load(force: force) {
+        let refreshID = libraryStore.beginRefresh()
+        let loaded = await tracks.load(force: force) {
             try await environment.withAuthorizedToken { token in
                 try await environment.musicService.library(
                     accessToken: token,
@@ -545,7 +563,9 @@ struct LibraryView: View {
                 )
             }
         }
-        libraryStore.replace(with: tracks.tracks)
+        if loaded {
+            libraryStore.replace(with: tracks.tracks, refreshID: refreshID)
+        }
     }
 
     private func loadMoreIfNeeded(after track: Track) {
@@ -554,7 +574,8 @@ struct LibraryView: View {
             return
         }
         Task {
-            await tracks.loadMore { offset in
+            let refreshID = libraryStore.beginRefresh()
+            let loaded = await tracks.loadMore { offset in
                 try await environment.withAuthorizedToken { token in
                     try await environment.musicService.library(
                         accessToken: token,
@@ -563,7 +584,12 @@ struct LibraryView: View {
                     )
                 }
             }
-            libraryStore.replace(with: tracks.tracks)
+            if loaded {
+                libraryStore.replace(
+                    with: tracks.tracks,
+                    refreshID: refreshID
+                )
+            }
         }
     }
 
