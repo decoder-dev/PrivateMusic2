@@ -258,128 +258,13 @@ private struct SystemLiquidGlassTabView: View {
 @available(iOS 26.1, *)
 private struct SystemPlaybackAccessory: View {
     @EnvironmentObject private var player: AudioPlayer
-    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
     let playerNamespace: Namespace.ID
 
     var body: some View {
-        if let track = player.currentTrack {
-            VStack(spacing: 0) {
-                HStack(spacing: 10) {
-                    Button {
-                        Haptics.open()
-                        player.presentPlayer()
-                    } label: {
-                        HStack(spacing: 10) {
-                            AsyncArtwork(
-                                url: track.artworkURL,
-                                size: placement == .inline ? 28 : 40
-                            )
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(track.title)
-                                    .font(
-                                        placement == .inline
-                                            ? .caption.weight(.semibold)
-                                            : .subheadline.weight(.semibold)
-                                    )
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                if placement != .inline {
-                                    Text(track.artist)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(
-                        L10n.format(
-                            "%@ — %@",
-                            track.title,
-                            track.artist
-                        )
-                    )
-                    .accessibilityHint(
-                        L10n.text("Открыть полноэкранный плеер")
-                    )
-
-                    if placement != .inline {
-                        accessoryButton(
-                            image: "backward.fill",
-                            label: "Предыдущий трек",
-                            action: player.previous
-                        )
-                    }
-
-                    accessoryButton(
-                        image: player.isPlaying
-                            ? "pause.fill"
-                            : "play.fill",
-                        label: player.isPlaying
-                            ? "Приостановить"
-                            : "Продолжить воспроизведение",
-                        action: player.playPause
-                    )
-
-                    if placement != .inline {
-                        accessoryButton(
-                            image: "forward.fill",
-                            label: "Следующий трек",
-                            action: player.next
-                        )
-                    }
-                }
-                .padding(.horizontal, 10)
-                .frame(height: placement == .inline ? 38 : 56)
-                .miniPlayerTransitionSource(playerNamespace)
-
-                if placement != .inline {
-                    GeometryReader { proxy in
-                        Capsule()
-                            .fill(.primary.opacity(0.1))
-                            .overlay(alignment: .leading) {
-                                Capsule()
-                                    .fill(.tint)
-                                    .frame(
-                                        width: proxy.size.width * progress
-                                    )
-                            }
-                    }
-                    .frame(height: 2)
-                    .padding(.horizontal, 10)
-                    .accessibilityHidden(true)
-                }
-            }
-            .dynamicTypeSize(...DynamicTypeSize.large)
-        }
-    }
-
-    private func accessoryButton(
-        image: String,
-        label: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button {
-            Haptics.selection()
-            action()
-        } label: {
-            Image(systemName: image)
-                .font(.system(size: 17, weight: .semibold))
-                .frame(width: 40, height: 40)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(L10n.text(label))
-    }
-
-    private var progress: CGFloat {
-        guard player.duration > 0 else { return 0 }
-        return CGFloat(
-            min(max(player.elapsedTime / player.duration, 0), 1)
-        )
+        // Same Apple Music compact panel as the legacy dock path so both
+        // navigation styles stay visually aligned.
+        MiniPlayerView(playerNamespace: playerNamespace)
+            .padding(.horizontal, 4)
     }
 }
 
@@ -518,21 +403,5 @@ private struct PlaybackTabDock: View {
 
     private var selectedColor: Color {
         settings.theme.accent
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func miniPlayerTransitionSource(
-        _ namespace: Namespace.ID
-    ) -> some View {
-        if #available(iOS 18.0, *) {
-            matchedTransitionSource(
-                id: PlayerZoomTransition.sourceID,
-                in: namespace
-            )
-        } else {
-            self
-        }
     }
 }
