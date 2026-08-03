@@ -272,12 +272,14 @@ struct CatalogView: View {
                         homeTrackItem(
                             entry.track,
                             queue: history.entries.map(\.track),
-                            artworkSize: metrics.recentWidth
+                            artworkSize: metrics.recentWidth,
+                            source: .history
                         )
                         .contextMenu {
                             trackContextMenu(
                                 entry.track,
-                                queue: history.entries.map(\.track)
+                                queue: history.entries.map(\.track),
+                                source: .history
                             )
                         }
                     }
@@ -450,7 +452,8 @@ struct CatalogView: View {
     private func homeTrackItem(
         _ track: Track,
         queue: [Track],
-        artworkSize: CGFloat
+        artworkSize: CGFloat,
+        source: QueueSource? = nil
     ) -> some View {
         ZStack(alignment: .topLeading) {
             Button {
@@ -478,7 +481,7 @@ struct CatalogView: View {
 
             Button {
                 Haptics.selection()
-                player.play(track, in: queue)
+                player.play(track, in: queue, source: source)
             } label: {
                 Group {
                     if player.currentTrack?.id == track.id {
@@ -572,7 +575,8 @@ struct CatalogView: View {
     @ViewBuilder
     private func trackContextMenu(
         _ track: Track,
-        queue: [Track]
+        queue: [Track],
+        source: QueueSource? = nil
     ) -> some View {
         Button {
             player.playNext(track)
@@ -580,7 +584,7 @@ struct CatalogView: View {
             Label("Играть следующим", systemImage: "text.badge.plus")
         }
         Button {
-            player.play(track, in: queue)
+            player.play(track, in: queue, source: source)
             player.presentPlayer()
         } label: {
             Label("Открыть плеер", systemImage: "play.circle")
