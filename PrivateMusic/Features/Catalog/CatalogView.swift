@@ -13,6 +13,7 @@ struct CatalogView: View {
     @State private var actionErrorMessage: String?
     @State private var sharingTrack: Track?
     @State private var selectedAlbum: Album?
+    @State private var selectedMix: MusicMix?
     @State private var loadingAlbumTrackID: String?
     @State private var albumLookupTask: Task<Void, Never>?
 
@@ -69,6 +70,16 @@ struct CatalogView: View {
         ) {
             if let selectedAlbum {
                 AlbumDetailView(album: selectedAlbum)
+            }
+        }
+        .navigationDestination(
+            isPresented: Binding(
+                get: { selectedMix != nil },
+                set: { if !$0 { selectedMix = nil } }
+            )
+        ) {
+            if let selectedMix {
+                MixView(mix: selectedMix)
             }
         }
         .refreshable { await load(force: true) }
@@ -157,74 +168,96 @@ struct CatalogView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: metrics.cardSpacing) {
                     ForEach(mixes) { mix in
-                        Button { start(mix) } label: {
-                            ZStack(alignment: .bottomLeading) {
-                                MixArtworkView(
-                                    mix: mix,
-                                    tracks: recommendations,
-                                    size: metrics.mixWidth,
-                                    height: metrics.mixHeight,
-                                    cornerRadius: 12
-                                )
-                                LinearGradient(
-                                    colors: [
-                                        .clear,
-                                        .black.opacity(0.18),
-                                        .black.opacity(0.78)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                                HStack(alignment: .bottom, spacing: 8) {
+                        ZStack(alignment: .topLeading) {
+                            Button { selectedMix = mix } label: {
+                                ZStack(alignment: .bottomLeading) {
+                                    MixArtworkView(
+                                        mix: mix,
+                                        tracks: recommendations,
+                                        size: metrics.mixWidth,
+                                        height: metrics.mixHeight,
+                                        cornerRadius: 12
+                                    )
+                                    LinearGradient(
+                                        colors: [
+                                            .clear,
+                                            .black.opacity(0.18),
+                                            .black.opacity(0.78)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
                                     Text(mix.title)
                                         .font(.subheadline.weight(.bold))
                                         .foregroundStyle(.white)
                                         .lineLimit(2)
                                         .multilineTextAlignment(.leading)
-                                    Spacer(minLength: 0)
-                                    Image(systemName: "play.fill")
-                                        .font(.caption.weight(.bold))
-                                        .frame(width: 30, height: 30)
-                                        .foregroundStyle(.black)
-                                        .background(.white, in: Circle())
+                                        .padding(.trailing, 38)
+                                        .padding(10)
+                                    if loadingMixID == mix.id {
+                                        ProgressView()
+                                            .tint(.white)
+                                            .frame(
+                                                maxWidth: .infinity,
+                                                maxHeight: .infinity
+                                            )
+                                            .background(.black.opacity(0.26))
+                                    }
                                 }
-                                .padding(10)
-                                if loadingMixID == mix.id {
-                                    ProgressView()
-                                        .tint(.white)
-                                        .frame(
-                                            maxWidth: .infinity,
-                                            maxHeight: .infinity
-                                        )
-                                        .background(.black.opacity(0.26))
+                                .frame(
+                                    width: metrics.mixWidth,
+                                    height: metrics.mixHeight
+                                )
+                                .clipShape(
+                                    RoundedRectangle(
+                                        cornerRadius: 12,
+                                        style: .continuous
+                                    )
+                                )
+                                .overlay {
+                                    RoundedRectangle(
+                                        cornerRadius: 12,
+                                        style: .continuous
+                                    )
+                                    .stroke(
+                                        .primary.opacity(0.08),
+                                        lineWidth: 0.5
+                                    )
                                 }
+                                .accessibilityElement(children: .combine)
                             }
-                            .frame(
-                                width: metrics.mixWidth,
-                                height: metrics.mixHeight
-                            )
-                            .clipShape(
-                                RoundedRectangle(
-                                    cornerRadius: 12,
-                                    style: .continuous
-                                )
-                            )
-                            .overlay {
-                                RoundedRectangle(
-                                    cornerRadius: 12,
-                                    style: .continuous
-                                )
-                                .stroke(.primary.opacity(0.08), lineWidth: 0.5)
+                            .buttonStyle(PremiumPressStyle())
+                            .disabled(loadingMixID != nil)
+
+                            Button { start(mix) } label: {
+                                Image(systemName: "play.fill")
+                                    .font(.caption.weight(.bold))
+                                    .frame(width: 30, height: 30)
+                                    .foregroundStyle(.black)
+                                    .background(.white, in: Circle())
                             }
-                            .accessibilityElement(children: .combine)
+                            .buttonStyle(PremiumPressStyle())
+                            .offset(
+                                x: metrics.mixWidth - 40,
+                                y: metrics.mixHeight - 40
+                            )
+                            .disabled(loadingMixID != nil)
+                            .accessibilityLabel(L10n.text("Воспроизвести микс"))
                         }
-                        .buttonStyle(PremiumPressStyle())
                         .contextMenu {
                             Button { start(mix) } label: {
-                                Label("Воспроизвести микс", systemImage: "play.fill")
+                                Label(
+                                    "Воспроизвести микс",
+                                    systemImage: "play.fill"
+                                )
+                            }
+                            Button { selectedMix = mix } label: {
+                                Label(
+                                    "Открыть микс",
+                                    systemImage: "list.bullet"
+                                )
                             }
                         }
-                        .disabled(loadingMixID != nil)
                     }
                 }
             }
@@ -437,13 +470,13 @@ struct CatalogView: View {
                         : Color.primary
                 )
                 .lineLimit(2)
-                .frame(height: 34, alignment: .topLeading)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
             Text(track.artist)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(height: 15, alignment: .topLeading)
         }
         .frame(width: artworkSize, alignment: .topLeading)
         .accessibilityElement(children: .combine)
