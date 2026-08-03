@@ -14,6 +14,7 @@ protocol MusicService: Sendable {
         accessToken: String
     ) async throws -> Track
     func mixes(accessToken: String) async throws -> [MusicMix]
+    func newReleases(accessToken: String) async throws -> [Album]
     func mixTracks(
         _ mix: MusicMix,
         accessToken: String

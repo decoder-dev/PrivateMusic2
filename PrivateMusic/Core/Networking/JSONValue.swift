@@ -85,6 +85,18 @@ enum JSONValue: Codable, Sendable {
         return result.filter { ids.insert($0.id).inserted }
     }
 
+    /// Scans a `catalog.getAudio` / `catalog.getSection` response for album
+    /// blocks (official releases carry `main_artists`/`year`, which plain
+    /// user playlists never have). Speculative: VK does not document a
+    /// stable "new releases" endpoint for this client, so this best-effort
+    /// scan may legitimately find nothing on some accounts/sessions.
+    var releaseAlbums: [Album] {
+        var result: [Album] = []
+        collectAlbums(into: &result)
+        var ids = Set<String>()
+        return result.filter { ids.insert($0.id).inserted }
+    }
+
     var directAudioItems: [JSONValue]? {
         guard case let .object(object) = self,
               let audios = object["audios"] else {
@@ -148,6 +160,27 @@ enum JSONValue: Codable, Sendable {
             object.values.forEach { $0.collectMixes(into: &result) }
         case let .array(values):
             values.forEach { $0.collectMixes(into: &result) }
+        default:
+            break
+        }
+    }
+
+    private func collectAlbums(into result: inout [Album]) {
+        switch self {
+        case let .object(object):
+            let looksLikeAlbum = object["owner_id"] != nil
+                && object["id"] != nil
+                && object["title"] != nil
+                && (object["main_artists"] != nil || object["year"] != nil)
+            if looksLikeAlbum,
+               let data = try? JSONEncoder().encode(self),
+               let album = try? JSONDecoder().decode(Album.self, from: data) {
+                result.append(album)
+                return
+            }
+            object.values.forEach { $0.collectAlbums(into: &result) }
+        case let .array(values):
+            values.forEach { $0.collectAlbums(into: &result) }
         default:
             break
         }

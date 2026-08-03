@@ -197,6 +197,7 @@ final class AppEnvironment: ObservableObject {
         var recommendations: [Track]?
         var mixes: [MusicMix]?
         var playlists: [Playlist]?
+        var newReleases: [Album]?
         var failures: [String] = []
         do {
             recommendations = try await withAuthorizedToken { token in
@@ -233,10 +234,25 @@ final class AppEnvironment: ObservableObject {
         } catch {
             failures.append(error.localizedDescription)
         }
+        do {
+            newReleases = try await withAuthorizedToken { token in
+                try await musicService.newReleases(accessToken: token)
+            }
+        } catch is CancellationError {
+            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
+            return
+        } catch {
+            // Speculative endpoint (VK does not document a stable "new
+            // releases" source for this client) — absence or failure just
+            // hides the section, it should not surface alongside real
+            // catalog failures.
+            newReleases = []
+        }
         homeCatalogStore.finish(
             recommendations: recommendations,
             mixes: mixes,
             playlists: playlists,
+            newReleases: newReleases,
             errorMessage: failures.first,
             refreshID: refreshID
         )
