@@ -25,6 +25,17 @@ final class MusicLibraryStoreTests: XCTestCase {
         XCTAssertFalse(store.contains(value))
     }
 
+    func testLikedStateIncludesTracksOwnedByCurrentUser() {
+        let store = MusicLibraryStore()
+        let ownTrack = track(id: 1, owner: 42, title: "Own")
+        let otherTrack = track(id: 2, owner: 20, title: "Other")
+
+        XCTAssertTrue(store.isLiked(ownTrack, currentUserID: 42))
+        XCTAssertFalse(store.isLiked(otherTrack, currentUserID: 42))
+        store.replace(with: [otherTrack])
+        XCTAssertTrue(store.isLiked(otherTrack, currentUserID: 42))
+    }
+
     private func track(
         id: Int,
         owner: Int,

@@ -11,6 +11,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
     let artworkURL: URL?
     let accessKey: String?
     let lyricsID: Int?
+    let albumReference: AlbumReference?
 
     var id: String { "\(ownerID)_\(trackID)" }
 
@@ -24,7 +25,8 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         streamURL: URL?,
         artworkURL: URL?,
         accessKey: String? = nil,
-        lyricsID: Int? = nil
+        lyricsID: Int? = nil,
+        albumReference: AlbumReference? = nil
     ) {
         self.trackID = trackID
         self.ownerID = ownerID
@@ -36,6 +38,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         self.artworkURL = artworkURL
         self.accessKey = accessKey
         self.lyricsID = lyricsID
+        self.albumReference = albumReference
     }
 
     enum CodingKeys: String, CodingKey {
@@ -47,12 +50,16 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         case duration
         case url
         case album
+        case albumID = "album_id"
         case accessKey = "access_key"
         case lyricsID = "lyrics_id"
     }
 
     enum AlbumKeys: String, CodingKey {
-        case thumb
+        case id
+        case ownerID = "owner_id"
+        case accessKey = "access_key"
+        case thumb, photo
         case title
     }
 
@@ -86,16 +93,83 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         if let album = try? container.nestedContainer(
             keyedBy: AlbumKeys.self,
             forKey: .album
-        ), let thumb = try? album.nestedContainer(
-            keyedBy: ThumbKeys.self,
-            forKey: .thumb
         ) {
-            let raw = try thumb.decodeIfPresent(String.self, forKey: .photo600)
-                ?? thumb.decodeIfPresent(String.self, forKey: .photo300)
-                ?? thumb.decodeIfPresent(String.self, forKey: .photo270)
+            let thumb = try? album.nestedContainer(
+                keyedBy: ThumbKeys.self,
+                forKey: .thumb
+            )
+            let photo = try? album.nestedContainer(
+                keyedBy: ThumbKeys.self,
+                forKey: .photo
+            )
+            var raw: String?
+            if let thumb {
+                raw = try thumb.decodeIfPresent(
+                    String.self,
+                    forKey: .photo600
+                )
+                if raw == nil {
+                    raw = try thumb.decodeIfPresent(
+                        String.self,
+                        forKey: .photo300
+                    )
+                }
+                if raw == nil {
+                    raw = try thumb.decodeIfPresent(
+                        String.self,
+                        forKey: .photo270
+                    )
+                }
+            }
+            if raw == nil, let photo {
+                raw = try photo.decodeIfPresent(
+                    String.self,
+                    forKey: .photo600
+                )
+                if raw == nil {
+                    raw = try photo.decodeIfPresent(
+                        String.self,
+                        forKey: .photo300
+                    )
+                }
+                if raw == nil {
+                    raw = try photo.decodeIfPresent(
+                        String.self,
+                        forKey: .photo270
+                    )
+                }
+            }
             artworkURL = raw.flatMap(URL.secureRemoteURL)
         } else {
             artworkURL = nil
+        }
+        let nestedAlbum = try? container.nestedContainer(
+            keyedBy: AlbumKeys.self,
+            forKey: .album
+        )
+        let nestedAlbumID = try nestedAlbum?.decodeIfPresent(
+            Int.self,
+            forKey: .id
+        )
+        let nestedOwnerID = try nestedAlbum?.decodeIfPresent(
+            Int.self,
+            forKey: .ownerID
+        )
+        if let albumID = nestedAlbumID,
+           let albumOwnerID = nestedOwnerID {
+            albumReference = AlbumReference(
+                albumID: albumID,
+                ownerID: albumOwnerID,
+                accessKey: try nestedAlbum?.decodeIfPresent(
+                    String.self,
+                    forKey: .accessKey
+                )
+            )
+        } else {
+            // A top-level album_id or nested id without owner_id is not a
+            // complete playlist locator. The audio owner can differ from the
+            // album owner, so CatalogView must resolve it by title instead.
+            albumReference = nil
         }
     }
 
@@ -110,6 +184,36 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(streamURL?.absoluteString, forKey: .url)
         try container.encodeIfPresent(accessKey, forKey: .accessKey)
         try container.encodeIfPresent(lyricsID, forKey: .lyricsID)
+        try container.encodeIfPresent(
+            albumReference?.albumID,
+            forKey: .albumID
+        )
+        if albumTitle != nil || albumReference != nil || artworkURL != nil {
+            var album = container.nestedContainer(
+                keyedBy: AlbumKeys.self,
+                forKey: .album
+            )
+            try album.encodeIfPresent(albumTitle, forKey: .title)
+            try album.encodeIfPresent(albumReference?.albumID, forKey: .id)
+            try album.encodeIfPresent(
+                albumReference?.ownerID,
+                forKey: .ownerID
+            )
+            try album.encodeIfPresent(
+                albumReference?.accessKey,
+                forKey: .accessKey
+            )
+            if let artworkURL {
+                var thumb = album.nestedContainer(
+                    keyedBy: ThumbKeys.self,
+                    forKey: .thumb
+                )
+                try thumb.encode(
+                    artworkURL.absoluteString,
+                    forKey: .photo600
+                )
+            }
+        }
     }
 
     func resolvingStreamURL(userID: Int?) -> Track {
@@ -126,7 +230,8 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
             ),
             artworkURL: artworkURL,
             accessKey: accessKey,
-            lyricsID: lyricsID
+            lyricsID: lyricsID,
+            albumReference: albumReference
         )
     }
 }
