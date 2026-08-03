@@ -1,15 +1,15 @@
 import SwiftUI
-import UIKit
 
 struct AsyncArtwork: View {
     @EnvironmentObject private var settings: AppSettings
+    @Environment(\.displayScale) private var displayScale
     let url: URL?
     var size: CGFloat
 
     var body: some View {
         CachedRemoteImage(
             url: url,
-            maxPixelSize: max(size * UIScreen.main.scale, 128)
+            maxPixelSize: max(size * displayScale, 128)
         ) { image in
             image
                 .resizable()

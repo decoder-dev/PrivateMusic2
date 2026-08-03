@@ -16,6 +16,7 @@ enum PremiumLayout {
 
 struct PremiumCardModifier: ViewModifier {
     let interactive: Bool
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -24,7 +25,7 @@ struct PremiumCardModifier: ViewModifier {
             style: .continuous
         )
 
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), !reduceTransparency {
             // Real Liquid Glass card surface. glassEffect(in:) already
             // constrains the shape, so no separate clipShape here (that
             // combination is a documented source of rendering artifacts).

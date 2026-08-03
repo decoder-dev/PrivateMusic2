@@ -29,6 +29,8 @@ SwiftUI. Проект развивает **decoder-dev**.
   место над контентом на iOS 16–27;
 - интерфейс на русском и английском языках;
 - Privacy Manifest без аналитики и отслеживания.
+- готовность к сборке на Xcode 27 / iOS 27 SDK: scene lifecycle
+  (TN3187) объявлен в Info.plist и AppDelegate.
 
 ## Сборка
 
