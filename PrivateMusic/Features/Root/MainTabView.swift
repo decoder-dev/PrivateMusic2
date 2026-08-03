@@ -34,6 +34,19 @@ private enum MainTab: CaseIterable, Hashable {
     }
 }
 
+/// Measured height of the combined mini player + tab dock, used to
+/// reserve exactly that much space above each tab's content.
+private struct PlaybackDockHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(
+        value: inout CGFloat,
+        nextValue: () -> CGFloat
+    ) {
+        value = max(value, nextValue())
+    }
+}
+
 struct MainTabView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
@@ -42,6 +55,7 @@ struct MainTabView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: MainTab = .home
     @StateObject private var scrollCoordinator = MainTabScrollCoordinator()
+    @State private var dockHeight: CGFloat = 0
     let playerNamespace: Namespace.ID
 
     var body: some View {
@@ -61,11 +75,22 @@ struct MainTabView: View {
                 NavigationStack { ProfileView() }
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .overlay(alignment: .bottom) {
             PlaybackTabDock(
                 selection: $selectedTab,
                 playerNamespace: playerNamespace
             )
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: PlaybackDockHeightKey.self,
+                        value: proxy.size.height
+                    )
+                }
+            )
+        }
+        .onPreferenceChange(PlaybackDockHeightKey.self) { height in
+            dockHeight = height
         }
         .environmentObject(scrollCoordinator)
         .task(id: sessionStore.accessToken) {
@@ -76,11 +101,22 @@ struct MainTabView: View {
         }
     }
 
+    /// The dock is an overlay rather than an outer `safeAreaInset` so that
+    /// every tab's own `NavigationStack` gets the reservation directly:
+    /// an inset applied outside a NavigationStack does not reliably reach
+    /// the scrollable content inside it, which let list rows slide under
+    /// the dock and mini player. Reserving the measured dock height here
+    /// keeps content clear of it on iOS 16 through 27 alike.
     private func tabScreen<Content: View>(
         _ tab: MainTab,
         @ViewBuilder content: () -> Content
     ) -> some View {
         content()
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear
+                    .frame(height: dockHeight)
+                    .accessibilityHidden(true)
+            }
             .opacity(selectedTab == tab ? 1 : 0)
             .allowsHitTesting(selectedTab == tab)
             .accessibilityHidden(selectedTab != tab)
