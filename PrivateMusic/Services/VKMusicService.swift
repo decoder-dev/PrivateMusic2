@@ -278,43 +278,57 @@ struct VKMusicService: MusicService {
         accessToken: String
     ) async throws -> [Track] {
         let userID = await context.userID
-        var tracks: [Track] = []
-        var known = Set<String>()
-        var offset = 0
-        var duplicateOnlyPages = 0
         // Stream mixes commonly return only three items per response even
-        // when a larger count is requested. Fill the initial queue from
-        // several pages so playback does not stop after that first triplet.
-        for _ in 0..<10 {
-            try Task.checkCancellation()
-            let envelope: VKResponse<JSONValue> = try await client.post(
-                path: "/method/audio.getStreamMixAudios",
-                form: common(accessToken).merging([
-                    "mix_id": mix.id,
-                    "count": "100",
-                    "offset": String(offset)
-                ]) { _, new in new },
-                responseType: VKResponse<JSONValue>.self
-            )
-            let rawTracks = envelope.response.tracks
-            guard !rawTracks.isEmpty else { break }
-            offset += rawTracks.count
-            let additions = rawTracks
-                .map { $0.resolvingStreamURL(userID: userID) }
-                .filter { known.insert($0.id).inserted }
-            tracks.append(contentsOf: additions)
-            duplicateOnlyPages = additions.isEmpty
-                ? duplicateOnlyPages + 1
-                : 0
-            // A couple of overlapping pages in a row is normal for this
-            // endpoint's rotation; bailing out that early was leaving
-            // mixes with only the first ~3 tracks queued. Give it the
-            // rest of the page budget before giving up.
-            if duplicateOnlyPages >= 6 { break }
-            if tracks.count >= 30 { break }
+        // when a larger count is requested, so filling a real queue needs
+        // several pages. Fetching those pages concurrently instead of one
+        // at a time turns what used to be up to 10 sequential round trips
+        // (multi-second load, the common complaint) into roughly one
+        // round trip's worth of wall-clock time. A page that fails is
+        // just dropped rather than failing the whole mix, since the other
+        // concurrent pages already carry usable tracks.
+        let offsets = stride(from: 0, to: 1_000, by: 100)
+        let pages = try await withThrowingTaskGroup(
+            of: (offset: Int, tracks: [Track]).self
+        ) { group -> [(offset: Int, tracks: [Track])] in
+            for offset in offsets {
+                group.addTask {
+                    do {
+                        let envelope: VKResponse<JSONValue> = try await client
+                            .post(
+                                path: "/method/audio.getStreamMixAudios",
+                                form: common(accessToken).merging([
+                                    "mix_id": mix.id,
+                                    "count": "100",
+                                    "offset": String(offset)
+                                ]) { _, new in new },
+                                responseType: VKResponse<JSONValue>.self
+                            )
+                        let resolved = envelope.response.tracks.map {
+                            $0.resolvingStreamURL(userID: userID)
+                        }
+                        return (offset, resolved)
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        return (offset, [])
+                    }
+                }
+            }
+            var collected: [(offset: Int, tracks: [Track])] = []
+            for try await page in group {
+                collected.append(page)
+            }
+            return collected
+        }
+        var known = Set<String>()
+        var tracks: [Track] = []
+        for page in pages.sorted(by: { $0.offset < $1.offset }) {
+            for track in page.tracks where known.insert(track.id).inserted {
+                tracks.append(track)
+            }
         }
         guard !tracks.isEmpty else { throw APIError.invalidResponse }
-        return tracks
+        return Array(tracks.prefix(30))
     }
 
     func search(
@@ -472,12 +486,13 @@ struct VKMusicService: MusicService {
         if let accessKey = album.accessKey {
             parameters["access_key"] = accessKey
         }
-        // Following and unfollowing are two distinct VK methods — calling
-        // followPlaylist for both directions means unfollow silently never
-        // reaches the server, so the heart reverts on the next refresh.
+        // VK has no audio.unfollowPlaylist ("Unknown method passed") — the
+        // real counterpart to followPlaylist for removing a followed
+        // playlist/album from the library is the same deletePlaylist call
+        // used for a user's own playlists.
         let path = follow
             ? "/method/audio.followPlaylist"
-            : "/method/audio.unfollowPlaylist"
+            : "/method/audio.deletePlaylist"
         let _: VKResponse<VKIgnored> = try await client.post(
             path: path,
             form: common(accessToken).merging(parameters) { _, new in new },
