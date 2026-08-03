@@ -47,7 +47,17 @@ final class EqualizerDSP: @unchecked Sendable {
     var requiresAudioTap: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return enabled || isSpatialAudioActive
+        return hasActiveEqualizerProcessing || isSpatialAudioActive
+    }
+
+    /// Flat EQ with zero preamp and no loudness/DRC is a no-op — skip the
+    /// realtime tap so CarKit / AirPlay external handoff stays available and
+    /// the device does not burn CPU on identity biquads.
+    private var hasActiveEqualizerProcessing: Bool {
+        guard enabled else { return false }
+        if loudnessNormEnabled || drcEnabled { return true }
+        if abs(preampDB) > 0.000_1 { return true }
+        return gains.contains { abs($0) > 0.000_1 }
     }
 
     func update(
