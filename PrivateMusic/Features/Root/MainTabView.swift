@@ -194,7 +194,7 @@ private struct PlaybackTabDock: View {
     let playerNamespace: Namespace.ID
 
     var body: some View {
-        AdaptiveGlassContainer(spacing: 4) {
+        AdaptiveGlassContainer(spacing: 10) {
             VStack(spacing: 12) {
                 if player.currentTrack != nil {
                     MiniPlayerView(playerNamespace: playerNamespace)
@@ -203,21 +203,22 @@ private struct PlaybackTabDock: View {
                         )
                 }
 
-                HStack(spacing: 4) {
-                    ForEach(MainTab.allCases, id: \.self) { tab in
-                        tabButton(tab)
+                HStack(spacing: 10) {
+                    HStack(spacing: 4) {
+                        ForEach(primaryTabs, id: \.self) { tab in
+                            tabButton(tab)
+                        }
                     }
+                    .padding(5)
+                    .adaptiveGlass(
+                        in: Capsule(style: .continuous),
+                        interactive: true,
+                        tint: settings.theme.accent.opacity(0.06)
+                    )
+                    .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
+
+                    searchTabButton
                 }
-                .padding(5)
-                .adaptiveGlass(
-                    in: RoundedRectangle(
-                        cornerRadius: 24,
-                        style: .continuous
-                    ),
-                    interactive: true,
-                    tint: settings.theme.accent.opacity(0.06)
-                )
-                .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
             }
         }
         .dynamicTypeSize(...DynamicTypeSize.large)
@@ -232,25 +233,40 @@ private struct PlaybackTabDock: View {
         )
     }
 
+    private var primaryTabs: [MainTab] {
+        [.home, .library, .profile]
+    }
+
+    private var searchTabButton: some View {
+        Button {
+            selectTab(.search)
+        } label: {
+            Image(systemName: MainTab.search.image)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(
+                    selection == .search
+                        ? selectedColor
+                        : Color.primary.opacity(0.72)
+                )
+                .frame(width: 58, height: 58)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .adaptiveGlass(
+            in: Circle(),
+            interactive: true,
+            tint: selection == .search
+                ? settings.theme.accent.opacity(0.16)
+                : settings.theme.accent.opacity(0.06)
+        )
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
+        .accessibilityLabel(MainTab.search.title)
+        .accessibilityAddTraits(selection == .search ? .isSelected : [])
+    }
+
     private func tabButton(_ tab: MainTab) -> some View {
         Button {
-            Haptics.selection()
-            if TabReselectionPolicy.isReselection(
-                current: selection,
-                tapped: tab
-            ) {
-                scrollCoordinator.scrollToTop(tab.scrollDestination)
-                return
-            }
-            if reduceMotion {
-                selection = tab
-            } else {
-                withAnimation(
-                    .spring(response: 0.32, dampingFraction: 0.82)
-                ) {
-                    selection = tab
-                }
-            }
+            selectTab(tab)
         } label: {
             VStack(spacing: 3) {
                 Image(systemName: tab.image)
@@ -278,6 +294,26 @@ private struct PlaybackTabDock: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selection == tab ? .isSelected : [])
+    }
+
+    private func selectTab(_ tab: MainTab) {
+        Haptics.selection()
+        if TabReselectionPolicy.isReselection(
+            current: selection,
+            tapped: tab
+        ) {
+            scrollCoordinator.scrollToTop(tab.scrollDestination)
+            return
+        }
+        if reduceMotion {
+            selection = tab
+        } else {
+            withAnimation(
+                .spring(response: 0.32, dampingFraction: 0.82)
+            ) {
+                selection = tab
+            }
+        }
     }
 
     private var selectedColor: Color {

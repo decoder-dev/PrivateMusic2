@@ -17,10 +17,6 @@ struct MiniPlayerView: View {
                     } label: {
                         HStack(spacing: 10) {
                             AsyncArtwork(url: track.artworkURL, size: 42)
-                                .overlay(alignment: .topTrailing) {
-                                    LikedTrackBadge(track: track)
-                                        .padding(3)
-                                }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(track.title)
                                     .font(.subheadline.weight(.semibold))

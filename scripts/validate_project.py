@@ -144,8 +144,10 @@ for forbidden_system_tab_symbol in (
             f"{forbidden_system_tab_symbol}"
         )
 for required_dock_glass_symbol in (
-    "AdaptiveGlassContainer(spacing: 4)",
+    "AdaptiveGlassContainer(spacing: 10)",
     "tint: settings.theme.accent.opacity(0.06)",
+    "searchTabButton",
+    "Capsule(style: .continuous)",
     ".safeAreaInset(edge: .bottom, spacing: 0)",
 ):
     if required_dock_glass_symbol not in main_tab_source:
@@ -153,6 +155,14 @@ for required_dock_glass_symbol in (
             "custom navigation must retain native Liquid Glass and safe inset: "
             f"{required_dock_glass_symbol}"
         )
+if "ForEach(MainTab.allCases" in main_tab_source:
+    fail("tab dock must keep search as a separate circular control")
+if "LikedTrackBadge(track: track)" in mini_player_source:
+    fail("mini-player must not overlay a liked-track badge on artwork")
+if "buttonStyle(.borderless)" not in (
+    SOURCE / "Features" / "Album" / "AlbumDetailView.swift"
+).read_text(encoding="utf-8"):
+    fail("album follow control must remain tappable inside List rows")
 if "kAudioFormatFlagIsNonInterleaved" not in equalizer_source:
     fail("audio processing must use the declared PCM interleaving format")
 if "let nonInterleaved = buffers.count > 1" in equalizer_source:
