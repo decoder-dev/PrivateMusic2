@@ -15,13 +15,14 @@ enum RepeatMode: String, CaseIterable {
 /// What started the current queue, for display in the full-screen player.
 /// Callers that start playback from a named collection pass the matching
 /// case; anything else (search results, recommendations, artist tracks,
-/// history, offline files, an "open player" context-menu action, …) is
-/// left `nil` and treated as an implicit automix seeded by the tapped
-/// track — see `AudioPlayer.queueContextTitle`.
+/// offline files, an "open player" context-menu action, …) is left `nil`
+/// and treated as an implicit automix seeded by the tapped track — see
+/// `AudioPlayer.queueContextTitle`.
 enum QueueSource: Equatable {
     case mix(title: String)
     case playlist(title: String)
     case album(title: String)
+    case history
 }
 
 enum QueueSourceTitle {
@@ -384,6 +385,8 @@ final class AudioPlayer: ObservableObject {
             return title
         case let .album(title) where QueueSourceTitle.isUsable(title):
             return title
+        case .history:
+            return L10n.text("История прослушивания")
         default:
             if let seed = queueSeedTrackTitle,
                QueueSourceTitle.isUsable(seed) {
