@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct MixView: View {
+    let mix: MusicMix
+
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
@@ -10,6 +12,10 @@ struct MixView: View {
     @State private var loadingMixID: String?
     @State private var errorMessage: String?
     @State private var sharingTrack: Track?
+
+    init(mix: MusicMix = .common) {
+        self.mix = mix
+    }
 
     var body: some View {
         ScrollView {
@@ -32,7 +38,7 @@ struct MixView: View {
             .padding(.bottom, 120)
         }
         .background(ThemeBackground())
-        .navigationTitle("Микс")
+        .navigationTitle(mix.title)
         .trackShareSheet(track: $sharingTrack)
         .task(id: sessionStore.accessToken) {
             await load(force: true)
@@ -41,7 +47,7 @@ struct MixView: View {
     }
 
     private var hero: some View {
-        Button { start(.common) } label: {
+        Button { start(mix) } label: {
             ZStack(alignment: .bottomLeading) {
                 LinearGradient(
                     colors: [
@@ -53,9 +59,9 @@ struct MixView: View {
                 )
                 VStack(alignment: .leading, spacing: 8) {
                     Spacer()
-                    Text("Слушать VK Микс")
+                    Text(mix.title)
                         .font(.title2.weight(.heavy))
-                    Text("Персональный поток VK")
+                    Text(mix.subtitle)
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.78))
                 }
@@ -68,7 +74,7 @@ struct MixView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity,
                            alignment: .topTrailing)
                     .padding(18)
-                if loadingMixID == MusicMix.common.id {
+                if loadingMixID == mix.id {
                     ProgressView()
                         .tint(.white)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -86,7 +92,7 @@ struct MixView: View {
         }
         .buttonStyle(PremiumPressStyle())
         .contextMenu {
-            Button { start(.common) } label: {
+            Button { start(mix) } label: {
                 Label("Воспроизвести микс", systemImage: "play.fill")
             }
         }
@@ -99,7 +105,7 @@ struct MixView: View {
                 .font(.title2.weight(.bold))
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 14) {
-                    ForEach(mixes.filter { $0.id != MusicMix.common.id }) { mix in
+                    ForEach(mixes.filter { $0.id != mix.id }) { mix in
                         Button { start(mix) } label: {
                             VStack(alignment: .leading, spacing: 8) {
                                 ZStack {
@@ -161,7 +167,8 @@ struct MixView: View {
                             play(
                                 track,
                                 queue: tracks,
-                                source: .mix(title: MusicMix.common.title)
+                                mix: mix,
+                                source: .mix(title: mix.title)
                             )
                         } label: {
                             VStack(alignment: .leading, spacing: 8) {
@@ -215,7 +222,8 @@ struct MixView: View {
                                 play(
                                     track,
                                     queue: tracks,
-                                    source: .mix(title: MusicMix.common.title)
+                                    mix: mix,
+                                    source: .mix(title: mix.title)
                                 )
                                 player.presentPlayer()
                             } label: {
@@ -244,7 +252,7 @@ struct MixView: View {
                     TrackRow(
                         track: track,
                         queue: tracks,
-                        source: .mix(title: MusicMix.common.title)
+                        source: .mix(title: mix.title)
                     )
                         .padding(.vertical, 7)
                     if index < min(max(tracks.count - 12, 0), 12) - 1 {
@@ -362,7 +370,7 @@ struct MixView: View {
         do {
             tracks = try await environment.withAuthorizedToken { token in
                 try await environment.musicService.mixTracks(
-                    .common,
+                    mix,
                     accessToken: token
                 )
             }

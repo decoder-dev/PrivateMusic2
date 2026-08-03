@@ -1896,10 +1896,29 @@ final class AudioPlayer: ObservableObject {
             .allowsExternalPlayback(requiresAudioTap: requiresAudioTap)
         guard reloadIfNeeded,
               requiredTap != requiresAudioTap,
-              player.currentItem != nil else {
+              let item = player.currentItem else {
             return
         }
-        reloadCurrentItemForAudioProcessing()
+        // A tone-profile change (e.g. connecting to CarKit) can flip
+        // whether a tap is required. Re-point the audio mix on the item
+        // that is already playing instead of replacing it outright: a
+        // full replaceCurrentItem forces a rebuffer, which is exactly the
+        // multi-second silence-of-effects window users notice on route
+        // changes. HLS sources never support a tap either way (the mix
+        // stays nil regardless of what flipped), so there is nothing to
+        // reattach for them.
+        guard let url = (item.asset as? AVURLAsset)?.url,
+              AudioProcessingAttachPolicy.supportsAudioTap(
+                url: url,
+                isOffline: loadedOfflineTrackID == currentTrack?.id
+              ) else {
+            return
+        }
+        if requiresAudioTap {
+            attachAudioProcessing(to: item)
+        } else {
+            item.audioMix = nil
+        }
     }
 
     private func handleOutputVolume(
