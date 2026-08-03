@@ -127,17 +127,17 @@ jobs:
           test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.17-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.18-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.17"
+          test "$GITHUB_REF_NAME" = "v3.28.18"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.28.17
+          Private Music 3.28.18
 
           - Мини-плеер в стиле Apple Music: обложка + метаданные слева,
             play/pause и next справа, тонкий прогресс, без кнопки previous
@@ -151,15 +151,15 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.17-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.28.18-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.17" \
+              --title "Private Music 3.28.18" \
               --notes-file "$NOTES"
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.17-unsigned.ipa" \
-              --title "Private Music 3.28.17" \
+              "$PWD/artifacts/PrivateMusic-3.28.18-unsigned.ipa" \
+              --title "Private Music 3.28.18" \
               --notes-file "$NOTES"
           fi
 
@@ -167,7 +167,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.17-unsigned
-          path: artifacts/PrivateMusic-3.28.17-unsigned.ipa
+          name: PrivateMusic-3.28.18-unsigned
+          path: artifacts/PrivateMusic-3.28.18-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

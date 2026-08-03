@@ -12,18 +12,20 @@ enum MiniPlayerGesturePolicy {
     static let minimumDistance: CGFloat = 18
     static let horizontalThreshold: CGFloat = 58
     static let verticalThreshold: CGFloat = 42
+    static let axisDominanceRatio: CGFloat = 1.2
     static let horizontalParallaxFactor: CGFloat = 0.12
     static let verticalParallaxFactor: CGFloat = 0.08
 
     /// Chooses an action from the settled translation and the predicted end
     /// translation so fast flicks still register even when the finger lifts
-    /// early. Returns `nil` for short or ambiguous drags.
+    /// early. Returns `nil` for short, downward, or ambiguous diagonal drags.
     static func action(
         translation: CGSize,
         predictedEndTranslation: CGSize,
         minimumDistance: CGFloat = minimumDistance,
         horizontalThreshold: CGFloat = horizontalThreshold,
-        verticalThreshold: CGFloat = verticalThreshold
+        verticalThreshold: CGFloat = verticalThreshold,
+        axisDominanceRatio: CGFloat = axisDominanceRatio
     ) -> MiniPlayerGestureAction? {
         let effective = effectiveTranslation(
             translation: translation,
@@ -36,19 +38,23 @@ enum MiniPlayerGesturePolicy {
             return nil
         }
 
-        if vertical > horizontal {
+        if vertical >= horizontal * axisDominanceRatio {
             guard effective.height <= -verticalThreshold else {
                 return nil
             }
             return .openPlayer
         }
 
-        if effective.width <= -horizontalThreshold {
-            return .next
+        if horizontal >= vertical * axisDominanceRatio {
+            if effective.width <= -horizontalThreshold {
+                return .next
+            }
+            if effective.width >= horizontalThreshold {
+                return .previous
+            }
+            return nil
         }
-        if effective.width >= horizontalThreshold {
-            return .previous
-        }
+
         return nil
     }
 
@@ -67,23 +73,21 @@ enum MiniPlayerGesturePolicy {
         )
     }
 
-    /// Prefers the predicted end translation when it has travelled farther on
-    /// either axis, which makes quick flicks reliable.
+    /// Picks one complete vector — never mixes X from one sample with Y from
+    /// another — preferring the predicted end when its Euclidean length is
+    /// strictly greater than the settled translation.
     static func effectiveTranslation(
         translation: CGSize,
         predictedEndTranslation: CGSize
     ) -> CGSize {
-        let usePredictedWidth =
-            abs(predictedEndTranslation.width) > abs(translation.width)
-        let usePredictedHeight =
-            abs(predictedEndTranslation.height) > abs(translation.height)
-        return CGSize(
-            width: usePredictedWidth
-                ? predictedEndTranslation.width
-                : translation.width,
-            height: usePredictedHeight
-                ? predictedEndTranslation.height
-                : translation.height
+        let settled = hypot(translation.width, translation.height)
+        let predicted = hypot(
+            predictedEndTranslation.width,
+            predictedEndTranslation.height
         )
+        if predicted > settled {
+            return predictedEndTranslation
+        }
+        return translation
     }
 }

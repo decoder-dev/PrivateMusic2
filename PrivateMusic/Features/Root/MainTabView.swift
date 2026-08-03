@@ -258,13 +258,43 @@ private struct SystemLiquidGlassTabView: View {
 @available(iOS 26.1, *)
 private struct SystemPlaybackAccessory: View {
     @EnvironmentObject private var player: AudioPlayer
+    @Environment(\.tabViewBottomAccessoryPlacement) private var accessoryPlacement
     let playerNamespace: Namespace.ID
 
     var body: some View {
-        // Same Apple Music compact panel as the legacy dock path so both
-        // navigation styles stay visually aligned.
-        MiniPlayerView(playerNamespace: playerNamespace)
-            .padding(.horizontal, 4)
+        switch MiniPlayerAccessoryPolicy.presentation(
+            hasCurrentTrack: player.currentTrack != nil,
+            mode: MiniPlayerAccessoryMode(placement: accessoryPlacement)
+        ) {
+        case .hidden:
+            EmptyView()
+        case .expanded:
+            // Full glass mini player — only safe while the accessory is expanded.
+            MiniPlayerView(playerNamespace: playerNamespace)
+                .padding(.horizontal, 4)
+        case .inline:
+            // Compact chrome sized for the minimized system tab bar.
+            InlineMiniPlayerView(playerNamespace: playerNamespace)
+        }
+    }
+}
+
+@available(iOS 26.1, *)
+private extension MiniPlayerAccessoryMode {
+    init(placement: TabViewBottomAccessoryPlacement?) {
+        switch placement {
+        case .expanded:
+            self = .expanded
+        case .inline:
+            self = .inline
+        case .none:
+            // Placement unresolved (first layout pass) — prefer full chrome.
+            self = .expanded
+        @unknown default:
+            // Prefer compact chrome for unknown future placements so content
+            // cannot clip against a minimized system tab bar.
+            self = .inline
+        }
     }
 }
 
