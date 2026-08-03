@@ -27,6 +27,7 @@
 "Очередь" = "Queue";
 "Удалить из очереди" = "Remove from Queue";
 "Ваша очередь" = "Your Queue";
+"Все" = "See All";
 "Микс по «%@»" = "Mix based on \"%@\"";
 "Трек %d из %d" = "Track %d of %d";
 "История" = "History";
@@ -142,6 +143,8 @@
 "Пропускать недоступный трек" = "Skip Unavailable Tracks";
 "Если VK не смог обновить аудиопоток, плеер продолжит очередь со следующей песни." = "If VK cannot refresh an audio stream, the player continues with the next track in the queue.";
 "Эквалайзер" = "Equalizer";
+"Вкл" = "On";
+"Выкл" = "Off";
 "Обработка звука" = "Audio Processing";
 "Пространственный звук" = "Spatial Audio";
 "Расширенная стереосцена" = "Expanded Stereo Soundstage";

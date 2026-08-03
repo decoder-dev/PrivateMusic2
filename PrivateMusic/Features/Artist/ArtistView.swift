@@ -11,6 +11,7 @@ struct ArtistView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var selectedAlbum: Album?
+    @State private var showsAllTracks = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -94,39 +95,90 @@ struct ArtistView: View {
                     .padding(.bottom, 10)
                 }
 
+                tracksSection
+                    .padding(.top, 10)
+
                 if !albums.isEmpty {
                     albumsSection
-                }
-
-                HStack {
-                    Text(L10n.text("Треки исполнителя"))
-                        .font(.headline)
-                    Spacer()
-                    Text(L10n.trackCount(tracks.count))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
-
-                ForEach(
-                    Array(tracks.enumerated()),
-                    id: \.element.id
-                ) { index, track in
-                    TrackRow(track: track, queue: tracks)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 5)
-
-                    if index < tracks.count - 1 {
-                        Divider()
-                            .padding(.leading, 82)
-                    }
+                        .padding(.top, 18)
                 }
             }
         }
         .scrollIndicators(.hidden)
         .refreshable {
             await load(resetContent: false)
+        }
+        .sheet(isPresented: $showsAllTracks) {
+            NavigationStack {
+                List {
+                    ForEach(tracks) { track in
+                        TrackRow(
+                            track: track,
+                            queue: tracks
+                        )
+                        .listRowBackground(Color.clear)
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(ThemeBackground())
+                .navigationTitle(artist)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(L10n.text("Готово")) {
+                            showsAllTracks = false
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static let trackPreviewLimit = 16
+
+    private var previewTracks: [Track] {
+        Array(tracks.prefix(Self.trackPreviewLimit))
+    }
+
+    private var trackGridRows: [GridItem] {
+        Array(repeating: GridItem(.fixed(60), spacing: 4), count: 4)
+    }
+
+    private var tracksSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(L10n.text("Треки исполнителя"))
+                    .font(.headline)
+                Spacer()
+                Text(L10n.trackCount(tracks.count))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                if tracks.count > Self.trackPreviewLimit {
+                    Button {
+                        showsAllTracks = true
+                    } label: {
+                        HStack(spacing: 2) {
+                            Text(L10n.text("Все"))
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                    }
+                }
+            }
+            .padding(.horizontal, 18)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHGrid(rows: trackGridRows, spacing: 4) {
+                    ForEach(previewTracks) { track in
+                        TrackRow(track: track, queue: tracks)
+                            .frame(width: 264)
+                    }
+                }
+                .padding(.horizontal, 18)
+            }
         }
     }
 
