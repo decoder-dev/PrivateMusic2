@@ -195,7 +195,7 @@ enum JSONValue: Codable, Sendable {
         }
     }
 
-    private var stringValue: String? {
+    fileprivate var stringValue: String? {
         switch self {
         case let .string(value): value
         case let .number(value):
@@ -204,7 +204,7 @@ enum JSONValue: Codable, Sendable {
         }
     }
 
-    private var numberValue: Double? {
+    fileprivate var numberValue: Double? {
         switch self {
         case let .number(value): value
         case let .string(value):
