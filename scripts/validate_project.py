@@ -172,6 +172,7 @@ for required_mini_player_symbol in (
     "MiniPlayerProgressPolicy",
     "MiniPlayerGesturePolicy",
     "MiniPlayerLayoutMetrics",
+    "MiniPlayerArtworkView",
     "openPlayerArea",
     "predictedEndTranslation",
     "isBuffering",
@@ -231,7 +232,40 @@ if "SystemPlaybackAccessory" in main_tab_source and (
     "MiniPlayerView(playerNamespace: playerNamespace)"
     not in main_tab_source
 ):
-    fail("system accessory must reuse MiniPlayerView")
+    fail("system accessory must reuse MiniPlayerView when expanded")
+if "SystemPlaybackAccessory" in main_tab_source:
+    for required_accessory_symbol in (
+        "tabViewBottomAccessoryPlacement",
+        "InlineMiniPlayerView(playerNamespace: playerNamespace)",
+        "MiniPlayerAccessoryMode",
+        "@unknown default",
+    ):
+        if required_accessory_symbol not in main_tab_source:
+            fail(
+                "system accessory is missing inline/expanded support: "
+                f"{required_accessory_symbol}"
+            )
+inline_mini_player_source = (
+    SOURCE / "Features" / "Player" / "InlineMiniPlayerView.swift"
+).read_text(encoding="utf-8")
+for required_inline_symbol in (
+    "MiniPlayerArtworkView",
+    "showsBufferingIndicator",
+    "tapTarget",
+    "Открыть полноэкранный плеер",
+):
+    if required_inline_symbol not in inline_mini_player_source:
+        fail(
+            f"inline mini-player is missing symbol: {required_inline_symbol}"
+        )
+if "struct MiniPlayerArtworkView" not in all_source:
+    fail("MiniPlayerArtworkView must provide real artwork crossfade")
+if "axisDominanceRatio" not in all_source:
+    fail("mini-player gestures must require axis dominance")
+if "enum MiniPlayerAccessoryPolicy" not in all_source:
+    fail("MiniPlayerAccessoryPolicy must exist for unit-tested accessory layout")
+if "reduceMotionCrossfadeDuration" not in all_source:
+    fail("artwork crossfade must honor Reduce Motion duration")
 if "loadedIdentity == loadIdentity ? image : nil" not in cached_image_source:
     fail("cached artwork must never display a stale request identity")
 if "Text(track.duration.formattedDuration)" not in library_view_source:
