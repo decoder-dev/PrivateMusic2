@@ -12,6 +12,24 @@ enum RepeatMode: String, CaseIterable {
     }
 }
 
+/// What started the current queue, for display in the full-screen player.
+/// Callers that start playback from a named collection pass the matching
+/// case; anything else (search results, recommendations, artist tracks,
+/// history, offline files, an "open player" context-menu action, …) is
+/// left `nil` and treated as an implicit automix seeded by the tapped
+/// track — see `AudioPlayer.queueContextTitle`.
+enum QueueSource: Equatable {
+    case mix(title: String)
+    case playlist(title: String)
+    case album(title: String)
+}
+
+enum QueueSourceTitle {
+    static func isUsable(_ value: String) -> Bool {
+        !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 /// Playback route policy for wired / wireless headphone disconnects.
 ///
 /// Apple documents that media apps must pause when headphones are removed so
@@ -239,6 +257,8 @@ final class AudioPlayer: ObservableObject {
 
     @Published private(set) var queue: [Track] = []
     @Published private(set) var currentIndex: Int?
+    @Published private(set) var queueSource: QueueSource?
+    @Published private(set) var queueSeedTrackTitle: String?
     @Published private(set) var isPlaying = false
     @Published private(set) var isBuffering = false
     @Published private(set) var elapsedTime: TimeInterval = 0
@@ -315,6 +335,26 @@ final class AudioPlayer: ObservableObject {
             return nil
         }
         return queue[currentIndex]
+    }
+
+    /// Human-readable label for what's currently queued, shown under
+    /// "СЕЙЧАС ИГРАЕТ" in the full-screen player in place of a bare
+    /// "N of M" position (that position now lives in the queue screen).
+    var queueContextTitle: String {
+        switch queueSource {
+        case let .mix(title) where QueueSourceTitle.isUsable(title):
+            return title
+        case let .playlist(title) where QueueSourceTitle.isUsable(title):
+            return title
+        case let .album(title) where QueueSourceTitle.isUsable(title):
+            return title
+        default:
+            if let seed = queueSeedTrackTitle,
+               QueueSourceTitle.isUsable(seed) {
+                return L10n.format("Микс по «%@»", seed)
+            }
+            return L10n.text("Ваша очередь")
+        }
     }
 
     func presentPlayer() {
@@ -481,7 +521,8 @@ final class AudioPlayer: ObservableObject {
     func play(
         _ track: Track,
         in tracks: [Track],
-        continuation: (() async throws -> [Track])? = nil
+        continuation: (() async throws -> [Track])? = nil,
+        source: QueueSource? = nil
     ) {
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
@@ -494,6 +535,8 @@ final class AudioPlayer: ObservableObject {
         attemptedPreloadRefreshes.removeAll()
         activeContinuationProvider =
             continuation ?? defaultContinuationProvider
+        queueSource = source
+        queueSeedTrackTitle = track.title
         let prepared = PlaybackQueueBuilder.normalized(
             selected: track,
             tracks: tracks
@@ -788,6 +831,8 @@ final class AudioPlayer: ObservableObject {
         itemStatusObservation = nil
         queue = []
         currentIndex = nil
+        queueSource = nil
+        queueSeedTrackTitle = nil
         loadedTrackID = nil
         loadedOfflineTrackID = nil
         listenedTrackID = nil
