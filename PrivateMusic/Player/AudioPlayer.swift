@@ -531,6 +531,15 @@ final class AudioPlayer: ObservableObject {
                 settings.$spatialAudioIntensity
             )
         )
+            // Slider drags publish on nearly every UI frame; rebuilding
+            // biquad coefficients (sin/cos/pow under the same lock the
+            // real-time audio tap uses) at that rate burns CPU for no
+            // audible benefit, so coalesce to the latest value.
+            .throttle(
+                for: .milliseconds(80),
+                scheduler: RunLoop.main,
+                latest: true
+            )
             .sink { [weak self] equalizerSettings, effectsSettings in
                 let (enabled, gains, preamp, loudness) = equalizerSettings
                 let (drc, spatialAudio, spatialIntensity) = effectsSettings

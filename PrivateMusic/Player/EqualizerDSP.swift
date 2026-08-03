@@ -248,67 +248,89 @@ final class EqualizerDSP: @unchecked Sendable {
         buffers: UnsafeMutableAudioBufferListPointer,
         frameCount: Int
     ) {
-        for bufferIndex in buffers.indices {
-            guard let rawData = buffers[bufferIndex].mData else { continue }
-            let samples = rawData.assumingMemoryBound(to: Float.self)
-            let channelsInBuffer = max(
-                Int(buffers[bufferIndex].mNumberChannels),
-                1
-            )
-            if isNonInterleaved, channelsInBuffer != 1 {
-                continue
-            }
-            let stride = isNonInterleaved ? 1 : frameStride
+        // The inner loops below run once per sample per band (10 bands x
+        // every channel x every frame, continuously during playback).
+        // Bouncing through Swift's Array subscript there pays for a bounds
+        // check and a copy-on-write uniqueness check on every access; both
+        // are provably unnecessary here since neither array is resized or
+        // shared while the tap is running. Hoisting raw pointers once per
+        // buffer callback removes that overhead from the hot path.
+        coefficients.withUnsafeBufferPointer { coefficientsBuffer in
+            states.withUnsafeMutableBufferPointer { statesBuffer in
+                guard let coefficientsBase = coefficientsBuffer.baseAddress,
+                      let statesBase = statesBuffer.baseAddress else {
+                    return
+                }
+                let bandCount = coefficientsBuffer.count
 
-            for localChannel in 0..<channelsInBuffer {
-                let channel = isNonInterleaved
-                    ? min(bufferIndex, channelCount - 1)
-                    : min(localChannel, channelCount - 1)
-                var sampleIndex = localChannel
-
-                for _ in 0..<frameCount {
-                    var value = samples[sampleIndex] * preamp
-
-                    for band in coefficients.indices {
-                        let stateIndex = (channel * coefficients.count + band)
-                            * 4
-                        let coefficient = coefficients[band]
-                        let x1 = states[stateIndex]
-                        let x2 = states[stateIndex + 1]
-                        let y1 = states[stateIndex + 2]
-                        let y2 = states[stateIndex + 3]
-                        let output = coefficient.b0 * value
-                            + coefficient.b1 * x1
-                            + coefficient.b2 * x2
-                            - coefficient.a1 * y1
-                            - coefficient.a2 * y2
-                        states[stateIndex] = value
-                        states[stateIndex + 1] = x1
-                        states[stateIndex + 2] = output
-                        states[stateIndex + 3] = y1
-                        value = output
+                for bufferIndex in buffers.indices {
+                    guard let rawData = buffers[bufferIndex].mData else {
+                        continue
                     }
-
-                    if drcEnabled {
-                        let absVal = abs(value)
-                        let target = absVal > compressorThreshold
-                            ? compressorThreshold
-                                + (absVal - compressorThreshold)
-                                / compressorRatio
-                            : absVal
-                        let peakGain = absVal > 0.001
-                            ? target / absVal
-                            : 1
-                        envelope += (peakGain - envelope) * 0.01
-                        value *= envelope * compressorMakeupGain
+                    let samples = rawData.assumingMemoryBound(to: Float.self)
+                    let channelsInBuffer = max(
+                        Int(buffers[bufferIndex].mNumberChannels),
+                        1
+                    )
+                    if isNonInterleaved, channelsInBuffer != 1 {
+                        continue
                     }
+                    let stride = isNonInterleaved ? 1 : frameStride
 
-                    if loudnessNormEnabled {
-                        value *= loudnessGain
+                    for localChannel in 0..<channelsInBuffer {
+                        let channel = isNonInterleaved
+                            ? min(bufferIndex, channelCount - 1)
+                            : min(localChannel, channelCount - 1)
+                        var sampleIndex = localChannel
+                        let channelState = statesBase
+                            + channel * bandCount * 4
+
+                        for _ in 0..<frameCount {
+                            var value = samples[sampleIndex] * preamp
+
+                            var stateOffset = 0
+                            for band in 0..<bandCount {
+                                let coefficient = coefficientsBase[band]
+                                let state = channelState + stateOffset
+                                let x1 = state[0]
+                                let x2 = state[1]
+                                let y1 = state[2]
+                                let y2 = state[3]
+                                let output = coefficient.b0 * value
+                                    + coefficient.b1 * x1
+                                    + coefficient.b2 * x2
+                                    - coefficient.a1 * y1
+                                    - coefficient.a2 * y2
+                                state[0] = value
+                                state[1] = x1
+                                state[2] = output
+                                state[3] = y1
+                                value = output
+                                stateOffset += 4
+                            }
+
+                            if drcEnabled {
+                                let absVal = abs(value)
+                                let target = absVal > compressorThreshold
+                                    ? compressorThreshold
+                                        + (absVal - compressorThreshold)
+                                        / compressorRatio
+                                    : absVal
+                                let peakGain = absVal > 0.001
+                                    ? target / absVal
+                                    : 1
+                                envelope += (peakGain - envelope) * 0.01
+                                value *= envelope * compressorMakeupGain
+                            }
+
+                            if loudnessNormEnabled {
+                                value *= loudnessGain
+                            }
+
+                            samples[sampleIndex] = min(max(value, -1), 1)
+                            sampleIndex += stride
+                        }
                     }
-
-                    samples[sampleIndex] = min(max(value, -1), 1)
-                    sampleIndex += stride
                 }
             }
         }
@@ -319,34 +341,40 @@ final class EqualizerDSP: @unchecked Sendable {
         frameCount: Int
     ) {
         guard let coefficient = boomCutCoefficients else { return }
-        for bufferIndex in buffers.indices {
-            guard let rawData = buffers[bufferIndex].mData else { continue }
-            let samples = rawData.assumingMemoryBound(to: Float.self)
-            let channelsInBuffer = max(
-                Int(buffers[bufferIndex].mNumberChannels),
-                1
-            )
-            if isNonInterleaved, channelsInBuffer != 1 {
-                continue
-            }
-            let stride = isNonInterleaved ? 1 : frameStride
+        boomCutStates.withUnsafeMutableBufferPointer { statesBuffer in
+            guard let statesBase = statesBuffer.baseAddress else { return }
+            for bufferIndex in buffers.indices {
+                guard let rawData = buffers[bufferIndex].mData else {
+                    continue
+                }
+                let samples = rawData.assumingMemoryBound(to: Float.self)
+                let channelsInBuffer = max(
+                    Int(buffers[bufferIndex].mNumberChannels),
+                    1
+                )
+                if isNonInterleaved, channelsInBuffer != 1 {
+                    continue
+                }
+                let stride = isNonInterleaved ? 1 : frameStride
 
-            for localChannel in 0..<channelsInBuffer {
-                let channel = isNonInterleaved
-                    ? min(bufferIndex, channelCount - 1)
-                    : min(localChannel, channelCount - 1)
-                let stateIndex = min(channel, boomCutStates.count / 4 - 1) * 4
-                var sampleIndex = localChannel
-                for _ in 0..<frameCount {
-                    let input = samples[sampleIndex]
-                    let output = applyBiquad(
-                        input: input,
-                        coefficient: coefficient,
-                        stateIndex: stateIndex,
-                        states: &boomCutStates
-                    )
-                    samples[sampleIndex] = min(max(output, -1), 1)
-                    sampleIndex += stride
+                for localChannel in 0..<channelsInBuffer {
+                    let channel = isNonInterleaved
+                        ? min(bufferIndex, channelCount - 1)
+                        : min(localChannel, channelCount - 1)
+                    let stateIndex =
+                        min(channel, statesBuffer.count / 4 - 1) * 4
+                    let state = statesBase + stateIndex
+                    var sampleIndex = localChannel
+                    for _ in 0..<frameCount {
+                        let input = samples[sampleIndex]
+                        let output = applyBiquad(
+                            input: input,
+                            coefficient: coefficient,
+                            state: state
+                        )
+                        samples[sampleIndex] = min(max(output, -1), 1)
+                        sampleIndex += stride
+                    }
                 }
             }
         }
@@ -363,83 +391,84 @@ final class EqualizerDSP: @unchecked Sendable {
         )
         guard intensity > 0.000_1 else { return }
 
-        if isNonInterleaved {
-            guard buffers.count >= 2,
-                  buffers[0].mNumberChannels == 1,
-                  buffers[1].mNumberChannels == 1,
-                  let leftData = buffers[0].mData,
-                  let rightData = buffers[1].mData else {
+        sideHighPassState.withUnsafeMutableBufferPointer { stateBuffer in
+            guard let sideState = stateBuffer.baseAddress else { return }
+
+            if isNonInterleaved {
+                guard buffers.count >= 2,
+                      buffers[0].mNumberChannels == 1,
+                      buffers[1].mNumberChannels == 1,
+                      let leftData = buffers[0].mData,
+                      let rightData = buffers[1].mData else {
+                    return
+                }
+                let left = leftData.assumingMemoryBound(to: Float.self)
+                let right = rightData.assumingMemoryBound(to: Float.self)
+                for frame in 0..<frameCount {
+                    let side = (left[frame] - right[frame]) * 0.5
+                    let filteredSide = highPassSide(side, state: sideState)
+                    let widened = SpatialAudioDSP.process(
+                        left: left[frame],
+                        right: right[frame],
+                        intensity: intensity,
+                        processedSide: filteredSide
+                    )
+                    left[frame] = widened.left
+                    right[frame] = widened.right
+                }
                 return
             }
-            let left = leftData.assumingMemoryBound(to: Float.self)
-            let right = rightData.assumingMemoryBound(to: Float.self)
+
+            guard let buffer = buffers.first,
+                  buffer.mNumberChannels >= 2,
+                  let rawData = buffer.mData else {
+                return
+            }
+            let samples = rawData.assumingMemoryBound(to: Float.self)
             for frame in 0..<frameCount {
-                let side = (left[frame] - right[frame]) * 0.5
-                let filteredSide = highPassSide(side)
+                let index = frame * frameStride
+                let side = (samples[index] - samples[index + 1]) * 0.5
+                let filteredSide = highPassSide(side, state: sideState)
                 let widened = SpatialAudioDSP.process(
-                    left: left[frame],
-                    right: right[frame],
+                    left: samples[index],
+                    right: samples[index + 1],
                     intensity: intensity,
                     processedSide: filteredSide
                 )
-                left[frame] = widened.left
-                right[frame] = widened.right
+                samples[index] = widened.left
+                samples[index + 1] = widened.right
             }
-            return
-        }
-
-        guard let buffer = buffers.first,
-              buffer.mNumberChannels >= 2,
-              let rawData = buffer.mData else {
-            return
-        }
-        let samples = rawData.assumingMemoryBound(to: Float.self)
-        for frame in 0..<frameCount {
-            let index = frame * frameStride
-            let side = (samples[index] - samples[index + 1]) * 0.5
-            let filteredSide = highPassSide(side)
-            let widened = SpatialAudioDSP.process(
-                left: samples[index],
-                right: samples[index + 1],
-                intensity: intensity,
-                processedSide: filteredSide
-            )
-            samples[index] = widened.left
-            samples[index + 1] = widened.right
         }
     }
 
-    private func highPassSide(_ side: Float) -> Float {
+    private func highPassSide(
+        _ side: Float,
+        state: UnsafeMutablePointer<Float>
+    ) -> Float {
         guard let coefficient = sideHighPassCoefficients else {
             return side
         }
-        return applyBiquad(
-            input: side,
-            coefficient: coefficient,
-            stateIndex: 0,
-            states: &sideHighPassState
-        )
+        return applyBiquad(input: side, coefficient: coefficient, state: state)
     }
 
     private func applyBiquad(
         input: Float,
         coefficient: Coefficients,
-        stateIndex: Int,
-        states: inout [Float]
+        state: UnsafeMutablePointer<Float>
     ) -> Float {
-        let x1 = states[stateIndex]
-        let x2 = states[stateIndex + 1]
-        let y1 = states[stateIndex + 2]
-        let y2 = states[stateIndex + 3]
+        let x1 = state[0]
+        let x2 = state[1]
+        let y1 = state[2]
+        let y2 = state[3]
         let output = coefficient.b0 * input
             + coefficient.b1 * x1
             + coefficient.b2 * x2
             - coefficient.a1 * y1
             - coefficient.a2 * y2
-        states[stateIndex] = input
-        states[stateIndex + 1] = x1
-        states[stateIndex + 2] = output
-        states[stateIndex + 3] = y1
+        state[0] = input
+        state[1] = x1
+        state[2] = output
+        state[3] = y1
         return output
     }
 
