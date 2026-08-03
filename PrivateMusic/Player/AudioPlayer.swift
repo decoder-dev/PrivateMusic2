@@ -169,9 +169,11 @@ enum AppVolumePolicy {
 }
 
 enum AudioProcessingRoutePolicy {
-    /// Remote AVPlayer handoff bypasses MTAudioProcessingTap. Keep decoding on
-    /// the phone while DSP is active; AirPlay remains available as an audio
-    /// output route and receives the processed signal.
+    /// Remote AVPlayer handoff bypasses `MTAudioProcessingTap`. While EQ or
+    /// spatial processing is active, keep decoding on the phone so the tap
+    /// runs for every local session route — built-in speaker, wired/wireless
+    /// headphones, Bluetooth A2DP, and CarKit / `.carAudio`. AirPlay remains
+    /// available as an output route and receives the already-processed signal.
     static func allowsExternalPlayback(requiresAudioTap: Bool) -> Bool {
         !requiresAudioTap
     }
@@ -231,6 +233,31 @@ enum AudioInterruptionPolicy {
             && !routeDisconnectPending
             && options.contains(.shouldResume)
     }
+
+    /// When interruption-on-route-disconnect ends before the route-change
+    /// notification arrives, the current route may already be the built-in
+    /// speaker while the previous route was headphones / BT / car.
+    static func shouldTreatEndAsRouteDisconnect(
+        previousOutputPortTypes: [AVAudioSession.Port],
+        currentOutputPortTypes: [AVAudioSession.Port]
+    ) -> Bool {
+        AudioRoutePolicy.shouldPauseAfterRouteLoss(
+            wasPlaying: true,
+            previousOutputPortTypes: previousOutputPortTypes,
+            currentOutputPortTypes: currentOutputPortTypes
+        )
+    }
+}
+
+/// Whether to restart playback after AVAudioSession media services die
+/// (common when attaching CarKit / Bluetooth head units).
+enum MediaServicesResetPolicy {
+    static func shouldAutoplayAfterReset(
+        playbackIntended: Bool,
+        wasActivelyPlaying: Bool
+    ) -> Bool {
+        playbackIntended && wasActivelyPlaying
+    }
 }
 
 @MainActor
@@ -261,13 +288,18 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var queueSeedTrackTitle: String?
     @Published private(set) var isPlaying = false
     @Published private(set) var isBuffering = false
-    @Published private(set) var elapsedTime: TimeInterval = 0
+    /// Exact transport clock. Not `@Published` — UI observes `progress` so
+    /// catalog/library EnvironmentObject consumers are not invalidated at 2 Hz.
+    private(set) var elapsedTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var shuffleEnabled: Bool
     @Published private(set) var repeatMode: RepeatMode
     @Published private(set) var sleepTimerEndDate: Date?
     @Published var isPlayerPresented = false
     @Published var errorMessage: String?
+
+    /// Scrubber / mini-player / lyrics clock (see `PlaybackProgressModel`).
+    let progress = PlaybackProgressModel()
 
     private var player = AVPlayer()
     private let nowPlaying = NowPlayingController()
@@ -313,12 +345,16 @@ final class AudioPlayer: ObservableObject {
     private var playbackIntended = false
     private var pausedForMinimumVolume = false
     private var pausedForAppVolumeZero = false
-    private var appVolume: Float = 1
     private var minimumVolumeResumeSuppressed = false
     private var wasPlayingBeforeInterruption = false
     private var isAudioInterrupted = false
     private var resumeAfterRouteTransfer = false
     private var routeDisconnectPending = false
+    private var outputsAtInterruptionBegan: [AVAudioSession.Port] = []
+    private var interruptionResumeTask: Task<Void, Never>?
+    private var pendingRemoteCommand: RemoteCommandCoalescing.Command?
+    private var remoteCommandFlushTask: Task<Void, Never>?
+    private var lastPersistedQueueSignature = ""
     private var preloadedPlayback: PreloadedPlayback?
     private var preloadAssetTask: Task<Void, Never>?
     private var preloadGeneration = 0
@@ -378,7 +414,8 @@ final class AudioPlayer: ObservableObject {
         self.streamUserAgent = userAgent
         resumeOnBluetoothConnection = settings.resumeOnBluetoothConnection
         pauseAtMinimumVolume = settings.pauseAtMinimumVolume
-        appVolume = Float(settings.appVolume)
+        // Playback level follows hardware / CarKit volume. Keep AVPlayer at
+        // unity so the system volume slider is the only attenuation.
         advanceOnPlaybackError = settings.advanceOnPlaybackError
         shuffleEnabled = defaults.bool(forKey: "player.shuffle")
         repeatMode = RepeatMode(
@@ -438,14 +475,6 @@ final class AudioPlayer: ObservableObject {
                 self.handleOutputVolume(
                     AVAudioSession.sharedInstance().outputVolume
                 )
-            }
-            .store(in: &cancellables)
-        settings.$appVolume
-            .sink { [weak self] volume in
-                guard let self else { return }
-                self.appVolume = Float(volume)
-                self.player.volume = self.appVolume
-                self.handleAppVolume(self.appVolume)
             }
             .store(in: &cancellables)
         settings.$advanceOnPlaybackError
@@ -699,15 +728,18 @@ final class AudioPlayer: ObservableObject {
         if !preservingAppVolumePause {
             pausedForAppVolumeZero = false
         }
-        resumeAfterRouteTransfer = false
-        routeDisconnectPending = false
         playbackIntended = true
-        guard !isAudioInterrupted else { return }
-        guard appVolume > AudioRoutePolicy.minimumAudibleVolume else {
-            pausedForAppVolumeZero = true
-            pausePreservingIntent()
+        interruptionResumeTask?.cancel()
+        interruptionResumeTask = nil
+        // While another app still owns the session, keep transfer intent so a
+        // later interruption-end / route settle can resume. Clearing the flags
+        // here used to drop CarKit / BT reconnect resumes permanently.
+        guard !isAudioInterrupted else {
+            resumeAfterRouteTransfer = true
             return
         }
+        resumeAfterRouteTransfer = false
+        routeDisconnectPending = false
         if requiresStreamRefresh {
             refreshCurrentStream(autoplay: true)
             return
@@ -722,6 +754,7 @@ final class AudioPlayer: ObservableObject {
         guard activateAudioSession() else { return }
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
+        player.volume = 1
         player.play()
         isPlaying = true
         publishPlaybackState(force: true)
@@ -805,7 +838,7 @@ final class AudioPlayer: ObservableObject {
             preferredTimescale: 600
         )
         player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
-        elapsedTime = targetSeconds
+        updateElapsedTime(targetSeconds, forceProgressPublish: true)
         persistPlayback()
         publishPlaybackState(force: true)
     }
@@ -838,7 +871,7 @@ final class AudioPlayer: ObservableObject {
         listenedTrackID = nil
         listenedPlaybackDuration = 0
         lastListeningElapsedTime = nil
-        elapsedTime = 0
+        updateElapsedTime(0, forceProgressPublish: true)
         duration = 0
         isPlaying = false
         isBuffering = false
@@ -847,7 +880,9 @@ final class AudioPlayer: ObservableObject {
         restoredTrackIDs.removeAll()
         nowPlaying.clear()
         lastNowPlayingSecond = -1
+        lastPersistedQueueSignature = ""
         defaults.removeObject(forKey: PlaybackSnapshot.key)
+        defaults.removeObject(forKey: PlaybackSnapshot.elapsedKey)
         try? AVAudioSession.sharedInstance().setActive(
             false,
             options: .notifyOthersOnDeactivation
@@ -888,7 +923,7 @@ final class AudioPlayer: ObservableObject {
                 }
             }
             loadedTrackID = track.id
-            elapsedTime = 0
+            updateElapsedTime(0, forceProgressPublish: true)
             duration = track.duration
             errorMessage = L10n.text(
                 "Для этого трека отсутствует доступный аудиопоток."
@@ -944,15 +979,15 @@ final class AudioPlayer: ObservableObject {
         player.replaceCurrentItem(with: item)
         loadedTrackID = track.id
         loadedOfflineTrackID = isOffline ? track.id : nil
-        elapsedTime = position
+        updateElapsedTime(position, forceProgressPublish: true)
         duration = track.duration
         let shouldAutoplay = autoplay && activateAudioSession()
         if shouldAutoplay {
             pausedForMinimumVolume = false
+            player.volume = 1
             player.play()
             isPlaying = true
             isBuffering = true
-            handleAppVolume(appVolume)
             handleOutputVolume(
                 AVAudioSession.sharedInstance().outputVolume
             )
@@ -1272,23 +1307,23 @@ final class AudioPlayer: ObservableObject {
 
         remoteCommandTokens = [
             center.playCommand.addTarget { [weak self] _ in
-                Task { @MainActor in self?.resume() }
+                self?.enqueueRemoteCommand(.play)
                 return .success
             },
             center.pauseCommand.addTarget { [weak self] _ in
-                Task { @MainActor in self?.pause() }
+                self?.enqueueRemoteCommand(.pause)
                 return .success
             },
             center.togglePlayPauseCommand.addTarget { [weak self] _ in
-                Task { @MainActor in self?.playPause() }
+                self?.enqueueRemoteCommand(.toggle)
                 return .success
             },
             center.nextTrackCommand.addTarget { [weak self] _ in
-                Task { @MainActor in self?.next() }
+                self?.enqueueRemoteCommand(.next)
                 return .success
             },
             center.previousTrackCommand.addTarget { [weak self] _ in
-                Task { @MainActor in self?.previous() }
+                self?.enqueueRemoteCommand(.previous)
                 return .success
             },
             center.changePlaybackPositionCommand.addTarget { [weak self] event in
@@ -1296,15 +1331,59 @@ final class AudioPlayer: ObservableObject {
                 else {
                     return .commandFailed
                 }
-                Task { @MainActor in self?.seek(to: event.positionTime) }
+                self?.enqueueRemoteCommand(.seek(event.positionTime))
                 return .success
             }
         ]
     }
 
+    /// Headphone / CarKit remotes often deliver pause+toggle in one burst.
+    /// Coalesce on the main actor so the second command cannot undo the first.
+    nonisolated private func enqueueRemoteCommand(
+        _ command: RemoteCommandCoalescing.Command
+    ) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            pendingRemoteCommand = RemoteCommandCoalescing.merge(
+                pending: pendingRemoteCommand,
+                incoming: command
+            )
+            remoteCommandFlushTask?.cancel()
+            remoteCommandFlushTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 40_000_000)
+                guard let self,
+                      !Task.isCancelled,
+                      let command = pendingRemoteCommand else {
+                    return
+                }
+                pendingRemoteCommand = nil
+                applyRemoteCommand(command)
+            }
+        }
+    }
+
+    private func applyRemoteCommand(
+        _ command: RemoteCommandCoalescing.Command
+    ) {
+        switch command {
+        case .play:
+            resume()
+        case .pause:
+            pause()
+        case .toggle:
+            playPause()
+        case .next:
+            next()
+        case .previous:
+            previous()
+        case let .seek(time):
+            seek(to: time)
+        }
+    }
+
     private func configurePlayerInstance() {
         player.automaticallyWaitsToMinimizeStalling = true
-        player.volume = appVolume
+        player.volume = 1
         player.allowsExternalPlayback = AudioProcessingRoutePolicy
             .allowsExternalPlayback(
                 requiresAudioTap: equalizer.requiresAudioTap
@@ -1393,29 +1472,34 @@ final class AudioPlayer: ObservableObject {
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
         ) { [weak self] time in
-            Task { @MainActor in
-                guard let self,
-                      self.player === observedPlayer,
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                guard self.player === observedPlayer,
                       self.loadedTrackID == self.currentTrack?.id,
                       self.player.currentItem != nil else {
                     return
                 }
-                self.elapsedTime = max(
+                let newElapsed = max(
                     0,
                     time.seconds.isFinite ? time.seconds : 0
                 )
+                self.updateElapsedTime(newElapsed)
                 if let seconds = self.player.currentItem?.duration.seconds,
-                   seconds.isFinite {
+                   seconds.isFinite,
+                   abs(self.duration - seconds) >= 0.25 {
                     self.duration = seconds
                 }
                 self.sampleListeningProgress()
-                self.isBuffering = self.isPlaying
+                let buffering = self.isPlaying
                     && self.player.timeControlStatus
                         == .waitingToPlayAtSpecifiedRate
+                if self.isBuffering != buffering {
+                    self.isBuffering = buffering
+                }
                 self.publishPlaybackState()
                 let wholeSecond = Int(self.elapsedTime)
                 if wholeSecond > 0,
-                   wholeSecond % 5 == 0,
+                   wholeSecond % 15 == 0,
                    wholeSecond != self.lastPersistedSecond {
                     self.lastPersistedSecond = wholeSecond
                     self.persistPlayback()
@@ -1434,11 +1518,29 @@ final class AudioPlayer: ObservableObject {
         }
         switch type {
         case .began:
+            interruptionResumeTask?.cancel()
+            interruptionResumeTask = nil
             isAudioInterrupted = true
+            outputsAtInterruptionBegan = AVAudioSession.sharedInstance()
+                .currentRoute.outputs.map(\.portType)
             wasPlayingBeforeInterruption = playbackIntended && isPlaying
             pausePreservingIntent()
         case .ended:
             isAudioInterrupted = false
+            let currentOutputs = AVAudioSession.sharedInstance()
+                .currentRoute.outputs.map(\.portType)
+            if AudioInterruptionPolicy.shouldTreatEndAsRouteDisconnect(
+                previousOutputPortTypes: outputsAtInterruptionBegan,
+                currentOutputPortTypes: currentOutputs
+            ) {
+                routeDisconnectPending = true
+                resumeAfterRouteTransfer =
+                    wasPlayingBeforeInterruption && playbackIntended
+                wasPlayingBeforeInterruption = false
+                outputsAtInterruptionBegan = []
+                handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
+                return
+            }
             let rawOptions = notification.userInfo?[
                 AVAudioSessionInterruptionOptionKey
             ] as? UInt ?? 0
@@ -1452,13 +1554,33 @@ final class AudioPlayer: ObservableObject {
                 options: options
             )
             wasPlayingBeforeInterruption = false
+            outputsAtInterruptionBegan = []
             if shouldResume {
-                resume()
+                scheduleInterruptionResume()
+            } else if resumeAfterRouteTransfer,
+                      playbackIntended,
+                      !routeDisconnectPending {
+                scheduleInterruptionResume()
             }
             handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
-            handleAppVolume(appVolume)
         @unknown default:
             break
+        }
+    }
+
+    /// Brief delay so a trailing `.oldDeviceUnavailable` can set
+    /// `routeDisconnectPending` before we reactivate into the speaker.
+    private func scheduleInterruptionResume() {
+        interruptionResumeTask?.cancel()
+        interruptionResumeTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled else { return }
+            guard !isAudioInterrupted,
+                  playbackIntended,
+                  !routeDisconnectPending else {
+                return
+            }
+            resume()
         }
     }
 
@@ -1474,6 +1596,8 @@ final class AudioPlayer: ObservableObject {
         var allowsMinimumVolumeResume = true
         switch reason {
         case .oldDeviceUnavailable:
+            interruptionResumeTask?.cancel()
+            interruptionResumeTask = nil
             let previousRoute = notification.userInfo?[
                 AVAudioSessionRouteChangePreviousRouteKey
             ] as? AVAudioSessionRouteDescription
@@ -1510,7 +1634,16 @@ final class AudioPlayer: ObservableObject {
                 currentOutputPortTypes: currentOutputs
             ) {
                 routeDisconnectPending = false
+                _ = activateAudioSession()
                 resume()
+            } else if currentOutputs.contains(
+                where: AudioRoutePolicy.isExternalPlayback
+            ) {
+                // Settled on an external route — speaker-leak risk is gone,
+                // so do not leave `routeDisconnectPending` stuck forever
+                // (it would block later call-end auto-resume).
+                routeDisconnectPending = false
+                _ = activateAudioSession()
             }
         default:
             break
@@ -1519,23 +1652,32 @@ final class AudioPlayer: ObservableObject {
             AVAudioSession.sharedInstance().outputVolume,
             allowsAutomaticResume: allowsMinimumVolumeResume
         )
-        handleAppVolume(
-            appVolume,
-            allowsAutomaticResume: allowsMinimumVolumeResume
-        )
     }
 
     private func handleMediaServicesReset() {
+        let wasActivelyPlaying = isPlaying
+            || wasPlayingBeforeInterruption
+            || resumeAfterRouteTransfer
+        let shouldAutoplay = MediaServicesResetPolicy.shouldAutoplayAfterReset(
+            playbackIntended: playbackIntended,
+            wasActivelyPlaying: wasActivelyPlaying
+        )
         let position = elapsedTime
-        playbackIntended = false
+        let keepIntent = playbackIntended || wasActivelyPlaying
+
+        interruptionResumeTask?.cancel()
+        interruptionResumeTask = nil
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
         minimumVolumeResumeSuppressed = false
         isAudioInterrupted = false
         wasPlayingBeforeInterruption = false
         resumeAfterRouteTransfer = false
+        routeDisconnectPending = false
+        outputsAtInterruptionBegan = []
         isPlaying = false
         isBuffering = false
+        playbackIntended = keepIntent
         publishPlaybackState(force: true)
 
         cancelContinuation()
@@ -1562,7 +1704,7 @@ final class AudioPlayer: ObservableObject {
         audioSessionConfigured = false
         let audioSessionRestored = configureAudioSession()
         guard currentTrack != nil else { return }
-        loadCurrent(autoplay: false, startAt: position)
+        loadCurrent(autoplay: shouldAutoplay, startAt: position)
         if !audioSessionRestored {
             errorMessage = L10n.text(
                 "Не удалось восстановить аудиовыход."
@@ -1609,34 +1751,6 @@ final class AudioPlayer: ObservableObject {
         resume(
             preservingMinimumVolumePause: true,
             preservingAppVolumePause: false
-        )
-    }
-
-    private func handleAppVolume(
-        _ volume: Float,
-        allowsAutomaticResume: Bool = true
-    ) {
-        player.volume = min(max(volume, 0), 1)
-        if AppVolumePolicy.shouldPauseAtZero(
-            volume: volume,
-            isPlaying: isPlaying
-        ) {
-            pausedForAppVolumeZero = true
-            pausePreservingIntent()
-            return
-        }
-        guard AppVolumePolicy.shouldResumeAfterZeroPause(
-            volume: volume,
-            pausedForAppVolumeZero: pausedForAppVolumeZero,
-            playbackIntended: playbackIntended,
-            hasCurrentTrack: currentTrack != nil,
-            isPlaying: isPlaying,
-            isAudioInterrupted: isAudioInterrupted,
-            allowsAutomaticResume: allowsAutomaticResume
-        ) else { return }
-        resume(
-            preservingMinimumVolumePause: false,
-            preservingAppVolumePause: true
         )
     }
 
@@ -1970,8 +2084,28 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    private func persistPlayback() {
+    private func updateElapsedTime(
+        _ value: TimeInterval,
+        forceProgressPublish: Bool = false
+    ) {
+        let sanitized = max(value, 0)
+        elapsedTime = sanitized
+        if forceProgressPublish {
+            progress.reset(to: sanitized)
+        } else {
+            progress.update(sanitized)
+        }
+    }
+
+    private func persistPlayback(forceFullSnapshot: Bool = false) {
         guard !queue.isEmpty, let currentIndex else { return }
+        defaults.set(elapsedTime, forKey: PlaybackSnapshot.elapsedKey)
+        let signature = queue.map(\.id).joined(separator: "|")
+            + "#\(currentIndex)"
+        guard forceFullSnapshot || signature != lastPersistedQueueSignature
+        else {
+            return
+        }
         let snapshot = PlaybackSnapshot(
             queue: queue,
             currentIndex: currentIndex,
@@ -1979,12 +2113,13 @@ final class AudioPlayer: ObservableObject {
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         defaults.set(data, forKey: PlaybackSnapshot.key)
+        lastPersistedQueueSignature = signature
     }
 
     private func resetProgressForTrackTransition() {
         loadedTrackID = nil
         loadedOfflineTrackID = nil
-        elapsedTime = 0
+        updateElapsedTime(0, forceProgressPublish: true)
         duration = currentTrack?.duration ?? 0
         lastPersistedSecond = -1
         lastNowPlayingSecond = -1
@@ -2037,10 +2172,16 @@ final class AudioPlayer: ObservableObject {
         currentIndex = snapshot.currentIndex
         loadedTrackID = nil
         duration = currentTrack?.duration ?? 0
-        let restoredPosition = max(snapshot.elapsedTime, 0)
-        elapsedTime = duration > 0
-            ? min(restoredPosition, duration)
-            : restoredPosition
+        let storedElapsed = defaults.object(
+            forKey: PlaybackSnapshot.elapsedKey
+        ) as? TimeInterval
+        let restoredPosition = max(storedElapsed ?? snapshot.elapsedTime, 0)
+        updateElapsedTime(
+            duration > 0 ? min(restoredPosition, duration) : restoredPosition,
+            forceProgressPublish: true
+        )
+        lastPersistedQueueSignature = snapshot.queue.map(\.id).joined(separator: "|")
+            + "#\(snapshot.currentIndex)"
         requiresStreamRefresh = true
         if let track = currentTrack {
             nowPlaying.update(
@@ -2056,6 +2197,7 @@ final class AudioPlayer: ObservableObject {
 
 private struct PlaybackSnapshot: Codable {
     static let key = "player.playback.snapshot.v1"
+    static let elapsedKey = "player.playback.elapsed.v1"
 
     let queue: [Track]
     let currentIndex: Int
