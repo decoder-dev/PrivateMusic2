@@ -35,7 +35,8 @@ private enum MainTab: CaseIterable, Hashable {
 }
 
 /// Measured height of the combined mini player + tab dock, used to
-/// reserve exactly that much space above each tab's content.
+/// reserve exactly that much space above each tab's content on the
+/// custom (pre–iOS 26) dock path.
 private struct PlaybackDockHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
 
@@ -59,6 +60,28 @@ struct MainTabView: View {
     let playerNamespace: Namespace.ID
 
     var body: some View {
+        Group {
+            if #available(iOS 26.1, *) {
+                SystemLiquidGlassTabView(
+                    selection: $selectedTab,
+                    playerNamespace: playerNamespace
+                )
+            } else {
+                legacyTabStack
+            }
+        }
+        .environmentObject(scrollCoordinator)
+        .task(id: sessionStore.accessToken) {
+            async let library: Void = refreshLibraryIndex()
+            async let albums: Void = refreshLikedAlbums()
+            async let home: Void = environment.refreshHomeCatalog()
+            _ = await (library, albums, home)
+        }
+    }
+
+    /// Custom floating dock for iOS 16–26.0. iOS 26.1+ uses the system
+    /// `TabView` + `tabViewBottomAccessory` path above.
+    private var legacyTabStack: some View {
         ZStack {
             tabScreen(.home) {
                 NavigationStack { CatalogView() }
@@ -90,23 +113,22 @@ struct MainTabView: View {
             )
         }
         .onPreferenceChange(PlaybackDockHeightKey.self) { height in
-            dockHeight = height
-        }
-        .environmentObject(scrollCoordinator)
-        .task(id: sessionStore.accessToken) {
-            async let library: Void = refreshLibraryIndex()
-            async let albums: Void = refreshLikedAlbums()
-            async let home: Void = environment.refreshHomeCatalog()
-            _ = await (library, albums, home)
+            let rounded = height.rounded()
+            // Ignore sub-point spring intermediates so tab safe-area insets
+            // do not thrash every animation frame when the mini player appears.
+            guard abs(rounded - dockHeight) >= 1 else { return }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                dockHeight = rounded
+            }
         }
     }
 
     /// The dock is an overlay rather than an outer `safeAreaInset` so that
     /// every tab's own `NavigationStack` gets the reservation directly:
     /// an inset applied outside a NavigationStack does not reliably reach
-    /// the scrollable content inside it, which let list rows slide under
-    /// the dock and mini player. Reserving the measured dock height here
-    /// keeps content clear of it on iOS 16 through 27 alike.
+    /// the scrollable content inside it.
     private func tabScreen<Content: View>(
         _ tab: MainTab,
         @ViewBuilder content: () -> Content
@@ -129,6 +151,7 @@ struct MainTabView: View {
 
     private func refreshLibraryIndex() async {
         guard sessionStore.accessToken != nil else { return }
+        let refreshID = libraryStore.beginRefresh()
         var collected: [Track] = []
         var offset = 0
         var pageCount = 0
@@ -144,11 +167,11 @@ struct MainTabView: View {
                 }
                 collected.append(contentsOf: page.items)
                 pageCount += 1
-                guard let next = page.nextOffset else { break }
+                guard let next = page.nextOffset, next > offset else { break }
                 offset = next
             }
             guard !Task.isCancelled else { return }
-            libraryStore.replace(with: collected)
+            libraryStore.replace(with: collected, refreshID: refreshID)
         } catch is CancellationError {
             return
         } catch {
@@ -185,6 +208,106 @@ struct MainTabView: View {
     }
 }
 
+// MARK: - System Liquid Glass tabs (iOS 26.1+)
+
+@available(iOS 26.1, *)
+private struct SystemLiquidGlassTabView: View {
+    @EnvironmentObject private var player: AudioPlayer
+    @Binding var selection: MainTab
+    let playerNamespace: Namespace.ID
+
+    var body: some View {
+        TabView(selection: $selection) {
+            Tab(
+                MainTab.home.title,
+                systemImage: MainTab.home.image,
+                value: MainTab.home
+            ) {
+                NavigationStack { CatalogView() }
+            }
+
+            Tab(
+                MainTab.library.title,
+                systemImage: MainTab.library.image,
+                value: MainTab.library
+            ) {
+                NavigationStack { LibraryView() }
+            }
+
+            Tab(
+                MainTab.search.title,
+                systemImage: MainTab.search.image,
+                value: MainTab.search,
+                role: .search
+            ) {
+                NavigationStack {
+                    SearchView(isActive: selection == .search)
+                }
+            }
+
+            Tab(
+                MainTab.profile.title,
+                systemImage: MainTab.profile.image,
+                value: MainTab.profile
+            ) {
+                NavigationStack { ProfileView() }
+            }
+        }
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .tabViewSearchActivation(.searchTabSelection)
+        .tabViewBottomAccessory(
+            isEnabled: player.currentTrack != nil
+        ) {
+            SystemPlaybackAccessory(playerNamespace: playerNamespace)
+        }
+    }
+}
+
+@available(iOS 26.1, *)
+private struct SystemPlaybackAccessory: View {
+    @EnvironmentObject private var player: AudioPlayer
+    @Environment(\.tabViewBottomAccessoryPlacement) private var accessoryPlacement
+    let playerNamespace: Namespace.ID
+
+    var body: some View {
+        switch MiniPlayerAccessoryPolicy.presentation(
+            hasCurrentTrack: player.currentTrack != nil,
+            mode: MiniPlayerAccessoryMode(placement: accessoryPlacement)
+        ) {
+        case .hidden:
+            EmptyView()
+        case .expanded:
+            // Full glass mini player — only safe while the accessory is expanded.
+            MiniPlayerView(playerNamespace: playerNamespace)
+                .padding(.horizontal, 4)
+        case .inline:
+            // Compact chrome sized for the minimized system tab bar.
+            InlineMiniPlayerView(playerNamespace: playerNamespace)
+        }
+    }
+}
+
+@available(iOS 26.1, *)
+private extension MiniPlayerAccessoryMode {
+    init(placement: TabViewBottomAccessoryPlacement?) {
+        switch placement {
+        case .expanded:
+            self = .expanded
+        case .inline:
+            self = .inline
+        case .none:
+            // Placement unresolved (first layout pass) — prefer full chrome.
+            self = .expanded
+        @unknown default:
+            // Prefer compact chrome for unknown future placements so content
+            // cannot clip against a minimized system tab bar.
+            self = .inline
+        }
+    }
+}
+
+// MARK: - Legacy custom dock (iOS 16–26.0)
+
 private struct PlaybackTabDock: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
@@ -194,7 +317,7 @@ private struct PlaybackTabDock: View {
     let playerNamespace: Namespace.ID
 
     var body: some View {
-        AdaptiveGlassContainer(spacing: 4) {
+        AdaptiveGlassContainer(spacing: 10) {
             VStack(spacing: 12) {
                 if player.currentTrack != nil {
                     MiniPlayerView(playerNamespace: playerNamespace)
@@ -203,21 +326,22 @@ private struct PlaybackTabDock: View {
                         )
                 }
 
-                HStack(spacing: 4) {
-                    ForEach(MainTab.allCases, id: \.self) { tab in
-                        tabButton(tab)
+                HStack(spacing: 10) {
+                    HStack(spacing: 4) {
+                        ForEach(primaryTabs, id: \.self) { tab in
+                            tabButton(tab)
+                        }
                     }
+                    .padding(5)
+                    .adaptiveGlass(
+                        in: Capsule(style: .continuous),
+                        interactive: true,
+                        tint: settings.theme.accent.opacity(0.06)
+                    )
+                    .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
+
+                    searchTabButton
                 }
-                .padding(5)
-                .adaptiveGlass(
-                    in: RoundedRectangle(
-                        cornerRadius: 24,
-                        style: .continuous
-                    ),
-                    interactive: true,
-                    tint: settings.theme.accent.opacity(0.06)
-                )
-                .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
             }
         }
         .dynamicTypeSize(...DynamicTypeSize.large)
@@ -232,25 +356,40 @@ private struct PlaybackTabDock: View {
         )
     }
 
+    private var primaryTabs: [MainTab] {
+        [.home, .library, .profile]
+    }
+
+    private var searchTabButton: some View {
+        Button {
+            selectTab(.search)
+        } label: {
+            Image(systemName: MainTab.search.image)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(
+                    selection == .search
+                        ? selectedColor
+                        : Color.primary.opacity(0.72)
+                )
+                .frame(width: 58, height: 58)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .adaptiveGlass(
+            in: Circle(),
+            interactive: true,
+            tint: selection == .search
+                ? settings.theme.accent.opacity(0.16)
+                : settings.theme.accent.opacity(0.06)
+        )
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
+        .accessibilityLabel(MainTab.search.title)
+        .accessibilityAddTraits(selection == .search ? .isSelected : [])
+    }
+
     private func tabButton(_ tab: MainTab) -> some View {
         Button {
-            Haptics.selection()
-            if TabReselectionPolicy.isReselection(
-                current: selection,
-                tapped: tab
-            ) {
-                scrollCoordinator.scrollToTop(tab.scrollDestination)
-                return
-            }
-            if reduceMotion {
-                selection = tab
-            } else {
-                withAnimation(
-                    .spring(response: 0.32, dampingFraction: 0.82)
-                ) {
-                    selection = tab
-                }
-            }
+            selectTab(tab)
         } label: {
             VStack(spacing: 3) {
                 Image(systemName: tab.image)
@@ -278,6 +417,26 @@ private struct PlaybackTabDock: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selection == tab ? .isSelected : [])
+    }
+
+    private func selectTab(_ tab: MainTab) {
+        Haptics.selection()
+        if TabReselectionPolicy.isReselection(
+            current: selection,
+            tapped: tab
+        ) {
+            scrollCoordinator.scrollToTop(tab.scrollDestination)
+            return
+        }
+        if reduceMotion {
+            selection = tab
+        } else {
+            withAnimation(
+                .spring(response: 0.32, dampingFraction: 0.82)
+            ) {
+                selection = tab
+            }
+        }
     }
 
     private var selectedColor: Color {
