@@ -166,6 +166,25 @@ if "LikedTrackBadge(track: track)" in mini_player_source:
     fail("mini-player must not overlay a liked-track badge on artwork")
 if ".buttonStyle(.glassProminent)" in mini_player_source:
     fail("mini-player must use plain transport controls like Apple Music")
+if "backward.fill" in mini_player_source:
+    fail("mini-player must hide previous in the primary chrome (swipe / a11y only)")
+for required_mini_player_symbol in (
+    "MiniPlayerProgressPolicy",
+    "MiniPlayerGesturePolicy",
+    "MiniPlayerLayoutMetrics",
+    "openPlayerArea",
+    "predictedEndTranslation",
+    "isBuffering",
+):
+    if required_mini_player_symbol not in mini_player_source:
+        fail(
+            f"mini-player is missing Apple Music symbol: "
+            f"{required_mini_player_symbol}"
+        )
+if "enum MiniPlayerProgressPolicy" not in all_source:
+    fail("MiniPlayerProgressPolicy must exist for unit-tested progress math")
+if "enum MiniPlayerGesturePolicy" not in all_source:
+    fail("MiniPlayerGesturePolicy must exist for unit-tested swipe recognition")
 if "buttonStyle(.borderless)" not in (
     SOURCE / "Features" / "Album" / "AlbumDetailView.swift"
 ).read_text(encoding="utf-8"):
@@ -208,6 +227,11 @@ if re.search(
     fail("player presentation must not be dismissed from content onDisappear")
 if ".simultaneousGesture(miniPlayerGesture)" not in mini_player_source:
     fail("mini-player swipe gesture must not intercept its open button")
+if "SystemPlaybackAccessory" in main_tab_source and (
+    "MiniPlayerView(playerNamespace: playerNamespace)"
+    not in main_tab_source
+):
+    fail("system accessory must reuse MiniPlayerView")
 if "loadedIdentity == loadIdentity ? image : nil" not in cached_image_source:
     fail("cached artwork must never display a stale request identity")
 if "Text(track.duration.formattedDuration)" not in library_view_source:
