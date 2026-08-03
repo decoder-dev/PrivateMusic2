@@ -13,16 +13,18 @@ struct RootView: View {
     @State private var isValidatingSession = false
     @State private var refreshRequiresReplacement = false
     @State private var refreshNeedsLogin = false
+    @Namespace private var playerNamespace
 
     var body: some View {
         Group {
             if sessionStore.session == nil {
                 ConnectView()
             } else {
-                MainTabView()
+                MainTabView(playerNamespace: playerNamespace)
                     .fullScreenCover(isPresented: $player.isPlayerPresented) {
                         PlayerView()
                             .playerPresentationBackground()
+                            .playerZoomTransition(from: playerNamespace)
                     }
                     .safeAreaInset(edge: .top, spacing: 0) {
                         connectionBanner
@@ -351,11 +353,32 @@ private struct ConnectionBanner: View {
     }
 }
 
+enum PlayerZoomTransition {
+    /// Shared matched-transition ID between MiniPlayerView (the source)
+    /// and PlayerView (the destination) so the mini player morphs into
+    /// the full-screen player instead of just sliding up underneath it.
+    static let sourceID = "miniPlayer"
+}
+
 private extension View {
     @ViewBuilder
     func playerPresentationBackground() -> some View {
         if #available(iOS 16.4, *) {
             presentationBackground(.clear)
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
+    func playerZoomTransition(from namespace: Namespace.ID) -> some View {
+        if #available(iOS 18.0, *) {
+            navigationTransition(
+                .zoom(
+                    sourceID: PlayerZoomTransition.sourceID,
+                    in: namespace
+                )
+            )
         } else {
             self
         }

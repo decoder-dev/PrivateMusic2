@@ -42,6 +42,7 @@ struct MainTabView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: MainTab = .home
     @StateObject private var scrollCoordinator = MainTabScrollCoordinator()
+    let playerNamespace: Namespace.ID
 
     var body: some View {
         ZStack {
@@ -61,7 +62,10 @@ struct MainTabView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            PlaybackTabDock(selection: $selectedTab)
+            PlaybackTabDock(
+                selection: $selectedTab,
+                playerNamespace: playerNamespace
+            )
         }
         .environmentObject(scrollCoordinator)
         .task(id: sessionStore.accessToken) {
@@ -151,12 +155,13 @@ private struct PlaybackTabDock: View {
     @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selection: MainTab
+    let playerNamespace: Namespace.ID
 
     var body: some View {
         AdaptiveGlassContainer(spacing: 4) {
             VStack(spacing: 12) {
                 if player.currentTrack != nil {
-                    MiniPlayerView()
+                    MiniPlayerView(playerNamespace: playerNamespace)
                         .transition(
                             .move(edge: .bottom).combined(with: .opacity)
                         )
