@@ -148,12 +148,21 @@ enum JSONValue: Codable, Sendable {
                     ?? L10n.text("VK Микс")
                 let subtitle = object["subtitle"]?.stringValue
                     ?? L10n.text("Персональная подборка VK")
+                let matchPercent = object.mixMatchPercent
+                let social = object.looksLikeSocialMix(
+                    type: type,
+                    title: title,
+                    subtitle: subtitle,
+                    matchPercent: matchPercent
+                )
                 result.append(
                     MusicMix(
                         id: id,
                         title: title,
                         subtitle: subtitle,
-                        artworkURL: object.firstRemoteURL
+                        artworkURL: object.firstRemoteURL,
+                        matchPercent: matchPercent,
+                        isSocial: social
                     )
                 )
             }
@@ -194,9 +203,50 @@ enum JSONValue: Codable, Sendable {
         default: nil
         }
     }
+
+    private var numberValue: Double? {
+        switch self {
+        case let .number(value): value
+        case let .string(value):
+            Double(
+                value.replacingOccurrences(of: "%", with: "")
+                    .trimmingCharacters(in: .whitespaces)
+            )
+        default: nil
+        }
+    }
 }
 
 private extension Dictionary where Key == String, Value == JSONValue {
+    var mixMatchPercent: Int? {
+        let keys = [
+            "percent", "match_percent", "match", "compatibility",
+            "similarity", "score", "overlap"
+        ]
+        for key in keys {
+            guard let value = self[key]?.numberValue else { continue }
+            let percent = value <= 1 ? value * 100 : value
+            let rounded = Int(percent.rounded())
+            if (1...100).contains(rounded) { return rounded }
+        }
+        return nil
+    }
+
+    func looksLikeSocialMix(
+        type: String,
+        title: String,
+        subtitle: String,
+        matchPercent: Int?
+    ) -> Bool {
+        if matchPercent != nil { return true }
+        let blob = "\(type) \(title) \(subtitle)".lowercased()
+        let markers = [
+            "friend", "friends", "taste", "mutual", "совпад",
+            "друг", "слушайте друг", "listen together"
+        ]
+        return markers.contains { blob.contains($0) }
+    }
+
     var firstRemoteURL: URL? {
         let preferredKeys = [
             "photo_1200", "photo_600", "photo_300", "photo_270",
