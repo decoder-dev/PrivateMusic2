@@ -248,7 +248,11 @@ struct VKMusicService: MusicService {
             duplicateOnlyPages = additions.isEmpty
                 ? duplicateOnlyPages + 1
                 : 0
-            if duplicateOnlyPages >= 2 { break }
+            // A couple of overlapping pages in a row is normal for this
+            // endpoint's rotation; bailing out that early was leaving
+            // mixes with only the first ~3 tracks queued. Give it the
+            // rest of the page budget before giving up.
+            if duplicateOnlyPages >= 6 { break }
             if tracks.count >= 30 { break }
         }
         guard !tracks.isEmpty else { throw APIError.invalidResponse }

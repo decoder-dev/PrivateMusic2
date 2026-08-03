@@ -7,8 +7,10 @@ struct ArtistView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let artist: String
     @State private var tracks: [Track] = []
+    @State private var albums: [Album] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var selectedAlbum: Album?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,8 +38,13 @@ struct ArtistView: View {
             reduceMotion ? nil : .easeOut(duration: 0.18),
             value: isLoading
         )
+        .sheet(item: $selectedAlbum) { album in
+            NavigationStack { AlbumDetailView(album: album) }
+        }
         .task(id: artist) {
-            await load(resetContent: true)
+            async let trackLoad: Void = load(resetContent: true)
+            async let albumLoad: Void = loadAlbums()
+            _ = await (trackLoad, albumLoad)
         }
     }
 
@@ -87,6 +94,10 @@ struct ArtistView: View {
                     .padding(.bottom, 10)
                 }
 
+                if !albums.isEmpty {
+                    albumsSection
+                }
+
                 HStack {
                     Text(L10n.text("Треки исполнителя"))
                         .font(.headline)
@@ -117,6 +128,44 @@ struct ArtistView: View {
         .refreshable {
             await load(resetContent: false)
         }
+    }
+
+    private var albumsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L10n.text("Альбомы"))
+                .font(.headline)
+                .padding(.horizontal, 18)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 14) {
+                    ForEach(albums) { album in
+                        Button {
+                            Haptics.selection()
+                            selectedAlbum = album
+                        } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                AsyncArtwork(url: album.artworkURL, size: 116)
+                                Text(
+                                    Album.isUsableTitle(album.title)
+                                        ? album.title
+                                        : L10n.text("Альбом")
+                                )
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(L10n.trackCount(album.count))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 116, alignment: .leading)
+                        }
+                        .buttonStyle(PremiumPressStyle())
+                    }
+                }
+                .padding(.horizontal, 18)
+            }
+        }
+        .padding(.bottom, 4)
     }
 
     private var artistHeader: some View {
@@ -201,6 +250,30 @@ struct ArtistView: View {
     }
 
     @MainActor
+    private func loadAlbums() async {
+        let requestedArtist = artist
+        guard sessionStore.accessToken != nil else { return }
+        do {
+            let page = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.searchAlbums(
+                    query: requestedArtist,
+                    accessToken: token,
+                    offset: 0,
+                    count: 20
+                )
+            }
+            try Task.checkCancellation()
+            guard artist == requestedArtist else { return }
+            albums = ArtistAlbumFilter.filtered(
+                page.items,
+                artist: requestedArtist
+            )
+        } catch {
+            return
+        }
+    }
+
+    @MainActor
     private func fetchPage(
         for requestedArtist: String
     ) async throws -> MusicPage<Track> {
@@ -236,6 +309,16 @@ struct ArtistView: View {
 
 enum ArtistLoadPolicy {
     static let timeout: TimeInterval = 25
+}
+
+enum ArtistAlbumFilter {
+    static func filtered(_ albums: [Album], artist: String) -> [Album] {
+        var seen = Set<String>()
+        return albums.filter { album in
+            ArtistTrackFilter.matches(album.artistText, artist: artist)
+                && seen.insert(album.compositeID).inserted
+        }
+    }
 }
 
 enum ArtistTrackFilter {
