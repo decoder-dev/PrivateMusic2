@@ -188,13 +188,17 @@ if "Text(track.duration.formattedDuration)" not in library_view_source:
 for required_player_symbol in (
     ".background(playerBackground.ignoresSafeArea())",
     ".buttonStyle(.glassProminent)",
+    ".buttonStyle(.glass)",
     "AdaptiveGlassContainer(spacing: 8)",
+    "AdaptiveGlassContainer(spacing: 18)",
     ".simultaneousGesture(fullScreenDismissGesture)",
     "PlayerDismissGesturePolicy.shouldDismiss",
     "PlayerArtworkCarouselPolicy.neighborIndices",
 ):
     if required_player_symbol not in player_view_source:
         fail(f"player is missing full-bleed/glass symbol: {required_player_symbol}")
+if ".buttonStyle(.glassProminent)" not in mini_player_source:
+    fail("mini-player play control must use Liquid Glass on iOS 26+")
 for required_preload_symbol in (
     "PlaybackPreloadPolicy.nextIndex",
     "asset.load(.isPlayable)",

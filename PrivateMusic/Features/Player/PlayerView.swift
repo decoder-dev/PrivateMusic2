@@ -253,20 +253,13 @@ struct PlayerView: View {
                 .accessibilitySortPriority(1)
 
                 HStack {
-                    Button {
-                        closePlayer()
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 15, weight: .bold))
-                            .frame(width: 44, height: 44)
-                            .adaptiveGlass(
-                                in: Circle(),
-                                interactive: true
-                            )
-                    }
-                    .buttonStyle(PlayerControlStyle())
-                    .accessibilityLabel(L10n.text("Закрыть плеер"))
-                    .accessibilitySortPriority(4)
+                    playerGlassIconButton(
+                        systemImage: "chevron.down",
+                        font: .system(size: 15, weight: .bold),
+                        accessibilityLabel: "Закрыть плеер",
+                        accessibilitySortPriority: 4,
+                        action: closePlayer
+                    )
 
                     Spacer()
 
@@ -447,40 +440,22 @@ struct PlayerView: View {
 
             Spacer(minLength: 10)
 
-            Button {
+            playerGlassIconButton(
+                systemImage: isInLibrary ? "heart.fill" : "heart",
+                font: .system(size: 19, weight: .semibold),
+                tint: isInLibrary
+                    ? playerForeground
+                    : playerForeground.opacity(0.72),
+                accessibilityLabel: isInLibrary
+                    ? "Удалить из медиатеки"
+                    : "Добавить в медиатеку",
+                accessibilityValue: isInLibrary
+                    ? "Трек добавлен в медиатеку"
+                    : "Трек не добавлен в медиатеку",
+                disabled: isUpdatingLibrary
+            ) {
                 toggleLibrary(track)
-            } label: {
-                Image(
-                    systemName: isInLibrary ? "heart.fill" : "heart"
-                )
-                .font(.system(size: 19, weight: .semibold))
-                .foregroundStyle(
-                    isInLibrary
-                        ? playerForeground
-                        : playerForeground.opacity(0.72)
-                )
-                .frame(width: 44, height: 44)
-                .adaptiveGlass(
-                    in: Circle(),
-                    interactive: true
-                )
             }
-            .buttonStyle(PlayerControlStyle())
-            .disabled(isUpdatingLibrary)
-            .accessibilityLabel(
-                L10n.text(
-                    isInLibrary
-                        ? "Удалить из медиатеки"
-                        : "Добавить в медиатеку"
-                )
-            )
-            .accessibilityValue(
-                L10n.text(
-                    isInLibrary
-                        ? "Трек добавлен в медиатеку"
-                        : "Трек не добавлен в медиатеку"
-                )
-            )
         }
     }
 
@@ -518,69 +493,59 @@ struct PlayerView: View {
     }
 
     private func actionMenuButton(_ track: Track) -> some View {
-        Button {
+        playerGlassIconButton(
+            systemImage: "ellipsis",
+            font: .headline,
+            accessibilityLabel: "Действия с треком"
+        ) {
             present(.actions(track))
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.headline)
-                .foregroundStyle(playerForeground)
-                .frame(width: 44, height: 44)
-                .adaptiveGlass(
-                    in: Circle(),
-                    interactive: true
-                )
         }
-        .buttonStyle(PlayerControlStyle())
-        .accessibilityLabel(L10n.text("Действия с треком"))
     }
 
     private var primaryControls: some View {
-        HStack(spacing: 0) {
-            secondaryButton(
-                "shuffle",
-                active: player.shuffleEnabled,
-                label: "Перемешать",
-                accessibilityValue: player.shuffleEnabled
-                    ? "Перемешивание включено"
-                    : "Перемешивание выключено"
-            ) {
-                Haptics.selection()
-                player.toggleShuffle()
-            }
-            Spacer()
-            Button {
-                Haptics.trackChange()
-                player.previous()
-            } label: {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 25, weight: .semibold))
-                    .frame(width: 48, height: 52)
-            }
-            .accessibilityLabel(L10n.text("Предыдущий трек"))
-            Spacer()
-            playPauseButton
-            Spacer()
-            Button {
-                Haptics.trackChange()
-                player.next()
-            } label: {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 25, weight: .semibold))
-                    .frame(width: 48, height: 52)
-            }
-            .accessibilityLabel(L10n.text("Следующий трек"))
-            Spacer()
-            secondaryButton(
-                player.repeatMode.systemImage,
-                active: player.repeatMode != .off,
-                label: "Повтор",
-                accessibilityValue: repeatAccessibilityValue
-            ) {
-                Haptics.selection()
-                player.cycleRepeatMode()
+        AdaptiveGlassContainer(spacing: 18) {
+            HStack(spacing: 0) {
+                secondaryButton(
+                    "shuffle",
+                    active: player.shuffleEnabled,
+                    label: "Перемешать",
+                    accessibilityValue: player.shuffleEnabled
+                        ? "Перемешивание включено"
+                        : "Перемешивание выключено"
+                ) {
+                    Haptics.selection()
+                    player.toggleShuffle()
+                }
+                Spacer()
+                transportSkipButton(
+                    systemImage: "backward.fill",
+                    accessibilityLabel: "Предыдущий трек"
+                ) {
+                    Haptics.trackChange()
+                    player.previous()
+                }
+                Spacer()
+                playPauseButton
+                Spacer()
+                transportSkipButton(
+                    systemImage: "forward.fill",
+                    accessibilityLabel: "Следующий трек"
+                ) {
+                    Haptics.trackChange()
+                    player.next()
+                }
+                Spacer()
+                secondaryButton(
+                    player.repeatMode.systemImage,
+                    active: player.repeatMode != .off,
+                    label: "Повтор",
+                    accessibilityValue: repeatAccessibilityValue
+                ) {
+                    Haptics.selection()
+                    player.cycleRepeatMode()
+                }
             }
         }
-        .buttonStyle(PlayerControlStyle())
     }
 
     @ViewBuilder
@@ -594,8 +559,10 @@ struct PlayerView: View {
             }
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.circle)
+            .clipShape(Circle())
             .tint(playerForeground)
             .foregroundStyle(playerBackground)
+            .controlSize(.large)
             .accessibilityLabel(playPauseAccessibilityLabel)
         } else {
             Button {
@@ -615,7 +582,8 @@ struct PlayerView: View {
     private var playPauseLabel: some View {
         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
             .font(.system(size: 29, weight: .bold))
-            .frame(width: 60, height: 60)
+            .frame(width: 64, height: 64)
+            .contentShape(Circle())
     }
 
     private var playPauseAccessibilityLabel: String {
@@ -658,10 +626,7 @@ struct PlayerView: View {
     ) -> some View {
         Button(action: action) {
             VStack(spacing: 5) {
-                Image(systemName: image)
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 44, height: 44)
-                    .adaptiveGlass(in: Circle(), interactive: true)
+                quickActionGlyph(image)
                 Text(L10n.text(title))
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
@@ -672,8 +637,100 @@ struct PlayerView: View {
             .frame(minHeight: 61)
         }
         .buttonStyle(PlayerControlStyle())
+        .accessibilityLabel(L10n.text(title))
     }
 
+    @ViewBuilder
+    private func quickActionGlyph(_ image: String) -> some View {
+        if #available(iOS 26.0, *) {
+            Image(systemName: image)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 44, height: 44)
+                .glassEffect(.regular.interactive(), in: Circle())
+        } else {
+            Image(systemName: image)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 44, height: 44)
+                .adaptiveGlass(in: Circle(), interactive: true)
+        }
+    }
+
+    @ViewBuilder
+    private func transportSkipButton(
+        systemImage: String,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        if #available(iOS 26.0, *) {
+            Button(action: action) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 22, weight: .semibold))
+                    .frame(width: 52, height: 52)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .tint(playerForeground)
+            .accessibilityLabel(L10n.text(accessibilityLabel))
+        } else {
+            Button(action: action) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 25, weight: .semibold))
+                    .frame(width: 48, height: 52)
+            }
+            .buttonStyle(PlayerControlStyle())
+            .accessibilityLabel(L10n.text(accessibilityLabel))
+        }
+    }
+
+    @ViewBuilder
+    private func playerGlassIconButton(
+        systemImage: String,
+        font: Font = .headline,
+        tint: Color? = nil,
+        accessibilityLabel: String,
+        accessibilityValue: String? = nil,
+        accessibilitySortPriority: Double? = nil,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        let resolvedTint = tint ?? playerForeground
+        let button = Group {
+            if #available(iOS 26.0, *) {
+                Button(action: action) {
+                    Image(systemName: systemImage)
+                        .font(font)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .tint(resolvedTint)
+                .disabled(disabled)
+            } else {
+                Button(action: action) {
+                    Image(systemName: systemImage)
+                        .font(font)
+                        .foregroundStyle(resolvedTint)
+                        .frame(width: 44, height: 44)
+                        .adaptiveGlass(in: Circle(), interactive: true)
+                }
+                .buttonStyle(PlayerControlStyle())
+                .disabled(disabled)
+            }
+        }
+        .accessibilityLabel(L10n.text(accessibilityLabel))
+
+        if let accessibilityValue {
+            button
+                .accessibilityValue(L10n.text(accessibilityValue))
+                .accessibilitySortPriority(accessibilitySortPriority ?? 0)
+        } else if let accessibilitySortPriority {
+            button.accessibilitySortPriority(accessibilitySortPriority)
+        } else {
+            button
+        }
+    }
+
+    @ViewBuilder
     private func secondaryButton(
         _ image: String,
         active: Bool,
@@ -681,19 +738,37 @@ struct PlayerView: View {
         accessibilityValue: String,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            Image(systemName: image)
-                .font(.system(size: 19, weight: .semibold))
-                .foregroundStyle(
-                    active
-                        ? playerForeground
-                        : playerForeground.opacity(0.58)
-                )
-                .frame(width: 44, height: 44)
+        if #available(iOS 26.0, *) {
+            Button(action: action) {
+                Image(systemName: image)
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .tint(
+                active
+                    ? playerForeground
+                    : playerForeground.opacity(0.55)
+            )
+            .opacity(active ? 1 : 0.85)
+            .accessibilityLabel(L10n.text(label))
+            .accessibilityValue(L10n.text(accessibilityValue))
+        } else {
+            Button(action: action) {
+                Image(systemName: image)
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(
+                        active
+                            ? playerForeground
+                            : playerForeground.opacity(0.58)
+                    )
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.text(label))
+            .accessibilityValue(L10n.text(accessibilityValue))
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(L10n.text(label))
-        .accessibilityValue(L10n.text(accessibilityValue))
     }
 
     private var repeatAccessibilityValue: String {
