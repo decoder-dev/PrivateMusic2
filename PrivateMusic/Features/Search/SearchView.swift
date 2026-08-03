@@ -660,6 +660,7 @@ struct SearchView: View {
                 try await environment.withAuthorizedToken { token in
                     try await environment.musicService.toggleAlbumFollow(
                         album,
+                        follow: desired,
                         accessToken: token
                     )
                 }
