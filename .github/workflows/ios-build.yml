@@ -127,47 +127,31 @@ jobs:
           test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.24-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.25-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.24"
+          test "$GITHUB_REF_NAME" = "v3.28.25"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.24
+          # Private Music 3.28.25
 
-          Релиз с `main`: стабильное аудио в авто, системная громкость,
-          мини-плеер как в Apple Music и меньше нагрева.
+          Релиз с `main`: меньше нагрева и подтормаживаний при активном
+          эквалайзере / пространственном звуке.
 
-          ## Аудио и авто
-          - Анти-«бочка»: на авто/колонках бас spatial остаётся mono, мягкий cut ~140 Гц, spatial слабее в салоне
-          - На слабой сети трек ретраится несколько раз (refresh URL + reload) вместо мгновенного skip на 5-й/10-й песне
-          - Буфер вперёд ~30с; долгий stall сам запускает восстановление потока
-          - Эквалайзер и пространственный звук идут через локальный decode на iPhone и доходят до наушников, колонок и CarKit / Bluetooth
-          - Громкость только системная (`MPVolumeView`), без отдельного app-level attenuation
-          - После media-services reset при подключении к машине воспроизведение продолжается
-          - Tap EQ/spatial ставится только после `readyToPlay` и на audio track; HLS без unsupported tap — без каскада ошибок и skip
-          - Flat EQ не включает realtime tap; меньше CPU на external route
-
-          ## Мини-плеер
-          - Компактная glass-панель: обложка, title/artist, play/pause, next, прогресс
-          - iOS 26.1+: expanded / inline tab accessory без обрезания
-          - Настоящий crossfade обложек
-          - Жесты с axis dominance — диагональ не дергает UI
-
-          ## Производительность
-          - Прогресс вынесен из EnvironmentObject — списки не дёргаются от тиков плеера
-          - Coalesce remote commands, тихий early-out в EQ DSP
-          - Меньше artwork prefetch / Watch / persist нагрузки
-
-          ## Интерфейс и платформа
-          - System TabView + search role на iOS 26.1+, legacy dock на iOS 16–26.0
-          - iOS 27 scene lifecycle и актуальные privacy reasons
-          - В «Сейчас играет» для истории: **История прослушивания**, а не «Микс по …»
-          - Исправлена пустая вкладка «Треки» в библиотеке
+          ## Производительность и нагрев
+          - Realtime DSP-тап эквалайзера и spatial audio переведён на
+            unsafe-указатели вместо Array-subscript в самом горячем пути
+            (10 полос x каждый канал x каждый сэмпл, непрерывно во время
+            воспроизведения) — меньше нагрузки на аудио-поток и меньше
+            нагрева при длительном прослушивании с включённым EQ
+          - Пересчёт коэффициентов эквалайзера при перетаскивании слайдеров
+            throttled до ~12 раз в секунду вместо частоты кадров UI — меньше
+            лишней тригонометрии и конкуренции за лок с аудио-потоком,
+            слайдеры остаются отзывчивыми
 
           ## Установка
           IPA не подписан. Перед установкой подпишите собственным сертификатом:
@@ -175,17 +159,17 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.24-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.28.25-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.24" \
+              --title "Private Music 3.28.25" \
               --notes-file "$NOTES" \
               --prerelease=false \
               --latest
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.24-unsigned.ipa" \
-              --title "Private Music 3.28.24" \
+              "$PWD/artifacts/PrivateMusic-3.28.25-unsigned.ipa" \
+              --title "Private Music 3.28.25" \
               --notes-file "$NOTES" \
               --latest
           fi
@@ -194,7 +178,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.24-unsigned
-          path: artifacts/PrivateMusic-3.28.24-unsigned.ipa
+          name: PrivateMusic-3.28.25-unsigned
+          path: artifacts/PrivateMusic-3.28.25-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
