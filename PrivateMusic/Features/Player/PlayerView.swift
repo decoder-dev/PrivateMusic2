@@ -80,7 +80,7 @@ struct PlayerView: View {
                     .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .adaptiveGlass(in: Capsule())
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .padding(.bottom, 40)
             }
