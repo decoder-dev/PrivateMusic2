@@ -1,0 +1,55 @@
+import Foundation
+
+/// Display mode for the system tab-bar bottom accessory on iOS 26.1+.
+enum MiniPlayerAccessoryMode: Equatable, Sendable {
+    case expanded
+    case inline
+}
+
+/// What the accessory should render for a given player + placement state.
+enum MiniPlayerAccessoryPresentation: Equatable, Sendable {
+    case hidden
+    case expanded
+    case inline
+}
+
+/// Pure layout decisions for the system mini-player accessory. Mapping from
+/// `TabViewBottomAccessoryPlacement` stays in the SwiftUI layer so unit tests
+/// never need SDK-only placement values.
+enum MiniPlayerAccessoryPolicy {
+    static func presentation(
+        hasCurrentTrack: Bool,
+        mode: MiniPlayerAccessoryMode
+    ) -> MiniPlayerAccessoryPresentation {
+        guard hasCurrentTrack else { return .hidden }
+        switch mode {
+        case .expanded: return .expanded
+        case .inline: return .inline
+        }
+    }
+
+    static func shouldShowAccessory(hasCurrentTrack: Bool) -> Bool {
+        hasCurrentTrack
+    }
+
+    static func showsArtist(_ mode: MiniPlayerAccessoryMode) -> Bool {
+        mode == .expanded
+    }
+
+    static func showsNextButton(_ mode: MiniPlayerAccessoryMode) -> Bool {
+        mode == .expanded
+    }
+
+    static func showsProgress(_ mode: MiniPlayerAccessoryMode) -> Bool {
+        mode == .expanded
+    }
+
+    /// Expanded owns its glass chrome; inline relies on the system accessory.
+    static func showsOwnGlassChrome(_ mode: MiniPlayerAccessoryMode) -> Bool {
+        mode == .expanded
+    }
+
+    static func showsBufferingIndicator(isBuffering: Bool) -> Bool {
+        isBuffering
+    }
+}
