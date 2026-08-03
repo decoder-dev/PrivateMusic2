@@ -1470,7 +1470,7 @@ private struct PlayerActionsSheet: View {
                 .accessibilityHidden(true)
 
                 SystemVolumeSlider(
-                    tintColor: UIColor(Color.accentColor)
+                    tintColor: UIColor(named: "AccentColor") ?? .systemBlue
                 )
                 .frame(height: 28)
                 .accessibilityLabel(L10n.text("Громкость"))
