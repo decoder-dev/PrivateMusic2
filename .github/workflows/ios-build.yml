@@ -161,11 +161,13 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" \
               "$PWD/artifacts/PrivateMusic-3.28.27-unsigned.ipa" \
               --clobber
+            # Retagging can leave a draft/untagged release; undraft before --latest.
             gh release edit "$GITHUB_REF_NAME" \
               --title "Private Music 3.28.27" \
               --notes-file "$NOTES" \
-              --prerelease=false \
-              --latest
+              --draft=false \
+              --prerelease=false
+            gh release edit "$GITHUB_REF_NAME" --latest
           else
             gh release create "$GITHUB_REF_NAME" \
               "$PWD/artifacts/PrivateMusic-3.28.27-unsigned.ipa" \
