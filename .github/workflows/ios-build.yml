@@ -138,30 +138,31 @@ jobs:
           test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.5-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.6-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.5"
+          test "$GITHUB_REF_NAME" = "v3.28.6"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.28.5
+          Private Music 3.28.6
 
-          Hotfix на 3.28.4 — корректно адаптируем Liquid Glass под версию iOS:
-          - Обычные (не-стеклянные) материалы на iOS 16-25, настоящий нативный
-            Liquid Glass (glassEffect/GlassEffectContainer) на iOS 26+, как и
-            задумано изначально.
-          - Убран доказанно проблемный паттерн: .clipShape() поверх
-            .glassEffect(in:) на каждом стеклянном элементе приложения (док,
-            мини-плеер, кнопки плеера, шторки) — именно эта комбинация даёт
-            визуальные артефакты по документации Apple, и была одной из причин,
-            почему нативный Liquid Glass выглядел "сломанным" на iOS 26/27.
-          - Пара плавающих баннеров (тост "Ссылка скопирована", баннер ошибки
-            пагинации плейлиста) переведены с обычного ultraThinMaterial на
-            адаптивное стекло для единообразия.
+          Больше настоящего Liquid Glass на iOS 26+ (карточки и списки),
+          iOS 16-25 по-прежнему получают обычные, не-стеклянные элементы:
+          - Карточки (список "Ещё для вас" на главном экране, карточки
+            профиля, поле поиска и другие через premiumCard()) теперь
+            рендерятся настоящим glassEffect() на iOS 26+ вместо плоской
+            заливки — без .clipShape()-артефактов.
+          - Маленький круглый индикатор воспроизведения в каждой строке
+            трека (TrackRow) тоже переведён на адаптивное стекло.
+          - На iOS 16-25 внешний вид карточек и строк не изменился.
+
+          IPA не подписан. Перед установкой подпишите его собственным
+          сертификатом. Подпись требует сначала подписать PlugIns/PrivateMusicWatch.app,
+          затем основное приложение iPhone.
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом. Подпись требует сначала подписать PlugIns/PrivateMusicWatch.app,
@@ -169,15 +170,15 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.5-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.28.6-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.5" \
+              --title "Private Music 3.28.6" \
               --notes-file "$NOTES"
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.5-unsigned.ipa" \
-              --title "Private Music 3.28.5" \
+              "$PWD/artifacts/PrivateMusic-3.28.6-unsigned.ipa" \
+              --title "Private Music 3.28.6" \
               --notes-file "$NOTES"
           fi
 
@@ -185,7 +186,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.5-unsigned
-          path: artifacts/PrivateMusic-3.28.5-unsigned.ipa
+          name: PrivateMusic-3.28.6-unsigned
+          path: artifacts/PrivateMusic-3.28.6-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
