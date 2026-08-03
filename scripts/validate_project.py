@@ -206,6 +206,10 @@ if "MediaServicesResetPolicy.shouldAutoplayAfterReset" not in audio_player_sourc
     fail("media services reset must keep CarKit/BT autoplay intent")
 if "MediaServicesResetPolicy.shouldSuppressAdvance" not in audio_player_source:
     fail("media services reset must suppress skip-on-error briefly")
+if "StreamFailureRetryPolicy.shouldRetrySameTrack" not in audio_player_source:
+    fail("flaky networks must retry the current track before auto-skip")
+if "StreamFailureRetryPolicy.preferredForwardBufferDuration" not in audio_player_source:
+    fail("playback must request a longer forward buffer on weak networks")
 if "AudioProcessingAttachPolicy.supportsAudioTap" not in audio_player_source:
     fail("HLS sources must not attach unsupported audio taps")
 if "AVMutableAudioMixInputParameters(track:" not in audio_player_source:
