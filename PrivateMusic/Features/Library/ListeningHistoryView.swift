@@ -31,7 +31,8 @@ struct ListeningHistoryView: View {
                         Button {
                             player.play(
                                 entry.track,
-                                in: history.entries.map(\.track)
+                                in: history.entries.map(\.track),
+                                source: .history
                             )
                         } label: {
                             HStack(spacing: 12) {
