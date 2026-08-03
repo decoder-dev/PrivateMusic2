@@ -5,9 +5,12 @@ struct LibraryView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var libraryStore: MusicLibraryStore
+    @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
     @EnvironmentObject private var offlineStore: OfflineTrackStore
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var networkMonitor: NetworkMonitor
+    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var offlinePlaylists =
         OfflinePlaylistStore.shared
     @StateObject private var tracks = TrackCollectionViewModel(source: .library)
@@ -17,50 +20,69 @@ struct LibraryView: View {
     @State private var sharingTrack: Track?
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 24) {
-                if playlists.isLoading && playlists.playlists.isEmpty {
-                    playlistSkeleton
-                } else if !playlists.playlists.isEmpty {
-                    playlistShelf
-                }
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    if playlists.isLoading && playlists.playlists.isEmpty {
+                        playlistSkeleton
+                    } else if !playlists.playlists.isEmpty {
+                        playlistShelf
+                    }
+                    if !likedAlbumsStore.albums.isEmpty {
+                        albumShelf
+                    }
 
-                HStack {
-                    Text("Треки")
-                        .font(.title2.weight(.bold))
-                    Spacer()
-                    Text("\(tracks.totalCount)")
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
+                    HStack {
+                        Text("Треки")
+                            .font(.title2.weight(.bold))
+                        Spacer()
+                        Text("\(tracks.totalCount)")
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
 
-                if tracks.isLoading && tracks.tracks.isEmpty {
-                    trackSkeleton
-                } else if tracks.tracks.isEmpty {
-                    EmptyStateView(
-                        title: "Медиатека пуста",
-                        systemImage: "music.note",
-                        description: "Добавленные во VK треки появятся здесь."
-                    )
-                    .frame(height: 260)
-                } else {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(tracks.tracks.enumerated()), id: \.element.id) {
-                            index, track in
-                            libraryRow(track)
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                                .onAppear {
-                                    loadMoreIfNeeded(after: track)
+                    if tracks.isLoading && tracks.tracks.isEmpty {
+                        trackSkeleton
+                    } else if tracks.tracks.isEmpty {
+                        EmptyStateView(
+                            title: "Медиатека пуста",
+                            systemImage: "music.note",
+                            description: "Добавленные во VK треки появятся здесь."
+                        )
+                        .frame(height: 260)
+                    } else {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(tracks.tracks.enumerated()), id: \.element.id) {
+                                index, track in
+                                libraryRow(track)
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                                    .onAppear {
+                                        loadMoreIfNeeded(after: track)
+                                    }
+                                if index < tracks.tracks.count - 1 {
+                                    Divider().padding(.leading, 66)
                                 }
-                            if index < tracks.tracks.count - 1 {
-                                Divider().padding(.leading, 66)
                             }
                         }
+                        .animation(.easeInOut(duration: 0.3), value: tracks.tracks.map(\.id))
                     }
-                    .animation(.easeInOut(duration: 0.3), value: tracks.tracks.map(\.id))
+                }
+                .id(MainTabScrollDestination.library)
+                .padding(.horizontal, 16)
+            }
+            .onReceive(scrollCoordinator.$request) { request in
+                guard request?.destination == .library else { return }
+                if reduceMotion {
+                    proxy.scrollTo(MainTabScrollDestination.library, anchor: .top)
+                } else {
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        proxy.scrollTo(
+                            MainTabScrollDestination.library,
+                            anchor: .top
+                        )
+                    }
                 }
             }
-            .padding(.horizontal, 16)
         }
         .background(ThemeBackground())
         .navigationTitle("Медиатека")
@@ -176,6 +198,11 @@ struct LibraryView: View {
             tracks.removeLocally(track)
             libraryStore.markRemoved(track)
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .likedAlbumsDidChange)
+        ) { _ in
+            Task { await loadAlbums() }
+        }
     }
 
     private func isCurrent(_ track: Track) -> Bool {
@@ -247,6 +274,40 @@ struct LibraryView: View {
         }
     }
 
+    private var albumShelf: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Альбомы")
+                .font(.title2.weight(.bold))
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 14) {
+                    ForEach(likedAlbumsStore.albums) { album in
+                        NavigationLink {
+                            AlbumDetailView(album: album)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                AsyncArtwork(url: album.artworkURL, size: 136)
+                                Text(
+                                    Album.isUsableTitle(album.title)
+                                        ? album.title
+                                        : L10n.text("Альбом")
+                                )
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(album.artistText)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 136, alignment: .leading)
+                        }
+                        .buttonStyle(PremiumPressStyle())
+                    }
+                }
+            }
+        }
+    }
+
     private func libraryRow(_ track: Track) -> some View {
         HStack(spacing: 12) {
             Button {
@@ -269,11 +330,14 @@ struct LibraryView: View {
                         .lineLimit(1)
                 }
                 Spacer()
+                LikedTrackBadge(track: track)
+                Text(track.duration.formattedDuration)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
                 if isCurrent(track) {
-                    Image(
-                        systemName: player.isPlaying
-                            ? "waveform"
-                            : "pause.fill"
+                    PlaybackIndicatorView(
+                        isPlaying: player.isPlaying,
+                        color: currentTrackColor
                     )
                     .font(.caption)
                     .foregroundStyle(currentTrackColor)
@@ -437,6 +501,34 @@ struct LibraryView: View {
                     count: 100
                 )
             }
+        }
+        await loadAlbums()
+    }
+
+    private func loadAlbums() async {
+        likedAlbumsStore.prepare(
+            accountID: sessionStore.resolvedOfflineAccountID
+        )
+        guard sessionStore.accessToken != nil else { return }
+        do {
+            var albums: [Album] = []
+            var offset = 0
+            for _ in 0..<10 {
+                let page = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.likedAlbums(
+                        accessToken: token,
+                        offset: offset,
+                        count: 100
+                    )
+                }
+                albums.append(contentsOf: page.items)
+                guard let next = page.nextOffset, next > offset else { break }
+                offset = next
+            }
+            guard !Task.isCancelled else { return }
+            likedAlbumsStore.replace(with: albums)
+        } catch {
+            return
         }
     }
 

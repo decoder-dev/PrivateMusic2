@@ -23,9 +23,6 @@ struct RootView: View {
                     .fullScreenCover(isPresented: $player.isPlayerPresented) {
                         PlayerView()
                             .playerPresentationBackground()
-                            .onDisappear {
-                                player.dismissPlayer()
-                            }
                     }
                     .safeAreaInset(edge: .top, spacing: 0) {
                         connectionBanner

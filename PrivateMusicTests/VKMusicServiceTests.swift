@@ -75,4 +75,84 @@ final class VKMusicServiceTests: XCTestCase {
         XCTAssertEqual(page.totalCount, 3)
         XCTAssertNil(page.nextOffset)
     }
+
+    func testAlbumExecuteRequestUsesPlaylistPagingContract() {
+        let album = Album(
+            id: 24,
+            ownerID: -5,
+            title: "Album",
+            count: 120,
+            accessKey: " secret "
+        )
+
+        let parameters = AlbumTrackRequestPolicy.executeParameters(
+            album: album,
+            offset: 40,
+            count: 20
+        )
+
+        XCTAssertEqual(parameters["owner_id"], "-5")
+        XCTAssertEqual(parameters["id"], "24")
+        XCTAssertEqual(parameters["audio_offset"], "40")
+        XCTAssertEqual(parameters["audio_count"], "20")
+        XCTAssertEqual(parameters["access_key"], "secret")
+        XCTAssertNil(parameters["album_id"])
+    }
+
+    func testAlbumLegacyRequestKeepsAudioGetContract() {
+        let album = Album(
+            id: 24,
+            ownerID: -5,
+            title: "Album",
+            count: 120,
+            accessKey: " "
+        )
+
+        let parameters = AlbumTrackRequestPolicy.legacyParameters(
+            album: album,
+            offset: 40,
+            count: 20
+        )
+
+        XCTAssertEqual(parameters["owner_id"], "-5")
+        XCTAssertEqual(parameters["album_id"], "24")
+        XCTAssertEqual(parameters["offset"], "40")
+        XCTAssertEqual(parameters["count"], "20")
+        XCTAssertNil(parameters["id"])
+        XCTAssertNil(parameters["access_key"])
+    }
+
+    func testExecutePlaylistResponseExtractsValidAlbumTracksLossily() throws {
+        let data = """
+        {
+          "response": {
+            "audios": [
+              {
+                "id": 1,
+                "owner_id": -5,
+                "title": "One",
+                "artist": "Artist",
+                "duration": 120
+              },
+              {"type": "ad"},
+              {
+                "id": 2,
+                "owner_id": -5,
+                "title": "Two",
+                "artist": "Artist",
+                "duration": 140
+              }
+            ],
+            "playlist": {"id": 24, "owner_id": -5, "title": "Album"}
+          }
+        }
+        """.data(using: .utf8)!
+
+        let value = try JSONDecoder().decode(
+            JSONValue.self,
+            from: data
+        )
+
+        XCTAssertEqual(value.tracks.map(\.trackID), [1, 2])
+    }
 }

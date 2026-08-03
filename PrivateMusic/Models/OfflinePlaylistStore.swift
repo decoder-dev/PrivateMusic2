@@ -914,7 +914,8 @@ final class OfflinePlaylistStore: ObservableObject {
             streamURL: nil,
             artworkURL: track.artworkURL,
             accessKey: track.accessKey,
-            lyricsID: track.lyricsID
+            lyricsID: track.lyricsID,
+            albumReference: track.albumReference
         )
     }
 
