@@ -121,6 +121,7 @@ struct MainTabView: View {
             accountID: sessionStore.resolvedOfflineAccountID
         )
         guard sessionStore.accessToken != nil else { return }
+        let refreshID = likedAlbumsStore.beginRefresh()
         var collected: [Album] = []
         var offset = 0
         do {
@@ -137,7 +138,7 @@ struct MainTabView: View {
                 offset = next
             }
             guard !Task.isCancelled else { return }
-            likedAlbumsStore.replace(with: collected)
+            likedAlbumsStore.replace(with: collected, refreshID: refreshID)
         } catch {
             return
         }

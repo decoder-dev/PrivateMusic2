@@ -51,6 +51,9 @@ struct SearchView: View {
         .onChange(of: model.query) { _ in
             scheduleSearch()
         }
+        .onChange(of: scope) { _ in
+            loadAlbumsIfNeeded()
+        }
         .onChange(of: isActive) { active in
             guard !active else { return }
             isSearchFocused = false
@@ -561,12 +564,21 @@ struct SearchView: View {
     private func scheduleSearch() {
         guard sessionStore.accessToken != nil else { return }
         model.schedule(operation: search)
-        model.scheduleAlbums(operation: searchAlbums)
+        if scope == .albums {
+            model.scheduleAlbums(operation: searchAlbums)
+        }
     }
 
     private func submitSearch() {
         guard sessionStore.accessToken != nil else { return }
         model.submit(operation: search)
+        if scope == .albums {
+            model.submitAlbums(operation: searchAlbums)
+        }
+    }
+
+    private func loadAlbumsIfNeeded() {
+        guard sessionStore.accessToken != nil, scope == .albums else { return }
         model.submitAlbums(operation: searchAlbums)
     }
 

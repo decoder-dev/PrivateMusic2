@@ -356,7 +356,9 @@ struct VKMusicService: MusicService {
                     && rawCount >= count
                 return MusicPage(
                     items: tracks,
-                    totalCount: album.count > 0 ? album.count : consumed,
+                    totalCount: album.count > 0
+                        ? album.count
+                        : offset + tracks.count,
                     nextOffset: hasKnownRemainder || hasUnknownRemainder
                         ? consumed
                         : nil
