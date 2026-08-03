@@ -773,7 +773,6 @@ struct PlayerView: View {
                 ),
                 equalizerEnabled: $settings.equalizerEnabled,
                 spatialAudioEnabled: $settings.spatialAudioEnabled,
-                appVolume: $settings.appVolume,
                 onDismiss: {
                     presentedSheet = nil
                 },
@@ -1341,8 +1340,8 @@ private struct PlayerActionsSheet: View {
     let availability: PlayerActionAvailability
     @Binding var equalizerEnabled: Bool
     @Binding var spatialAudioEnabled: Bool
-    @Binding var appVolume: Double
     @EnvironmentObject private var player: AudioPlayer
+    @StateObject private var systemVolume = SystemVolumeObserver()
     @State private var showsSleepTimerOptions = false
     let onDismiss: () -> Void
     let onLibrary: () -> Void
@@ -1460,7 +1459,7 @@ private struct PlayerActionsSheet: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Image(
-                    systemName: appVolume == 0
+                    systemName: systemVolume.volume <= 0.001
                         ? "speaker.slash.fill"
                         : "speaker.wave.2.fill"
                 )
@@ -1468,15 +1467,22 @@ private struct PlayerActionsSheet: View {
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 30, height: 30)
                 .background(Color.accentColor.opacity(0.12), in: Circle())
+                .accessibilityHidden(true)
 
-                Slider(value: $appVolume, in: 0...1, step: 0.01)
-                    .tint(.accentColor)
-                    .accessibilityLabel(L10n.text("Громкость приложения"))
+                SystemVolumeSlider(
+                    tintColor: UIColor(Color.accentColor)
+                )
+                .frame(height: 28)
+                .accessibilityLabel(L10n.text("Громкость"))
 
-                Text(appVolume, format: .percent.precision(.fractionLength(0)))
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 38, alignment: .trailing)
+                Text(
+                    Double(systemVolume.volume),
+                    format: .percent.precision(.fractionLength(0))
+                )
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 38, alignment: .trailing)
+                .accessibilityHidden(true)
             }
             .padding(.horizontal, 16)
             .frame(minHeight: PlayerActionSheetMetrics.minimumTapTarget)
@@ -1520,7 +1526,7 @@ private struct PlayerActionsSheet: View {
             Toggle(isOn: $spatialAudioEnabled) {
                 actionRowLabel(
                     "Пространственный звук",
-                    systemImage: "airpodspro"
+                    systemImage: "dot.radiowaves.left.and.right"
                 )
             }
             .tint(.accentColor)

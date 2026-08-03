@@ -142,6 +142,7 @@ jobs:
           Аудио в авто / EQ / spatial
           - При EQ или spatial декод на iPhone, в машину уходит обработанный PCM
             (speaker / BT / CarKit)
+          - Громкость только системная (MPVolumeView), AVPlayer на unity
           - После media-services reset при подключении к авто playback
             восстанавливается
           - Гонки interruption/route без утечки в динамик телефона

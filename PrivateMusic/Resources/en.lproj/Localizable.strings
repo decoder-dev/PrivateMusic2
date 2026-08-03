@@ -149,7 +149,7 @@
 "Пространственный звук" = "Spatial Audio";
 "Расширенная стереосцена" = "Expanded Stereo Soundstage";
 "Интенсивность" = "Intensity";
-"Расширяет стереосцену обычных треков. Эффект лучше всего слышен в наушниках." = "Widens the soundstage of standard stereo tracks. The effect works best with headphones.";
+"Расширяет стереосцену обычных треков. Работает в наушниках, на колонках и через CarKit / Bluetooth автомобиля." = "Widens the soundstage of standard stereo tracks. Works with headphones, speakers, and CarKit / car Bluetooth.";
 "Профиль эквалайзера" = "Equalizer Preset";
 "Предусилитель" = "Preamp";
 "дБ" = "dB";
@@ -496,3 +496,5 @@
 "На паузе" = "Paused";
 "VK не вернул данные альбома для этого трека." = "VK did not return album data for this track.";
 "Не удалось открыть альбом: %@" = "Could not open album: %@";
+"Громкость" = "Volume";
+"Обработка выполняется на устройстве и применяется к наушникам, колонкам и CarKit / Bluetooth автомобиля." = "Processing runs on device and applies to headphones, speakers, and CarKit / car Bluetooth.";
