@@ -9,6 +9,8 @@ final class AppEnvironment: ObservableObject {
     let networkMonitor: NetworkMonitor
     let historyStore: ListeningHistoryStore
     let libraryStore: MusicLibraryStore
+    let homeCatalogStore: HomeCatalogStore
+    let likedAlbumsStore: LikedAlbumsStore
     let offlineStore: OfflineTrackStore
     let trackShareService: TrackShareService
     let player: AudioPlayer
@@ -39,6 +41,8 @@ final class AppEnvironment: ObservableObject {
         self.networkMonitor = NetworkMonitor()
         self.historyStore = ListeningHistoryStore()
         self.libraryStore = MusicLibraryStore()
+        self.homeCatalogStore = HomeCatalogStore()
+        self.likedAlbumsStore = LikedAlbumsStore()
         let trackShareService = TrackShareService()
         self.trackShareService = trackShareService
 
@@ -101,6 +105,24 @@ final class AppEnvironment: ObservableObject {
                 offlineStore?.markPlayed(track)
             }
         )
+        player.configurePreloading(
+            isAllowed: { [weak self] in
+                guard let self else { return false }
+                return !self.isShareSessionActive
+                    && self.networkMonitor.state == .online
+            },
+            artworkPrefetch: { tracks in
+                for track in tracks {
+                    for size in [CGFloat(1_024), 768, 256] {
+                        guard !Task.isCancelled else { return }
+                        await ArtworkImageCache.shared.prefetch(
+                            url: track.artworkURL,
+                            maxPixelSize: size
+                        )
+                    }
+                }
+            }
+        )
         player.configurePlaybackReady { [weak self] track, isOffline in
             guard OfflineDownloadsFeature.isEnabled else { return }
             guard !isOffline else { return }
@@ -118,6 +140,12 @@ final class AppEnvironment: ObservableObject {
             .sink { [weak self] enabled in
                 guard !enabled else { return }
                 self?.pendingAutomaticCacheTrack = nil
+            }
+            .store(in: &cancellables)
+        networkMonitor.$revision
+            .sink { [weak player] _ in
+                player?.cancelPreloading()
+                player?.resumePreloading()
             }
             .store(in: &cancellables)
 
@@ -149,6 +177,63 @@ final class AppEnvironment: ObservableObject {
         OfflinePlaylistStore.shared.configure(accountID: accountID)
     }
 
+    func refreshHomeCatalog(force: Bool = false) async {
+        homeCatalogStore.prepare(
+            accountID: sessionStore.resolvedOfflineAccountID
+        )
+        guard sessionStore.accessToken != nil,
+              homeCatalogStore.shouldRefresh(force: force) else {
+            return
+        }
+        let refreshID = homeCatalogStore.beginRefreshing()
+        var recommendations: [Track]?
+        var mixes: [MusicMix]?
+        var playlists: [Playlist]?
+        var failures: [String] = []
+        do {
+            recommendations = try await withAuthorizedToken { token in
+                try await musicService.recommendations(accessToken: token)
+            }
+        } catch is CancellationError {
+            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
+            return
+        } catch {
+            failures.append(error.localizedDescription)
+        }
+        do {
+            mixes = try await withAuthorizedToken { token in
+                try await musicService.mixes(accessToken: token)
+            }
+        } catch is CancellationError {
+            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
+            return
+        } catch {
+            failures.append(error.localizedDescription)
+        }
+        do {
+            playlists = try await withAuthorizedToken { token in
+                let page = try await musicService.playlists(
+                    accessToken: token,
+                    offset: 0,
+                    count: 30
+                )
+                return page.items
+            }
+        } catch is CancellationError {
+            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
+            return
+        } catch {
+            failures.append(error.localizedDescription)
+        }
+        homeCatalogStore.finish(
+            recommendations: recommendations,
+            mixes: mixes,
+            playlists: playlists,
+            errorMessage: failures.first,
+            refreshID: refreshID
+        )
+    }
+
     private var resumePlaybackAfterShare = false
 
     /// Begins a share-export session: pauses offline downloads / auto-cache
@@ -163,6 +248,7 @@ final class AppEnvironment: ObservableObject {
         predictivePreDownloadTask?.cancel()
         predictivePreDownloadTask = nil
         DownloadCoordinator.shared.cancelAll()
+        player.cancelPreloading()
         // Free media services for HLS demux / AVAssetReader. Without this,
         // stitched MPEG-TS often fails with HLS-SOURCE-11828.
         resumePlaybackAfterShare = player.isPlaying
@@ -181,6 +267,7 @@ final class AppEnvironment: ObservableObject {
             resumePlaybackAfterShare = false
             player.resume()
         }
+        player.resumePreloading()
     }
 
     /// Prepares a shareable audio file, preferring the already-downloaded

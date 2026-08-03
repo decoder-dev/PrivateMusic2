@@ -17,6 +17,11 @@ final class MusicLibraryStore: ObservableObject {
         signatures.contains(Self.signature(track))
     }
 
+    func isLiked(_ track: Track, currentUserID: Int?) -> Bool {
+        contains(track)
+            || (currentUserID != nil && track.ownerID == currentUserID)
+    }
+
     func markAdded(source: Track, stored: Track) {
         let sourceSignature = Self.signature(source)
         let storedSignature = Self.signature(stored)

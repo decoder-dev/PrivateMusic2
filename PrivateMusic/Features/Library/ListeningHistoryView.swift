@@ -50,6 +50,7 @@ struct ListeningHistoryView: View {
                                         .lineLimit(1)
                                 }
                                 Spacer()
+                                LikedTrackBadge(track: entry.track)
                                 Text(entry.playedAt, style: .relative)
                                     .font(.caption2)
                                     .foregroundStyle(.tertiary)

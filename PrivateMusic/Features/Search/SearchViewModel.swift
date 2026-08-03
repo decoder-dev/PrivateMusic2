@@ -13,23 +13,33 @@ enum SearchViewState: Equatable {
 final class SearchViewModel: ObservableObject {
     typealias SearchOperation =
         (String, Int, Int) async throws -> MusicPage<Track>
+    typealias AlbumSearchOperation =
+        (String, Int, Int) async throws -> MusicPage<Album>
     typealias AddOperation = (Track) async throws -> Track
 
     static let minimumQueryLength = 2
 
     @Published var query = ""
     @Published private(set) var tracks: [Track] = []
+    @Published private(set) var albums: [Album] = []
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingMore = false
+    @Published private(set) var isLoadingAlbums = false
+    @Published private(set) var isLoadingMoreAlbums = false
+    @Published var albumErrorMessage: String?
     @Published private(set) var recentQueries: [String]
     @Published private(set) var errorMessage: String?
     @Published private(set) var paginationErrorMessage: String?
     @Published var actionErrorMessage: String?
 
     private var searchTask: Task<Void, Never>?
+    private var albumSearchTask: Task<Void, Never>?
     private var searchRevision = 0
     private var nextOffset: Int?
     private var activeQuery = ""
+    private var albumSearchRevision = 0
+    private var albumNextOffset: Int?
+    private var activeAlbumQuery = ""
     private let defaults: UserDefaults
     private let historyKey = "search.recent.queries.v1"
     private let debounceDuration: Duration
@@ -56,14 +66,14 @@ final class SearchViewModel: ObservableObject {
         if normalizedQuery.count < Self.minimumQueryLength {
             return .needsMoreCharacters
         }
-        if isLoading, tracks.isEmpty {
+        if (isLoading || isLoadingAlbums), tracks.isEmpty, albums.isEmpty {
             return .loading
         }
-        if !tracks.isEmpty {
+        if !tracks.isEmpty || !albums.isEmpty {
             return .results
         }
-        if let errorMessage {
-            return .failure(errorMessage)
+        if let message = errorMessage ?? albumErrorMessage {
+            return .failure(message)
         }
         if activeQuery == normalizedQuery {
             return .empty
@@ -102,6 +112,90 @@ final class SearchViewModel: ObservableObject {
         operation: @escaping SearchOperation
     ) {
         beginSearch(delay: .zero, operation: operation)
+    }
+
+    func scheduleAlbums(operation: @escaping AlbumSearchOperation) {
+        beginAlbumSearch(delay: debounceDuration, operation: operation)
+    }
+
+    func submitAlbums(operation: @escaping AlbumSearchOperation) {
+        beginAlbumSearch(delay: .zero, operation: operation)
+    }
+
+    private func beginAlbumSearch(
+        delay: Duration,
+        operation: @escaping AlbumSearchOperation
+    ) {
+        albumSearchTask?.cancel()
+        albumSearchRevision += 1
+        let revision = albumSearchRevision
+        let requestedQuery = normalizedQuery
+        albumErrorMessage = nil
+        isLoadingMoreAlbums = false
+        guard requestedQuery.count >= Self.minimumQueryLength else {
+            albums = []
+            albumNextOffset = nil
+            activeAlbumQuery = ""
+            isLoadingAlbums = false
+            return
+        }
+        if requestedQuery != activeAlbumQuery {
+            albums = []
+            albumNextOffset = nil
+        }
+        isLoadingAlbums = true
+        albumSearchTask = Task {
+            do {
+                try await Task.sleep(for: delay)
+                let page = try await operation(requestedQuery, 0, 50)
+                guard revision == albumSearchRevision,
+                      !Task.isCancelled else { return }
+                albums = Self.uniqueAlbums(page.items)
+                albumNextOffset = page.nextOffset
+                activeAlbumQuery = requestedQuery
+                albumErrorMessage = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                guard revision == albumSearchRevision else { return }
+                activeAlbumQuery = requestedQuery
+                albumErrorMessage = error.localizedDescription
+            }
+            if revision == albumSearchRevision {
+                isLoadingAlbums = false
+            }
+        }
+    }
+
+    func loadMoreAlbums(operation: AlbumSearchOperation) async {
+        let requestedQuery = normalizedQuery
+        guard requestedQuery == activeAlbumQuery,
+              !isLoadingAlbums,
+              !isLoadingMoreAlbums,
+              let offset = albumNextOffset else { return }
+        isLoadingMoreAlbums = true
+        let revision = albumSearchRevision
+        defer { isLoadingMoreAlbums = false }
+        do {
+            let page = try await operation(requestedQuery, offset, 50)
+            guard revision == albumSearchRevision,
+                  requestedQuery == activeAlbumQuery,
+                  !Task.isCancelled else {
+                return
+            }
+            albums.append(
+                contentsOf: Self.uniqueAlbums(
+                    page.items,
+                    excluding: Set(albums.map(\.compositeID))
+                )
+            )
+            albumNextOffset = page.nextOffset
+            albumErrorMessage = nil
+        } catch {
+            guard revision == albumSearchRevision,
+                  !Self.isCancellation(error) else { return }
+            albumErrorMessage = error.localizedDescription
+        }
     }
 
     private func beginSearch(
@@ -296,6 +390,14 @@ final class SearchViewModel: ObservableObject {
     ) -> [Track] {
         var known = excludedIDs
         return tracks.filter { known.insert($0.id).inserted }
+    }
+
+    private static func uniqueAlbums(
+        _ albums: [Album],
+        excluding excludedIDs: Set<String> = []
+    ) -> [Album] {
+        var known = excludedIDs
+        return albums.filter { known.insert($0.compositeID).inserted }
     }
 
     private static func isCancellation(_ error: Error) -> Bool {

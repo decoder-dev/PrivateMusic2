@@ -38,9 +38,11 @@ struct QueueView: View {
                                             .lineLimit(1)
                                     }
                                     Spacer()
+                                    LikedTrackBadge(track: track)
                                     if index == player.currentIndex {
-                                        Image(systemName: "waveform")
-                                            .foregroundStyle(.tint)
+                                        PlaybackIndicatorView(
+                                            isPlaying: player.isPlaying
+                                        )
                                     }
                                 }
                             }
@@ -66,6 +68,24 @@ struct QueueView: View {
                                     ? .isSelected
                                     : []
                             )
+                            .accessibilityAction(
+                                named: L10n.text("Удалить из очереди")
+                            ) {
+                                removeFromQueue(at: index)
+                            }
+                            .swipeActions(
+                                edge: .trailing,
+                                allowsFullSwipe: true
+                            ) {
+                                Button(role: .destructive) {
+                                    removeFromQueue(at: index)
+                                } label: {
+                                    Label(
+                                        L10n.text("Удалить из очереди"),
+                                        systemImage: "trash"
+                                    )
+                                }
+                            }
                         }
                     }
                     .listStyle(.plain)
@@ -81,5 +101,13 @@ struct QueueView: View {
             }
         }
         .presentationDragIndicator(.visible)
+    }
+
+    private func removeFromQueue(at index: Int) {
+        Haptics.selection()
+        player.removeFromQueue(at: index)
+        if player.queue.isEmpty {
+            dismiss()
+        }
     }
 }

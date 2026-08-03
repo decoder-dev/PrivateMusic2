@@ -6,7 +6,6 @@ struct CachedRemoteImage<
     Content: View,
     Placeholder: View
 >: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let url: URL?
     var maxPixelSize: CGFloat = 1_200
     @ViewBuilder let content: (Image) -> Content
@@ -16,17 +15,15 @@ struct CachedRemoteImage<
     @State private var loadedIdentity: LoadIdentity?
 
     var body: some View {
+        let displayedImage = loadedIdentity == loadIdentity ? image : nil
+
         ZStack {
             placeholder()
-                .opacity(image == nil ? 1 : 0)
-            if let image {
+                .opacity(displayedImage == nil ? 1 : 0)
+            if let image = displayedImage {
                 content(Image(uiImage: image))
             }
         }
-        .animation(
-            reduceMotion ? nil : .easeOut(duration: 0.18),
-            value: loadedIdentity
-        )
         .task(id: loadIdentity) {
             await load(loadIdentity)
         }
@@ -43,9 +40,14 @@ struct CachedRemoteImage<
 
     @MainActor
     private func load(_ identity: LoadIdentity) async {
-        guard let url = identity.url else {
+        // SwiftUI keeps @State when this view receives another URL. Clear the
+        // previous bitmap before either the cache or network path can finish.
+        if loadedIdentity != identity {
             image = nil
             loadedIdentity = nil
+        }
+
+        guard let url = identity.url else {
             return
         }
         let pixelSize = CGFloat(identity.pixelSize)
@@ -57,11 +59,6 @@ struct CachedRemoteImage<
             loadedIdentity = identity
             return
         }
-
-        // Never leave artwork from the previous track visible while the new
-        // request is in flight.
-        image = nil
-        loadedIdentity = nil
 
         do {
             let data: Data
@@ -110,7 +107,91 @@ struct CachedRemoteImage<
     }
 }
 
-private final class ArtworkImageCache: @unchecked Sendable {
+private actor ArtworkPrefetchRegistry {
+    private struct Entry {
+        let id: UUID
+        let task: Task<Void, Never>
+        var waiters: Set<UUID>
+    }
+
+    static let shared = ArtworkPrefetchRegistry()
+    private var entries: [String: Entry] = [:]
+
+    func prefetch(
+        cache: ArtworkImageCache,
+        url: URL,
+        maxPixelSize: CGFloat
+    ) async {
+        let bucket = max(
+            Int((maxPixelSize / 128).rounded(.up)) * 128,
+            128
+        )
+        let key = "\(url.absoluteString)#\(bucket)"
+        let waiterID = UUID()
+        let entryID: UUID
+        let task: Task<Void, Never>
+        if var existing = entries[key] {
+            existing.waiters.insert(waiterID)
+            entries[key] = existing
+            entryID = existing.id
+            task = existing.task
+        } else {
+            entryID = UUID()
+            task = Task {
+                await cache.performPrefetch(
+                    url: url,
+                    maxPixelSize: CGFloat(bucket)
+                )
+            }
+            entries[key] = Entry(
+                id: entryID,
+                task: task,
+                waiters: [waiterID]
+            )
+        }
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            Task {
+                await self.release(
+                    key: key,
+                    entryID: entryID,
+                    waiterID: waiterID,
+                    cancelWhenUnused: true
+                )
+            }
+        }
+        release(
+            key: key,
+            entryID: entryID,
+            waiterID: waiterID,
+            cancelWhenUnused: false
+        )
+    }
+
+    private func release(
+        key: String,
+        entryID: UUID,
+        waiterID: UUID,
+        cancelWhenUnused: Bool
+    ) {
+        guard var entry = entries[key],
+              entry.id == entryID,
+              entry.waiters.remove(waiterID) != nil else {
+            return
+        }
+        guard entry.waiters.isEmpty else {
+            entries[key] = entry
+            return
+        }
+        entries[key] = nil
+        if cancelWhenUnused {
+            entry.task.cancel()
+        }
+    }
+}
+
+final class ArtworkImageCache: @unchecked Sendable {
     static let shared = ArtworkImageCache()
 
     let session: URLSession
@@ -147,6 +228,49 @@ private final class ArtworkImageCache: @unchecked Sendable {
             forKey: key(for: url, maxPixelSize: maxPixelSize),
             cost: width * height * 4
         )
+    }
+
+    func prefetch(url: URL?, maxPixelSize: CGFloat) async {
+        guard let url else { return }
+        await ArtworkPrefetchRegistry.shared.prefetch(
+            cache: self,
+            url: url,
+            maxPixelSize: maxPixelSize
+        )
+    }
+
+    fileprivate func performPrefetch(
+        url: URL,
+        maxPixelSize: CGFloat
+    ) async {
+        guard image(for: url, maxPixelSize: maxPixelSize) == nil else {
+            return
+        }
+        do {
+            let data: Data
+            if url.isFileURL {
+                data = try await Task.detached(priority: .utility) {
+                    try Data(contentsOf: url, options: .mappedIfSafe)
+                }.value
+            } else {
+                let (remoteData, response) = try await session.data(from: url)
+                guard let http = response as? HTTPURLResponse,
+                      (200..<300).contains(http.statusCode) else {
+                    return
+                }
+                data = remoteData
+            }
+            guard !Task.isCancelled,
+                  let artwork = await Self.downsample(
+                    data,
+                    maxPixelSize: maxPixelSize
+                  ) else {
+                return
+            }
+            insert(artwork, for: url, maxPixelSize: maxPixelSize)
+        } catch {
+            return
+        }
     }
 
     static func downsample(

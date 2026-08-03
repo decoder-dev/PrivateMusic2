@@ -339,6 +339,45 @@ private struct PlayerAudioSettingsView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             }
+
+            Section("Пространственный звук") {
+                Toggle(
+                    isOn: $settings.spatialAudioEnabled
+                ) {
+                    Label(
+                        "Расширенная стереосцена",
+                        systemImage: "airpodspro"
+                    )
+                }
+
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("Интенсивность")
+                        Spacer()
+                        Text(
+                            settings.spatialAudioIntensity,
+                            format: .percent.precision(.fractionLength(0))
+                        )
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                    }
+                    Slider(
+                        value: $settings.spatialAudioIntensity,
+                        in: 0...1,
+                        step: 0.05
+                    )
+                }
+                .disabled(!settings.spatialAudioEnabled)
+
+                Text(
+                    L10n.text(
+                        "Расширяет стереосцену обычных треков. "
+                            + "Эффект лучше всего слышен в наушниках."
+                    )
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
         }
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())

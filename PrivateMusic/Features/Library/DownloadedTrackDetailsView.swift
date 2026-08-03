@@ -19,6 +19,13 @@ struct DownloadedTrackDetailsView: View {
                         url: record.track.artworkURL,
                         size: 132
                     )
+                    .overlay(alignment: .topTrailing) {
+                        LikedTrackBadge(
+                            track: record.track,
+                            style: .artwork
+                        )
+                        .padding(8)
+                    }
 
                     VStack(spacing: 5) {
                         Text(record.track.title)

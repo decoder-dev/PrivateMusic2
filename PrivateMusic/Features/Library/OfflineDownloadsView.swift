@@ -905,6 +905,7 @@ private struct DownloadedTrackRow: View {
                     Spacer()
 
                     if !isSelectionMode {
+                        LikedTrackBadge(track: record.track)
                         Image(
                             systemName: isPlaying
                                 ? "waveform"

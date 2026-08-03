@@ -47,6 +47,8 @@ struct PlayerView: View {
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .simultaneousGesture(fullScreenDismissGesture)
         .background(playerBackground.ignoresSafeArea())
         .preferredColorScheme(settings.theme.colorScheme)
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
@@ -92,7 +94,7 @@ struct PlayerView: View {
             if let artworkURL = player.currentTrack?.artworkURL {
                 CachedRemoteImage(
                     url: artworkURL,
-                    maxPixelSize: 384
+                    maxPixelSize: 1_024
                 ) { image in
                     image
                         .resizable()
@@ -104,6 +106,7 @@ struct PlayerView: View {
                 } placeholder: {
                     Color.clear
                 }
+                .id(player.currentTrack?.id)
             }
             playerBackground.opacity(settings.theme == .light ? 0.72 : 0.56)
             LinearGradient(
@@ -293,21 +296,66 @@ struct PlayerView: View {
         _ track: Track,
         size: CGFloat
     ) -> some View {
-        AsyncArtwork(url: track.artworkURL, size: size)
-            .clipShape(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(playerForeground.opacity(0.08), lineWidth: 0.7)
+        let layout = PlayerArtworkCarouselPolicy.layout(for: size)
+        let neighbors = PlayerArtworkCarouselPolicy.neighborIndices(
+            queueCount: player.queue.count,
+            currentIndex: player.currentIndex,
+            repeatMode: player.repeatMode
+        )
+
+        return ZStack {
+            ZStack {
+                if let previousIndex = neighbors.previous,
+                   player.queue.indices.contains(previousIndex) {
+                    carouselNeighbor(
+                        player.queue[previousIndex],
+                        size: layout.neighborSize,
+                        role: "previous"
+                    )
+                    .offset(x: -layout.neighborOffset)
+                }
+                if let nextIndex = neighbors.next,
+                   player.queue.indices.contains(nextIndex) {
+                    carouselNeighbor(
+                        player.queue[nextIndex],
+                        size: layout.neighborSize,
+                        role: "next"
+                    )
+                    .offset(x: layout.neighborOffset)
+                }
             }
-            .shadow(color: .black.opacity(0.42), radius: 26, y: 14)
-            .offset(
-                x: reduceMotion ? 0 : artworkDrag.width * 0.16,
-                y: reduceMotion ? 0 : artworkDrag.height * 0.08
+            .frame(width: size, height: size)
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: PremiumLayout.artworkRadius(for: size),
+                    style: .continuous
+                )
             )
-            .rotationEffect(
-                .degrees(reduceMotion ? 0 : artworkDrag.width / 65)
+
+            AsyncArtwork(url: track.artworkURL, size: layout.centerSize)
+                .id(track.id)
+                .overlay {
+                    RoundedRectangle(
+                        cornerRadius: PremiumLayout.artworkRadius(
+                            for: layout.centerSize
+                        ),
+                        style: .continuous
+                    )
+                    .stroke(playerForeground.opacity(0.08), lineWidth: 0.7)
+                }
+                .shadow(color: .black.opacity(0.42), radius: 26, y: 14)
+                .offset(
+                    x: reduceMotion ? 0 : artworkDrag.width * 0.16,
+                    y: reduceMotion ? 0 : artworkDrag.height * 0.08
+                )
+                .rotationEffect(
+                    .degrees(reduceMotion ? 0 : artworkDrag.width / 65)
+                )
+        }
+            .frame(width: size, height: size)
+            .contentShape(Rectangle())
+            .offset(
+                x: reduceMotion ? 0 : artworkDrag.width * 0.03
             )
             .animation(
                 reduceMotion
@@ -351,6 +399,25 @@ struct PlayerView: View {
             ) {
                 closePlayer()
             }
+    }
+
+    private func carouselNeighbor(
+        _ track: Track,
+        size: CGFloat,
+        role: String
+    ) -> some View {
+        AsyncArtwork(url: track.artworkURL, size: size)
+            .id("\(role)-\(track.id)")
+            .saturation(0.82)
+            .opacity(0.58)
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: PremiumLayout.artworkRadius(for: size),
+                    style: .continuous
+                )
+                .stroke(playerForeground.opacity(0.06), lineWidth: 0.6)
+            }
+            .accessibilityHidden(true)
     }
 
     private func trackMetadata(_ track: Track) -> some View {
@@ -704,6 +771,8 @@ struct PlayerView: View {
                         && !environment.isShareSessionActive
                 ),
                 equalizerEnabled: $settings.equalizerEnabled,
+                spatialAudioEnabled: $settings.spatialAudioEnabled,
+                appVolume: $settings.appVolume,
                 onDismiss: {
                     presentedSheet = nil
                 },
@@ -807,6 +876,21 @@ struct PlayerView: View {
                 } else if vertical > 72 {
                     closePlayer()
                 }
+            }
+    }
+
+    private var fullScreenDismissGesture: some Gesture {
+        DragGesture(minimumDistance: 20)
+            .onEnded { value in
+                guard presentedSheet == nil,
+                      sharingTrack == nil,
+                      PlayerDismissGesturePolicy.shouldDismiss(
+                        translation: value.translation,
+                        predictedEndTranslation: value.predictedEndTranslation
+                      ) else {
+                    return
+                }
+                closePlayer()
             }
     }
 
@@ -1198,12 +1282,77 @@ enum PlayerActionSheetMetrics {
     static let minimumTapTarget: CGFloat = 52
 }
 
+enum PlayerDismissGesturePolicy {
+    static func shouldDismiss(
+        translation: CGSize,
+        predictedEndTranslation: CGSize
+    ) -> Bool {
+        let vertical = translation.height
+        let horizontal = abs(translation.width)
+        guard vertical >= 80,
+              vertical > horizontal * 1.25 else {
+            return false
+        }
+        return vertical >= 140 || predictedEndTranslation.height >= 120
+    }
+}
+
+enum PlayerArtworkCarouselPolicy {
+    struct Layout: Equatable {
+        let centerSize: CGFloat
+        let neighborSize: CGFloat
+        let neighborOffset: CGFloat
+    }
+
+    struct NeighborIndices: Equatable {
+        let previous: Int?
+        let next: Int?
+    }
+
+    static func layout(for artworkSize: CGFloat) -> Layout {
+        let safeSize = max(artworkSize, 0)
+        let centerSize = safeSize * 0.84
+        return Layout(
+            centerSize: centerSize,
+            neighborSize: centerSize * 0.82,
+            neighborOffset: safeSize * 0.5
+        )
+    }
+
+    static func neighborIndices(
+        queueCount: Int,
+        currentIndex: Int?,
+        repeatMode: RepeatMode
+    ) -> NeighborIndices {
+        guard queueCount > 1,
+              let currentIndex,
+              (0..<queueCount).contains(currentIndex) else {
+            return NeighborIndices(previous: nil, next: nil)
+        }
+        let previous: Int?
+        if currentIndex > 0 {
+            previous = currentIndex - 1
+        } else {
+            previous = repeatMode == .all ? queueCount - 1 : nil
+        }
+        let next: Int?
+        if currentIndex + 1 < queueCount {
+            next = currentIndex + 1
+        } else {
+            next = repeatMode == .all ? 0 : nil
+        }
+        return NeighborIndices(previous: previous, next: next)
+    }
+}
+
 private struct PlayerActionsSheet: View {
     let track: Track
     let isInLibrary: Bool
     let offlineState: OfflineTrackState
     let availability: PlayerActionAvailability
     @Binding var equalizerEnabled: Bool
+    @Binding var spatialAudioEnabled: Bool
+    @Binding var appVolume: Double
     @EnvironmentObject private var player: AudioPlayer
     @State private var showsSleepTimerOptions = false
     let onDismiss: () -> Void
@@ -1325,10 +1474,49 @@ private struct PlayerActionsSheet: View {
 
     private var audioControls: some View {
         VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(
+                    systemName: appVolume == 0
+                        ? "speaker.slash.fill"
+                        : "speaker.wave.2.fill"
+                )
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 30, height: 30)
+                .background(Color.accentColor.opacity(0.12), in: Circle())
+
+                Slider(value: $appVolume, in: 0...1, step: 0.01)
+                    .tint(.accentColor)
+                    .accessibilityLabel(L10n.text("Громкость приложения"))
+
+                Text(appVolume, format: .percent.precision(.fractionLength(0)))
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 38, alignment: .trailing)
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: PlayerActionSheetMetrics.minimumTapTarget)
+
+            Divider()
+                .padding(.leading, 58)
+
             Toggle(isOn: $equalizerEnabled) {
                 actionRowLabel(
                     "Эквалайзер",
                     systemImage: "waveform"
+                )
+            }
+            .tint(.accentColor)
+            .padding(.horizontal, 16)
+            .frame(minHeight: PlayerActionSheetMetrics.minimumTapTarget)
+
+            Divider()
+                .padding(.leading, 58)
+
+            Toggle(isOn: $spatialAudioEnabled) {
+                actionRowLabel(
+                    "Пространственный звук",
+                    systemImage: "airpodspro"
                 )
             }
             .tint(.accentColor)

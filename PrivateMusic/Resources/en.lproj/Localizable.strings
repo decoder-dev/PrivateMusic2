@@ -25,6 +25,7 @@
 "Исполнитель" = "Artist";
 "Микс" = "Mix";
 "Очередь" = "Queue";
+"Удалить из очереди" = "Remove from Queue";
 "История" = "History";
 "Добавить в плейлист" = "Add to Playlist";
 
@@ -139,6 +140,10 @@
 "Если VK не смог обновить аудиопоток, плеер продолжит очередь со следующей песни." = "If VK cannot refresh an audio stream, the player continues with the next track in the queue.";
 "Эквалайзер" = "Equalizer";
 "Обработка звука" = "Audio Processing";
+"Пространственный звук" = "Spatial Audio";
+"Расширенная стереосцена" = "Expanded Stereo Soundstage";
+"Интенсивность" = "Intensity";
+"Расширяет стереосцену обычных треков. Эффект лучше всего слышен в наушниках." = "Widens the soundstage of standard stereo tracks. The effect works best with headphones.";
 "Профиль эквалайзера" = "Equalizer Preset";
 "Предусилитель" = "Preamp";
 "дБ" = "dB";
@@ -478,3 +483,10 @@
 "Не удалось подготовить аудиофайл." = "Could not prepare the audio file.";
 
 "Скопировать код ошибки" = "Copy error code";
+
+"Альбомы" = "Albums";
+"Неизвестный исполнитель" = "Unknown Artist";
+"Трек, исполнитель или альбом" = "Track, artist, or album";
+"На паузе" = "Paused";
+"VK не вернул данные альбома для этого трека." = "VK did not return album data for this track.";
+"Не удалось открыть альбом: %@" = "Could not open album: %@";

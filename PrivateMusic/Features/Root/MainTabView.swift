@@ -23,43 +23,52 @@ private enum MainTab: CaseIterable, Hashable {
         case .profile: "person.crop.circle"
         }
     }
+
+    var scrollDestination: MainTabScrollDestination {
+        switch self {
+        case .home: .home
+        case .library: .library
+        case .search: .search
+        case .profile: .profile
+        }
+    }
 }
 
 struct MainTabView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var libraryStore: MusicLibraryStore
+    @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: MainTab = .home
+    @StateObject private var scrollCoordinator = MainTabScrollCoordinator()
 
     var body: some View {
-        Group {
-            if #available(iOS 26.5, *) {
-                SystemLiquidGlassTabView(selection: $selectedTab)
-            } else {
-                ZStack {
-                    tabScreen(.home) {
-                        NavigationStack { CatalogView() }
-                    }
-                    tabScreen(.library) {
-                        NavigationStack { LibraryView() }
-                    }
-                    tabScreen(.search) {
-                        NavigationStack {
-                            SearchView(isActive: selectedTab == .search)
-                        }
-                    }
-                    tabScreen(.profile) {
-                        NavigationStack { ProfileView() }
-                    }
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    PlaybackTabDock(selection: $selectedTab)
+        ZStack {
+            tabScreen(.home) {
+                NavigationStack { CatalogView() }
+            }
+            tabScreen(.library) {
+                NavigationStack { LibraryView() }
+            }
+            tabScreen(.search) {
+                NavigationStack {
+                    SearchView(isActive: selectedTab == .search)
                 }
             }
+            tabScreen(.profile) {
+                NavigationStack { ProfileView() }
+            }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            PlaybackTabDock(selection: $selectedTab)
+        }
+        .environmentObject(scrollCoordinator)
         .task(id: sessionStore.accessToken) {
-            await refreshLibraryIndex()
+            async let library: Void = refreshLibraryIndex()
+            async let albums: Void = refreshLikedAlbums()
+            async let home: Void = environment.refreshHomeCatalog()
+            _ = await (library, albums, home)
         }
     }
 
@@ -106,197 +115,45 @@ struct MainTabView: View {
             return
         }
     }
-}
 
-@available(iOS 26.5, *)
-private struct SystemLiquidGlassTabView: View {
-    @EnvironmentObject private var player: AudioPlayer
-    @Binding var selection: MainTab
-
-    var body: some View {
-        TabView(selection: $selection) {
-            Tab(
-                MainTab.home.title,
-                systemImage: MainTab.home.image,
-                value: MainTab.home
-            ) {
-                NavigationStack { CatalogView() }
-            }
-
-            Tab(
-                MainTab.library.title,
-                systemImage: MainTab.library.image,
-                value: MainTab.library
-            ) {
-                NavigationStack { LibraryView() }
-            }
-
-            Tab(
-                MainTab.search.title,
-                systemImage: MainTab.search.image,
-                value: MainTab.search,
-                role: .search
-            ) {
-                NavigationStack {
-                    SearchView(isActive: selection == .search)
-                }
-            }
-
-            Tab(
-                MainTab.profile.title,
-                systemImage: MainTab.profile.image,
-                value: MainTab.profile
-            ) {
-                NavigationStack { ProfileView() }
-            }
-        }
-        .tabBarMinimizeBehavior(.onScrollDown)
-        .tabViewSearchActivation(.searchTabSelection)
-        .tabViewBottomAccessory(
-            isEnabled: player.currentTrack != nil
-        ) {
-            SystemPlaybackAccessory()
-        }
-    }
-}
-
-@available(iOS 26.5, *)
-private struct SystemPlaybackAccessory: View {
-    @EnvironmentObject private var player: AudioPlayer
-    @Environment(
-        \.tabViewBottomAccessoryPlacement
-    ) private var placement
-
-    var body: some View {
-        if let track = player.currentTrack {
-            VStack(spacing: 0) {
-                HStack(spacing: 10) {
-                    Button {
-                        Haptics.open()
-                        player.presentPlayer()
-                    } label: {
-                        HStack(spacing: 10) {
-                            AsyncArtwork(
-                                url: track.artworkURL,
-                                size: placement == .inline ? 28 : 40
-                            )
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(track.title)
-                                    .font(
-                                        placement == .inline
-                                            ? .caption.weight(.semibold)
-                                            : .subheadline.weight(.semibold)
-                                    )
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                if placement != .inline {
-                                    Text(track.artist)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(
-                        L10n.format(
-                            "%@ — %@",
-                            track.title,
-                            track.artist
-                        )
-                    )
-                    .accessibilityHint(
-                        L10n.text("Открыть полноэкранный плеер")
-                    )
-
-                    if placement != .inline {
-                        accessoryButton(
-                            image: "backward.fill",
-                            label: "Предыдущий трек",
-                            action: player.previous
-                        )
-                    }
-
-                    accessoryButton(
-                        image: player.isPlaying
-                            ? "pause.fill"
-                            : "play.fill",
-                        label: player.isPlaying
-                            ? "Приостановить"
-                            : "Продолжить воспроизведение",
-                        action: player.playPause
-                    )
-
-                    if placement != .inline {
-                        accessoryButton(
-                            image: "forward.fill",
-                            label: "Следующий трек",
-                            action: player.next
-                        )
-                    }
-                }
-                .padding(.horizontal, 10)
-                .frame(height: placement == .inline ? 38 : 56)
-
-                if placement != .inline {
-                    GeometryReader { proxy in
-                        Capsule()
-                            .fill(.primary.opacity(0.1))
-                            .overlay(alignment: .leading) {
-                                Capsule()
-                                    .fill(.tint)
-                                    .frame(
-                                        width: proxy.size.width * progress
-                                    )
-                            }
-                    }
-                    .frame(height: 2)
-                    .padding(.horizontal, 10)
-                    .accessibilityHidden(true)
-                }
-            }
-            .dynamicTypeSize(...DynamicTypeSize.large)
-        }
-    }
-
-    private func accessoryButton(
-        image: String,
-        label: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button {
-            Haptics.selection()
-            action()
-        } label: {
-            Image(systemName: image)
-                .font(.system(size: 17, weight: .semibold))
-                .frame(width: 40, height: 40)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(L10n.text(label))
-    }
-
-    private var progress: CGFloat {
-        guard player.duration > 0 else { return 0 }
-        return CGFloat(
-            min(max(player.elapsedTime / player.duration, 0), 1)
+    private func refreshLikedAlbums() async {
+        likedAlbumsStore.prepare(
+            accountID: sessionStore.resolvedOfflineAccountID
         )
+        guard sessionStore.accessToken != nil else { return }
+        var collected: [Album] = []
+        var offset = 0
+        do {
+            for _ in 0..<10 {
+                let page = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.likedAlbums(
+                        accessToken: token,
+                        offset: offset,
+                        count: 100
+                    )
+                }
+                collected.append(contentsOf: page.items)
+                guard let next = page.nextOffset, next > offset else { break }
+                offset = next
+            }
+            guard !Task.isCancelled else { return }
+            likedAlbumsStore.replace(with: collected)
+        } catch {
+            return
+        }
     }
 }
 
 private struct PlaybackTabDock: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selection: MainTab
 
     var body: some View {
-        AdaptiveGlassContainer(spacing: 10) {
-            VStack(spacing: 8) {
+        AdaptiveGlassContainer(spacing: 4) {
+            VStack(spacing: 12) {
                 if player.currentTrack != nil {
                     MiniPlayerView()
                         .transition(
@@ -315,8 +172,10 @@ private struct PlaybackTabDock: View {
                         cornerRadius: 24,
                         style: .continuous
                     ),
-                    interactive: true
+                    interactive: true,
+                    tint: settings.theme.accent.opacity(0.06)
                 )
+                .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
             }
         }
         .dynamicTypeSize(...DynamicTypeSize.large)
@@ -334,6 +193,13 @@ private struct PlaybackTabDock: View {
     private func tabButton(_ tab: MainTab) -> some View {
         Button {
             Haptics.selection()
+            if TabReselectionPolicy.isReselection(
+                current: selection,
+                tapped: tab
+            ) {
+                scrollCoordinator.scrollToTop(tab.scrollDestination)
+                return
+            }
             if reduceMotion {
                 selection = tab
             } else {
@@ -348,6 +214,13 @@ private struct PlaybackTabDock: View {
                 Image(systemName: tab.image)
                     .font(.system(size: 20, weight: .semibold))
                     .scaleEffect(selection == tab ? 1.04 : 0.94)
+                    .frame(width: 30, height: 26)
+                    .background {
+                        if selection == tab {
+                            Circle()
+                                .fill(settings.theme.accent.opacity(0.16))
+                        }
+                    }
                 Text(tab.title)
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
@@ -355,16 +228,10 @@ private struct PlaybackTabDock: View {
             .foregroundStyle(
                 selection == tab
                     ? selectedColor
-                    : Color.primary.opacity(0.58)
+                    : Color.primary.opacity(0.72)
             )
             .frame(maxWidth: .infinity)
             .frame(height: 48)
-            .background {
-                if selection == tab {
-                    Capsule()
-                        .fill(Color.primary.opacity(0.09))
-                }
-            }
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -372,6 +239,6 @@ private struct PlaybackTabDock: View {
     }
 
     private var selectedColor: Color {
-        settings.theme == .light ? .black : .white
+        settings.theme.accent
     }
 }

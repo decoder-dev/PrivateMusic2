@@ -16,6 +16,10 @@ struct MiniPlayerView: View {
                     } label: {
                         HStack(spacing: 10) {
                             AsyncArtwork(url: track.artworkURL, size: 42)
+                                .overlay(alignment: .topTrailing) {
+                                    LikedTrackBadge(track: track)
+                                        .padding(3)
+                                }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(track.title)
                                     .font(.subheadline.weight(.semibold))
@@ -100,10 +104,12 @@ struct MiniPlayerView: View {
                 }
                 .frame(height: 2)
                 .padding(.horizontal, 12)
+                .accessibilityHidden(true)
             }
             .adaptiveGlass(
                 in: containerShape,
-                interactive: true
+                interactive: true,
+                tint: settings.theme.accent.opacity(0.04)
             )
             .shadow(
                 color: .black.opacity(settings.theme == .dark ? 0.24 : 0.12),
@@ -125,7 +131,7 @@ struct MiniPlayerView: View {
                 x: reduceMotion ? 0 : dragOffset.width * 0.12,
                 y: reduceMotion ? 0 : min(dragOffset.height * 0.08, 0)
             )
-            .gesture(miniPlayerGesture)
+            .simultaneousGesture(miniPlayerGesture)
         }
     }
 

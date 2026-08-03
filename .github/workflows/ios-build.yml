@@ -99,7 +99,7 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Build unsigned iPhone application
+      - name: Archive unsigned iPhone and Watch applications
         run: |
           set -o pipefail
           xcodebuild \
@@ -108,10 +108,11 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$PWD/build" \
+            -archivePath "$PWD/build/PrivateMusic.xcarchive" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee release-build.log
+            archive 2>&1 | tee release-build.log
 
       - name: Report compiler errors
         if: failure()
@@ -127,51 +128,53 @@ jobs:
 
       - name: Validate embedded Apple Watch application
         run: |
-          APP_PATH="$(find "$PWD/build/Build/Products/Release-iphoneos" \
-            -maxdepth 1 -type d -name '*.app' -print -quit)"
-          test -n "$APP_PATH"
+          APP_PATH="$PWD/build/PrivateMusic.xcarchive/Products/Applications/PrivateMusic.app"
+          test -d "$APP_PATH"
           python3 scripts/validate_watch_bundle.py "$APP_PATH"
 
       - name: Package unsigned IPA
         run: |
-          APP_PATH="$(find "$PWD/build/Build/Products/Release-iphoneos" \
-            -maxdepth 1 -type d -name '*.app' -print -quit)"
-          test -n "$APP_PATH"
+          APP_PATH="$PWD/build/PrivateMusic.xcarchive/Products/Applications/PrivateMusic.app"
+          test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.26.1-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.1-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.26.1"
+          test "$GITHUB_REF_NAME" = "v3.28.1"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.26.1
+          Private Music 3.28.1
 
-          - Меню действий трека переработано в общем стиле приложения:
-            градиент, Liquid Glass, акцентные иконки и анимации нажатия.
-          - В меню добавлен таймер сна на 15/30/45/60/90 минут.
-          - Активный таймер показывает обратный отсчёт; его можно отменить.
-          - Сохранён companion-пульт Private Music для Apple Watch.
+          - Исправлен вылет при переключении на предзагруженный трек.
+          - Убрана небезопасная передача AVPlayerItem между плеерами.
+          - Восстановлена единая панель навигации на iOS 16–27.
+          - Мини-плеер больше не перекрывает треки и кнопки экрана альбома.
+          - Исправлены названия, исполнители, обложки и годы альбомов VK.
+          - Значение «unnamed» заменяется данными загруженных треков.
+          - Автомикс больше не отменяет ручную паузу после загрузки.
+          - Синхронизация не обрезает медиатеку альбомов после 100 записей.
           - Офлайн-загрузки по-прежнему временно скрыты.
 
           IPA не подписан. Перед установкой подпишите его собственным
-          сертификатом.
+          сертификатом. Подписыватель должен сохранить и сначала подписать
+          PlugIns/PrivateMusicWatch.app, затем основное приложение iPhone.
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.26.1-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.28.1-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.26.1" \
+              --title "Private Music 3.28.1" \
               --notes-file "$NOTES"
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.26.1-unsigned.ipa" \
-              --title "Private Music 3.26.1" \
+              "$PWD/artifacts/PrivateMusic-3.28.1-unsigned.ipa" \
+              --title "Private Music 3.28.1" \
               --notes-file "$NOTES"
           fi
 
@@ -179,7 +182,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.26.1-unsigned
-          path: artifacts/PrivateMusic-3.26.1-unsigned.ipa
+          name: PrivateMusic-3.28.1-unsigned
+          path: artifacts/PrivateMusic-3.28.1-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

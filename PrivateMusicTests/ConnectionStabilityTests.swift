@@ -3,6 +3,19 @@ import XCTest
 @testable import PrivateMusic
 
 final class ConnectionStabilityTests: XCTestCase {
+    func testAudioProcessingKeepsAllOutputsOnLocalDecodePath() {
+        XCTAssertFalse(
+            AudioProcessingRoutePolicy.allowsExternalPlayback(
+                requiresAudioTap: true
+            )
+        )
+        XCTAssertTrue(
+            AudioProcessingRoutePolicy.allowsExternalPlayback(
+                requiresAudioTap: false
+            )
+        )
+    }
+
     func testTransientPolicyRetriesOnlyConnectivityFailures() {
         XCTAssertEqual(RequestRetryPolicy.transient.maximumAttempts, 3)
         XCTAssertTrue(
@@ -256,6 +269,134 @@ final class ConnectionStabilityTests: XCTestCase {
                 enabled: true,
                 isPlaying: false,
                 outputPortTypes: [.builtInSpeaker]
+            )
+        )
+    }
+
+    func testAppVolumeZeroPausesOnlyActivePlayback() {
+        XCTAssertTrue(
+            AppVolumePolicy.shouldPauseAtZero(volume: 0, isPlaying: true)
+        )
+        XCTAssertFalse(
+            AppVolumePolicy.shouldPauseAtZero(volume: 0, isPlaying: false)
+        )
+        XCTAssertFalse(
+            AppVolumePolicy.shouldPauseAtZero(volume: 0.2, isPlaying: true)
+        )
+    }
+
+    func testAppVolumeResumesOnlyItsAutomaticPause() {
+        XCTAssertTrue(
+            AppVolumePolicy.shouldResumeAfterZeroPause(
+                volume: 0.25,
+                pausedForAppVolumeZero: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false
+            )
+        )
+        XCTAssertFalse(
+            AppVolumePolicy.shouldResumeAfterZeroPause(
+                volume: 0.25,
+                pausedForAppVolumeZero: false,
+                playbackIntended: false,
+                hasCurrentTrack: true,
+                isPlaying: false
+            )
+        )
+        XCTAssertFalse(
+            AppVolumePolicy.shouldResumeAfterZeroPause(
+                volume: 0.25,
+                pausedForAppVolumeZero: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                isAudioInterrupted: true
+            )
+        )
+    }
+
+    func testRaisingVolumeResumesOnlyAutomaticMinimumVolumePause() {
+        XCTAssertTrue(
+            AudioRoutePolicy.shouldResumeAfterMinimumVolumePause(
+                volume: 0.25,
+                enabled: true,
+                pausedForMinimumVolume: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                outputPortTypes: [.builtInSpeaker]
+            )
+        )
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldResumeAfterMinimumVolumePause(
+                volume: 0,
+                enabled: true,
+                pausedForMinimumVolume: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                outputPortTypes: [.builtInSpeaker]
+            )
+        )
+    }
+
+    func testRaisingVolumeDoesNotResumeManualPause() {
+        for playbackIntended in [false, true] {
+            XCTAssertFalse(
+                AudioRoutePolicy.shouldResumeAfterMinimumVolumePause(
+                    volume: 0.5,
+                    enabled: true,
+                    pausedForMinimumVolume: playbackIntended == false,
+                    playbackIntended: playbackIntended,
+                    hasCurrentTrack: true,
+                    isPlaying: false,
+                    outputPortTypes: [.builtInSpeaker]
+                )
+            )
+        }
+    }
+
+    func testDisablingMinimumVolumePauseResumesPendingTrack() {
+        XCTAssertTrue(
+            AudioRoutePolicy.shouldResumeAfterMinimumVolumePause(
+                volume: 0,
+                enabled: false,
+                pausedForMinimumVolume: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                outputPortTypes: [.builtInSpeaker]
+            )
+        )
+    }
+
+    func testMinimumVolumePauseDoesNotResumeDuringInterruption() {
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldResumeAfterMinimumVolumePause(
+                volume: 0.5,
+                enabled: true,
+                pausedForMinimumVolume: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                outputPortTypes: [.builtInSpeaker],
+                isAudioInterrupted: true
+            )
+        )
+    }
+
+    func testRoutePreferenceCanSuppressMinimumVolumeResume() {
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldResumeAfterMinimumVolumePause(
+                volume: 0.5,
+                enabled: true,
+                pausedForMinimumVolume: true,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isPlaying: false,
+                outputPortTypes: [.bluetoothA2DP],
+                allowsAutomaticResume: false
             )
         )
     }

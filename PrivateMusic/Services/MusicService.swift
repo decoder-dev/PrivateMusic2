@@ -24,6 +24,27 @@ protocol MusicService: Sendable {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Track>
+    func searchAlbums(
+        query: String,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Album>
+    func likedAlbums(
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Album>
+    func albumTracks(
+        _ album: Album,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Track>
+    func toggleAlbumFollow(
+        _ album: Album,
+        accessToken: String
+    ) async throws
     func playlists(
         accessToken: String,
         offset: Int,

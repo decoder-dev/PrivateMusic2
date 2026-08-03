@@ -5,31 +5,41 @@ struct MixArtworkView: View {
     let mix: MusicMix
     let tracks: [Track]
     let size: CGFloat
+    var height: CGFloat? = nil
+    var cornerRadius: CGFloat? = nil
 
     var body: some View {
         Group {
             if let artworkURL = mix.artworkURL {
-                tile(url: artworkURL, dimension: size)
+                tile(
+                    url: artworkURL,
+                    width: size,
+                    height: resolvedHeight
+                )
             } else if selectedTracks.count >= 4 {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         tile(
                             url: selectedTracks[0].artworkURL,
-                            dimension: size / 2
+                            width: size / 2,
+                            height: resolvedHeight / 2
                         )
                         tile(
                             url: selectedTracks[1].artworkURL,
-                            dimension: size / 2
+                            width: size / 2,
+                            height: resolvedHeight / 2
                         )
                     }
                     HStack(spacing: 0) {
                         tile(
                             url: selectedTracks[2].artworkURL,
-                            dimension: size / 2
+                            width: size / 2,
+                            height: resolvedHeight / 2
                         )
                         tile(
                             url: selectedTracks[3].artworkURL,
-                            dimension: size / 2
+                            width: size / 2,
+                            height: resolvedHeight / 2
                         )
                     }
                 }
@@ -49,14 +59,18 @@ struct MixArtworkView: View {
                 }
             }
         }
-        .frame(width: size, height: size)
+        .frame(width: size, height: resolvedHeight)
         .clipShape(
             RoundedRectangle(
-                cornerRadius: PremiumLayout.artworkRadius(for: size),
+                cornerRadius:
+                    cornerRadius
+                    ?? PremiumLayout.artworkRadius(for: min(size, resolvedHeight)),
                 style: .continuous
             )
         )
     }
+
+    private var resolvedHeight: CGFloat { height ?? size }
 
     private var selectedTracks: [Track] {
         let available = tracks.filter { $0.artworkURL != nil }
@@ -69,7 +83,11 @@ struct MixArtworkView: View {
         }
     }
 
-    private func tile(url: URL?, dimension: CGFloat) -> some View {
+    private func tile(
+        url: URL?,
+        width: CGFloat,
+        height: CGFloat
+    ) -> some View {
         CachedRemoteImage(url: url) { image in
             image
                 .resizable()
@@ -84,7 +102,7 @@ struct MixArtworkView: View {
                 endPoint: .bottomTrailing
             )
         }
-        .frame(width: dimension, height: dimension)
+        .frame(width: width, height: height)
         .clipped()
     }
 }
