@@ -138,17 +138,17 @@ jobs:
           test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.9-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.10-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.9"
+          test "$GITHUB_REF_NAME" = "v3.28.10"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.28.9
+          Private Music 3.28.10
 
           - Плеер: пункт меню "Настройки звука" убран как бесполезный —
             вместо него строка "Эквалайзер" теперь сама открывает полный
@@ -158,6 +158,8 @@ jobs:
             превью первых 16 треков показывается сеткой (4 на 4, с
             горизонтальной прокруткой) с кнопкой "Все" для полного списка.
             Альбомы исполнителя показываются сразу под треками.
+          - Альбом: текст "Слушать" на кнопке теперь по центру (раньше его
+            смещала иконка play, оставшаяся без зеркальной пары справа).
           - Ветки: удалены все неактуальные cursor/* ветки на GitHub,
             остаётся одна рабочая ветка main.
 
@@ -167,15 +169,15 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.9-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.28.10-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.9" \
+              --title "Private Music 3.28.10" \
               --notes-file "$NOTES"
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.9-unsigned.ipa" \
-              --title "Private Music 3.28.9" \
+              "$PWD/artifacts/PrivateMusic-3.28.10-unsigned.ipa" \
+              --title "Private Music 3.28.10" \
               --notes-file "$NOTES"
           fi
 
@@ -183,7 +185,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.9-unsigned
-          path: artifacts/PrivateMusic-3.28.9-unsigned.ipa
+          name: PrivateMusic-3.28.10-unsigned
+          path: artifacts/PrivateMusic-3.28.10-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
