@@ -37,6 +37,11 @@ final class EqualizerDSP: @unchecked Sendable {
     private var compressorRatio: Float = 4.0
     private var compressorMakeupGain: Float = 1.0
     private var envelope: Float = 0
+    private var outputProfile: PlaybackOutputToneProfile = .intimate
+    private var boomCutCoefficients: Coefficients?
+    private var boomCutStates = [Float](repeating: 0, count: 8)
+    private var sideHighPassCoefficients: Coefficients?
+    private var sideHighPassState = [Float](repeating: 0, count: 4)
 
     var isEnabled: Bool {
         lock.lock()
@@ -47,7 +52,9 @@ final class EqualizerDSP: @unchecked Sendable {
     var requiresAudioTap: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return hasActiveEqualizerProcessing || isSpatialAudioActive
+        return hasActiveEqualizerProcessing
+            || isSpatialAudioActive
+            || outputProfile.needsClarityProcessing
     }
 
     /// Flat EQ with zero preamp and no loudness/DRC is a no-op — skip the
@@ -58,6 +65,18 @@ final class EqualizerDSP: @unchecked Sendable {
         if loudnessNormEnabled || drcEnabled { return true }
         if abs(preampDB) > 0.000_1 { return true }
         return gains.contains { abs($0) > 0.000_1 }
+    }
+
+    func setOutputProfile(_ profile: PlaybackOutputToneProfile) {
+        lock.lock()
+        let changed = outputProfile != profile
+        outputProfile = profile
+        if changed {
+            rebuildToneShapingCoefficients()
+            boomCutStates = [Float](repeating: 0, count: 8)
+            sideHighPassState = [Float](repeating: 0, count: 4)
+        }
+        lock.unlock()
     }
 
     func update(
@@ -140,6 +159,8 @@ final class EqualizerDSP: @unchecked Sendable {
             repeating: 0,
             count: channelCount * Self.frequencies.count * 4
         )
+        boomCutStates = [Float](repeating: 0, count: max(channelCount, 2) * 4)
+        sideHighPassState = [Float](repeating: 0, count: 4)
         rebuildCoefficients()
         lock.unlock()
     }
@@ -147,6 +168,8 @@ final class EqualizerDSP: @unchecked Sendable {
     fileprivate func unprepare() {
         lock.lock()
         states.removeAll(keepingCapacity: false)
+        boomCutStates = [Float](repeating: 0, count: 8)
+        sideHighPassState = [Float](repeating: 0, count: 4)
         supportsProcessing = false
         lock.unlock()
     }
@@ -158,8 +181,9 @@ final class EqualizerDSP: @unchecked Sendable {
         guard frameCount > 0 else { return }
         lock.lock()
         defer { lock.unlock() }
+        let clarityActive = outputProfile.needsClarityProcessing
         guard supportsProcessing,
-              enabled || isSpatialAudioActive else {
+              enabled || isSpatialAudioActive || clarityActive else {
             return
         }
 
@@ -174,6 +198,12 @@ final class EqualizerDSP: @unchecked Sendable {
                 frameCount: frameCount
             )
         }
+        if clarityActive {
+            processBoomCut(
+                buffers: buffers,
+                frameCount: frameCount
+            )
+        }
         if isSpatialAudioActive {
             processSpatialAudio(
                 buffers: buffers,
@@ -184,6 +214,12 @@ final class EqualizerDSP: @unchecked Sendable {
 
     private var hasSignificantFilterState: Bool {
         for value in states where abs(value) > 0.000_5 {
+            return true
+        }
+        for value in boomCutStates where abs(value) > 0.000_5 {
+            return true
+        }
+        for value in sideHighPassState where abs(value) > 0.000_5 {
             return true
         }
         return abs(envelope) > 0.000_5
@@ -278,11 +314,54 @@ final class EqualizerDSP: @unchecked Sendable {
         }
     }
 
+    private func processBoomCut(
+        buffers: UnsafeMutableAudioBufferListPointer,
+        frameCount: Int
+    ) {
+        guard let coefficient = boomCutCoefficients else { return }
+        for bufferIndex in buffers.indices {
+            guard let rawData = buffers[bufferIndex].mData else { continue }
+            let samples = rawData.assumingMemoryBound(to: Float.self)
+            let channelsInBuffer = max(
+                Int(buffers[bufferIndex].mNumberChannels),
+                1
+            )
+            if isNonInterleaved, channelsInBuffer != 1 {
+                continue
+            }
+            let stride = isNonInterleaved ? 1 : frameStride
+
+            for localChannel in 0..<channelsInBuffer {
+                let channel = isNonInterleaved
+                    ? min(bufferIndex, channelCount - 1)
+                    : min(localChannel, channelCount - 1)
+                let stateIndex = min(channel, boomCutStates.count / 4 - 1) * 4
+                var sampleIndex = localChannel
+                for _ in 0..<frameCount {
+                    let input = samples[sampleIndex]
+                    let output = applyBiquad(
+                        input: input,
+                        coefficient: coefficient,
+                        stateIndex: stateIndex,
+                        states: &boomCutStates
+                    )
+                    samples[sampleIndex] = min(max(output, -1), 1)
+                    sampleIndex += stride
+                }
+            }
+        }
+    }
+
     private func processSpatialAudio(
         buffers: UnsafeMutableAudioBufferListPointer,
         frameCount: Int
     ) {
         guard channelCount >= 2 else { return }
+        let intensity = SpatialAudioDSP.effectiveIntensity(
+            userIntensity: spatialAudioIntensity,
+            profile: outputProfile
+        )
+        guard intensity > 0.000_1 else { return }
 
         if isNonInterleaved {
             guard buffers.count >= 2,
@@ -295,10 +374,13 @@ final class EqualizerDSP: @unchecked Sendable {
             let left = leftData.assumingMemoryBound(to: Float.self)
             let right = rightData.assumingMemoryBound(to: Float.self)
             for frame in 0..<frameCount {
+                let side = (left[frame] - right[frame]) * 0.5
+                let filteredSide = highPassSide(side)
                 let widened = SpatialAudioDSP.process(
                     left: left[frame],
                     right: right[frame],
-                    intensity: spatialAudioIntensity
+                    intensity: intensity,
+                    processedSide: filteredSide
                 )
                 left[frame] = widened.left
                 right[frame] = widened.right
@@ -314,14 +396,51 @@ final class EqualizerDSP: @unchecked Sendable {
         let samples = rawData.assumingMemoryBound(to: Float.self)
         for frame in 0..<frameCount {
             let index = frame * frameStride
+            let side = (samples[index] - samples[index + 1]) * 0.5
+            let filteredSide = highPassSide(side)
             let widened = SpatialAudioDSP.process(
                 left: samples[index],
                 right: samples[index + 1],
-                intensity: spatialAudioIntensity
+                intensity: intensity,
+                processedSide: filteredSide
             )
             samples[index] = widened.left
             samples[index + 1] = widened.right
         }
+    }
+
+    private func highPassSide(_ side: Float) -> Float {
+        guard let coefficient = sideHighPassCoefficients else {
+            return side
+        }
+        return applyBiquad(
+            input: side,
+            coefficient: coefficient,
+            stateIndex: 0,
+            states: &sideHighPassState
+        )
+    }
+
+    private func applyBiquad(
+        input: Float,
+        coefficient: Coefficients,
+        stateIndex: Int,
+        states: inout [Float]
+    ) -> Float {
+        let x1 = states[stateIndex]
+        let x2 = states[stateIndex + 1]
+        let y1 = states[stateIndex + 2]
+        let y2 = states[stateIndex + 3]
+        let output = coefficient.b0 * input
+            + coefficient.b1 * x1
+            + coefficient.b2 * x2
+            - coefficient.a1 * y1
+            - coefficient.a2 * y2
+        states[stateIndex] = input
+        states[stateIndex + 1] = x1
+        states[stateIndex + 2] = output
+        states[stateIndex + 3] = y1
+        return output
     }
 
     private var isSpatialAudioActive: Bool {
@@ -347,6 +466,23 @@ final class EqualizerDSP: @unchecked Sendable {
         compressorRatio = 3.0
         compressorMakeupGain = loudnessNormEnabled ? 1.5 : 1.2
         envelope = 0
+        rebuildToneShapingCoefficients()
+    }
+
+    private func rebuildToneShapingCoefficients() {
+        if outputProfile.needsClarityProcessing {
+            boomCutCoefficients = lowShelfCoefficients(
+                frequency: 140,
+                gain: outputProfile.boomCutDB,
+                sampleRate: sampleRate
+            )
+        } else {
+            boomCutCoefficients = nil
+        }
+        sideHighPassCoefficients = highPassCoefficients(
+            frequency: SpatialAudioDSP.sideHighPassFrequency,
+            sampleRate: sampleRate
+        )
     }
 
     private func peakingCoefficients(
@@ -367,6 +503,79 @@ final class EqualizerDSP: @unchecked Sendable {
             b2: Float((1 - alpha * amplitude) / a0),
             a1: Float((-2 * cosine) / a0),
             a2: Float((1 - alpha / amplitude) / a0)
+        )
+    }
+
+    private func lowShelfCoefficients(
+        frequency: Double,
+        gain: Double,
+        sampleRate: Double
+    ) -> Coefficients {
+        let safeFrequency = min(max(frequency, 20), sampleRate * 0.45)
+        let amplitude = pow(10, gain / 40)
+        let omega = 2 * Double.pi * safeFrequency / sampleRate
+        let cosine = cos(omega)
+        let sine = sin(omega)
+        let beta = sqrt(amplitude) / 1.0
+        let a0 = (amplitude + 1)
+            + (amplitude - 1) * cosine
+            + beta * sine
+        return Coefficients(
+            b0: Float(
+                (
+                    amplitude
+                        * (
+                            (amplitude + 1)
+                                - (amplitude - 1) * cosine
+                                + beta * sine
+                        )
+                ) / a0
+            ),
+            b1: Float(
+                (
+                    2 * amplitude
+                        * ((amplitude - 1) - (amplitude + 1) * cosine)
+                ) / a0
+            ),
+            b2: Float(
+                (
+                    amplitude
+                        * (
+                            (amplitude + 1)
+                                - (amplitude - 1) * cosine
+                                - beta * sine
+                        )
+                ) / a0
+            ),
+            a1: Float(
+                (-2 * ((amplitude - 1) + (amplitude + 1) * cosine)) / a0
+            ),
+            a2: Float(
+                (
+                    (amplitude + 1)
+                        + (amplitude - 1) * cosine
+                        - beta * sine
+                ) / a0
+            )
+        )
+    }
+
+    private func highPassCoefficients(
+        frequency: Double,
+        sampleRate: Double
+    ) -> Coefficients {
+        let safeFrequency = min(max(frequency, 20), sampleRate * 0.45)
+        let omega = 2 * Double.pi * safeFrequency / sampleRate
+        let cosine = cos(omega)
+        let sine = sin(omega)
+        let alpha = sine / (2 * (1 / sqrt(2.0)))
+        let a0 = 1 + alpha
+        return Coefficients(
+            b0: Float(((1 + cosine) / 2) / a0),
+            b1: Float((-(1 + cosine)) / a0),
+            b2: Float(((1 + cosine) / 2) / a0),
+            a1: Float((-2 * cosine) / a0),
+            a2: Float((1 - alpha) / a0)
         )
     }
 }
