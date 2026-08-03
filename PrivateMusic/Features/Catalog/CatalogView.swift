@@ -9,11 +9,9 @@ struct CatalogView: View {
     @EnvironmentObject private var homeCatalog: HomeCatalogStore
     @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var loadingMixID: String?
     @State private var actionErrorMessage: String?
     @State private var sharingTrack: Track?
     @State private var selectedAlbum: Album?
-    @State private var selectedMix: MusicMix?
     @State private var loadingAlbumTrackID: String?
     @State private var albumLookupTask: Task<Void, Never>?
 
@@ -32,9 +30,6 @@ struct CatalogView: View {
                         if isLoading && contentIsEmpty {
                             catalogSkeleton(metrics: metrics)
                         } else {
-                            if !mixes.isEmpty {
-                                mixesSection(metrics: metrics)
-                            }
                             if !homeCatalog.newReleases.isEmpty {
                                 newReleasesSection(metrics: metrics)
                             }
@@ -75,16 +70,6 @@ struct CatalogView: View {
                 AlbumDetailView(album: selectedAlbum)
             }
         }
-        .navigationDestination(
-            isPresented: Binding(
-                get: { selectedMix != nil },
-                set: { if !$0 { selectedMix = nil } }
-            )
-        ) {
-            if let selectedMix {
-                MixView(mix: selectedMix)
-            }
-        }
         .refreshable { await load(force: true) }
         .task(id: sessionStore.resolvedOfflineAccountID) {
             await load()
@@ -116,7 +101,6 @@ struct CatalogView: View {
     }
 
     private var recommendations: [Track] { homeCatalog.recommendations }
-    private var mixes: [MusicMix] { homeCatalog.mixes }
     private var playlists: [Playlist] { homeCatalog.playlists }
     private var isLoading: Bool { homeCatalog.isRefreshing }
     private var errorMessage: String? {
@@ -124,7 +108,8 @@ struct CatalogView: View {
     }
 
     private var contentIsEmpty: Bool {
-        recommendations.isEmpty && mixes.isEmpty && playlists.isEmpty
+        recommendations.isEmpty && playlists.isEmpty
+            && homeCatalog.newReleases.isEmpty
     }
 
     private var welcomeHeader: some View {
@@ -159,111 +144,6 @@ struct CatalogView: View {
         case 12..<18: L10n.text("Добрый день")
         case 18..<23: L10n.text("Добрый вечер")
         default: L10n.text("Доброй ночи")
-        }
-    }
-
-    private func mixesSection(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HomeSectionHeader(
-                "Миксы VK",
-                subtitle: "Персональный поток под ваш вкус"
-            )
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: metrics.cardSpacing) {
-                    ForEach(mixes) { mix in
-                        ZStack(alignment: .topLeading) {
-                            Button { selectedMix = mix } label: {
-                                ZStack(alignment: .bottomLeading) {
-                                    MixArtworkView(
-                                        mix: mix,
-                                        tracks: recommendations,
-                                        size: metrics.mixWidth,
-                                        height: metrics.mixHeight,
-                                        cornerRadius: 12
-                                    )
-                                    LinearGradient(
-                                        colors: [
-                                            .clear,
-                                            .black.opacity(0.18),
-                                            .black.opacity(0.78)
-                                        ],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                    Text(mix.title)
-                                        .font(.subheadline.weight(.bold))
-                                        .foregroundStyle(.white)
-                                        .lineLimit(2)
-                                        .multilineTextAlignment(.leading)
-                                        .padding(.trailing, 38)
-                                        .padding(10)
-                                    if loadingMixID == mix.id {
-                                        ProgressView()
-                                            .tint(.white)
-                                            .frame(
-                                                maxWidth: .infinity,
-                                                maxHeight: .infinity
-                                            )
-                                            .background(.black.opacity(0.26))
-                                    }
-                                }
-                                .frame(
-                                    width: metrics.mixWidth,
-                                    height: metrics.mixHeight
-                                )
-                                .clipShape(
-                                    RoundedRectangle(
-                                        cornerRadius: 12,
-                                        style: .continuous
-                                    )
-                                )
-                                .overlay {
-                                    RoundedRectangle(
-                                        cornerRadius: 12,
-                                        style: .continuous
-                                    )
-                                    .stroke(
-                                        .primary.opacity(0.08),
-                                        lineWidth: 0.5
-                                    )
-                                }
-                                .accessibilityElement(children: .combine)
-                            }
-                            .buttonStyle(PremiumPressStyle())
-                            .disabled(loadingMixID != nil)
-
-                            Button { start(mix) } label: {
-                                Image(systemName: "play.fill")
-                                    .font(.caption.weight(.bold))
-                                    .frame(width: 30, height: 30)
-                                    .foregroundStyle(.black)
-                                    .background(.white, in: Circle())
-                            }
-                            .buttonStyle(PremiumPressStyle())
-                            .offset(
-                                x: metrics.mixWidth - 40,
-                                y: metrics.mixHeight - 40
-                            )
-                            .disabled(loadingMixID != nil)
-                            .accessibilityLabel(L10n.text("Воспроизвести микс"))
-                        }
-                        .contextMenu {
-                            Button { start(mix) } label: {
-                                Label(
-                                    "Воспроизвести микс",
-                                    systemImage: "play.fill"
-                                )
-                            }
-                            Button { selectedMix = mix } label: {
-                                Label(
-                                    "Открыть микс",
-                                    systemImage: "list.bullet"
-                                )
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -696,7 +576,7 @@ struct CatalogView: View {
                 .font(.title3.bold())
             Text(
                 errorMessage
-                    ?? L10n.text("VK не вернул рекомендации и миксы.")
+                    ?? L10n.text("VK не вернул рекомендации.")
             )
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -722,46 +602,6 @@ struct CatalogView: View {
             .premiumCard(interactive: true)
         }
         .buttonStyle(PremiumPressStyle())
-    }
-
-    private func start(_ mix: MusicMix) {
-        guard sessionStore.accessToken != nil else { return }
-        loadingMixID = mix.id
-        Task {
-            defer { loadingMixID = nil }
-            do {
-                let tracks = try await environment.withAuthorizedToken {
-                    token in
-                    try await environment.musicService.mixTracks(
-                        mix,
-                        accessToken: token
-                    )
-                }
-                guard let first = tracks.first else { return }
-                player.play(
-                    first,
-                    in: tracks,
-                    continuation: {
-                        try await environment.withAuthorizedToken { token in
-                            try await environment.musicService.mixTracks(
-                                mix,
-                                accessToken: token
-                            )
-                        }
-                    },
-                    source: .mix(title: mix.title)
-                )
-                actionErrorMessage = nil
-            } catch is CancellationError {
-                return
-            } catch {
-                actionErrorMessage = L10n.format(
-                    "Не удалось запустить «%@»: %@",
-                    mix.title,
-                    error.localizedDescription
-                )
-            }
-        }
     }
 
     private func load(force: Bool = false) async {
@@ -790,14 +630,6 @@ private struct HomeMetrics {
 
     var playlistWidth: CGFloat {
         min(max(containerWidth * 0.35, 112), 140)
-    }
-
-    var mixWidth: CGFloat {
-        min(max(containerWidth * 0.52, 158), 184)
-    }
-
-    var mixHeight: CGFloat {
-        mixWidth * 0.72
     }
 
     var newReleaseWidth: CGFloat {

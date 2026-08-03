@@ -2,6 +2,7 @@ import SwiftUI
 
 private enum MainTab: CaseIterable, Hashable {
     case home
+    case mix
     case library
     case search
     case profile
@@ -9,6 +10,7 @@ private enum MainTab: CaseIterable, Hashable {
     var title: String {
         switch self {
         case .home: L10n.text("Главная")
+        case .mix: L10n.text("Микс")
         case .library: L10n.text("Медиатека")
         case .search: L10n.text("Поиск")
         case .profile: L10n.text("Профиль")
@@ -18,6 +20,7 @@ private enum MainTab: CaseIterable, Hashable {
     var image: String {
         switch self {
         case .home: "house.fill"
+        case .mix: "sparkles"
         case .library: "music.note.list"
         case .search: "magnifyingglass"
         case .profile: "person.crop.circle"
@@ -27,6 +30,7 @@ private enum MainTab: CaseIterable, Hashable {
     var scrollDestination: MainTabScrollDestination {
         switch self {
         case .home: .home
+        case .mix: .mix
         case .library: .library
         case .search: .search
         case .profile: .profile
@@ -85,6 +89,9 @@ struct MainTabView: View {
         ZStack {
             tabScreen(.home) {
                 NavigationStack { CatalogView() }
+            }
+            tabScreen(.mix) {
+                NavigationStack { MixesHubView() }
             }
             tabScreen(.library) {
                 NavigationStack { LibraryView() }
@@ -227,6 +234,14 @@ private struct SystemLiquidGlassTabView: View {
             }
 
             Tab(
+                MainTab.mix.title,
+                systemImage: MainTab.mix.image,
+                value: MainTab.mix
+            ) {
+                NavigationStack { MixesHubView() }
+            }
+
+            Tab(
                 MainTab.library.title,
                 systemImage: MainTab.library.image,
                 value: MainTab.library
@@ -357,7 +372,7 @@ private struct PlaybackTabDock: View {
     }
 
     private var primaryTabs: [MainTab] {
-        [.home, .library, .profile]
+        [.home, .mix, .library, .profile]
     }
 
     private var searchTabButton: some View {
