@@ -2,6 +2,7 @@ import Foundation
 
 enum MainTabScrollDestination: Hashable {
     case home
+    case mix
     case library
     case search
     case profile
