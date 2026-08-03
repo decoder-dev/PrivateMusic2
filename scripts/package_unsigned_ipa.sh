@@ -42,6 +42,29 @@ with zipfile.ZipFile(path) as archive:
         raise SystemExit("IPA contains files outside Payload")
     if not any(name.endswith(".app/Info.plist") for name in names):
         raise SystemExit("IPA is missing application Info.plist")
+    if any("/Watch/" in name for name in names):
+        raise SystemExit(
+            "IPA contains legacy Watch/ content; watchOS requires PlugIns/"
+        )
+    watch_prefixes = {
+        name.removesuffix("Info.plist")
+        for name in names
+        if name.endswith(
+            "/PlugIns/PrivateMusicWatch.app/Info.plist"
+        )
+    }
+    if len(watch_prefixes) != 1:
+        raise SystemExit(
+            "IPA is missing exactly one embedded PrivateMusicWatch app"
+        )
+    watch_prefix = next(iter(watch_prefixes))
+    if not any(
+        name.startswith(watch_prefix)
+        and name != watch_prefix + "Info.plist"
+        and not name.endswith("/")
+        for name in names
+    ):
+        raise SystemExit("embedded Watch app has no payload files")
     unsupported = [
         info.filename
         for info in archive.infolist()

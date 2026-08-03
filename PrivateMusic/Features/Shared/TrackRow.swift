@@ -52,15 +52,22 @@ struct TrackRow: View {
                     }
                 }
 
+                LikedTrackBadge(track: track)
+
                 Text(track.duration.formattedDuration)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
 
-                Image(
-                    systemName: isCurrent && player.isPlaying
-                        ? "waveform"
-                        : "play.fill"
-                )
+                Group {
+                    if isCurrent {
+                        PlaybackIndicatorView(
+                            isPlaying: player.isPlaying,
+                            color: currentTrackColor
+                        )
+                    } else {
+                        Image(systemName: "play.fill")
+                    }
+                }
                     .font(.caption)
                     .foregroundStyle(
                         isCurrent

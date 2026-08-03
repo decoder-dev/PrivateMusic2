@@ -56,6 +56,21 @@ enum JSONValue: Codable, Sendable {
         return result.filter { ids.insert($0.id).inserted }
     }
 
+    var directAudioItems: [JSONValue]? {
+        guard case let .object(object) = self,
+              let audios = object["audios"] else {
+            return nil
+        }
+        switch audios {
+        case let .array(values):
+            return values
+        case .null:
+            return []
+        default:
+            return nil
+        }
+    }
+
     private func collectTracks(into result: inout [Track]) {
         switch self {
         case let .object(object):

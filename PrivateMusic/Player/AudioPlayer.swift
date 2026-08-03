@@ -39,6 +39,33 @@ enum AudioRoutePolicy {
             && !outputPortTypes.contains(where: isExternalPlayback)
     }
 
+    static func shouldResumeAfterMinimumVolumePause(
+        volume: Float,
+        enabled: Bool,
+        pausedForMinimumVolume: Bool,
+        playbackIntended: Bool,
+        hasCurrentTrack: Bool,
+        isPlaying: Bool,
+        outputPortTypes: [AVAudioSession.Port],
+        isAudioInterrupted: Bool = false,
+        allowsAutomaticResume: Bool = true
+    ) -> Bool {
+        guard pausedForMinimumVolume,
+              playbackIntended,
+              hasCurrentTrack,
+              !isPlaying,
+              !isAudioInterrupted,
+              allowsAutomaticResume else {
+            return false
+        }
+        let remainsMutedOnLocalOutput =
+            enabled
+            && volume <= minimumAudibleVolume
+            && outputPortTypes.contains(where: supportsSystemVolumePause)
+            && !outputPortTypes.contains(where: isExternalPlayback)
+        return !remainsMutedOnLocalOutput
+    }
+
     /// Returns true when an external listening route disappeared and playback
     /// must pause (wired headphones, AirPods / Bluetooth, AirPlay, car audio).
     static func shouldPauseAfterRouteLoss(
@@ -96,6 +123,84 @@ enum AudioRoutePolicy {
     }
 }
 
+enum AppVolumePolicy {
+    static func shouldPauseAtZero(
+        volume: Float,
+        isPlaying: Bool
+    ) -> Bool {
+        isPlaying && volume <= AudioRoutePolicy.minimumAudibleVolume
+    }
+
+    static func shouldResumeAfterZeroPause(
+        volume: Float,
+        pausedForAppVolumeZero: Bool,
+        playbackIntended: Bool,
+        hasCurrentTrack: Bool,
+        isPlaying: Bool,
+        isAudioInterrupted: Bool = false,
+        allowsAutomaticResume: Bool = true
+    ) -> Bool {
+        volume > AudioRoutePolicy.minimumAudibleVolume
+            && pausedForAppVolumeZero
+            && playbackIntended
+            && hasCurrentTrack
+            && !isPlaying
+            && !isAudioInterrupted
+            && allowsAutomaticResume
+    }
+}
+
+enum AudioProcessingRoutePolicy {
+    /// Remote AVPlayer handoff bypasses MTAudioProcessingTap. Keep decoding on
+    /// the phone while DSP is active; AirPlay remains available as an audio
+    /// output route and receives the processed signal.
+    static func allowsExternalPlayback(requiresAudioTap: Bool) -> Bool {
+        !requiresAudioTap
+    }
+}
+
+enum PlaybackPreloadPolicy {
+    static let maximumAge: TimeInterval = 5 * 60
+
+    static func nextIndex(
+        queueCount: Int,
+        currentIndex: Int?,
+        repeatMode: RepeatMode
+    ) -> Int? {
+        guard queueCount > 1,
+              let currentIndex,
+              (0..<queueCount).contains(currentIndex) else {
+            return nil
+        }
+        if currentIndex + 1 < queueCount {
+            return currentIndex + 1
+        }
+        return repeatMode == .all ? 0 : nil
+    }
+
+    static func isValid(
+        trackID: String,
+        url: URL,
+        preparedTrackID: String,
+        preparedURL: URL,
+        preparedAt: Date,
+        now: Date = Date()
+    ) -> Bool {
+        trackID == preparedTrackID
+            && url == preparedURL
+            && now.timeIntervalSince(preparedAt) < maximumAge
+    }
+}
+
+enum ContinuationAdvancePolicy {
+    static func shouldAdvance(
+        requested: Bool,
+        playbackIntended: Bool
+    ) -> Bool {
+        requested && playbackIntended
+    }
+}
+
 enum AudioInterruptionPolicy {
     static func shouldResume(
         wasPlayingBeforeInterruption: Bool,
@@ -112,6 +217,26 @@ enum AudioInterruptionPolicy {
 
 @MainActor
 final class AudioPlayer: ObservableObject {
+    private final class PreloadedPlayback {
+        let trackID: String
+        let url: URL
+        let asset: AVURLAsset
+        let preparedAt: Date
+        var isReady = false
+
+        init(
+            trackID: String,
+            url: URL,
+            asset: AVURLAsset,
+            preparedAt: Date = Date()
+        ) {
+            self.trackID = trackID
+            self.url = url
+            self.asset = asset
+            self.preparedAt = preparedAt
+        }
+    }
+
     @Published private(set) var queue: [Track] = []
     @Published private(set) var currentIndex: Int?
     @Published private(set) var isPlaying = false
@@ -145,7 +270,12 @@ final class AudioPlayer: ObservableObject {
     private var offlinePlayedHandler: ((Track) -> Void)?
     private var playbackReadyHandler: ((Track, Bool) -> Void)?
     private var loadedOfflineTrackID: String?
+    private var listenedTrackID: String?
+    private var listenedPlaybackDuration: TimeInterval = 0
+    private var lastListeningElapsedTime: TimeInterval?
     private var continuationTask: Task<Void, Never>?
+    private var continuationPrefetchTask: Task<Void, Never>?
+    private var advanceAfterContinuationPrefetch = false
     private var streamRefreshTask: Task<Void, Never>?
     private var lastPersistedSecond = -1
     private var playbackGeneration = 0
@@ -161,9 +291,24 @@ final class AudioPlayer: ObservableObject {
     private var advanceOnPlaybackError = true
     private var lastNowPlayingSecond = -1
     private var playbackIntended = false
+    private var pausedForMinimumVolume = false
+    private var pausedForAppVolumeZero = false
+    private var appVolume: Float = 1
+    private var minimumVolumeResumeSuppressed = false
     private var wasPlayingBeforeInterruption = false
+    private var isAudioInterrupted = false
     private var resumeAfterRouteTransfer = false
     private var routeDisconnectPending = false
+    private var preloadedPlayback: PreloadedPlayback?
+    private var preloadAssetTask: Task<Void, Never>?
+    private var preloadGeneration = 0
+    private var preloadStreamRefreshTask: Task<Void, Never>?
+    private var preloadStreamRefreshTrackID: String?
+    private var preloadStreamRefreshID: UUID?
+    private var attemptedPreloadRefreshes = Set<String>()
+    private var canPreloadPlayback: () -> Bool = { true }
+    private var artworkPrefetchHandler: (([Track]) async -> Void)?
+    private var artworkPrefetchTask: Task<Void, Never>?
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -193,6 +338,7 @@ final class AudioPlayer: ObservableObject {
         self.streamUserAgent = userAgent
         resumeOnBluetoothConnection = settings.resumeOnBluetoothConnection
         pauseAtMinimumVolume = settings.pauseAtMinimumVolume
+        appVolume = Float(settings.appVolume)
         advanceOnPlaybackError = settings.advanceOnPlaybackError
         shuffleEnabled = defaults.bool(forKey: "player.shuffle")
         repeatMode = RepeatMode(
@@ -202,25 +348,39 @@ final class AudioPlayer: ObservableObject {
         _ = configureAudioSession()
         configureRemoteCommands()
         observePlayer()
-        settings.$equalizerEnabled
-            .combineLatest(
-                settings.$equalizerGains,
-                settings.$equalizerPreamp,
-                settings.$loudnessNormalization
+        Publishers.CombineLatest4(
+            settings.$equalizerEnabled,
+            settings.$equalizerGains,
+            settings.$equalizerPreamp,
+            settings.$loudnessNormalization
+        )
+        .combineLatest(
+            Publishers.CombineLatest3(
+                settings.$dynamicRangeCompression,
+                settings.$spatialAudioEnabled,
+                settings.$spatialAudioIntensity
             )
-            .combineLatest(settings.$dynamicRangeCompression)
-            .sink { [weak self] pair, drc in
-                let (enabled, gains, preamp, loudness) = pair
+        )
+            .sink { [weak self] equalizerSettings, effectsSettings in
+                let (enabled, gains, preamp, loudness) = equalizerSettings
+                let (drc, spatialAudio, spatialIntensity) = effectsSettings
                 guard let self else { return }
-                let wasEnabled = self.equalizer.isEnabled
+                let requiredTap = self.equalizer.requiresAudioTap
                 self.equalizer.update(
                     enabled: enabled,
                     gains: gains,
                     preamp: preamp,
                     loudnessNorm: loudness,
-                    dynamicRangeCompression: drc
+                    dynamicRangeCompression: drc,
+                    spatialAudio: spatialAudio,
+                    spatialIntensity: spatialIntensity
                 )
-                if wasEnabled != enabled,
+                let requiresAudioTap = self.equalizer.requiresAudioTap
+                self.player.allowsExternalPlayback = AudioProcessingRoutePolicy
+                    .allowsExternalPlayback(
+                        requiresAudioTap: requiresAudioTap
+                    )
+                if requiredTap != requiresAudioTap,
                    self.player.currentItem != nil {
                     self.reloadCurrentItemForAudioProcessing()
                 }
@@ -238,6 +398,14 @@ final class AudioPlayer: ObservableObject {
                 self.handleOutputVolume(
                     AVAudioSession.sharedInstance().outputVolume
                 )
+            }
+            .store(in: &cancellables)
+        settings.$appVolume
+            .sink { [weak self] volume in
+                guard let self else { return }
+                self.appVolume = Float(volume)
+                self.player.volume = self.appVolume
+                self.handleAppVolume(self.appVolume)
             }
             .store(in: &cancellables)
         settings.$advanceOnPlaybackError
@@ -262,6 +430,29 @@ final class AudioPlayer: ObservableObject {
         streamRefreshProvider = provider
     }
 
+    func configurePreloading(
+        isAllowed: @escaping () -> Bool,
+        artworkPrefetch: @escaping ([Track]) async -> Void
+    ) {
+        canPreloadPlayback = isAllowed
+        artworkPrefetchHandler = artworkPrefetch
+        scheduleNeighborPreloads()
+    }
+
+    func cancelPreloading() {
+        invalidatePreloadedPlayback()
+        preloadStreamRefreshTask?.cancel()
+        preloadStreamRefreshTask = nil
+        preloadStreamRefreshTrackID = nil
+        preloadStreamRefreshID = nil
+        artworkPrefetchTask?.cancel()
+        artworkPrefetchTask = nil
+    }
+
+    func resumePreloading() {
+        scheduleNeighborPreloads()
+    }
+
     func configureOfflinePlayback(
         lookup: @escaping (Track) -> URL?,
         invalidate: @escaping (Track) -> Void,
@@ -283,6 +474,8 @@ final class AudioPlayer: ObservableObject {
             in: .whitespacesAndNewlines
         )
         streamUserAgent = cleaned?.isEmpty == false ? cleaned : nil
+        invalidatePreloadedPlayback()
+        scheduleNeighborPreloads()
     }
 
     func play(
@@ -298,6 +491,7 @@ final class AudioPlayer: ObservableObject {
         requiresStreamRefresh = false
         didAttemptStreamRefresh = false
         restoredTrackIDs.removeAll()
+        attemptedPreloadRefreshes.removeAll()
         activeContinuationProvider =
             continuation ?? defaultContinuationProvider
         let prepared = PlaybackQueueBuilder.normalized(
@@ -317,18 +511,66 @@ final class AudioPlayer: ObservableObject {
         resetProgressForTrackTransition()
         persistPlayback()
         loadCurrentAndPlay()
+        startContinuationPrefetch()
     }
 
     func playNext(_ track: Track) {
-        guard let currentIndex else {
+        guard let currentIndex, let currentTrack else {
             play(track, in: [track])
             return
         }
+        guard track.id != currentTrack.id else { return }
         cancelContinuation()
         queue.removeAll { $0.id == track.id }
-        queue.insert(track, at: min(currentIndex + 1, queue.count))
+        let adjustedCurrentIndex = queue.firstIndex {
+            $0.id == currentTrack.id
+        } ?? min(currentIndex, max(queue.count - 1, 0))
+        self.currentIndex = adjustedCurrentIndex
+        queue.insert(
+            track,
+            at: min(adjustedCurrentIndex + 1, queue.count)
+        )
         persistPlayback()
         publishNowPlayingQueue()
+        scheduleNeighborPreloads()
+    }
+
+    func removeFromQueue(at index: Int) {
+        guard queue.indices.contains(index),
+              let currentIndex,
+              queue.indices.contains(currentIndex) else {
+            return
+        }
+        cancelContinuation()
+        let removesCurrentTrack = index == currentIndex
+        let shouldResume = isPlaying
+        let removedTrack = queue[index]
+        queue.remove(at: index)
+        restoredTrackIDs.remove(removedTrack.id)
+
+        guard !queue.isEmpty else {
+            stop()
+            return
+        }
+
+        if index < currentIndex {
+            self.currentIndex = currentIndex - 1
+        } else if removesCurrentTrack {
+            self.currentIndex = min(currentIndex, queue.count - 1)
+        }
+
+        if removesCurrentTrack {
+            cancelStreamRefresh()
+            requiresStreamRefresh = false
+            didAttemptStreamRefresh = false
+            resetProgressForTrackTransition()
+            persistPlayback()
+            loadCurrent(autoplay: shouldResume, startAt: 0)
+        } else {
+            persistPlayback()
+            publishNowPlayingQueue()
+            scheduleNeighborPreloads()
+        }
     }
 
     func jump(to index: Int) {
@@ -357,6 +599,7 @@ final class AudioPlayer: ObservableObject {
         currentIndex = 0
         persistPlayback()
         publishNowPlayingQueue()
+        scheduleNeighborPreloads()
     }
 
     func cycleRepeatMode() {
@@ -366,6 +609,7 @@ final class AudioPlayer: ObservableObject {
         case .one: repeatMode = .off
         }
         defaults.set(repeatMode.rawValue, forKey: "player.repeat")
+        scheduleNeighborPreloads()
     }
 
     func scheduleSleepTimer(minutes: Int) {
@@ -395,9 +639,32 @@ final class AudioPlayer: ObservableObject {
     }
 
     func resume() {
+        resume(
+            preservingMinimumVolumePause: false,
+            preservingAppVolumePause: false
+        )
+    }
+
+    private func resume(
+        preservingMinimumVolumePause: Bool,
+        preservingAppVolumePause: Bool
+    ) {
+        if !preservingMinimumVolumePause {
+            pausedForMinimumVolume = false
+            minimumVolumeResumeSuppressed = false
+        }
+        if !preservingAppVolumePause {
+            pausedForAppVolumeZero = false
+        }
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         playbackIntended = true
+        guard !isAudioInterrupted else { return }
+        guard appVolume > AudioRoutePolicy.minimumAudibleVolume else {
+            pausedForAppVolumeZero = true
+            pausePreservingIntent()
+            return
+        }
         if requiresStreamRefresh {
             refreshCurrentStream(autoplay: true)
             return
@@ -410,6 +677,8 @@ final class AudioPlayer: ObservableObject {
             seek(to: 0)
         }
         guard activateAudioSession() else { return }
+        pausedForMinimumVolume = false
+        pausedForAppVolumeZero = false
         player.play()
         isPlaying = true
         publishPlaybackState(force: true)
@@ -419,6 +688,10 @@ final class AudioPlayer: ObservableObject {
     }
 
     func pause() {
+        pausedForMinimumVolume = false
+        pausedForAppVolumeZero = false
+        advanceAfterContinuationPrefetch = false
+        minimumVolumeResumeSuppressed = false
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         playbackIntended = false
@@ -442,6 +715,11 @@ final class AudioPlayer: ObservableObject {
         guard let currentIndex, !queue.isEmpty else { return }
         let nextIndex = queue.index(after: currentIndex)
         if nextIndex >= queue.endIndex, repeatMode == .off {
+            if continuationPrefetchTask != nil {
+                advanceAfterContinuationPrefetch = true
+                isBuffering = true
+                return
+            }
             startContinuationIfNeeded()
             return
         }
@@ -478,6 +756,7 @@ final class AudioPlayer: ObservableObject {
     func seek(to seconds: TimeInterval) {
         let upperBound = duration > 0 ? duration : seconds
         let targetSeconds = min(max(0, seconds), upperBound)
+        lastListeningElapsedTime = targetSeconds
         let target = CMTime(
             seconds: targetSeconds,
             preferredTimescale: 600
@@ -489,6 +768,9 @@ final class AudioPlayer: ObservableObject {
     }
 
     func stop() {
+        pausedForMinimumVolume = false
+        pausedForAppVolumeZero = false
+        minimumVolumeResumeSuppressed = false
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         playbackIntended = false
@@ -499,6 +781,7 @@ final class AudioPlayer: ObservableObject {
         sleepTimerEndDate = nil
         cancelContinuation()
         cancelStreamRefresh()
+        cancelPreloading()
         player.pause()
         player.replaceCurrentItem(with: nil)
         itemStatusObservation?.invalidate()
@@ -507,6 +790,9 @@ final class AudioPlayer: ObservableObject {
         currentIndex = nil
         loadedTrackID = nil
         loadedOfflineTrackID = nil
+        listenedTrackID = nil
+        listenedPlaybackDuration = 0
+        lastListeningElapsedTime = nil
         elapsedTime = 0
         duration = 0
         isPlaying = false
@@ -524,6 +810,9 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func loadCurrentAndPlay() {
+        pausedForMinimumVolume = false
+        pausedForAppVolumeZero = false
+        minimumVolumeResumeSuppressed = false
         playbackIntended = true
         if let track = currentTrack,
            restoredTrackIDs.contains(track.id),
@@ -574,6 +863,83 @@ final class AudioPlayer: ObservableObject {
         playbackGeneration += 1
         let generation = playbackGeneration
         let isOffline = offlineURL != nil
+        let item = takePreloadedPlayback(for: track, url: url)
+            ?? makePlaybackItem(url: url, isOffline: isOffline)
+        configureAudioProcessing(for: item)
+        itemStatusObservation?.invalidate()
+        itemStatusObservation = item.observe(
+            \.status,
+            options: [.initial, .new]
+        ) { [weak self] item, _ in
+            Task { @MainActor in
+                guard let self,
+                      generation == self.playbackGeneration,
+                      self.player.currentItem === item else {
+                    return
+                }
+                switch item.status {
+                case .readyToPlay:
+                    self.isBuffering = false
+                    self.playbackReadyHandler?(track, isOffline)
+                    self.scheduleNeighborPreloads()
+                    if position > 0 {
+                        self.seek(to: min(position, self.duration))
+                    }
+                case .failed:
+                    self.isPlaying = false
+                    self.isBuffering = false
+                    self.handleItemFailure(item.error)
+                case .unknown:
+                    self.isBuffering = true
+                @unknown default:
+                    self.isBuffering = false
+                }
+            }
+        }
+        player.replaceCurrentItem(with: item)
+        loadedTrackID = track.id
+        loadedOfflineTrackID = isOffline ? track.id : nil
+        elapsedTime = position
+        duration = track.duration
+        let shouldAutoplay = autoplay && activateAudioSession()
+        if shouldAutoplay {
+            pausedForMinimumVolume = false
+            player.play()
+            isPlaying = true
+            isBuffering = true
+            handleAppVolume(appVolume)
+            handleOutputVolume(
+                AVAudioSession.sharedInstance().outputVolume
+            )
+        } else {
+            isPlaying = false
+            isBuffering = false
+        }
+        nowPlaying.update(
+            track: track,
+            elapsedTime: position,
+            rate: shouldAutoplay ? 1 : 0,
+            queueCount: queue.count,
+            queueIndex: currentIndex ?? 0
+        )
+        persistPlayback()
+    }
+
+    private func makePlaybackItem(
+        url: URL,
+        isOffline: Bool
+    ) -> AVPlayerItem {
+        let item = AVPlayerItem(
+            asset: makePlaybackAsset(url: url, isOffline: isOffline)
+        )
+        item.preferredForwardBufferDuration = 12
+        return item
+    }
+
+    private func makePlaybackAsset(
+        url: URL,
+        isOffline: Bool
+    ) -> AVURLAsset {
         let asset: AVURLAsset
         if isOffline {
             asset = AVURLAsset(url: url)
@@ -590,73 +956,221 @@ final class AudioPlayer: ObservableObject {
                 options: ["AVURLAssetHTTPHeaderFieldsKey": headers]
             )
         }
-        let item = AVPlayerItem(asset: asset)
-        itemStatusObservation?.invalidate()
-        itemStatusObservation = item.observe(
-            \.status,
-            options: [.initial, .new]
-        ) { [weak self] item, _ in
-            Task { @MainActor in
+        return asset
+    }
+
+    private func configureAudioProcessing(for item: AVPlayerItem) {
+        item.audioMix = nil
+        guard let tap = equalizer.makeTap() else { return }
+        let parameters = AVMutableAudioMixInputParameters()
+        parameters.audioTapProcessor = tap
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = [parameters]
+        item.audioMix = mix
+    }
+
+    private func scheduleNeighborPreloads() {
+        let lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+        let remotePreloadingAllowed = canPreloadPlayback()
+        if !lowPowerMode, remotePreloadingAllowed {
+            prefetchNeighborArtwork()
+        } else {
+            artworkPrefetchTask?.cancel()
+            artworkPrefetchTask = nil
+        }
+        guard !lowPowerMode,
+              let nextIndex = PlaybackPreloadPolicy.nextIndex(
+                queueCount: queue.count,
+                currentIndex: currentIndex,
+                repeatMode: repeatMode
+              ),
+              queue.indices.contains(nextIndex) else {
+            invalidatePreloadedPlayback()
+            return
+        }
+        let track = queue[nextIndex]
+        if let refreshTrackID = preloadStreamRefreshTrackID,
+           refreshTrackID != track.id {
+            preloadStreamRefreshTask?.cancel()
+            preloadStreamRefreshTask = nil
+            preloadStreamRefreshTrackID = nil
+            preloadStreamRefreshID = nil
+        }
+        let offlineURL = offlineURLProvider?(track)
+        guard (offlineURL != nil || remotePreloadingAllowed),
+              offlineURL != nil || !restoredTrackIDs.contains(track.id),
+              let url = offlineURL ?? track.streamURL else {
+            invalidatePreloadedPlayback()
+            return
+        }
+        if let existing = preloadedPlayback,
+           PlaybackPreloadPolicy.isValid(
+            trackID: track.id,
+            url: url,
+            preparedTrackID: existing.trackID,
+            preparedURL: existing.url,
+            preparedAt: existing.preparedAt
+           ) {
+            return
+        }
+
+        invalidatePreloadedPlayback()
+        let asset = makePlaybackAsset(
+            url: url,
+            isOffline: offlineURL != nil
+        )
+        let slot = PreloadedPlayback(
+            trackID: track.id,
+            url: url,
+            asset: asset
+        )
+        preloadedPlayback = slot
+        preloadGeneration += 1
+        let generation = preloadGeneration
+        preloadAssetTask = Task { [weak self] in
+            do {
+                let isPlayable = try await asset.load(.isPlayable)
+                try Task.checkCancellation()
                 guard let self,
-                      generation == self.playbackGeneration,
-                      self.player.currentItem === item else {
+                      generation == self.preloadGeneration,
+                      self.preloadedPlayback === slot else {
                     return
                 }
-                switch item.status {
-                case .readyToPlay:
-                    self.isBuffering = false
-                    if isOffline {
-                        self.offlinePlayedHandler?(track)
-                    }
-                    self.playbackReadyHandler?(track, isOffline)
-                    if position > 0 {
-                        self.seek(to: min(position, self.duration))
-                    }
-                case .failed:
-                    self.isPlaying = false
-                    self.isBuffering = false
-                    self.handleItemFailure(item.error)
-                case .unknown:
-                    self.isBuffering = true
-                @unknown default:
-                    self.isBuffering = false
+                self.preloadAssetTask = nil
+                if isPlayable {
+                    slot.isReady = true
+                } else {
+                    self.recoverPreloadAfterFailure(slot)
                 }
+            } catch is CancellationError {
+                return
+            } catch {
+                guard let self,
+                      generation == self.preloadGeneration,
+                      self.preloadedPlayback === slot else {
+                    return
+                }
+                self.preloadAssetTask = nil
+                self.recoverPreloadAfterFailure(slot)
             }
         }
-        if let tap = equalizer.makeTap() {
-            let parameters = AVMutableAudioMixInputParameters()
-            parameters.audioTapProcessor = tap
-            let mix = AVMutableAudioMix()
-            mix.inputParameters = [parameters]
-            item.audioMix = mix
+    }
+
+    private func takePreloadedPlayback(
+        for track: Track,
+        url: URL
+    ) -> AVPlayerItem? {
+        guard let slot = preloadedPlayback,
+              slot.isReady,
+              PlaybackPreloadPolicy.isValid(
+                trackID: track.id,
+                url: url,
+                preparedTrackID: slot.trackID,
+                preparedURL: slot.url,
+                preparedAt: slot.preparedAt
+              ) else {
+            if preloadedPlayback != nil {
+                invalidatePreloadedPlayback()
+            }
+            return nil
         }
-        item.preferredForwardBufferDuration = 8
-        player.replaceCurrentItem(with: item)
-        loadedTrackID = track.id
-        loadedOfflineTrackID = isOffline ? track.id : nil
-        elapsedTime = position
-        duration = track.duration
-        let shouldAutoplay = autoplay && activateAudioSession()
-        if shouldAutoplay {
-            player.play()
-            isPlaying = true
-            isBuffering = true
-            historyStore.record(track)
-            handleOutputVolume(
-                AVAudioSession.sharedInstance().outputVolume
-            )
-        } else {
-            isPlaying = false
-            isBuffering = false
+        preloadGeneration += 1
+        preloadAssetTask?.cancel()
+        preloadAssetTask = nil
+        preloadedPlayback = nil
+        let item = AVPlayerItem(asset: slot.asset)
+        item.preferredForwardBufferDuration = 12
+        return item
+    }
+
+    private func invalidatePreloadedPlayback() {
+        preloadGeneration += 1
+        preloadAssetTask?.cancel()
+        preloadAssetTask = nil
+        preloadedPlayback = nil
+    }
+
+    private func recoverPreloadAfterFailure(
+        _ slot: PreloadedPlayback
+    ) {
+        let trackID = slot.trackID
+        let failedURL = slot.url
+        invalidatePreloadedPlayback()
+        guard !failedURL.isFileURL,
+              preloadStreamRefreshTask == nil,
+              let provider = streamRefreshProvider,
+              let track = queue.first(where: { $0.id == trackID }) else {
+            return
         }
-        nowPlaying.update(
-            track: track,
-            elapsedTime: position,
-            rate: shouldAutoplay ? 1 : 0,
+        let refreshKey = "\(trackID)#\(failedURL.absoluteString)"
+        guard attemptedPreloadRefreshes.insert(refreshKey).inserted else {
+            return
+        }
+        let refreshID = UUID()
+        preloadStreamRefreshTrackID = trackID
+        preloadStreamRefreshID = refreshID
+        preloadStreamRefreshTask = Task { [weak self] in
+            defer {
+                if let self,
+                   self.preloadStreamRefreshID == refreshID {
+                    self.preloadStreamRefreshTask = nil
+                    self.preloadStreamRefreshTrackID = nil
+                    self.preloadStreamRefreshID = nil
+                }
+            }
+            do {
+                let refreshed = try await provider(track)
+                try Task.checkCancellation()
+                guard let self,
+                      self.preloadStreamRefreshID == refreshID,
+                      let nextIndex = PlaybackPreloadPolicy.nextIndex(
+                        queueCount: self.queue.count,
+                        currentIndex: self.currentIndex,
+                        repeatMode: self.repeatMode
+                      ),
+                      self.queue.indices.contains(nextIndex),
+                      self.queue[nextIndex].id == trackID else {
+                    return
+                }
+                self.queue[nextIndex] = refreshed
+                self.restoredTrackIDs.remove(trackID)
+                self.persistPlayback()
+                self.scheduleNeighborPreloads()
+            } catch is CancellationError {
+                self?.attemptedPreloadRefreshes.remove(refreshKey)
+            } catch {}
+        }
+    }
+
+    private func prefetchNeighborArtwork() {
+        guard let currentIndex,
+              queue.indices.contains(currentIndex) else {
+            return
+        }
+        var neighbors: [Track] = []
+        if currentIndex > 0 {
+            neighbors.append(queue[currentIndex - 1])
+        } else if repeatMode == .all, queue.count > 1 {
+            neighbors.append(queue[queue.count - 1])
+        }
+        if let nextIndex = PlaybackPreloadPolicy.nextIndex(
             queueCount: queue.count,
-            queueIndex: currentIndex ?? 0
-        )
-        persistPlayback()
+            currentIndex: currentIndex,
+            repeatMode: repeatMode
+        ) {
+            let next = queue[nextIndex]
+            if !neighbors.contains(where: { $0.id == next.id }) {
+                neighbors.append(next)
+            }
+        }
+        artworkPrefetchTask?.cancel()
+        guard let artworkPrefetchHandler, !neighbors.isEmpty else {
+            artworkPrefetchTask = nil
+            return
+        }
+        artworkPrefetchTask = Task {
+            await artworkPrefetchHandler(neighbors)
+        }
     }
 
     @discardableResult
@@ -745,7 +1259,11 @@ final class AudioPlayer: ObservableObject {
 
     private func configurePlayerInstance() {
         player.automaticallyWaitsToMinimizeStalling = true
-        player.allowsExternalPlayback = true
+        player.volume = appVolume
+        player.allowsExternalPlayback = AudioProcessingRoutePolicy
+            .allowsExternalPlayback(
+                requiresAudioTap: equalizer.requiresAudioTap
+            )
     }
 
     private func observePlayer() {
@@ -815,10 +1333,11 @@ final class AudioPlayer: ObservableObject {
         outputVolumeObservation = AVAudioSession.sharedInstance().observe(
             \.outputVolume,
             options: [.initial, .new]
-        ) { [weak self] session, change in
-            let volume = change.newValue ?? session.outputVolume
+        ) { [weak self] _, _ in
             Task { @MainActor in
-                self?.handleOutputVolume(volume)
+                self?.handleOutputVolume(
+                    AVAudioSession.sharedInstance().outputVolume
+                )
             }
         }
     }
@@ -844,6 +1363,7 @@ final class AudioPlayer: ObservableObject {
                    seconds.isFinite {
                     self.duration = seconds
                 }
+                self.sampleListeningProgress()
                 self.isBuffering = self.isPlaying
                     && self.player.timeControlStatus
                         == .waitingToPlayAtSpecifiedRate
@@ -869,9 +1389,11 @@ final class AudioPlayer: ObservableObject {
         }
         switch type {
         case .began:
+            isAudioInterrupted = true
             wasPlayingBeforeInterruption = playbackIntended && isPlaying
             pausePreservingIntent()
         case .ended:
+            isAudioInterrupted = false
             let rawOptions = notification.userInfo?[
                 AVAudioSessionInterruptionOptionKey
             ] as? UInt ?? 0
@@ -888,6 +1410,8 @@ final class AudioPlayer: ObservableObject {
             if shouldResume {
                 resume()
             }
+            handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
+            handleAppVolume(appVolume)
         @unknown default:
             break
         }
@@ -902,6 +1426,7 @@ final class AudioPlayer: ObservableObject {
               ) else {
             return
         }
+        var allowsMinimumVolumeResume = true
         switch reason {
         case .oldDeviceUnavailable:
             let previousRoute = notification.userInfo?[
@@ -926,26 +1451,42 @@ final class AudioPlayer: ObservableObject {
             resumeAfterRouteTransfer = false
             let currentOutputs = AVAudioSession.sharedInstance()
                 .currentRoute.outputs.map(\.portType)
-            guard AudioRoutePolicy.shouldResumeAfterRouteTransfer(
+            if currentOutputs.contains(where: AudioRoutePolicy.isBluetooth),
+               !resumeOnBluetoothConnection {
+                allowsMinimumVolumeResume = false
+                minimumVolumeResumeSuppressed = true
+            }
+            if AudioRoutePolicy.shouldResumeAfterRouteTransfer(
                 pendingResume: pendingResume,
                 playbackIntended: playbackIntended,
                 hasCurrentTrack: currentTrack != nil,
                 isPlaying: isPlaying,
                 resumeBluetoothEnabled: resumeOnBluetoothConnection,
                 currentOutputPortTypes: currentOutputs
-            ) else {
-                return
+            ) {
+                routeDisconnectPending = false
+                resume()
             }
-            routeDisconnectPending = false
-            resume()
         default:
             break
         }
+        handleOutputVolume(
+            AVAudioSession.sharedInstance().outputVolume,
+            allowsAutomaticResume: allowsMinimumVolumeResume
+        )
+        handleAppVolume(
+            appVolume,
+            allowsAutomaticResume: allowsMinimumVolumeResume
+        )
     }
 
     private func handleMediaServicesReset() {
         let position = elapsedTime
         playbackIntended = false
+        pausedForMinimumVolume = false
+        pausedForAppVolumeZero = false
+        minimumVolumeResumeSuppressed = false
+        isAudioInterrupted = false
         wasPlayingBeforeInterruption = false
         resumeAfterRouteTransfer = false
         isPlaying = false
@@ -954,6 +1495,7 @@ final class AudioPlayer: ObservableObject {
 
         cancelContinuation()
         cancelStreamRefresh()
+        cancelPreloading()
         playbackGeneration += 1
         itemStatusObservation?.invalidate()
         itemStatusObservation = nil
@@ -990,18 +1532,67 @@ final class AudioPlayer: ObservableObject {
         loadCurrent(autoplay: shouldResume, startAt: position)
     }
 
-    private func handleOutputVolume(_ volume: Float) {
+    private func handleOutputVolume(
+        _ volume: Float,
+        allowsAutomaticResume: Bool = true
+    ) {
         let outputPortTypes = AVAudioSession.sharedInstance()
             .currentRoute.outputs.map(\.portType)
-        guard AudioRoutePolicy.shouldPause(
+        if AudioRoutePolicy.shouldPause(
             volume: volume,
             enabled: pauseAtMinimumVolume,
             isPlaying: isPlaying,
             outputPortTypes: outputPortTypes
-        ) else {
+        ) {
+            pausedForMinimumVolume = true
+            minimumVolumeResumeSuppressed = false
+            pausePreservingIntent()
             return
         }
-        pause()
+        guard AudioRoutePolicy.shouldResumeAfterMinimumVolumePause(
+            volume: volume,
+            enabled: pauseAtMinimumVolume,
+            pausedForMinimumVolume: pausedForMinimumVolume,
+            playbackIntended: playbackIntended,
+            hasCurrentTrack: currentTrack != nil,
+            isPlaying: isPlaying,
+            outputPortTypes: outputPortTypes,
+            isAudioInterrupted: isAudioInterrupted,
+            allowsAutomaticResume: allowsAutomaticResume
+                && !minimumVolumeResumeSuppressed
+        ) else { return }
+        resume(
+            preservingMinimumVolumePause: true,
+            preservingAppVolumePause: false
+        )
+    }
+
+    private func handleAppVolume(
+        _ volume: Float,
+        allowsAutomaticResume: Bool = true
+    ) {
+        player.volume = min(max(volume, 0), 1)
+        if AppVolumePolicy.shouldPauseAtZero(
+            volume: volume,
+            isPlaying: isPlaying
+        ) {
+            pausedForAppVolumeZero = true
+            pausePreservingIntent()
+            return
+        }
+        guard AppVolumePolicy.shouldResumeAfterZeroPause(
+            volume: volume,
+            pausedForAppVolumeZero: pausedForAppVolumeZero,
+            playbackIntended: playbackIntended,
+            hasCurrentTrack: currentTrack != nil,
+            isPlaying: isPlaying,
+            isAudioInterrupted: isAudioInterrupted,
+            allowsAutomaticResume: allowsAutomaticResume
+        ) else { return }
+        resume(
+            preservingMinimumVolumePause: false,
+            preservingAppVolumePause: true
+        )
     }
 
     private func advanceAfterCompletion() {
@@ -1159,9 +1750,15 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func cancelContinuation() {
+        if advanceAfterContinuationPrefetch {
+            isBuffering = false
+        }
         continuationGeneration += 1
         continuationTask?.cancel()
         continuationTask = nil
+        continuationPrefetchTask?.cancel()
+        continuationPrefetchTask = nil
+        advanceAfterContinuationPrefetch = false
     }
 
     private func cancelStreamRefresh() {
@@ -1185,6 +1782,71 @@ final class AudioPlayer: ObservableObject {
                 return
             }
             self.continuationTask = nil
+        }
+    }
+
+    private func startContinuationPrefetch() {
+        guard continuationPrefetchTask == nil,
+              let provider = activeContinuationProvider else {
+            return
+        }
+        let generation = continuationGeneration
+        let sourceIndex = currentIndex
+        continuationPrefetchTask = Task { [weak self] in
+            guard let self else { return }
+            var additions: [Track] = []
+            do {
+                for attempt in 0..<3 {
+                    let proposed = try await self.continuationTracks(
+                        from: provider
+                    )
+                    guard !Task.isCancelled,
+                          generation == self.continuationGeneration,
+                          self.currentIndex == sourceIndex else {
+                        return
+                    }
+                    additions = PlaybackQueueBuilder.uniqueAdditions(
+                        existing: self.queue,
+                        candidates: proposed
+                    )
+                    if !additions.isEmpty { break }
+                    if attempt < 2 {
+                        try await Task.sleep(for: .milliseconds(180))
+                    }
+                }
+            } catch {
+                additions = []
+            }
+            guard !Task.isCancelled,
+                  generation == self.continuationGeneration,
+                  self.currentIndex == sourceIndex else {
+                return
+            }
+            self.continuationPrefetchTask = nil
+            let shouldAdvance = ContinuationAdvancePolicy.shouldAdvance(
+                requested: self.advanceAfterContinuationPrefetch,
+                playbackIntended: self.playbackIntended
+            )
+            self.advanceAfterContinuationPrefetch = false
+            if !shouldAdvance {
+                self.isBuffering = false
+            }
+            if !additions.isEmpty {
+                self.queue.append(contentsOf: additions)
+                self.persistPlayback()
+                self.publishNowPlayingQueue()
+                self.scheduleNeighborPreloads()
+                if shouldAdvance,
+                   let sourceIndex,
+                   self.queue.indices.contains(sourceIndex + 1) {
+                    self.currentIndex = sourceIndex + 1
+                    self.resetProgressForTrackTransition()
+                    self.persistPlayback()
+                    self.loadCurrentAndPlay()
+                }
+            } else if shouldAdvance {
+                self.startContinuationIfNeeded()
+            }
         }
     }
 
@@ -1281,6 +1943,39 @@ final class AudioPlayer: ObservableObject {
         duration = currentTrack?.duration ?? 0
         lastPersistedSecond = -1
         lastNowPlayingSecond = -1
+        listenedTrackID = nil
+        listenedPlaybackDuration = 0
+        lastListeningElapsedTime = nil
+    }
+
+    private func sampleListeningProgress() {
+        let sample = elapsedTime
+        defer { lastListeningElapsedTime = sample }
+        guard isPlaying,
+              player.timeControlStatus == .playing,
+              let previous = lastListeningElapsedTime else {
+            return
+        }
+        let delta = sample - previous
+        guard delta > 0, delta <= 1.5 else { return }
+        listenedPlaybackDuration += delta
+        markCurrentTrackListenedIfNeeded()
+    }
+
+    private func markCurrentTrackListenedIfNeeded() {
+        guard let track = currentTrack,
+              ListeningProgressPolicy.shouldMarkListened(
+                accumulatedPlayback: listenedPlaybackDuration,
+                duration: duration,
+                alreadyMarked: listenedTrackID == track.id
+              ) else {
+            return
+        }
+        listenedTrackID = track.id
+        historyStore.record(track)
+        if loadedOfflineTrackID == track.id {
+            offlinePlayedHandler?(track)
+        }
     }
 
     private func restorePlayback() {

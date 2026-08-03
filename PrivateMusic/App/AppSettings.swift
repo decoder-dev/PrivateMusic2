@@ -165,6 +165,24 @@ final class AppSettings: ObservableObject {
             )
         }
     }
+    @Published var spatialAudioEnabled: Bool {
+        didSet {
+            defaults.set(
+                spatialAudioEnabled,
+                forKey: Keys.spatialAudioEnabled
+            )
+        }
+    }
+    @Published var spatialAudioIntensity: Double {
+        didSet {
+            let normalized = min(max(spatialAudioIntensity, 0), 1)
+            if spatialAudioIntensity != normalized {
+                spatialAudioIntensity = normalized
+                return
+            }
+            defaults.set(normalized, forKey: Keys.spatialAudioIntensity)
+        }
+    }
     @Published var resumeOnBluetoothConnection: Bool {
         didSet {
             defaults.set(
@@ -179,6 +197,16 @@ final class AppSettings: ObservableObject {
                 pauseAtMinimumVolume,
                 forKey: Keys.pauseAtMinimumVolume
             )
+        }
+    }
+    @Published var appVolume: Double {
+        didSet {
+            let normalized = min(max(appVolume, 0), 1)
+            if appVolume != normalized {
+                appVolume = normalized
+                return
+            }
+            defaults.set(normalized, forKey: Keys.appVolume)
         }
     }
     @Published var advanceOnPlaybackError: Bool {
@@ -258,12 +286,28 @@ final class AppSettings: ObservableObject {
         dynamicRangeCompression = defaults.object(
             forKey: Keys.dynamicRangeCompression
         ) as? Bool ?? false
+        spatialAudioEnabled = defaults.object(
+            forKey: Keys.spatialAudioEnabled
+        ) as? Bool ?? false
+        spatialAudioIntensity = min(
+            max(
+                defaults.object(
+                    forKey: Keys.spatialAudioIntensity
+                ) as? Double ?? SpatialAudioDSP.defaultIntensity,
+                0
+            ),
+            1
+        )
         resumeOnBluetoothConnection = defaults.object(
             forKey: Keys.resumeOnBluetoothConnection
         ) as? Bool ?? true
         pauseAtMinimumVolume = defaults.object(
             forKey: Keys.pauseAtMinimumVolume
         ) as? Bool ?? false
+        appVolume = min(
+            max(defaults.object(forKey: Keys.appVolume) as? Double ?? 1, 0),
+            1
+        )
         advanceOnPlaybackError = defaults.object(
             forKey: Keys.advanceOnPlaybackError
         ) as? Bool ?? true
@@ -324,6 +368,7 @@ final class AppSettings: ObservableObject {
             "audio.bluetooth.resumeOnConnection"
         static let pauseAtMinimumVolume =
             "audio.volume.pauseAtMinimum"
+        static let appVolume = "audio.volume.appLevel"
         static let advanceOnPlaybackError =
             "audio.playback.advanceOnError"
         static let offlineStorageLimitGB =
@@ -334,6 +379,8 @@ final class AppSettings: ObservableObject {
             "audio.equalizer.loudnessNormalization"
         static let dynamicRangeCompression =
             "audio.equalizer.dynamicRangeCompression"
+        static let spatialAudioEnabled = "audio.spatial.enabled"
+        static let spatialAudioIntensity = "audio.spatial.intensity"
     }
 
     private enum LegacyKeys {
