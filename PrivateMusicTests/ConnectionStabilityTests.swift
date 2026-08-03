@@ -16,6 +16,57 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    func testStreamFailureRetryKeepsConnectivityOnSameTrack() {
+        XCTAssertTrue(
+            StreamFailureRetryPolicy.isConnectivityFailure(
+                APIError.timedOut
+            )
+        )
+        XCTAssertTrue(
+            StreamFailureRetryPolicy.isConnectivityFailure(
+                URLError(.networkConnectionLost)
+            )
+        )
+        XCTAssertFalse(
+            StreamFailureRetryPolicy.isConnectivityFailure(
+                APIError.invalidResponse
+            )
+        )
+        XCTAssertTrue(
+            StreamFailureRetryPolicy.shouldRetrySameTrack(
+                attempts: 1,
+                error: APIError.timedOut
+            )
+        )
+        XCTAssertFalse(
+            StreamFailureRetryPolicy.shouldAdvance(
+                attempts: 8,
+                error: APIError.timedOut,
+                advanceOnPlaybackError: true
+            ),
+            "Weak networks must not auto-skip the current track"
+        )
+        XCTAssertTrue(
+            StreamFailureRetryPolicy.shouldAdvance(
+                attempts: StreamFailureRetryPolicy.maximumSameTrackAttempts,
+                error: APIError.invalidResponse,
+                advanceOnPlaybackError: true
+            )
+        )
+        XCTAssertFalse(
+            StreamFailureRetryPolicy.shouldAdvance(
+                attempts: StreamFailureRetryPolicy.maximumSameTrackAttempts,
+                error: APIError.invalidResponse,
+                advanceOnPlaybackError: false
+            )
+        )
+        XCTAssertEqual(
+            StreamFailureRetryPolicy.preferredForwardBufferDuration,
+            30,
+            accuracy: 0.001
+        )
+    }
+
     func testAudioTapSupportedForProgressiveAndOfflineButNotHLS() {
         let progressive = URL(string: "https://example.com/audio.mp3")!
         let hls = URL(string: "https://example.com/index.m3u8")!
