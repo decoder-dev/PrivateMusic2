@@ -206,6 +206,12 @@ if "MediaServicesResetPolicy.shouldAutoplayAfterReset" not in audio_player_sourc
     fail("media services reset must keep CarKit/BT autoplay intent")
 if "shouldTreatEndAsRouteDisconnect" not in audio_player_source:
     fail("interruption end must detect headphone-disconnect races")
+if "player.volume = 1" not in audio_player_source:
+    fail("playback level must follow system volume (AVPlayer at unity gain)")
+if "SystemVolumeSlider" not in all_source:
+    fail("player actions must expose a system volume slider")
+if "MPVolumeView" not in all_source:
+    fail("system volume control must use MPVolumeView")
 if "hasActiveEqualizerProcessing" not in equalizer_source:
     fail("flat equalizer must skip the realtime audio tap")
 watch_protocol = (
