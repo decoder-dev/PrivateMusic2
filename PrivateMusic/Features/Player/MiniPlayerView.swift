@@ -10,162 +10,284 @@ struct MiniPlayerView: View {
     var body: some View {
         if let track = player.currentTrack {
             VStack(spacing: 0) {
-                HStack(spacing: 10) {
-                    Button {
-                        Haptics.open()
-                        player.presentPlayer()
-                    } label: {
-                        HStack(spacing: 10) {
-                            AsyncArtwork(url: track.artworkURL, size: 42)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(track.title)
-                                    .font(.subheadline.weight(.semibold))
-                                    .lineLimit(1)
-                                Text(track.artist)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(
-                        L10n.format(
-                            "%@ — %@",
-                            track.title,
-                            track.artist
-                        )
-                    )
-                    .accessibilityHint(
-                        L10n.text("Открыть полноэкранный плеер")
-                    )
-
-                    HStack(spacing: 0) {
-                        Button {
-                            Haptics.trackChange()
-                            player.previous()
-                        } label: {
-                            Image(systemName: "backward.fill")
-                                .font(.subheadline.weight(.semibold))
-                                .frame(width: 44, height: 44)
-                        }
-                        .accessibilityLabel(L10n.text("Предыдущий трек"))
-
-                        Button {
-                            Haptics.selection()
-                            player.playPause()
-                        } label: {
-                            Image(
-                                systemName: player.isPlaying
-                                    ? "pause.fill"
-                                    : "play.fill"
-                            )
-                            .font(.headline)
-                            .frame(width: 44, height: 44)
-                        }
-                        .accessibilityLabel(
-                            L10n.text(
-                                player.isPlaying
-                                    ? "Приостановить"
-                                    : "Продолжить воспроизведение"
-                            )
-                        )
-
-                        Button {
-                            Haptics.trackChange()
-                            player.next()
-                        } label: {
-                            Image(systemName: "forward.fill")
-                                .font(.subheadline.weight(.semibold))
-                                .frame(width: 44, height: 44)
-                        }
-                        .accessibilityLabel(L10n.text("Следующий трек"))
-                    }
-                    .buttonStyle(PremiumPressStyle())
+                HStack(spacing: MiniPlayerLayoutMetrics.contentSpacing) {
+                    openPlayerArea(track)
+                    transportControls
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+                .padding(.horizontal, MiniPlayerLayoutMetrics.horizontalPadding)
+                .padding(.top, MiniPlayerLayoutMetrics.verticalPadding)
+                .padding(.bottom, MiniPlayerLayoutMetrics.verticalPadding - 1)
 
-                GeometryReader { proxy in
-                    Capsule()
-                        .fill(.primary.opacity(0.1))
-                        .overlay(alignment: .leading) {
-                            Capsule()
-                                .fill(.tint)
-                                .frame(
-                                    width: proxy.size.width * progress
-                                )
-                        }
-                }
-                .frame(height: 2)
-                .padding(.horizontal, 12)
-                .accessibilityHidden(true)
+                progressBar
             }
+            .frame(minHeight: MiniPlayerLayoutMetrics.minHeight)
             .adaptiveGlass(
                 in: containerShape,
                 interactive: true,
-                tint: settings.theme.accent.opacity(0.04)
-            )
-            .shadow(
-                color: .black.opacity(settings.theme == .dark ? 0.24 : 0.12),
-                radius: 12,
-                y: 6
-            )
-            .miniPlayerTransitionSource(playerNamespace)
-            .frame(minHeight: 58)
-            .transition(
-                .asymmetric(
-                    insertion: .opacity.combined(
-                        with: .move(edge: .trailing)
-                    ),
-                    removal: .opacity.combined(
-                        with: .move(edge: .leading)
-                    )
+                tint: settings.theme.accent.opacity(
+                    MiniPlayerLayoutMetrics.glassTintOpacity
                 )
             )
-            .offset(
-                x: reduceMotion ? 0 : dragOffset.width * 0.12,
-                y: reduceMotion ? 0 : min(dragOffset.height * 0.08, 0)
+            .shadow(
+                color: .black.opacity(settings.theme == .dark ? 0.18 : 0.08),
+                radius: MiniPlayerLayoutMetrics.containerShadowRadius,
+                y: MiniPlayerLayoutMetrics.containerShadowY
             )
+            .miniPlayerTransitionSource(playerNamespace)
+            .offset(liveDragOffset)
+            .animation(
+                reduceMotion
+                    ? .easeOut(duration: 0.12)
+                    : .spring(response: 0.32, dampingFraction: 0.86),
+                value: dragOffset == .zero
+            )
+            .transition(appearanceTransition)
             .simultaneousGesture(miniPlayerGesture)
+            .accessibilityElement(children: .contain)
         }
     }
 
-    private var miniPlayerGesture: some Gesture {
-        DragGesture(minimumDistance: 18)
-            .updating($dragOffset) { value, state, _ in
-                state = value.translation
+    // MARK: - Open zone (artwork + metadata)
+
+    private func openPlayerArea(_ track: Track) -> some View {
+        Button {
+            Haptics.open()
+            player.presentPlayer()
+        } label: {
+            HStack(spacing: MiniPlayerLayoutMetrics.contentSpacing) {
+                artwork(for: track)
+                trackMetadata(track)
+                Spacer(minLength: 4)
             }
-            .onEnded { value in
-                let horizontal = value.translation.width
-                let vertical = value.translation.height
-                if abs(vertical) > abs(horizontal), vertical < -42 {
-                    Haptics.open()
-                    player.presentPlayer()
-                } else if horizontal < -58 {
-                    Haptics.trackChange()
-                    player.next()
-                } else if horizontal > 58 {
-                    Haptics.trackChange()
-                    player.previous()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            L10n.format("%@ — %@", track.title, track.artist)
+        )
+        .accessibilityValue(L10n.text(playbackAccessibilityValue))
+        .accessibilityHint(L10n.text("Открыть полноэкранный плеер"))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(named: L10n.text("Предыдущий трек")) {
+            Haptics.trackChange()
+            player.previous()
+        }
+        .accessibilityAction(named: L10n.text("Следующий трек")) {
+            Haptics.trackChange()
+            player.next()
+        }
+        .accessibilityAction(named: L10n.text("Открыть плеер")) {
+            Haptics.open()
+            player.presentPlayer()
+        }
+    }
+
+    private func artwork(for track: Track) -> some View {
+        AsyncArtwork(
+            url: track.artworkURL,
+            size: MiniPlayerLayoutMetrics.artworkSize
+        )
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: MiniPlayerLayoutMetrics.artworkCornerRadius,
+                style: .continuous
+            )
+        )
+        .shadow(
+            color: .black.opacity(0.18),
+            radius: MiniPlayerLayoutMetrics.artworkShadowRadius,
+            y: MiniPlayerLayoutMetrics.artworkShadowY
+        )
+        .id(track.id)
+        .animation(
+            reduceMotion
+                ? nil
+                : .easeInOut(
+                    duration: MiniPlayerLayoutMetrics.trackCrossfadeDuration
+                ),
+            value: track.id
+        )
+        .accessibilityHidden(true)
+    }
+
+    private func trackMetadata(_ track: Track) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(track.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Text(track.artist)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityHidden(true)
+    }
+
+    // MARK: - Transport
+
+    private var transportControls: some View {
+        HStack(spacing: MiniPlayerLayoutMetrics.controlSpacing) {
+            playPauseControl
+            nextControl
+        }
+    }
+
+    @ViewBuilder
+    private var playPauseControl: some View {
+        if player.isBuffering {
+            ProgressView()
+                .controlSize(.regular)
+                .frame(
+                    width: MiniPlayerLayoutMetrics.tapTarget,
+                    height: MiniPlayerLayoutMetrics.tapTarget
+                )
+                .accessibilityLabel(L10n.text("Буферизация"))
+        } else {
+            Button {
+                Haptics.selection()
+                player.playPause()
+            } label: {
+                Image(
+                    systemName: player.isPlaying
+                        ? "pause.fill"
+                        : "play.fill"
+                )
+                .font(.system(size: 17, weight: .semibold))
+                .frame(
+                    width: MiniPlayerLayoutMetrics.tapTarget,
+                    height: MiniPlayerLayoutMetrics.tapTarget
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PremiumPressStyle())
+            .accessibilityLabel(
+                L10n.text(
+                    player.isPlaying
+                        ? "Приостановить"
+                        : "Продолжить воспроизведение"
+                )
+            )
+        }
+    }
+
+    private var nextControl: some View {
+        Button {
+            Haptics.trackChange()
+            player.next()
+        } label: {
+            Image(systemName: "forward.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .frame(
+                    width: MiniPlayerLayoutMetrics.tapTarget,
+                    height: MiniPlayerLayoutMetrics.tapTarget
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PremiumPressStyle())
+        .accessibilityLabel(L10n.text("Следующий трек"))
+    }
+
+    // MARK: - Progress
+
+    private var progressBar: some View {
+        GeometryReader { proxy in
+            Capsule()
+                .fill(.primary.opacity(0.12))
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(.tint)
+                        .frame(width: proxy.size.width * progress)
+                        .animation(
+                            reduceMotion
+                                ? nil
+                                : .linear(duration: 0.2),
+                            value: progress
+                        )
                 }
+        }
+        .frame(height: MiniPlayerLayoutMetrics.progressHeight)
+        .padding(.horizontal, MiniPlayerLayoutMetrics.horizontalPadding)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    // MARK: - Gestures / chrome
+
+    private var miniPlayerGesture: some Gesture {
+        DragGesture(
+            minimumDistance: MiniPlayerGesturePolicy.minimumDistance
+        )
+        .updating($dragOffset) { value, state, _ in
+            state = value.translation
+        }
+        .onEnded { value in
+            guard let action = MiniPlayerGesturePolicy.action(
+                translation: value.translation,
+                predictedEndTranslation: value.predictedEndTranslation
+            ) else {
+                return
             }
+            switch action {
+            case .openPlayer:
+                Haptics.open()
+                player.presentPlayer()
+            case .next:
+                Haptics.trackChange()
+                player.next()
+            case .previous:
+                Haptics.trackChange()
+                player.previous()
+            }
+        }
+    }
+
+    private var liveDragOffset: CGSize {
+        MiniPlayerGesturePolicy.dragOffset(
+            translation: dragOffset,
+            reduceMotion: reduceMotion
+        )
+    }
+
+    private var appearanceTransition: AnyTransition {
+        if reduceMotion {
+            return .opacity
+        }
+        return .asymmetric(
+            insertion: .opacity.combined(with: .move(edge: .bottom)),
+            removal: .opacity.combined(with: .move(edge: .bottom))
+        )
     }
 
     private var containerShape: RoundedRectangle {
         RoundedRectangle(
-            cornerRadius: PremiumLayout.compactRadius,
+            cornerRadius: MiniPlayerLayoutMetrics.cornerRadius,
             style: .continuous
         )
     }
 
     private var progress: CGFloat {
-        guard player.duration > 0 else { return 0 }
-        return CGFloat(
-            min(max(player.elapsedTime / player.duration, 0), 1)
+        CGFloat(
+            MiniPlayerProgressPolicy.progress(
+                elapsedTime: player.elapsedTime,
+                duration: player.duration
+            )
         )
+    }
+
+    private var playbackAccessibilityValue: String {
+        if player.isBuffering {
+            return "Буферизация"
+        }
+        if player.isPlaying {
+            return "Воспроизводится"
+        }
+        return "На паузе"
     }
 }
 
