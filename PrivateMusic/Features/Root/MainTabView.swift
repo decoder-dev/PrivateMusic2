@@ -61,7 +61,7 @@ struct MainTabView: View {
 
     var body: some View {
         Group {
-            if #available(iOS 26.0, *) {
+            if #available(iOS 26.1, *) {
                 SystemLiquidGlassTabView(
                     selection: $selectedTab,
                     playerNamespace: playerNamespace
@@ -79,7 +79,7 @@ struct MainTabView: View {
         }
     }
 
-    /// Custom floating dock for iOS 16–25. iOS 26+ uses the system
+    /// Custom floating dock for iOS 16–26.0. iOS 26.1+ uses the system
     /// `TabView` + `tabViewBottomAccessory` path above.
     private var legacyTabStack: some View {
         ZStack {
@@ -200,9 +200,9 @@ struct MainTabView: View {
     }
 }
 
-// MARK: - System Liquid Glass tabs (iOS 26+)
+// MARK: - System Liquid Glass tabs (iOS 26.1+)
 
-@available(iOS 26.0, *)
+@available(iOS 26.1, *)
 private struct SystemLiquidGlassTabView: View {
     @EnvironmentObject private var player: AudioPlayer
     @Binding var selection: MainTab
@@ -255,7 +255,7 @@ private struct SystemLiquidGlassTabView: View {
     }
 }
 
-@available(iOS 26.0, *)
+@available(iOS 26.1, *)
 private struct SystemPlaybackAccessory: View {
     @EnvironmentObject private var player: AudioPlayer
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement
@@ -383,7 +383,7 @@ private struct SystemPlaybackAccessory: View {
     }
 }
 
-// MARK: - Legacy custom dock (iOS 16–25)
+// MARK: - Legacy custom dock (iOS 16–26.0)
 
 private struct PlaybackTabDock: View {
     @EnvironmentObject private var player: AudioPlayer
