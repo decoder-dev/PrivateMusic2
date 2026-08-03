@@ -47,7 +47,17 @@ final class EqualizerDSP: @unchecked Sendable {
     var requiresAudioTap: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return enabled || isSpatialAudioActive
+        return hasActiveEqualizerProcessing || isSpatialAudioActive
+    }
+
+    /// Flat EQ with zero preamp and no loudness/DRC is a no-op — skip the
+    /// realtime tap so CarKit / AirPlay external handoff stays available and
+    /// the device does not burn CPU on identity biquads.
+    private var hasActiveEqualizerProcessing: Bool {
+        guard enabled else { return false }
+        if loudnessNormEnabled || drcEnabled { return true }
+        if abs(preampDB) > 0.000_1 { return true }
+        return gains.contains { abs($0) > 0.000_1 }
     }
 
     func update(
@@ -154,6 +164,10 @@ final class EqualizerDSP: @unchecked Sendable {
         }
 
         let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
+        if isNearlySilent(buffers: buffers, frameCount: frameCount),
+           !hasSignificantFilterState {
+            return
+        }
         if enabled, !coefficients.isEmpty {
             processEqualizer(
                 buffers: buffers,
@@ -166,6 +180,32 @@ final class EqualizerDSP: @unchecked Sendable {
                 frameCount: frameCount
             )
         }
+    }
+
+    private var hasSignificantFilterState: Bool {
+        for value in states where abs(value) > 0.000_5 {
+            return true
+        }
+        return abs(envelope) > 0.000_5
+    }
+
+    private func isNearlySilent(
+        buffers: UnsafeMutableAudioBufferListPointer,
+        frameCount: Int
+    ) -> Bool {
+        var peak: Float = 0
+        for buffer in buffers {
+            guard let rawData = buffer.mData else { continue }
+            let samples = rawData.assumingMemoryBound(to: Float.self)
+            let count = frameCount * max(Int(buffer.mNumberChannels), 1)
+            var localPeak: Float = 0
+            vDSP_maxmgv(samples, 1, &localPeak, vDSP_Length(count))
+            peak = max(peak, localPeak)
+            if peak > 0.000_5 {
+                return false
+            }
+        }
+        return true
     }
 
     private func processEqualizer(

@@ -133,26 +133,98 @@ if "player.allowsExternalPlayback = true" in audio_player_source:
     fail("external AVPlayer handoff must not bypass active audio processing")
 if ".preroll(" in audio_player_source:
     fail("track preloading must not use exception-prone AVPlayer preroll")
-for forbidden_system_tab_symbol in (
+for forbidden_legacy_all_tabs_symbol in (
+    "ForEach(MainTab.allCases",
+):
+    if forbidden_legacy_all_tabs_symbol in main_tab_source:
+        fail("tab dock must keep search as a separate circular control")
+for required_system_tab_symbol in (
     "SystemLiquidGlassTabView",
     "tabViewBottomAccessory",
     "role: .search",
+    "SystemPlaybackAccessory",
 ):
-    if forbidden_system_tab_symbol in main_tab_source:
+    if required_system_tab_symbol not in main_tab_source:
         fail(
-            "main navigation must reserve space with the stable custom dock: "
-            f"{forbidden_system_tab_symbol}"
+            "iOS 26+ must use system Liquid Glass TabView like Apple Music: "
+            f"{required_system_tab_symbol}"
         )
 for required_dock_glass_symbol in (
-    "AdaptiveGlassContainer(spacing: 4)",
+    "AdaptiveGlassContainer(spacing: 10)",
     "tint: settings.theme.accent.opacity(0.06)",
+    "searchTabButton",
+    "Capsule(style: .continuous)",
     ".safeAreaInset(edge: .bottom, spacing: 0)",
+    "legacyTabStack",
 ):
     if required_dock_glass_symbol not in main_tab_source:
         fail(
-            "custom navigation must retain native Liquid Glass and safe inset: "
+            "pre-iOS 26 fallback dock must retain Liquid Glass + safe inset: "
             f"{required_dock_glass_symbol}"
         )
+if "LikedTrackBadge(track: track)" in mini_player_source:
+    fail("mini-player must not overlay a liked-track badge on artwork")
+if ".buttonStyle(.glassProminent)" in mini_player_source:
+    fail("mini-player must use plain transport controls like Apple Music")
+if "backward.fill" in mini_player_source:
+    fail("mini-player must hide previous in the primary chrome (swipe / a11y only)")
+for required_mini_player_symbol in (
+    "MiniPlayerProgressPolicy",
+    "MiniPlayerGesturePolicy",
+    "MiniPlayerLayoutMetrics",
+    "MiniPlayerArtworkView",
+    "openPlayerArea",
+    "predictedEndTranslation",
+    "isBuffering",
+):
+    if required_mini_player_symbol not in mini_player_source:
+        fail(
+            f"mini-player is missing Apple Music symbol: "
+            f"{required_mini_player_symbol}"
+        )
+if "enum MiniPlayerProgressPolicy" not in all_source:
+    fail("MiniPlayerProgressPolicy must exist for unit-tested progress math")
+if "enum MiniPlayerGesturePolicy" not in all_source:
+    fail("MiniPlayerGesturePolicy must exist for unit-tested swipe recognition")
+if "buttonStyle(.borderless)" not in (
+    SOURCE / "Features" / "Album" / "AlbumDetailView.swift"
+).read_text(encoding="utf-8"):
+    fail("album follow control must remain tappable inside List rows")
+for required_library_resilience_symbol in (
+    "Не удалось загрузить треки",
+    "libraryStore.beginRefresh()",
+    "libraryAudioItems",
+):
+    if required_library_resilience_symbol not in all_source:
+        fail(
+            "library tracks resilience is missing: "
+            f"{required_library_resilience_symbol}"
+        )
+if "enum AudioInterruptionPolicy" not in audio_player_source:
+    fail("audio interruption policy must remain unit-testable")
+if "MediaServicesResetPolicy.shouldAutoplayAfterReset" not in audio_player_source:
+    fail("media services reset must keep CarKit/BT autoplay intent")
+if "shouldTreatEndAsRouteDisconnect" not in audio_player_source:
+    fail("interruption end must detect headphone-disconnect races")
+if "player.volume = 1" not in audio_player_source:
+    fail("playback level must follow system volume (AVPlayer at unity gain)")
+if "PlaybackProgressModel" not in all_source:
+    fail("playback progress must be isolated from AudioPlayer EnvironmentObject fan-out")
+if "RemoteCommandCoalescing" not in all_source:
+    fail("remote headphone commands must be coalesced")
+if "SystemVolumeSlider" not in all_source:
+    fail("player actions must expose a system volume slider")
+if "MPVolumeView" not in all_source:
+    fail("system volume control must use MPVolumeView")
+if "hasActiveEqualizerProcessing" not in equalizer_source:
+    fail("flat equalizer must skip the realtime audio tap")
+watch_protocol = (
+    SOURCE / "Shared" / "WatchRemoteProtocol.swift"
+).read_text(encoding="utf-8")
+if "lhs.snapshotDate" in watch_protocol or "rhs.snapshotDate" in watch_protocol:
+    fail("WatchRemoteState equality must ignore snapshotDate")
+if "static func ==" not in watch_protocol:
+    fail("WatchRemoteState must customize Equatable to ignore snapshotDate")
 if "kAudioFormatFlagIsNonInterleaved" not in equalizer_source:
     fail("audio processing must use the declared PCM interleaving format")
 if "let nonInterleaved = buffers.count > 1" in equalizer_source:
@@ -181,20 +253,62 @@ if re.search(
     fail("player presentation must not be dismissed from content onDisappear")
 if ".simultaneousGesture(miniPlayerGesture)" not in mini_player_source:
     fail("mini-player swipe gesture must not intercept its open button")
+if "SystemPlaybackAccessory" in main_tab_source and (
+    "MiniPlayerView(playerNamespace: playerNamespace)"
+    not in main_tab_source
+):
+    fail("system accessory must reuse MiniPlayerView when expanded")
+if "SystemPlaybackAccessory" in main_tab_source:
+    for required_accessory_symbol in (
+        "tabViewBottomAccessoryPlacement",
+        "InlineMiniPlayerView(playerNamespace: playerNamespace)",
+        "MiniPlayerAccessoryMode",
+        "@unknown default",
+    ):
+        if required_accessory_symbol not in main_tab_source:
+            fail(
+                "system accessory is missing inline/expanded support: "
+                f"{required_accessory_symbol}"
+            )
+inline_mini_player_source = (
+    SOURCE / "Features" / "Player" / "InlineMiniPlayerView.swift"
+).read_text(encoding="utf-8")
+for required_inline_symbol in (
+    "MiniPlayerArtworkView",
+    "showsBufferingIndicator",
+    "tapTarget",
+    "Открыть полноэкранный плеер",
+):
+    if required_inline_symbol not in inline_mini_player_source:
+        fail(
+            f"inline mini-player is missing symbol: {required_inline_symbol}"
+        )
+if "struct MiniPlayerArtworkView" not in all_source:
+    fail("MiniPlayerArtworkView must provide real artwork crossfade")
+if "axisDominanceRatio" not in all_source:
+    fail("mini-player gestures must require axis dominance")
+if "enum MiniPlayerAccessoryPolicy" not in all_source:
+    fail("MiniPlayerAccessoryPolicy must exist for unit-tested accessory layout")
+if "reduceMotionCrossfadeDuration" not in all_source:
+    fail("artwork crossfade must honor Reduce Motion duration")
 if "loadedIdentity == loadIdentity ? image : nil" not in cached_image_source:
     fail("cached artwork must never display a stale request identity")
 if "Text(track.duration.formattedDuration)" not in library_view_source:
     fail("library track rows must display track duration")
+if ".buttonStyle(.glassProminent)" not in player_view_source:
+    fail(f"player is missing full-bleed/glass symbol: .buttonStyle(.glassProminent)")
 for required_player_symbol in (
     ".background(playerBackground.ignoresSafeArea())",
-    ".buttonStyle(.glassProminent)",
+    ".buttonStyle(.glass)",
     "AdaptiveGlassContainer(spacing: 8)",
+    "AdaptiveGlassContainer(spacing: 18)",
     ".simultaneousGesture(fullScreenDismissGesture)",
     "PlayerDismissGesturePolicy.shouldDismiss",
     "PlayerArtworkCarouselPolicy.neighborIndices",
 ):
     if required_player_symbol not in player_view_source:
         fail(f"player is missing full-bleed/glass symbol: {required_player_symbol}")
+# Mini-player uses plain controls; full-screen player keeps glassProminent.
 for required_preload_symbol in (
     "PlaybackPreloadPolicy.nextIndex",
     "asset.load(.isPlayable)",

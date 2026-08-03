@@ -127,26 +127,50 @@ jobs:
           test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.12-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.21-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.12"
+          test "$GITHUB_REF_NAME" = "v3.28.21"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.28.12
+          Private Music 3.28.21
 
-          - Навигация: панель Liquid Glass вместе с мини-плеером теперь
-            реально резервируют место над контентом на всех вкладках и на
-            всех версиях iOS 16-27. Раньше safeAreaInset применялся снаружи
-            NavigationStack и не доходил до прокручиваемого содержимого —
-            последние строки списков уезжали под док и мини-плеер. Теперь
-            высота дока измеряется и резервируется внутри каждой вкладки.
-          - CI: отдельная сборка приложения для Apple Watch убрана из
-            пайплайна — собирается только iPhone-версия.
+          Производительность
+          - Прогресс воспроизведения вынесен из EnvironmentObject AudioPlayer —
+            списки больше не перерисовываются 2 раза в секунду
+          - Убраны дёргания прогресса мини-плеера и thrash safe-area дока
+          - Coalesce remote commands; тихий early-out в EQ DSP
+          - Меньше artwork prefetch / Watch / persist нагрузки
+
+          Громкость / DSP
+          - Слайдер громкости связан с системным звуком (MPVolumeView)
+          - Эквалайзер и пространственный звук работают на наушниках,
+            колонках и CarKit / Bluetooth автомобиля (локальный decode + tap)
+
+          Мини-плеер
+          - Apple Music–style glass panel: обложка, title/artist, play/pause,
+            next, тонкий прогресс; previous через свайп / VoiceOver
+          - iOS 26.1+: expanded vs inline tab accessory (компактный inline
+            без обрезания при minimize)
+          - Настоящий crossfade обложек без мигания placeholder
+          - Жесты с axisDominanceRatio — почти диагональ игнорируется
+
+          Аудио / CarKit / нагрев
+          - После media-services reset (часто при подключении к машине)
+            воспроизведение восстанавливается, если оно было активно
+          - Гонки interruption/route: нет утечки в динамик телефона,
+            pending resume не теряется
+          - Flat EQ не ставит realtime tap; меньше CPU и лучше external route
+          - Меньше нагрева: без лишних @Published / Watch WCSession spam
+
+          Также
+          - System TabView + search role на iOS 26.1+
+          - Исправление пустой вкладки «Треки» в библиотеке
+          - Legacy dock для iOS 16–26.0
 
           IPA не подписан. Перед установкой подпишите его собственным
           сертификатом. Подпись требует сначала подписать PlugIns/PrivateMusicWatch.app,
@@ -154,23 +178,25 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.12-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.28.21-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.12" \
-              --notes-file "$NOTES"
+              --title "Private Music 3.28.21" \
+              --notes-file "$NOTES" \
+              --prerelease
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.12-unsigned.ipa" \
-              --title "Private Music 3.28.12" \
-              --notes-file "$NOTES"
+              "$PWD/artifacts/PrivateMusic-3.28.21-unsigned.ipa" \
+              --title "Private Music 3.28.21" \
+              --notes-file "$NOTES" \
+              --prerelease
           fi
 
       - name: Upload unsigned IPA
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.12-unsigned
-          path: artifacts/PrivateMusic-3.28.12-unsigned.ipa
+          name: PrivateMusic-3.28.21-unsigned
+          path: artifacts/PrivateMusic-3.28.21-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

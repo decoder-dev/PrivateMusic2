@@ -5,12 +5,14 @@ struct LyricsView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var progress: PlaybackProgressModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let track: Track
     @State private var lyrics: Lyrics?
     @State private var errorMessage: String?
     @State private var isLoading = true
     @State private var copiedLineID: String?
+    @State private var activeLineIndex = 0
 
     var body: some View {
         NavigationStack {
@@ -60,20 +62,19 @@ struct LyricsView: View {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     ForEach(Array(lyrics.lines.enumerated()), id: \.element.id) {
                         index, line in
+                        let isActive = index == activeLineIndex
                         Button {
                             player.seek(to: line.time)
                         } label: {
                             HStack(alignment: .top, spacing: 10) {
                                 Text(line.text)
                                     .font(
-                                        index == activeLineIndex(in: lyrics)
+                                        isActive
                                             ? .title2.weight(.bold)
                                             : .title3.weight(.semibold)
                                     )
                                     .foregroundStyle(
-                                        index == activeLineIndex(in: lyrics)
-                                            ? .primary
-                                            : .secondary
+                                        isActive ? .primary : .secondary
                                     )
                                     .multilineTextAlignment(.leading)
                                 Spacer(minLength: 0)
@@ -105,7 +106,15 @@ struct LyricsView: View {
                 .padding(.horizontal, 22)
                 .padding(.vertical, 40)
             }
-            .onChange(of: activeLineIndex(in: lyrics)) { index in
+            .onAppear {
+                activeLineIndex = resolvedActiveLineIndex(in: lyrics)
+            }
+            .onChange(of: progress.elapsedTime) { _ in
+                let next = resolvedActiveLineIndex(in: lyrics)
+                guard next != activeLineIndex else { return }
+                activeLineIndex = next
+            }
+            .onChange(of: activeLineIndex) { index in
                 guard lyrics.lines.indices.contains(index) else { return }
                 if reduceMotion {
                     proxy.scrollTo(
@@ -163,9 +172,9 @@ struct LyricsView: View {
         .buttonStyle(PremiumPressStyle())
     }
 
-    private func activeLineIndex(in lyrics: Lyrics) -> Int {
+    private func resolvedActiveLineIndex(in lyrics: Lyrics) -> Int {
         let elapsed = player.currentTrack?.id == track.id
-            ? player.elapsedTime
+            ? progress.elapsedTime
             : 0
         return lyrics.lines.lastIndex { $0.time <= elapsed } ?? 0
     }

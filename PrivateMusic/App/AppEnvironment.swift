@@ -112,14 +112,14 @@ final class AppEnvironment: ObservableObject {
                     && self.networkMonitor.state == .online
             },
             artworkPrefetch: { tracks in
+                // One size covers mini player / rows; full-screen artwork loads
+                // on demand through the shared cache when PlayerView appears.
                 for track in tracks {
-                    for size in [CGFloat(1_024), 768, 256] {
-                        guard !Task.isCancelled else { return }
-                        await ArtworkImageCache.shared.prefetch(
-                            url: track.artworkURL,
-                            maxPixelSize: size
-                        )
-                    }
+                    guard !Task.isCancelled else { return }
+                    await ArtworkImageCache.shared.prefetch(
+                        url: track.artworkURL,
+                        maxPixelSize: 512
+                    )
                 }
             }
         )
@@ -142,10 +142,16 @@ final class AppEnvironment: ObservableObject {
                 self?.pendingAutomaticCacheTrack = nil
             }
             .store(in: &cancellables)
-        networkMonitor.$revision
-            .sink { [weak player] _ in
-                player?.cancelPreloading()
-                player?.resumePreloading()
+        networkMonitor.$state
+            .removeDuplicates()
+            .sink { [weak player] state in
+                // Only restart preloads when reachability crosses online —
+                // transport flips (wifi↔cellular) used to cancel in-flight work.
+                if state == .online {
+                    player?.resumePreloading()
+                } else {
+                    player?.cancelPreloading()
+                }
             }
             .store(in: &cancellables)
 

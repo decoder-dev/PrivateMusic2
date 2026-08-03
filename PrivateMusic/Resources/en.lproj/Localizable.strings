@@ -149,7 +149,7 @@
 "Пространственный звук" = "Spatial Audio";
 "Расширенная стереосцена" = "Expanded Stereo Soundstage";
 "Интенсивность" = "Intensity";
-"Расширяет стереосцену обычных треков. Эффект лучше всего слышен в наушниках." = "Widens the soundstage of standard stereo tracks. The effect works best with headphones.";
+"Расширяет стереосцену обычных треков. Работает в наушниках, на колонках и через CarKit / Bluetooth автомобиля." = "Widens the soundstage of standard stereo tracks. Works with headphones, speakers, and CarKit / car Bluetooth.";
 "Профиль эквалайзера" = "Equalizer Preset";
 "Предусилитель" = "Preamp";
 "дБ" = "dB";
@@ -248,6 +248,7 @@
 "Очистить всю историю?" = "Clear All History?";
 "Медиатека пуста" = "Your Library Is Empty";
 "Добавленные во VK треки появятся здесь." = "Tracks added to your VK library will appear here.";
+"Не удалось загрузить треки" = "Could Not Load Tracks";
 "Плейлисты" = "Playlists";
 "Нет своих плейлистов" = "No Available Playlists";
 "Создайте плейлист в медиатеке." = "Create a playlist in your library.";
@@ -494,5 +495,9 @@
 "Неизвестный исполнитель" = "Unknown Artist";
 "Трек, исполнитель или альбом" = "Track, artist, or album";
 "На паузе" = "Paused";
+"Воспроизводится" = "Playing";
+"Буферизация" = "Buffering";
 "VK не вернул данные альбома для этого трека." = "VK did not return album data for this track.";
 "Не удалось открыть альбом: %@" = "Could not open album: %@";
+"Громкость" = "Volume";
+"Обработка выполняется на устройстве и применяется к наушникам, колонкам и CarKit / Bluetooth автомобиля." = "Processing runs on device and applies to headphones, speakers, and CarKit / car Bluetooth.";

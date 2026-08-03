@@ -91,18 +91,24 @@ struct VKMusicService: MusicService {
         if let userID {
             parameters["owner_id"] = String(userID)
         }
-        let envelope: VKResponse<VKItems<Track>> = try await client.post(
+        // Lossy item decode: one ad/placeholder object must not fail the
+        // whole personal library page (strict VKItems<Track> did).
+        let envelope: VKResponse<JSONValue> = try await client.post(
             path: "/method/audio.get",
             form: common(accessToken).merging(parameters) { _, new in new },
-            responseType: VKResponse<VKItems<Track>>.self
+            responseType: VKResponse<JSONValue>.self
         )
-        let resolved = VKItems(
-            count: envelope.response.count,
-            items: envelope.response.items.map {
-                $0.resolvingStreamURL(userID: userID)
-            }
+        let items = envelope.response.libraryAudioItems.map {
+            $0.resolvingStreamURL(userID: userID)
+        }
+        let total = envelope.response.libraryTotalCount ?? (offset + items.count)
+        let consumed = offset + items.count
+        let hasNext = !items.isEmpty && consumed < total
+        return MusicPage(
+            items: items,
+            totalCount: total,
+            nextOffset: hasNext ? consumed : nil
         )
-        return page(resolved, offset: offset, requested: count)
     }
 
     func recommendations(accessToken: String) async throws -> [Track] {

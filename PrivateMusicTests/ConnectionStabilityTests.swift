@@ -575,6 +575,60 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    func testInterruptionEndDetectsRouteDisconnectRace() {
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldTreatEndAsRouteDisconnect(
+                previousOutputPortTypes: [.headphones],
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldTreatEndAsRouteDisconnect(
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldTreatEndAsRouteDisconnect(
+                previousOutputPortTypes: [.carAudio],
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+        XCTAssertFalse(
+            AudioInterruptionPolicy.shouldTreatEndAsRouteDisconnect(
+                previousOutputPortTypes: [.builtInSpeaker],
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+        XCTAssertFalse(
+            AudioInterruptionPolicy.shouldTreatEndAsRouteDisconnect(
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.carAudio]
+            )
+        )
+    }
+
+    func testMediaServicesResetAutoplayKeepsListeningIntent() {
+        XCTAssertTrue(
+            MediaServicesResetPolicy.shouldAutoplayAfterReset(
+                playbackIntended: true,
+                wasActivelyPlaying: true
+            )
+        )
+        XCTAssertFalse(
+            MediaServicesResetPolicy.shouldAutoplayAfterReset(
+                playbackIntended: true,
+                wasActivelyPlaying: false
+            )
+        )
+        XCTAssertFalse(
+            MediaServicesResetPolicy.shouldAutoplayAfterReset(
+                playbackIntended: false,
+                wasActivelyPlaying: true
+            )
+        )
+    }
+
     func testBluetoothRoutePolicyRecognizesPlaybackPorts() {
         XCTAssertTrue(AudioRoutePolicy.isBluetooth(.bluetoothA2DP))
         XCTAssertTrue(AudioRoutePolicy.isBluetooth(.bluetoothHFP))

@@ -17,6 +17,20 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
     let duration: TimeInterval
     let snapshotDate: Date
 
+    /// `snapshotDate` is only used for Watch-side elapsed interpolation; it
+    /// must not defeat push deduplication or every half-second player tick
+    /// would spam `WCSession.updateApplicationContext`.
+    static func == (lhs: WatchRemoteState, rhs: WatchRemoteState) -> Bool {
+        lhs.trackID == rhs.trackID
+            && lhs.title == rhs.title
+            && lhs.artist == rhs.artist
+            && lhs.artworkURL == rhs.artworkURL
+            && lhs.isPlaying == rhs.isPlaying
+            && lhs.isBuffering == rhs.isBuffering
+            && lhs.elapsed == rhs.elapsed
+            && lhs.duration == rhs.duration
+    }
+
     static let empty = WatchRemoteState(
         trackID: nil,
         title: "",

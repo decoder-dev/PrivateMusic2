@@ -6,6 +6,7 @@ struct PlayerView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var progress: PlaybackProgressModel
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var libraryStore: MusicLibraryStore
     @EnvironmentObject private var offlineStore: OfflineTrackStore
@@ -253,20 +254,13 @@ struct PlayerView: View {
                 .accessibilitySortPriority(1)
 
                 HStack {
-                    Button {
-                        closePlayer()
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 15, weight: .bold))
-                            .frame(width: 44, height: 44)
-                            .adaptiveGlass(
-                                in: Circle(),
-                                interactive: true
-                            )
-                    }
-                    .buttonStyle(PlayerControlStyle())
-                    .accessibilityLabel(L10n.text("Закрыть плеер"))
-                    .accessibilitySortPriority(4)
+                    playerGlassIconButton(
+                        systemImage: "chevron.down",
+                        font: .system(size: 15, weight: .bold),
+                        accessibilityLabel: "Закрыть плеер",
+                        accessibilitySortPriority: 4,
+                        action: closePlayer
+                    )
 
                     Spacer()
 
@@ -447,40 +441,22 @@ struct PlayerView: View {
 
             Spacer(minLength: 10)
 
-            Button {
+            playerGlassIconButton(
+                systemImage: isInLibrary ? "heart.fill" : "heart",
+                font: .system(size: 19, weight: .semibold),
+                tint: isInLibrary
+                    ? playerForeground
+                    : playerForeground.opacity(0.72),
+                accessibilityLabel: isInLibrary
+                    ? "Удалить из медиатеки"
+                    : "Добавить в медиатеку",
+                accessibilityValue: isInLibrary
+                    ? "Трек добавлен в медиатеку"
+                    : "Трек не добавлен в медиатеку",
+                disabled: isUpdatingLibrary
+            ) {
                 toggleLibrary(track)
-            } label: {
-                Image(
-                    systemName: isInLibrary ? "heart.fill" : "heart"
-                )
-                .font(.system(size: 19, weight: .semibold))
-                .foregroundStyle(
-                    isInLibrary
-                        ? playerForeground
-                        : playerForeground.opacity(0.72)
-                )
-                .frame(width: 44, height: 44)
-                .adaptiveGlass(
-                    in: Circle(),
-                    interactive: true
-                )
             }
-            .buttonStyle(PlayerControlStyle())
-            .disabled(isUpdatingLibrary)
-            .accessibilityLabel(
-                L10n.text(
-                    isInLibrary
-                        ? "Удалить из медиатеки"
-                        : "Добавить в медиатеку"
-                )
-            )
-            .accessibilityValue(
-                L10n.text(
-                    isInLibrary
-                        ? "Трек добавлен в медиатеку"
-                        : "Трек не добавлен в медиатеку"
-                )
-            )
         }
     }
 
@@ -494,7 +470,7 @@ struct PlayerView: View {
                 range: 0...max(player.duration, 1),
                 tintColor: UIColor(playerForeground),
                 onEditingBegan: {
-                    scrubPosition = player.elapsedTime
+                    scrubPosition = progress.elapsedTime
                 },
                 onCommit: commitScrubbing
             )
@@ -518,69 +494,59 @@ struct PlayerView: View {
     }
 
     private func actionMenuButton(_ track: Track) -> some View {
-        Button {
+        playerGlassIconButton(
+            systemImage: "ellipsis",
+            font: .headline,
+            accessibilityLabel: "Действия с треком"
+        ) {
             present(.actions(track))
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.headline)
-                .foregroundStyle(playerForeground)
-                .frame(width: 44, height: 44)
-                .adaptiveGlass(
-                    in: Circle(),
-                    interactive: true
-                )
         }
-        .buttonStyle(PlayerControlStyle())
-        .accessibilityLabel(L10n.text("Действия с треком"))
     }
 
     private var primaryControls: some View {
-        HStack(spacing: 0) {
-            secondaryButton(
-                "shuffle",
-                active: player.shuffleEnabled,
-                label: "Перемешать",
-                accessibilityValue: player.shuffleEnabled
-                    ? "Перемешивание включено"
-                    : "Перемешивание выключено"
-            ) {
-                Haptics.selection()
-                player.toggleShuffle()
-            }
-            Spacer()
-            Button {
-                Haptics.trackChange()
-                player.previous()
-            } label: {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 25, weight: .semibold))
-                    .frame(width: 48, height: 52)
-            }
-            .accessibilityLabel(L10n.text("Предыдущий трек"))
-            Spacer()
-            playPauseButton
-            Spacer()
-            Button {
-                Haptics.trackChange()
-                player.next()
-            } label: {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 25, weight: .semibold))
-                    .frame(width: 48, height: 52)
-            }
-            .accessibilityLabel(L10n.text("Следующий трек"))
-            Spacer()
-            secondaryButton(
-                player.repeatMode.systemImage,
-                active: player.repeatMode != .off,
-                label: "Повтор",
-                accessibilityValue: repeatAccessibilityValue
-            ) {
-                Haptics.selection()
-                player.cycleRepeatMode()
+        AdaptiveGlassContainer(spacing: 18) {
+            HStack(spacing: 0) {
+                secondaryButton(
+                    "shuffle",
+                    active: player.shuffleEnabled,
+                    label: "Перемешать",
+                    accessibilityValue: player.shuffleEnabled
+                        ? "Перемешивание включено"
+                        : "Перемешивание выключено"
+                ) {
+                    Haptics.selection()
+                    player.toggleShuffle()
+                }
+                Spacer()
+                transportSkipButton(
+                    systemImage: "backward.fill",
+                    accessibilityLabel: "Предыдущий трек"
+                ) {
+                    Haptics.trackChange()
+                    player.previous()
+                }
+                Spacer()
+                playPauseButton
+                Spacer()
+                transportSkipButton(
+                    systemImage: "forward.fill",
+                    accessibilityLabel: "Следующий трек"
+                ) {
+                    Haptics.trackChange()
+                    player.next()
+                }
+                Spacer()
+                secondaryButton(
+                    player.repeatMode.systemImage,
+                    active: player.repeatMode != .off,
+                    label: "Повтор",
+                    accessibilityValue: repeatAccessibilityValue
+                ) {
+                    Haptics.selection()
+                    player.cycleRepeatMode()
+                }
             }
         }
-        .buttonStyle(PlayerControlStyle())
     }
 
     @ViewBuilder
@@ -594,8 +560,10 @@ struct PlayerView: View {
             }
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.circle)
+            .clipShape(Circle())
             .tint(playerForeground)
             .foregroundStyle(playerBackground)
+            .controlSize(.large)
             .accessibilityLabel(playPauseAccessibilityLabel)
         } else {
             Button {
@@ -615,7 +583,8 @@ struct PlayerView: View {
     private var playPauseLabel: some View {
         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
             .font(.system(size: 29, weight: .bold))
-            .frame(width: 60, height: 60)
+            .frame(width: 64, height: 64)
+            .contentShape(Circle())
     }
 
     private var playPauseAccessibilityLabel: String {
@@ -658,10 +627,7 @@ struct PlayerView: View {
     ) -> some View {
         Button(action: action) {
             VStack(spacing: 5) {
-                Image(systemName: image)
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 44, height: 44)
-                    .adaptiveGlass(in: Circle(), interactive: true)
+                quickActionGlyph(image)
                 Text(L10n.text(title))
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
@@ -672,8 +638,100 @@ struct PlayerView: View {
             .frame(minHeight: 61)
         }
         .buttonStyle(PlayerControlStyle())
+        .accessibilityLabel(L10n.text(title))
     }
 
+    @ViewBuilder
+    private func quickActionGlyph(_ image: String) -> some View {
+        if #available(iOS 26.0, *) {
+            Image(systemName: image)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 44, height: 44)
+                .glassEffect(.regular.interactive(), in: Circle())
+        } else {
+            Image(systemName: image)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 44, height: 44)
+                .adaptiveGlass(in: Circle(), interactive: true)
+        }
+    }
+
+    @ViewBuilder
+    private func transportSkipButton(
+        systemImage: String,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        if #available(iOS 26.0, *) {
+            Button(action: action) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 22, weight: .semibold))
+                    .frame(width: 52, height: 52)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .tint(playerForeground)
+            .accessibilityLabel(L10n.text(accessibilityLabel))
+        } else {
+            Button(action: action) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 25, weight: .semibold))
+                    .frame(width: 48, height: 52)
+            }
+            .buttonStyle(PlayerControlStyle())
+            .accessibilityLabel(L10n.text(accessibilityLabel))
+        }
+    }
+
+    @ViewBuilder
+    private func playerGlassIconButton(
+        systemImage: String,
+        font: Font = .headline,
+        tint: Color? = nil,
+        accessibilityLabel: String,
+        accessibilityValue: String? = nil,
+        accessibilitySortPriority: Double? = nil,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        let resolvedTint = tint ?? playerForeground
+        let button = Group {
+            if #available(iOS 26.0, *) {
+                Button(action: action) {
+                    Image(systemName: systemImage)
+                        .font(font)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .tint(resolvedTint)
+                .disabled(disabled)
+            } else {
+                Button(action: action) {
+                    Image(systemName: systemImage)
+                        .font(font)
+                        .foregroundStyle(resolvedTint)
+                        .frame(width: 44, height: 44)
+                        .adaptiveGlass(in: Circle(), interactive: true)
+                }
+                .buttonStyle(PlayerControlStyle())
+                .disabled(disabled)
+            }
+        }
+        .accessibilityLabel(L10n.text(accessibilityLabel))
+
+        if let accessibilityValue {
+            button
+                .accessibilityValue(L10n.text(accessibilityValue))
+                .accessibilitySortPriority(accessibilitySortPriority ?? 0)
+        } else if let accessibilitySortPriority {
+            button.accessibilitySortPriority(accessibilitySortPriority)
+        } else {
+            button
+        }
+    }
+
+    @ViewBuilder
     private func secondaryButton(
         _ image: String,
         active: Bool,
@@ -681,19 +739,37 @@ struct PlayerView: View {
         accessibilityValue: String,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            Image(systemName: image)
-                .font(.system(size: 19, weight: .semibold))
-                .foregroundStyle(
-                    active
-                        ? playerForeground
-                        : playerForeground.opacity(0.58)
-                )
-                .frame(width: 44, height: 44)
+        if #available(iOS 26.0, *) {
+            Button(action: action) {
+                Image(systemName: image)
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .tint(
+                active
+                    ? playerForeground
+                    : playerForeground.opacity(0.55)
+            )
+            .opacity(active ? 1 : 0.85)
+            .accessibilityLabel(L10n.text(label))
+            .accessibilityValue(L10n.text(accessibilityValue))
+        } else {
+            Button(action: action) {
+                Image(systemName: image)
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(
+                        active
+                            ? playerForeground
+                            : playerForeground.opacity(0.58)
+                    )
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.text(label))
+            .accessibilityValue(L10n.text(accessibilityValue))
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(L10n.text(label))
-        .accessibilityValue(L10n.text(accessibilityValue))
     }
 
     private var repeatAccessibilityValue: String {
@@ -739,7 +815,7 @@ struct PlayerView: View {
     }
 
     private var displayedElapsedTime: TimeInterval {
-        scrubPosition ?? player.elapsedTime
+        scrubPosition ?? progress.elapsedTime
     }
 
     private func commitScrubbing(_ position: TimeInterval) {
@@ -773,7 +849,6 @@ struct PlayerView: View {
                 ),
                 equalizerEnabled: $settings.equalizerEnabled,
                 spatialAudioEnabled: $settings.spatialAudioEnabled,
-                appVolume: $settings.appVolume,
                 onDismiss: {
                     presentedSheet = nil
                 },
@@ -1341,8 +1416,8 @@ private struct PlayerActionsSheet: View {
     let availability: PlayerActionAvailability
     @Binding var equalizerEnabled: Bool
     @Binding var spatialAudioEnabled: Bool
-    @Binding var appVolume: Double
     @EnvironmentObject private var player: AudioPlayer
+    @StateObject private var systemVolume = SystemVolumeObserver()
     @State private var showsSleepTimerOptions = false
     let onDismiss: () -> Void
     let onLibrary: () -> Void
@@ -1460,7 +1535,7 @@ private struct PlayerActionsSheet: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Image(
-                    systemName: appVolume == 0
+                    systemName: systemVolume.volume <= 0.001
                         ? "speaker.slash.fill"
                         : "speaker.wave.2.fill"
                 )
@@ -1468,15 +1543,22 @@ private struct PlayerActionsSheet: View {
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 30, height: 30)
                 .background(Color.accentColor.opacity(0.12), in: Circle())
+                .accessibilityHidden(true)
 
-                Slider(value: $appVolume, in: 0...1, step: 0.01)
-                    .tint(.accentColor)
-                    .accessibilityLabel(L10n.text("Громкость приложения"))
+                SystemVolumeSlider(
+                    tintColor: UIColor(named: "AccentColor") ?? .systemBlue
+                )
+                .frame(height: 28)
+                .accessibilityLabel(L10n.text("Громкость"))
 
-                Text(appVolume, format: .percent.precision(.fractionLength(0)))
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 38, alignment: .trailing)
+                Text(
+                    Double(systemVolume.volume),
+                    format: .percent.precision(.fractionLength(0))
+                )
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 38, alignment: .trailing)
+                .accessibilityHidden(true)
             }
             .padding(.horizontal, 16)
             .frame(minHeight: PlayerActionSheetMetrics.minimumTapTarget)
@@ -1520,7 +1602,7 @@ private struct PlayerActionsSheet: View {
             Toggle(isOn: $spatialAudioEnabled) {
                 actionRowLabel(
                     "Пространственный звук",
-                    systemImage: "airpodspro"
+                    systemImage: "dot.radiowaves.left.and.right"
                 )
             }
             .tint(.accentColor)
@@ -1775,7 +1857,7 @@ private struct CompactPlayerSlider: UIViewRepresentable {
     func makeUIView(context: Context) -> UISlider {
         let slider = UISlider(frame: .zero)
         slider.isContinuous = true
-        configureColors(slider)
+        configureColors(slider, coordinator: context.coordinator)
         slider.addTarget(
             context.coordinator,
             action: #selector(Coordinator.valueChanged(_:)),
@@ -1796,54 +1878,68 @@ private struct CompactPlayerSlider: UIViewRepresentable {
 
     func updateUIView(_ slider: UISlider, context: Context) {
         context.coordinator.parent = self
-        configureColors(slider)
+        if context.coordinator.cachedTintColor != tintColor {
+            configureColors(slider, coordinator: context.coordinator)
+        }
         slider.minimumValue = Float(range.lowerBound)
         slider.maximumValue = Float(max(range.upperBound, range.lowerBound + 1))
         guard !slider.isTracking else { return }
         let safeValue = value.isFinite ? value : range.lowerBound
-        slider.setValue(
-            Float(min(max(safeValue, range.lowerBound), range.upperBound)),
-            animated: false
-        )
+        let next = Float(min(max(safeValue, range.lowerBound), range.upperBound))
+        if abs(slider.value - next) >= 0.05 {
+            slider.setValue(next, animated: false)
+        }
     }
 
-    private func configureColors(_ slider: UISlider) {
+    private func configureColors(
+        _ slider: UISlider,
+        coordinator: Coordinator
+    ) {
         slider.minimumTrackTintColor = tintColor
         slider.maximumTrackTintColor = tintColor.withAlphaComponent(0.18)
         slider.setThumbImage(
-            makeThumb(diameter: 12),
+            coordinator.thumb(diameter: 12, tint: tintColor),
             for: .normal
         )
         slider.setThumbImage(
-            makeThumb(diameter: 15),
+            coordinator.thumb(diameter: 15, tint: tintColor),
             for: .highlighted
         )
-    }
-
-    private func makeThumb(diameter: CGFloat) -> UIImage {
-        let size = CGSize(width: diameter, height: diameter)
-        return UIGraphicsImageRenderer(size: size).image { context in
-            context.cgContext.setShadow(
-                offset: CGSize(width: 0, height: 1),
-                blur: 3,
-                color: UIColor.black.withAlphaComponent(0.28).cgColor
-            )
-            tintColor.setFill()
-            UIBezierPath(
-                ovalIn: CGRect(origin: .zero, size: size).insetBy(
-                    dx: 0.5,
-                    dy: 0.5
-                )
-            )
-            .fill()
-        }
+        coordinator.cachedTintColor = tintColor
     }
 
     final class Coordinator: NSObject {
         var parent: CompactPlayerSlider
+        var cachedTintColor: UIColor?
+        private var thumbCache: [String: UIImage] = [:]
 
         init(parent: CompactPlayerSlider) {
             self.parent = parent
+        }
+
+        func thumb(diameter: CGFloat, tint: UIColor) -> UIImage {
+            let key = "\(diameter)-\(tint.hash)"
+            if let cached = thumbCache[key] {
+                return cached
+            }
+            let size = CGSize(width: diameter, height: diameter)
+            let image = UIGraphicsImageRenderer(size: size).image { context in
+                context.cgContext.setShadow(
+                    offset: CGSize(width: 0, height: 1),
+                    blur: 3,
+                    color: UIColor.black.withAlphaComponent(0.28).cgColor
+                )
+                tint.setFill()
+                UIBezierPath(
+                    ovalIn: CGRect(origin: .zero, size: size).insetBy(
+                        dx: 0.5,
+                        dy: 0.5
+                    )
+                )
+                .fill()
+            }
+            thumbCache[key] = image
+            return image
         }
 
         @objc

@@ -138,21 +138,35 @@ struct AlbumDetailView: View {
                 listenButton
                 Button(action: toggleFollow) {
                     Image(systemName: isFollowed ? "heart.fill" : "heart")
+                        .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(
                             isFollowed ? Color.red : settings.theme.accent
                         )
                         .frame(width: 46, height: 46)
+                        .contentShape(Circle())
+                        .adaptiveGlass(in: Circle(), interactive: true)
                 }
-                .adaptiveGlass(in: Circle(), interactive: true)
-                .buttonStyle(PremiumPressStyle())
+                .buttonStyle(.borderless)
                 .disabled(isUpdatingFollow)
+                .accessibilityLabel(
+                    L10n.text(
+                        isFollowed
+                            ? "Удалить альбом из медиатеки"
+                            : "Добавить альбом в медиатеку"
+                    )
+                )
+                .accessibilityAddTraits(isFollowed ? .isSelected : [])
                 if let shareURL {
                     ShareLink(item: shareURL) {
                         Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(settings.theme.accent)
                             .frame(width: 46, height: 46)
+                            .contentShape(Circle())
+                            .adaptiveGlass(in: Circle(), interactive: true)
                     }
-                    .adaptiveGlass(in: Circle(), interactive: true)
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(L10n.text("Поделиться альбомом"))
                 }
             }
         }
@@ -232,21 +246,24 @@ struct AlbumDetailView: View {
 
     private func toggleFollow() {
         guard !isUpdatingFollow else { return }
-        let desired = !isFollowed
+        let album = displayedAlbum
+        let desired = !likedAlbumsStore.isFollowed(album)
         isUpdatingFollow = true
+        // Optimistic local update so the heart reacts immediately; revert
+        // if VK rejects the followPlaylist toggle.
+        if desired {
+            likedAlbumsStore.markFollowed(album)
+        } else {
+            likedAlbumsStore.markUnfollowed(album)
+        }
         Task {
             defer { isUpdatingFollow = false }
             do {
                 try await environment.withAuthorizedToken { token in
                     try await environment.musicService.toggleAlbumFollow(
-                        displayedAlbum,
+                        album,
                         accessToken: token
                     )
-                }
-                if desired {
-                    likedAlbumsStore.markFollowed(displayedAlbum)
-                } else {
-                    likedAlbumsStore.markUnfollowed(displayedAlbum)
                 }
                 NotificationCenter.default.post(
                     name: .likedAlbumsDidChange,
@@ -254,6 +271,11 @@ struct AlbumDetailView: View {
                 )
                 Haptics.success()
             } catch {
+                if desired {
+                    likedAlbumsStore.markUnfollowed(album)
+                } else {
+                    likedAlbumsStore.markFollowed(album)
+                }
                 actionErrorMessage = error.localizedDescription
                 Haptics.error()
             }
