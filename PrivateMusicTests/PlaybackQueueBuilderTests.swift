@@ -328,11 +328,34 @@ final class AudioPlayerTransitionTests: XCTestCase {
 
         context.player.play(first, in: [first, second])
 
-        await waitUntil {
+        await waitUntil(timeout: 25) {
             context.player.currentTrack?.id == second.id
         }
-        XCTAssertEqual(refreshedIDs.first, first.id)
+        XCTAssertGreaterThanOrEqual(
+            refreshedIDs.filter { $0 == first.id }.count,
+            StreamFailureRetryPolicy.maximumSameTrackAttempts
+        )
         XCTAssertEqual(context.player.currentTrack?.id, second.id)
+    }
+
+    func testConnectivityStreamFailureDoesNotAutoAdvance() async {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        let first = track(id: 1, duration: 180)
+        let second = track(id: 2, duration: 245)
+        var refreshCount = 0
+        context.player.configureStreamRefresh { _ in
+            refreshCount += 1
+            throw APIError.timedOut
+        }
+
+        context.player.play(first, in: [first, second])
+
+        try? await Task.sleep(for: .seconds(4))
+        XCTAssertEqual(context.player.currentTrack?.id, first.id)
+        XCTAssertGreaterThanOrEqual(refreshCount, 1)
     }
 
     func testPreviousCancelsPendingContinuation() async {

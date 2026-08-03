@@ -108,8 +108,10 @@ final class AppEnvironment: ObservableObject {
         player.configurePreloading(
             isAllowed: { [weak self] in
                 guard let self else { return false }
+                // Keep next-track warm on cellular / constrained links —
+                // cold opens are a common skip trigger on flaky networks.
                 return !self.isShareSessionActive
-                    && self.networkMonitor.state == .online
+                    && self.networkMonitor.state != .offline
             },
             artworkPrefetch: { tracks in
                 // One size covers mini player / rows; full-screen artwork loads
@@ -145,9 +147,9 @@ final class AppEnvironment: ObservableObject {
         networkMonitor.$state
             .removeDuplicates()
             .sink { [weak player] state in
-                // Only restart preloads when reachability crosses online —
-                // transport flips (wifi↔cellular) used to cancel in-flight work.
-                if state == .online {
+                // Restart preloads whenever the network is usable again —
+                // including constrained cellular, not only unconstrained wifi.
+                if state != .offline {
                     player?.resumePreloading()
                 } else {
                     player?.cancelPreloading()
