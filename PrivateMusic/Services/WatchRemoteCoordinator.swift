@@ -24,10 +24,12 @@ final class WatchRemoteCoordinator: NSObject {
         session.activate()
 
         Publishers.CombineLatest4(
-            player.$queue,
-            player.$currentIndex,
-            player.$isPlaying,
-            player.$duration
+            player.$queue.removeDuplicates(by: { lhs, rhs in
+                lhs.map(\.id) == rhs.map(\.id)
+            }),
+            player.$currentIndex.removeDuplicates(),
+            player.$isPlaying.removeDuplicates(),
+            player.$duration.removeDuplicates()
         )
         .sink { [weak self] _, _, _, _ in
             self?.pushLatestState()
@@ -35,6 +37,7 @@ final class WatchRemoteCoordinator: NSObject {
         .store(in: &cancellables)
 
         player.$elapsedTime
+            .removeDuplicates()
             .throttle(
                 for: .seconds(1),
                 scheduler: RunLoop.main,
