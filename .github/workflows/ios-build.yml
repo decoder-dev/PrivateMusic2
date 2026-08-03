@@ -137,9 +137,9 @@ jobs:
           test "$GITHUB_REF_NAME" = "v3.28.16"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          Private Music 3.28.16
+          Private Music 3.28.16 (beta)
 
-          - Навигация на iOS 26+: настоящий системный TabView Liquid Glass
+          - Навигация на iOS 26.1+: настоящий системный TabView Liquid Glass
             как в Apple Music — role:.search и tabViewBottomAccessory.
           - Мини-плеер без синей glassProminent-кнопки; plain-контролы.
           - Медиатека: треки больше не «обнуляются» при гонке/ошибке
@@ -154,13 +154,14 @@ jobs:
               "$PWD/artifacts/PrivateMusic-3.28.16-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.16" \
+              --title "Private Music 3.28.16 beta" \
               --notes-file "$NOTES"
           else
             gh release create "$GITHUB_REF_NAME" \
               "$PWD/artifacts/PrivateMusic-3.28.16-unsigned.ipa" \
-              --title "Private Music 3.28.16" \
-              --notes-file "$NOTES"
+              --title "Private Music 3.28.16 beta" \
+              --notes-file "$NOTES" \
+              --prerelease
           fi
 
       - name: Upload unsigned IPA
