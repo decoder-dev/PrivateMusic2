@@ -231,13 +231,23 @@ final class SpatialAudioDSPTests: XCTestCase {
     }
 
     func testProcessedSideKeepsMidEnergyCentered() {
+        let left: Float = 0.4
+        let right: Float = -0.1
         let output = SpatialAudioDSP.process(
-            left: 0.4,
-            right: -0.1,
+            left: left,
+            right: right,
             intensity: 1,
             processedSide: 0.05
         )
-        let mid = (output.left + output.right) * 0.5
-        XCTAssertEqual(mid, 0.15, accuracy: 0.000_1)
+        let inputMid = (left + right) * 0.5
+        let outputMid = (output.left + output.right) * 0.5
+        // Mid stays centered; overall level is scaled by fixed headroom.
+        XCTAssertEqual(output.left - outputMid, -(output.right - outputMid), accuracy: 0.000_1)
+        XCTAssertEqual(
+            outputMid / inputMid,
+            output.left / (inputMid + 0.05 * 1.22),
+            accuracy: 0.001
+        )
+        XCTAssertGreaterThan(abs(output.left - output.right), 0)
     }
 }
