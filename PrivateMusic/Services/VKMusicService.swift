@@ -221,6 +221,58 @@ struct VKMusicService: MusicService {
         return discovered
     }
 
+    /// Speculative: no documented VK endpoint returns "new releases" for
+    /// this client, so this scans the same catalog blocks used for mixes
+    /// (and, as a fallback, a guessed releases section) for album-shaped
+    /// objects. Returns an empty array rather than throwing when nothing
+    /// is found — callers should hide the section instead of erroring.
+    func newReleases(accessToken: String) async throws -> [Album] {
+        var discovered: [Album] = []
+        do {
+            let envelope: VKResponse<JSONValue> = try await client.post(
+                path: "/method/catalog.getAudio",
+                form: common(accessToken).merging([
+                    "need_blocks": "1"
+                ]) { _, new in new },
+                responseType: VKResponse<JSONValue>.self
+            )
+            discovered = envelope.response.releaseAlbums
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as APIError where error == .unauthorized {
+            throw error
+        } catch let error as APIError where error.isConnectivityFailure {
+            throw error
+        } catch {
+            // Fall through to the section-based lookup below.
+        }
+
+        if discovered.isEmpty {
+            do {
+                let envelope: VKResponse<JSONValue> = try await client.post(
+                    path: "/method/catalog.getSection",
+                    form: common(accessToken).merging([
+                        "section_id": "audio_new_releases",
+                        "need_blocks": "1",
+                        "count": "30"
+                    ]) { _, new in new },
+                    responseType: VKResponse<JSONValue>.self
+                )
+                discovered = envelope.response.releaseAlbums
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as APIError where error == .unauthorized {
+                throw error
+            } catch let error as APIError where error.isConnectivityFailure {
+                throw error
+            } catch {
+                // No releases section available for this account/session.
+            }
+        }
+
+        return discovered
+    }
+
     func mixTracks(
         _ mix: MusicMix,
         accessToken: String

@@ -35,6 +35,9 @@ struct CatalogView: View {
                             if !mixes.isEmpty {
                                 mixesSection(metrics: metrics)
                             }
+                            if !homeCatalog.newReleases.isEmpty {
+                                newReleasesSection(metrics: metrics)
+                            }
                             if !recommendations.isEmpty {
                                 recommendationsSection(metrics: metrics)
                                 trackListSection
@@ -336,6 +339,62 @@ struct CatalogView: View {
                 }
             }
             .premiumCard()
+        }
+    }
+
+    private func newReleasesSection(metrics: HomeMetrics) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            NavigationLink {
+                NewReleasesView(albums: homeCatalog.newReleases)
+            } label: {
+                HStack {
+                    HomeSectionHeader(
+                        "Новые релизы",
+                        subtitle: "Свежие альбомы"
+                    )
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(
+                    alignment: .top,
+                    spacing: metrics.cardSpacing
+                ) {
+                    ForEach(homeCatalog.newReleases.prefix(16)) { album in
+                        Button { selectedAlbum = album } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                AsyncArtwork(
+                                    url: album.artworkURL,
+                                    size: metrics.newReleaseWidth
+                                )
+                                Text(
+                                    Album.isUsableTitle(album.title)
+                                        ? album.title
+                                        : L10n.text("Альбом")
+                                )
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text(album.artistText)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(
+                                width: metrics.newReleaseWidth,
+                                alignment: .topLeading
+                            )
+                        }
+                        .buttonStyle(PremiumPressStyle())
+                    }
+                }
+            }
         }
     }
 
@@ -739,6 +798,10 @@ private struct HomeMetrics {
 
     var mixHeight: CGFloat {
         mixWidth * 0.72
+    }
+
+    var newReleaseWidth: CGFloat {
+        min(max(containerWidth * 0.35, 112), 140)
     }
 }
 
