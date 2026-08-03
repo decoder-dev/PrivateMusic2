@@ -5,6 +5,7 @@ struct MiniPlayerView: View {
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @GestureState private var dragOffset: CGSize = .zero
+    let playerNamespace: Namespace.ID
 
     var body: some View {
         if let track = player.currentTrack {
@@ -116,6 +117,7 @@ struct MiniPlayerView: View {
                 radius: 12,
                 y: 6
             )
+            .miniPlayerTransitionSource(playerNamespace)
             .frame(minHeight: 58)
             .transition(
                 .asymmetric(
@@ -168,5 +170,24 @@ struct MiniPlayerView: View {
         return CGFloat(
             min(max(player.elapsedTime / player.duration, 0), 1)
         )
+    }
+}
+
+private extension View {
+    /// Marks the mini player as the visual origin for the zoom transition
+    /// into PlayerView (see RootView.playerZoomTransition). No-op below
+    /// iOS 18, where the full-screen cover just slides up as before.
+    @ViewBuilder
+    func miniPlayerTransitionSource(
+        _ namespace: Namespace.ID
+    ) -> some View {
+        if #available(iOS 18.0, *) {
+            matchedTransitionSource(
+                id: PlayerZoomTransition.sourceID,
+                in: namespace
+            )
+        } else {
+            self
+        }
     }
 }
