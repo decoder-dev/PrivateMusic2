@@ -346,7 +346,7 @@ private struct PlayerAudioSettingsView: View {
                 ) {
                     Label(
                         "Расширенная стереосцена",
-                        systemImage: "airpodspro"
+                        systemImage: "dot.radiowaves.left.and.right"
                     )
                 }
 
@@ -372,7 +372,7 @@ private struct PlayerAudioSettingsView: View {
                 Text(
                     L10n.text(
                         "Расширяет стереосцену обычных треков. "
-                            + "Эффект лучше всего слышен в наушниках."
+                            + "Работает в наушниках, на колонках и через CarKit / Bluetooth автомобиля."
                     )
                 )
                 .font(.footnote)
@@ -478,6 +478,13 @@ struct EqualizerSettingsView: View {
                     }
                     .disabled(!settings.equalizerEnabled)
                 }
+            } footer: {
+                Text(
+                    L10n.text(
+                        "Обработка выполняется на устройстве и применяется "
+                            + "к наушникам, колонкам и CarKit / Bluetooth автомобиля."
+                    )
+                )
             }
         }
         .scrollContentBackground(.hidden)

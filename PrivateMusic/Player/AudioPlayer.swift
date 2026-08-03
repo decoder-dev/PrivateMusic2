@@ -169,9 +169,11 @@ enum AppVolumePolicy {
 }
 
 enum AudioProcessingRoutePolicy {
-    /// Remote AVPlayer handoff bypasses MTAudioProcessingTap. Keep decoding on
-    /// the phone while DSP is active; AirPlay remains available as an audio
-    /// output route and receives the processed signal.
+    /// Remote AVPlayer handoff bypasses `MTAudioProcessingTap`. While EQ or
+    /// spatial processing is active, keep decoding on the phone so the tap
+    /// runs for every local session route — built-in speaker, wired/wireless
+    /// headphones, Bluetooth A2DP, and CarKit / `.carAudio`. AirPlay remains
+    /// available as an output route and receives the already-processed signal.
     static func allowsExternalPlayback(requiresAudioTap: Bool) -> Bool {
         !requiresAudioTap
     }
@@ -338,7 +340,6 @@ final class AudioPlayer: ObservableObject {
     private var playbackIntended = false
     private var pausedForMinimumVolume = false
     private var pausedForAppVolumeZero = false
-    private var appVolume: Float = 1
     private var minimumVolumeResumeSuppressed = false
     private var wasPlayingBeforeInterruption = false
     private var isAudioInterrupted = false
@@ -405,7 +406,8 @@ final class AudioPlayer: ObservableObject {
         self.streamUserAgent = userAgent
         resumeOnBluetoothConnection = settings.resumeOnBluetoothConnection
         pauseAtMinimumVolume = settings.pauseAtMinimumVolume
-        appVolume = Float(settings.appVolume)
+        // Playback level follows hardware / CarKit volume. Keep AVPlayer at
+        // unity so the system volume slider is the only attenuation.
         advanceOnPlaybackError = settings.advanceOnPlaybackError
         shuffleEnabled = defaults.bool(forKey: "player.shuffle")
         repeatMode = RepeatMode(
@@ -465,14 +467,6 @@ final class AudioPlayer: ObservableObject {
                 self.handleOutputVolume(
                     AVAudioSession.sharedInstance().outputVolume
                 )
-            }
-            .store(in: &cancellables)
-        settings.$appVolume
-            .sink { [weak self] volume in
-                guard let self else { return }
-                self.appVolume = Float(volume)
-                self.player.volume = self.appVolume
-                self.handleAppVolume(self.appVolume)
             }
             .store(in: &cancellables)
         settings.$advanceOnPlaybackError
@@ -736,11 +730,6 @@ final class AudioPlayer: ObservableObject {
         }
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
-        guard appVolume > AudioRoutePolicy.minimumAudibleVolume else {
-            pausedForAppVolumeZero = true
-            pausePreservingIntent()
-            return
-        }
         if requiresStreamRefresh {
             refreshCurrentStream(autoplay: true)
             return
@@ -755,6 +744,7 @@ final class AudioPlayer: ObservableObject {
         guard activateAudioSession() else { return }
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
+        player.volume = 1
         player.play()
         isPlaying = true
         publishPlaybackState(force: true)
@@ -982,10 +972,10 @@ final class AudioPlayer: ObservableObject {
         let shouldAutoplay = autoplay && activateAudioSession()
         if shouldAutoplay {
             pausedForMinimumVolume = false
+            player.volume = 1
             player.play()
             isPlaying = true
             isBuffering = true
-            handleAppVolume(appVolume)
             handleOutputVolume(
                 AVAudioSession.sharedInstance().outputVolume
             )
@@ -1337,7 +1327,7 @@ final class AudioPlayer: ObservableObject {
 
     private func configurePlayerInstance() {
         player.automaticallyWaitsToMinimizeStalling = true
-        player.volume = appVolume
+        player.volume = 1
         player.allowsExternalPlayback = AudioProcessingRoutePolicy
             .allowsExternalPlayback(
                 requiresAudioTap: equalizer.requiresAudioTap
@@ -1497,7 +1487,6 @@ final class AudioPlayer: ObservableObject {
                 wasPlayingBeforeInterruption = false
                 outputsAtInterruptionBegan = []
                 handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
-                handleAppVolume(appVolume)
                 return
             }
             let rawOptions = notification.userInfo?[
@@ -1522,7 +1511,6 @@ final class AudioPlayer: ObservableObject {
                 scheduleInterruptionResume()
             }
             handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
-            handleAppVolume(appVolume)
         @unknown default:
             break
         }
@@ -1610,10 +1598,6 @@ final class AudioPlayer: ObservableObject {
         }
         handleOutputVolume(
             AVAudioSession.sharedInstance().outputVolume,
-            allowsAutomaticResume: allowsMinimumVolumeResume
-        )
-        handleAppVolume(
-            appVolume,
             allowsAutomaticResume: allowsMinimumVolumeResume
         )
     }
@@ -1715,34 +1699,6 @@ final class AudioPlayer: ObservableObject {
         resume(
             preservingMinimumVolumePause: true,
             preservingAppVolumePause: false
-        )
-    }
-
-    private func handleAppVolume(
-        _ volume: Float,
-        allowsAutomaticResume: Bool = true
-    ) {
-        player.volume = min(max(volume, 0), 1)
-        if AppVolumePolicy.shouldPauseAtZero(
-            volume: volume,
-            isPlaying: isPlaying
-        ) {
-            pausedForAppVolumeZero = true
-            pausePreservingIntent()
-            return
-        }
-        guard AppVolumePolicy.shouldResumeAfterZeroPause(
-            volume: volume,
-            pausedForAppVolumeZero: pausedForAppVolumeZero,
-            playbackIntended: playbackIntended,
-            hasCurrentTrack: currentTrack != nil,
-            isPlaying: isPlaying,
-            isAudioInterrupted: isAudioInterrupted,
-            allowsAutomaticResume: allowsAutomaticResume
-        ) else { return }
-        resume(
-            preservingMinimumVolumePause: false,
-            preservingAppVolumePause: true
         )
     }
 
