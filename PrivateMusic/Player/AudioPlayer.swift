@@ -330,9 +330,9 @@ enum StreamFailureRetryPolicy {
         error: Error?
     ) -> Bool {
         if isConnectivityFailure(error) {
-            return attempts < maximumConnectivityAttempts
+            return attempts <= maximumConnectivityAttempts
         }
-        return attempts < maximumSameTrackAttempts
+        return attempts <= maximumSameTrackAttempts
     }
 
     static func shouldAdvance(
@@ -342,7 +342,7 @@ enum StreamFailureRetryPolicy {
     ) -> Bool {
         guard advanceOnPlaybackError else { return false }
         if isConnectivityFailure(error) { return false }
-        return attempts >= maximumSameTrackAttempts
+        return attempts > maximumSameTrackAttempts
     }
 }
 
