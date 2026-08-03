@@ -15,31 +15,48 @@ enum PremiumLayout {
 }
 
 struct PremiumCardModifier: ViewModifier {
-    @EnvironmentObject private var settings: AppSettings
     let interactive: Bool
 
+    @ViewBuilder
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(
             cornerRadius: PremiumLayout.cardRadius,
             style: .continuous
         )
 
-        content
-            .background(
-                Color(uiColor: .secondarySystemBackground)
-                    .opacity(0.82),
-                in: shape
-            )
-            .overlay {
-                shape.stroke(.primary.opacity(0.07), lineWidth: 0.75)
-            }
-            .clipShape(shape)
-            .contentShape(shape)
-            .shadow(
-                color: .black.opacity(interactive ? 0.07 : 0.04),
-                radius: interactive ? 14 : 9,
-                y: interactive ? 7 : 4
-            )
+        if #available(iOS 26.0, *) {
+            // Real Liquid Glass card surface. glassEffect(in:) already
+            // constrains the shape, so no separate clipShape here (that
+            // combination is a documented source of rendering artifacts).
+            content
+                .contentShape(shape)
+                .glassEffect(
+                    .regular.interactive(interactive),
+                    in: shape
+                )
+                .shadow(
+                    color: .black.opacity(interactive ? 0.07 : 0.04),
+                    radius: interactive ? 14 : 9,
+                    y: interactive ? 7 : 4
+                )
+        } else {
+            content
+                .background(
+                    Color(uiColor: .secondarySystemBackground)
+                        .opacity(0.82),
+                    in: shape
+                )
+                .overlay {
+                    shape.stroke(.primary.opacity(0.07), lineWidth: 0.75)
+                }
+                .clipShape(shape)
+                .contentShape(shape)
+                .shadow(
+                    color: .black.opacity(interactive ? 0.07 : 0.04),
+                    radius: interactive ? 14 : 9,
+                    y: interactive ? 7 : 4
+                )
+        }
     }
 }
 
