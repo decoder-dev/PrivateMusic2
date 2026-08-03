@@ -127,31 +127,27 @@ jobs:
           test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.27-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.28-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.27"
+          test "$GITHUB_REF_NAME" = "v3.28.28"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.27
+          # Private Music 3.28.28 (pre-release)
 
-          Релиз с `main`: лайк альбома и быстрее загрузка миксов.
-
-          ## Медиатека
-          - Снятие лайка с альбома больше не зовёт несуществующий
-            `audio.unfollowPlaylist` (VK отвечал «Unknown method passed») —
-            используется `audio.deletePlaylist`, как при удалении
-            плейлиста из библиотеки
-          - Раньше follow вызывался в обе стороны, поэтому снятие лайка
-            не сохранялось на сервере
+          Пре-релиз с `main`: отдельная вкладка «Микс» по эталонному layout.
 
           ## Миксы
-          - Страницы stream-микса грузятся параллельно вместо до 10
-            последовательных запросов — микс стартует заметно быстрее
+          - Новая вкладка «Микс» (sparkles): крупный заголовок, hero
+            персонального потока с play, полки «Слушайте друг друга» и
+            «Собрано алгоритмами»
+          - Match-% бейдж только если VK реально отдаёт percent /
+            social-сигнал — без выдуманных совпадений
+          - Полка миксов убрана с Главной, чтобы не дублировать хаб
 
           ## Установка
           IPA не подписан. Перед установкой подпишите собственным сертификатом:
@@ -159,28 +155,26 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.27-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.28.28-unsigned.ipa" \
               --clobber
-            # Retagging can leave a draft/untagged release; undraft before --latest.
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.27" \
+              --title "Private Music 3.28.28" \
               --notes-file "$NOTES" \
               --draft=false \
-              --prerelease=false
-            gh release edit "$GITHUB_REF_NAME" --latest
+              --prerelease
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.27-unsigned.ipa" \
-              --title "Private Music 3.28.27" \
+              "$PWD/artifacts/PrivateMusic-3.28.28-unsigned.ipa" \
+              --title "Private Music 3.28.28" \
               --notes-file "$NOTES" \
-              --latest
+              --prerelease
           fi
 
       - name: Upload unsigned IPA
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.27-unsigned
-          path: artifacts/PrivateMusic-3.28.27-unsigned.ipa
+          name: PrivateMusic-3.28.28-unsigned
+          path: artifacts/PrivateMusic-3.28.28-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
