@@ -69,7 +69,7 @@ struct PlaylistDetailView: View {
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
-                            .background(.ultraThinMaterial)
+                            .adaptiveGlass(in: Rectangle())
                         }
                         playlistHeader
                             .padding(.bottom, 8)

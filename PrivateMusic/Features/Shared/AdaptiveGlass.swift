@@ -21,9 +21,12 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
+            // Liquid Glass samples its own shape; clipping the content
+            // before handing it to glassEffect(in:) fights that sampling
+            // and is a documented source of rendering artifacts. The
+            // `in: shape` parameter already constrains the glass region.
             if let tint {
                 content
-                    .clipShape(shape)
                     .glassEffect(
                         .regular
                             .tint(tint)
@@ -33,7 +36,6 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                     .contentShape(shape)
             } else {
                 content
-                    .clipShape(shape)
                     .glassEffect(
                         .regular.interactive(interactive),
                         in: shape
