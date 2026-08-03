@@ -16,6 +16,7 @@ final class TrackCollectionViewModel: ObservableObject {
     private let source: Source
     private var service: (any MusicService)?
     private var nextOffset: Int?
+    private var loadGeneration = 0
 
     init(source: Source) {
         self.source = source
@@ -25,35 +26,54 @@ final class TrackCollectionViewModel: ObservableObject {
         self.service = service
     }
 
+    /// Returns `true` only when a fresh page was applied. Concurrent force
+    /// reloads bump a generation so a slower response cannot clobber a newer
+    /// one or wipe a successful load with an empty early-return path.
+    @discardableResult
     func load(
         force: Bool = false,
         operation: () async throws -> MusicPage<Track>
-    ) async {
-        guard !isLoading, force || tracks.isEmpty else { return }
+    ) async -> Bool {
+        if isLoading {
+            guard force else { return false }
+        } else if !force && !tracks.isEmpty {
+            return false
+        }
+
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if generation == loadGeneration {
+                isLoading = false
+            }
+        }
 
         do {
             let page = try await operation()
+            guard generation == loadGeneration else { return false }
             tracks = page.items
             totalCount = page.totalCount
             nextOffset = page.nextOffset
             errorMessage = nil
+            return true
         } catch is CancellationError {
-            return
+            return false
         } catch {
+            guard generation == loadGeneration else { return false }
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
     func loadMore(
         operation: (Int) async throws -> MusicPage<Track>
-    ) async {
+    ) async -> Bool {
         guard source == .library,
               !isLoading,
               !isLoadingMore,
               let offset = nextOffset else {
-            return
+            return false
         }
         isLoadingMore = true
         defer { isLoadingMore = false }
@@ -63,10 +83,12 @@ final class TrackCollectionViewModel: ObservableObject {
             totalCount = page.totalCount
             nextOffset = page.nextOffset
             errorMessage = nil
+            return true
         } catch is CancellationError {
-            return
+            return false
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -91,8 +113,12 @@ final class TrackCollectionViewModel: ObservableObject {
 
     func insertAdded(_ track: Track) {
         guard source == .library else { return }
+        let existed = tracks.contains { $0.id == track.id }
         tracks.removeAll { $0.id == track.id }
         tracks.insert(track, at: 0)
+        if !existed {
+            totalCount += 1
+        }
         errorMessage = nil
     }
 

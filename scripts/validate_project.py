@@ -133,15 +133,21 @@ if "player.allowsExternalPlayback = true" in audio_player_source:
     fail("external AVPlayer handoff must not bypass active audio processing")
 if ".preroll(" in audio_player_source:
     fail("track preloading must not use exception-prone AVPlayer preroll")
-for forbidden_system_tab_symbol in (
+for forbidden_legacy_all_tabs_symbol in (
+    "ForEach(MainTab.allCases",
+):
+    if forbidden_legacy_all_tabs_symbol in main_tab_source:
+        fail("tab dock must keep search as a separate circular control")
+for required_system_tab_symbol in (
     "SystemLiquidGlassTabView",
     "tabViewBottomAccessory",
     "role: .search",
+    "SystemPlaybackAccessory",
 ):
-    if forbidden_system_tab_symbol in main_tab_source:
+    if required_system_tab_symbol not in main_tab_source:
         fail(
-            "main navigation must reserve space with the stable custom dock: "
-            f"{forbidden_system_tab_symbol}"
+            "iOS 26+ must use system Liquid Glass TabView like Apple Music: "
+            f"{required_system_tab_symbol}"
         )
 for required_dock_glass_symbol in (
     "AdaptiveGlassContainer(spacing: 10)",
@@ -149,20 +155,31 @@ for required_dock_glass_symbol in (
     "searchTabButton",
     "Capsule(style: .continuous)",
     ".safeAreaInset(edge: .bottom, spacing: 0)",
+    "legacyTabStack",
 ):
     if required_dock_glass_symbol not in main_tab_source:
         fail(
-            "custom navigation must retain native Liquid Glass and safe inset: "
+            "pre-iOS 26 fallback dock must retain Liquid Glass + safe inset: "
             f"{required_dock_glass_symbol}"
         )
-if "ForEach(MainTab.allCases" in main_tab_source:
-    fail("tab dock must keep search as a separate circular control")
 if "LikedTrackBadge(track: track)" in mini_player_source:
     fail("mini-player must not overlay a liked-track badge on artwork")
+if ".buttonStyle(.glassProminent)" in mini_player_source:
+    fail("mini-player must use plain transport controls like Apple Music")
 if "buttonStyle(.borderless)" not in (
     SOURCE / "Features" / "Album" / "AlbumDetailView.swift"
 ).read_text(encoding="utf-8"):
     fail("album follow control must remain tappable inside List rows")
+for required_library_resilience_symbol in (
+    "Не удалось загрузить треки",
+    "libraryStore.beginRefresh()",
+    "libraryAudioItems",
+):
+    if required_library_resilience_symbol not in all_source:
+        fail(
+            "library tracks resilience is missing: "
+            f"{required_library_resilience_symbol}"
+        )
 if "kAudioFormatFlagIsNonInterleaved" not in equalizer_source:
     fail("audio processing must use the declared PCM interleaving format")
 if "let nonInterleaved = buffers.count > 1" in equalizer_source:
@@ -195,9 +212,10 @@ if "loadedIdentity == loadIdentity ? image : nil" not in cached_image_source:
     fail("cached artwork must never display a stale request identity")
 if "Text(track.duration.formattedDuration)" not in library_view_source:
     fail("library track rows must display track duration")
+if ".buttonStyle(.glassProminent)" not in player_view_source:
+    fail(f"player is missing full-bleed/glass symbol: .buttonStyle(.glassProminent)")
 for required_player_symbol in (
     ".background(playerBackground.ignoresSafeArea())",
-    ".buttonStyle(.glassProminent)",
     ".buttonStyle(.glass)",
     "AdaptiveGlassContainer(spacing: 8)",
     "AdaptiveGlassContainer(spacing: 18)",
@@ -207,8 +225,7 @@ for required_player_symbol in (
 ):
     if required_player_symbol not in player_view_source:
         fail(f"player is missing full-bleed/glass symbol: {required_player_symbol}")
-if ".buttonStyle(.glassProminent)" not in mini_player_source:
-    fail("mini-player play control must use Liquid Glass on iOS 26+")
+# Mini-player uses plain controls; full-screen player keeps glassProminent.
 for required_preload_symbol in (
     "PlaybackPreloadPolicy.nextIndex",
     "asset.load(.isPlayable)",
