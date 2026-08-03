@@ -200,6 +200,21 @@ for required_library_resilience_symbol in (
             "library tracks resilience is missing: "
             f"{required_library_resilience_symbol}"
         )
+if "enum AudioInterruptionPolicy" not in audio_player_source:
+    fail("audio interruption policy must remain unit-testable")
+if "MediaServicesResetPolicy.shouldAutoplayAfterReset" not in audio_player_source:
+    fail("media services reset must keep CarKit/BT autoplay intent")
+if "shouldTreatEndAsRouteDisconnect" not in audio_player_source:
+    fail("interruption end must detect headphone-disconnect races")
+if "hasActiveEqualizerProcessing" not in equalizer_source:
+    fail("flat equalizer must skip the realtime audio tap")
+watch_protocol = (
+    SOURCE / "Shared" / "WatchRemoteProtocol.swift"
+).read_text(encoding="utf-8")
+if "lhs.snapshotDate" in watch_protocol or "rhs.snapshotDate" in watch_protocol:
+    fail("WatchRemoteState equality must ignore snapshotDate")
+if "static func ==" not in watch_protocol:
+    fail("WatchRemoteState must customize Equatable to ignore snapshotDate")
 if "kAudioFormatFlagIsNonInterleaved" not in equalizer_source:
     fail("audio processing must use the declared PCM interleaving format")
 if "let nonInterleaved = buffers.count > 1" in equalizer_source:

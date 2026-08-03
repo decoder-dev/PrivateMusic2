@@ -231,6 +231,31 @@ enum AudioInterruptionPolicy {
             && !routeDisconnectPending
             && options.contains(.shouldResume)
     }
+
+    /// When interruption-on-route-disconnect ends before the route-change
+    /// notification arrives, the current route may already be the built-in
+    /// speaker while the previous route was headphones / BT / car.
+    static func shouldTreatEndAsRouteDisconnect(
+        previousOutputPortTypes: [AVAudioSession.Port],
+        currentOutputPortTypes: [AVAudioSession.Port]
+    ) -> Bool {
+        AudioRoutePolicy.shouldPauseAfterRouteLoss(
+            wasPlaying: true,
+            previousOutputPortTypes: previousOutputPortTypes,
+            currentOutputPortTypes: currentOutputPortTypes
+        )
+    }
+}
+
+/// Whether to restart playback after AVAudioSession media services die
+/// (common when attaching CarKit / Bluetooth head units).
+enum MediaServicesResetPolicy {
+    static func shouldAutoplayAfterReset(
+        playbackIntended: Bool,
+        wasActivelyPlaying: Bool
+    ) -> Bool {
+        playbackIntended && wasActivelyPlaying
+    }
 }
 
 @MainActor
@@ -319,6 +344,8 @@ final class AudioPlayer: ObservableObject {
     private var isAudioInterrupted = false
     private var resumeAfterRouteTransfer = false
     private var routeDisconnectPending = false
+    private var outputsAtInterruptionBegan: [AVAudioSession.Port] = []
+    private var interruptionResumeTask: Task<Void, Never>?
     private var preloadedPlayback: PreloadedPlayback?
     private var preloadAssetTask: Task<Void, Never>?
     private var preloadGeneration = 0
@@ -699,10 +726,16 @@ final class AudioPlayer: ObservableObject {
         if !preservingAppVolumePause {
             pausedForAppVolumeZero = false
         }
+        playbackIntended = true
+        // While another app still owns the session, keep transfer intent so a
+        // later interruption-end / route settle can resume. Clearing the flags
+        // here used to drop CarKit / BT reconnect resumes permanently.
+        guard !isAudioInterrupted else {
+            resumeAfterRouteTransfer = true
+            return
+        }
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
-        playbackIntended = true
-        guard !isAudioInterrupted else { return }
         guard appVolume > AudioRoutePolicy.minimumAudibleVolume else {
             pausedForAppVolumeZero = true
             pausePreservingIntent()
@@ -1400,22 +1433,31 @@ final class AudioPlayer: ObservableObject {
                       self.player.currentItem != nil else {
                     return
                 }
-                self.elapsedTime = max(
+                let newElapsed = max(
                     0,
                     time.seconds.isFinite ? time.seconds : 0
                 )
+                if abs(self.elapsedTime - newElapsed) >= 0.01 {
+                    self.elapsedTime = newElapsed
+                }
                 if let seconds = self.player.currentItem?.duration.seconds,
-                   seconds.isFinite {
+                   seconds.isFinite,
+                   abs(self.duration - seconds) >= 0.05 {
                     self.duration = seconds
                 }
                 self.sampleListeningProgress()
-                self.isBuffering = self.isPlaying
+                let buffering = self.isPlaying
                     && self.player.timeControlStatus
                         == .waitingToPlayAtSpecifiedRate
+                if self.isBuffering != buffering {
+                    self.isBuffering = buffering
+                }
                 self.publishPlaybackState()
                 let wholeSecond = Int(self.elapsedTime)
+                // Persist less often — encoding the full queue every 5s was a
+                // steady background heater on long listening sessions.
                 if wholeSecond > 0,
-                   wholeSecond % 5 == 0,
+                   wholeSecond % 15 == 0,
                    wholeSecond != self.lastPersistedSecond {
                     self.lastPersistedSecond = wholeSecond
                     self.persistPlayback()
@@ -1434,11 +1476,30 @@ final class AudioPlayer: ObservableObject {
         }
         switch type {
         case .began:
+            interruptionResumeTask?.cancel()
+            interruptionResumeTask = nil
             isAudioInterrupted = true
+            outputsAtInterruptionBegan = AVAudioSession.sharedInstance()
+                .currentRoute.outputs.map(\.portType)
             wasPlayingBeforeInterruption = playbackIntended && isPlaying
             pausePreservingIntent()
         case .ended:
             isAudioInterrupted = false
+            let currentOutputs = AVAudioSession.sharedInstance()
+                .currentRoute.outputs.map(\.portType)
+            if AudioInterruptionPolicy.shouldTreatEndAsRouteDisconnect(
+                previousOutputPortTypes: outputsAtInterruptionBegan,
+                currentOutputPortTypes: currentOutputs
+            ) {
+                routeDisconnectPending = true
+                resumeAfterRouteTransfer =
+                    wasPlayingBeforeInterruption && playbackIntended
+                wasPlayingBeforeInterruption = false
+                outputsAtInterruptionBegan = []
+                handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
+                handleAppVolume(appVolume)
+                return
+            }
             let rawOptions = notification.userInfo?[
                 AVAudioSessionInterruptionOptionKey
             ] as? UInt ?? 0
@@ -1452,13 +1513,34 @@ final class AudioPlayer: ObservableObject {
                 options: options
             )
             wasPlayingBeforeInterruption = false
+            outputsAtInterruptionBegan = []
             if shouldResume {
-                resume()
+                scheduleInterruptionResume()
+            } else if resumeAfterRouteTransfer,
+                      playbackIntended,
+                      !routeDisconnectPending {
+                scheduleInterruptionResume()
             }
             handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
             handleAppVolume(appVolume)
         @unknown default:
             break
+        }
+    }
+
+    /// Brief delay so a trailing `.oldDeviceUnavailable` can set
+    /// `routeDisconnectPending` before we reactivate into the speaker.
+    private func scheduleInterruptionResume() {
+        interruptionResumeTask?.cancel()
+        interruptionResumeTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled else { return }
+            guard !isAudioInterrupted,
+                  playbackIntended,
+                  !routeDisconnectPending else {
+                return
+            }
+            resume()
         }
     }
 
@@ -1474,6 +1556,8 @@ final class AudioPlayer: ObservableObject {
         var allowsMinimumVolumeResume = true
         switch reason {
         case .oldDeviceUnavailable:
+            interruptionResumeTask?.cancel()
+            interruptionResumeTask = nil
             let previousRoute = notification.userInfo?[
                 AVAudioSessionRouteChangePreviousRouteKey
             ] as? AVAudioSessionRouteDescription
@@ -1510,7 +1594,16 @@ final class AudioPlayer: ObservableObject {
                 currentOutputPortTypes: currentOutputs
             ) {
                 routeDisconnectPending = false
+                _ = activateAudioSession()
                 resume()
+            } else if currentOutputs.contains(
+                where: AudioRoutePolicy.isExternalPlayback
+            ) {
+                // Settled on an external route — speaker-leak risk is gone,
+                // so do not leave `routeDisconnectPending` stuck forever
+                // (it would block later call-end auto-resume).
+                routeDisconnectPending = false
+                _ = activateAudioSession()
             }
         default:
             break
@@ -1526,16 +1619,29 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func handleMediaServicesReset() {
+        let wasActivelyPlaying = isPlaying
+            || wasPlayingBeforeInterruption
+            || resumeAfterRouteTransfer
+        let shouldAutoplay = MediaServicesResetPolicy.shouldAutoplayAfterReset(
+            playbackIntended: playbackIntended,
+            wasActivelyPlaying: wasActivelyPlaying
+        )
         let position = elapsedTime
-        playbackIntended = false
+        let keepIntent = playbackIntended || wasActivelyPlaying
+
+        interruptionResumeTask?.cancel()
+        interruptionResumeTask = nil
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
         minimumVolumeResumeSuppressed = false
         isAudioInterrupted = false
         wasPlayingBeforeInterruption = false
         resumeAfterRouteTransfer = false
+        routeDisconnectPending = false
+        outputsAtInterruptionBegan = []
         isPlaying = false
         isBuffering = false
+        playbackIntended = keepIntent
         publishPlaybackState(force: true)
 
         cancelContinuation()
@@ -1562,7 +1668,7 @@ final class AudioPlayer: ObservableObject {
         audioSessionConfigured = false
         let audioSessionRestored = configureAudioSession()
         guard currentTrack != nil else { return }
-        loadCurrent(autoplay: false, startAt: position)
+        loadCurrent(autoplay: shouldAutoplay, startAt: position)
         if !audioSessionRestored {
             errorMessage = L10n.text(
                 "Не удалось восстановить аудиовыход."
