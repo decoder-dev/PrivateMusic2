@@ -1,7 +1,20 @@
 import Foundation
 import Security
 
-struct KeychainStore: Sendable {
+/// Narrow seam over Keychain persistence so tests can substitute an
+/// in-memory fake instead of depending on the OS Keychain being reachable
+/// in the test host (Simulator Keychain access has been an observed source
+/// of CI flakiness).
+protocol KeychainStoring: Sendable {
+    func save<Value: Codable>(_ value: Value, account: String) throws
+    func load<Value: Codable>(
+        _ type: Value.Type,
+        account: String
+    ) throws -> Value?
+    func delete(account: String) throws
+}
+
+struct KeychainStore: KeychainStoring, Sendable {
     enum KeychainError: LocalizedError {
         case unexpectedStatus(OSStatus)
         case invalidData

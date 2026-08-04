@@ -7,11 +7,11 @@ final class SessionStore: ObservableObject {
     @Published var errorMessage: String?
     @Published private(set) var sessionRevision = 0
 
-    private let keychain: KeychainStore
+    private let keychain: any KeychainStoring
     private let sessionAccount = "vk-session-v2"
     private let profileAccount = "vk-profile-v1"
 
-    init(keychain: KeychainStore) {
+    init(keychain: any KeychainStoring) {
         self.keychain = keychain
         do {
             let saved = try keychain.load(Session.self, account: sessionAccount)

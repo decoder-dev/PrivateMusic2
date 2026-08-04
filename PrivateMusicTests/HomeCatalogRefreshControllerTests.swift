@@ -9,18 +9,6 @@ private let refreshedAccessToken = "refreshed-access-token-0123456789"
 
 @MainActor
 final class HomeCatalogRefreshControllerTests: XCTestCase {
-    private var keychainService: String!
-
-    override func setUp() {
-        super.setUp()
-        keychainService = "pm-tests-home-catalog-\(UUID().uuidString)"
-    }
-
-    override func tearDown() {
-        keychainService = nil
-        super.tearDown()
-    }
-
     // MARK: - Single request for the shared catalog endpoint
 
     func testCatalogSectionsIsRequestedExactlyOnceInARefresh() async {
@@ -265,8 +253,7 @@ final class HomeCatalogRefreshControllerTests: XCTestCase {
         FakeMusicService,
         FakeWebAuthExchanger
     ) {
-        let keychain = KeychainStore(service: keychainService)
-        let sessionStore = SessionStore(keychain: keychain)
+        let sessionStore = SessionStore(keychain: InMemoryKeychainStore())
         let homeCatalogStore = HomeCatalogStore()
         let service = FakeMusicService()
         let webAuth = FakeWebAuthExchanger()
@@ -286,16 +273,21 @@ final class HomeCatalogRefreshControllerTests: XCTestCase {
         refreshCookie: String? = nil,
         webUserAgent: String? = nil
     ) async {
-        try? sessionStore.connect(
-            accessToken: accessToken,
-            userAgent: nil,
-            refreshCookie: refreshCookie,
-            webUserAgent: webUserAgent,
-            profile: UserProfile(
-                id: 1,
-                firstName: "First",
-                lastName: "Last",
-                photoURL: nil
+        // Intentionally not `try?` — a silent failure here previously made
+        // every downstream assertion in this file fail with misleading
+        // "nothing happened" symptoms instead of pointing at the real cause.
+        XCTAssertNoThrow(
+            try sessionStore.connect(
+                accessToken: accessToken,
+                userAgent: nil,
+                refreshCookie: refreshCookie,
+                webUserAgent: webUserAgent,
+                profile: UserProfile(
+                    id: 1,
+                    firstName: "First",
+                    lastName: "Last",
+                    photoURL: nil
+                )
             )
         )
     }
@@ -310,6 +302,39 @@ final class HomeCatalogRefreshControllerTests: XCTestCase {
             streamURL: URL(string: "https://example.com/\(id).mp3"),
             artworkURL: nil
         )
+    }
+}
+
+/// In-memory `KeychainStoring` fake. Avoids depending on the OS Keychain
+/// being reachable from the Simulator test host, which is not guaranteed
+/// in CI (this is what made every `SessionStore.connect` in this file
+/// silently no-op the first time these tests ran there).
+private final class InMemoryKeychainStore: KeychainStoring, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String: Data] = [:]
+
+    func save<Value: Codable>(_ value: Value, account: String) throws {
+        let data = try JSONEncoder().encode(value)
+        lock.lock()
+        storage[account] = data
+        lock.unlock()
+    }
+
+    func load<Value: Codable>(
+        _ type: Value.Type,
+        account: String
+    ) throws -> Value? {
+        lock.lock()
+        let data = storage[account]
+        lock.unlock()
+        guard let data else { return nil }
+        return try JSONDecoder().decode(type, from: data)
+    }
+
+    func delete(account: String) throws {
+        lock.lock()
+        storage.removeValue(forKey: account)
+        lock.unlock()
     }
 }
 
