@@ -8,10 +8,13 @@ struct ArtistView: View {
     let artist: String
     @State private var tracks: [Track] = []
     @State private var albums: [Album] = []
+    @State private var metadata: ArtistExternalMetadata?
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var selectedAlbum: Album?
     @State private var showsAllTracks = false
+
+    private let metadataService = ArtistMetadataService()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,9 +46,11 @@ struct ArtistView: View {
             NavigationStack { AlbumDetailView(album: album) }
         }
         .task(id: artist) {
+            metadata = nil
             async let trackLoad: Void = load(resetContent: true)
             async let albumLoad: Void = loadAlbums()
-            _ = await (trackLoad, albumLoad)
+            async let metaLoad: Void = loadMetadata()
+            _ = await (trackLoad, albumLoad, metaLoad)
         }
     }
 
@@ -106,7 +111,10 @@ struct ArtistView: View {
         }
         .scrollIndicators(.hidden)
         .refreshable {
-            await load(resetContent: false)
+            async let trackLoad: Void = load(resetContent: false)
+            async let albumLoad: Void = loadAlbums()
+            async let metaLoad: Void = loadMetadata()
+            _ = await (trackLoad, albumLoad, metaLoad)
         }
         .sheet(isPresented: $showsAllTracks) {
             NavigationStack {
@@ -221,27 +229,48 @@ struct ArtistView: View {
     }
 
     private var artistHeader: some View {
-        HStack(spacing: 16) {
-            AsyncArtwork(
-                url: tracks.first?.artworkURL,
-                size: 88
-            )
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 16) {
+                AsyncArtwork(
+                    url: metadata?.artworkURL ?? tracks.first?.artworkURL,
+                    size: 88
+                )
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(artist)
-                    .font(.title2.weight(.bold))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.82)
-                Text(L10n.text("Музыка"))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(artist)
+                        .font(.title2.weight(.bold))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
+                    Text(headerSubtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
             }
 
-            Spacer(minLength: 0)
+            if let biography = metadata?.biography,
+               !biography.isEmpty {
+                Text(
+                    ArtistMetadataService.clippedBiography(biography)
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(.horizontal, 18)
         .padding(.top, 18)
         .padding(.bottom, 14)
+    }
+
+    private var headerSubtitle: String {
+        ArtistMetadataService.statsLine(
+            fanCount: metadata?.fanCount,
+            albumCount: metadata?.albumCount
+        ) ?? L10n.text("Музыка")
     }
 
     private var emptyContent: some View {
@@ -323,6 +352,15 @@ struct ArtistView: View {
         } catch {
             return
         }
+    }
+
+    @MainActor
+    private func loadMetadata() async {
+        let requestedArtist = artist
+        let service = metadataService
+        let result = await service.metadata(for: requestedArtist)
+        guard artist == requestedArtist else { return }
+        metadata = result
     }
 
     @MainActor

@@ -119,6 +119,8 @@
 "Треки исполнителя" = "Artist Tracks";
 "Для этого исполнителя VK не вернул доступных треков." = "VK did not return any available tracks for this artist.";
 "Подключите VK, чтобы открыть страницу исполнителя." = "Connect VK to open the artist page.";
+"%@ слушателей" = "%@ listeners";
+"%@ альбомов" = "%@ albums";
 "Играть следующим" = "Play Next";
 "Открыть плеер" = "Open Player";
 "Открыть полноэкранный плеер" = "Open Full-Screen Player";
