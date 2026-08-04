@@ -72,14 +72,9 @@ struct AlbumDetailView: View {
             } else if model.hasLoaded && model.tracks.isEmpty {
                 VStack(spacing: 12) {
                     EmptyStateView(
-                        title: model.errorMessage == nil
-                            ? "В альбоме нет доступных треков"
-                            : "Не удалось открыть альбом",
-                        systemImage: model.errorMessage == nil
-                            ? "music.note.list"
-                            : "wifi.exclamationmark",
-                        description: model.errorMessage
-                            ?? "VK не вернул доступные аудиозаписи."
+                        title: emptyStateContent.title,
+                        systemImage: emptyStateContent.systemImage,
+                        description: emptyStateContent.description
                     )
                     Button("Повторить") {
                         Task { await load(force: true) }
@@ -235,6 +230,30 @@ struct AlbumDetailView: View {
             : L10n.text("Альбом")
     }
 
+    private var emptyStateContent: (
+        title: String,
+        systemImage: String,
+        description: String
+    ) {
+        guard let errorMessage = model.errorMessage else {
+            return (
+                "В альбоме нет доступных треков",
+                "music.note.list",
+                "VK не вернул доступные аудиозаписи."
+            )
+        }
+        guard model.isAccessDenied else {
+            return ("Не удалось открыть альбом", "wifi.exclamationmark", errorMessage)
+        }
+        return (
+            "Альбом недоступен",
+            "lock.slash",
+            "VK закрыл доступ к этому альбому. Иногда так бывает с "
+                + "материалами из «Новых релизов» — попробуйте открыть "
+                + "альбом в официальном приложении VK."
+        )
+    }
+
     private func playAlbum() {
         guard let first = model.tracks.first else { return }
         player.play(
@@ -312,12 +331,19 @@ struct AlbumDetailView: View {
 }
 
 @MainActor
-private final class AlbumDetailViewModel: ObservableObject {
+final class AlbumDetailViewModel: ObservableObject {
     @Published private(set) var tracks: [Track] = []
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingMore = false
     @Published private(set) var hasLoaded = false
     @Published var errorMessage: String?
+    /// True when VK rejected the request with its "Access denied" error
+    /// (code 15) rather than a connectivity/transport failure. Catalog
+    /// entries scraped from speculative sections (e.g. "New releases")
+    /// sometimes reference an album VK will not hand a full track list
+    /// for — that is a real, permanent VK-side restriction, not a network
+    /// problem, so it should not be presented as one.
+    @Published private(set) var isAccessDenied = false
     @Published var paginationErrorMessage: String?
     private var nextOffset: Int?
 
@@ -336,14 +362,27 @@ private final class AlbumDetailViewModel: ObservableObject {
             tracks = page.items
             nextOffset = page.nextOffset
             errorMessage = nil
+            isAccessDenied = false
             paginationErrorMessage = nil
             hasLoaded = true
         } catch is CancellationError {
             return
         } catch {
             errorMessage = error.localizedDescription
+            isAccessDenied = Self.isAccessDeniedError(error)
             hasLoaded = true
         }
+    }
+
+    static func isAccessDeniedError(_ error: Error) -> Bool {
+        // VK error code 15 is its generic "Access denied" response —
+        // distinct from rate limiting, auth expiry, or transient server
+        // errors, all of which use other codes.
+        guard let apiError = error as? APIError,
+              case let .server(code, _) = apiError else {
+            return false
+        }
+        return code == 15
     }
 
     func loadMore(

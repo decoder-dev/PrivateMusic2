@@ -525,5 +525,7 @@
 "Буферизация" = "Buffering";
 "VK не вернул данные альбома для этого трека." = "VK did not return album data for this track.";
 "Не удалось открыть альбом: %@" = "Could not open album: %@";
+"Альбом недоступен" = "Album unavailable";
+"VK закрыл доступ к этому альбому. Иногда так бывает с материалами из «Новых релизов» — попробуйте открыть альбом в официальном приложении VK." = "VK has restricted access to this album. This can happen with items from “New releases” — try opening the album in the official VK app.";
 "Громкость" = "Volume";
 "Обработка выполняется на устройстве и применяется к наушникам, колонкам и CarKit / Bluetooth автомобиля." = "Processing runs on device and applies to headphones, speakers, and CarKit / car Bluetooth.";
