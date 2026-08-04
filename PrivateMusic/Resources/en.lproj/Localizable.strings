@@ -527,3 +527,8 @@
 "Не удалось открыть альбом: %@" = "Could not open album: %@";
 "Громкость" = "Volume";
 "Обработка выполняется на устройстве и применяется к наушникам, колонкам и CarKit / Bluetooth автомобиля." = "Processing runs on device and applies to headphones, speakers, and CarKit / car Bluetooth.";
+"Сглаживает скачки громкости между треками (целевой уровень как у стриминговых сервисов). Системная громкость не меняется — обработка идёт в DSP до наушников, колонок и CarKit." = "Smooths volume jumps between tracks (streaming-style target level). System volume is unchanged — processing runs in DSP before headphones, speakers, and CarKit.";
+"Выравнивать громкость" = "Normalize Loudness";
+"Сжимать динамический диапазон" = "Compress Dynamic Range";
+"Приглушает резкие пики, чтобы тихие и громкие фрагменты звучали ровнее. Можно включить вместе с выравниванием громкости." = "Tames sharp peaks so quiet and loud passages feel more even. Can be used with loudness normalization.";
+"Громкость треков" = "Track Loudness";

@@ -32,7 +32,12 @@ final class EqualizerDSP: @unchecked Sendable {
     private var drcEnabled = false
     private var spatialAudioEnabled = false
     private var spatialAudioIntensity = SpatialAudioDSP.defaultIntensity
+    /// Fixed baseline toward streaming ~-14 LUFS (≈ −4 dB from typical VK).
     private var loudnessGain: Float = 1.0
+    /// Slow AGC that levels peak energy between tracks without touching
+    /// system volume (`AVPlayer.volume` stays at 1 / MPVolumeView).
+    private var adaptiveGain: Float = 1.0
+    private var measuredPeak: Float = 0
     private var compressorThreshold: Float = 0.5
     private var compressorRatio: Float = 4.0
     private var compressorMakeupGain: Float = 1.0
@@ -42,6 +47,12 @@ final class EqualizerDSP: @unchecked Sendable {
     private var boomCutStates = [Float](repeating: 0, count: 8)
     private var sideHighPassCoefficients: Coefficients?
     private var sideHighPassState = [Float](repeating: 0, count: 4)
+
+    /// Target sample peak after loudness (~−1 dBTP) for inter-track leveling.
+    private static let loudnessTargetPeak: Float = 0.89
+    private static let adaptiveGainMin: Float = 0.5   // −6 dB
+    private static let adaptiveGainMax: Float = 2.0   // +6 dB
+
 
     var isEnabled: Bool {
         lock.lock()
@@ -60,11 +71,22 @@ final class EqualizerDSP: @unchecked Sendable {
     /// Flat EQ with zero preamp and no loudness/DRC is a no-op — skip the
     /// realtime tap so CarKit / AirPlay external handoff stays available and
     /// the device does not burn CPU on identity biquads.
+    /// Loudness / DRC run independently of the EQ toggle (Meridius-style
+    /// leveling should work with a flat equalizer).
     private var hasActiveEqualizerProcessing: Bool {
-        guard enabled else { return false }
         if loudnessNormEnabled || drcEnabled { return true }
+        guard enabled else { return false }
         if abs(preampDB) > 0.000_1 { return true }
         return gains.contains { abs($0) > 0.000_1 }
+    }
+
+    /// Call on track change so AGC does not carry the previous song's peak.
+    func resetLoudnessMeasurement() {
+        lock.lock()
+        measuredPeak = 0
+        adaptiveGain = 1
+        envelope = 0
+        lock.unlock()
     }
 
     func setOutputProfile(_ profile: PlaybackOutputToneProfile) {
@@ -101,10 +123,16 @@ final class EqualizerDSP: @unchecked Sendable {
         self.enabled = enabled
         self.gains = normalizedGains
         preampDB = normalizedPreamp
+        let loudnessChanged = loudnessNormEnabled != loudnessNorm
         loudnessNormEnabled = loudnessNorm
         drcEnabled = dynamicRangeCompression
         spatialAudioEnabled = spatialAudio
         spatialAudioIntensity = min(max(spatialIntensity, 0), 1)
+        if loudnessChanged {
+            measuredPeak = 0
+            adaptiveGain = 1
+            envelope = 0
+        }
         if rebuildRequired {
             rebuildCoefficients()
         }
@@ -182,8 +210,13 @@ final class EqualizerDSP: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         let clarityActive = outputProfile.needsClarityProcessing
+        let levelActive = loudnessNormEnabled || drcEnabled
+        let eqBandsActive = enabled && !coefficients.isEmpty
         guard supportsProcessing,
-              enabled || isSpatialAudioActive || clarityActive else {
+              eqBandsActive
+                || levelActive
+                || isSpatialAudioActive
+                || clarityActive else {
             return
         }
 
@@ -192,10 +225,11 @@ final class EqualizerDSP: @unchecked Sendable {
            !hasSignificantFilterState {
             return
         }
-        if enabled, !coefficients.isEmpty {
+        if eqBandsActive || levelActive {
             processEqualizer(
                 buffers: buffers,
-                frameCount: frameCount
+                frameCount: frameCount,
+                applyBands: eqBandsActive
             )
         }
         if clarityActive {
@@ -246,7 +280,8 @@ final class EqualizerDSP: @unchecked Sendable {
 
     private func processEqualizer(
         buffers: UnsafeMutableAudioBufferListPointer,
-        frameCount: Int
+        frameCount: Int,
+        applyBands: Bool
     ) {
         // The inner loops below run once per sample per band (10 bands x
         // every channel x every frame, continuously during playback).
@@ -255,13 +290,20 @@ final class EqualizerDSP: @unchecked Sendable {
         // are provably unnecessary here since neither array is resized or
         // shared while the tap is running. Hoisting raw pointers once per
         // buffer callback removes that overhead from the hot path.
+        if loudnessNormEnabled {
+            updateAdaptiveLoudnessGain(
+                buffers: buffers,
+                frameCount: frameCount
+            )
+        }
+        let levelGain = loudnessNormEnabled
+            ? loudnessGain * adaptiveGain
+            : 1
         coefficients.withUnsafeBufferPointer { coefficientsBuffer in
             states.withUnsafeMutableBufferPointer { statesBuffer in
-                guard let coefficientsBase = coefficientsBuffer.baseAddress,
-                      let statesBase = statesBuffer.baseAddress else {
-                    return
-                }
-                let bandCount = coefficientsBuffer.count
+                let coefficientsBase = coefficientsBuffer.baseAddress
+                let statesBase = statesBuffer.baseAddress
+                let bandCount = applyBands ? coefficientsBuffer.count : 0
 
                 for bufferIndex in buffers.indices {
                     guard let rawData = buffers[bufferIndex].mData else {
@@ -282,31 +324,44 @@ final class EqualizerDSP: @unchecked Sendable {
                             ? min(bufferIndex, channelCount - 1)
                             : min(localChannel, channelCount - 1)
                         var sampleIndex = localChannel
-                        let channelState = statesBase
-                            + channel * bandCount * 4
+                        let channelState: UnsafeMutablePointer<Float>? = {
+                            guard applyBands,
+                                  bandCount > 0,
+                                  let statesBase else {
+                                return nil
+                            }
+                            return statesBase + channel * bandCount * 4
+                        }()
 
                         for _ in 0..<frameCount {
-                            var value = samples[sampleIndex] * preamp
+                            var value = samples[sampleIndex]
+                            if applyBands {
+                                value *= preamp
+                            }
 
-                            var stateOffset = 0
-                            for band in 0..<bandCount {
-                                let coefficient = coefficientsBase[band]
-                                let state = channelState + stateOffset
-                                let x1 = state[0]
-                                let x2 = state[1]
-                                let y1 = state[2]
-                                let y2 = state[3]
-                                let output = coefficient.b0 * value
-                                    + coefficient.b1 * x1
-                                    + coefficient.b2 * x2
-                                    - coefficient.a1 * y1
-                                    - coefficient.a2 * y2
-                                state[0] = value
-                                state[1] = x1
-                                state[2] = output
-                                state[3] = y1
-                                value = output
-                                stateOffset += 4
+                            if applyBands,
+                               let coefficientsBase,
+                               let channelState {
+                                var stateOffset = 0
+                                for band in 0..<bandCount {
+                                    let coefficient = coefficientsBase[band]
+                                    let state = channelState + stateOffset
+                                    let x1 = state[0]
+                                    let x2 = state[1]
+                                    let y1 = state[2]
+                                    let y2 = state[3]
+                                    let output = coefficient.b0 * value
+                                        + coefficient.b1 * x1
+                                        + coefficient.b2 * x2
+                                        - coefficient.a1 * y1
+                                        - coefficient.a2 * y2
+                                    state[0] = value
+                                    state[1] = x1
+                                    state[2] = output
+                                    state[3] = y1
+                                    value = output
+                                    stateOffset += 4
+                                }
                             }
 
                             if drcEnabled {
@@ -324,16 +379,60 @@ final class EqualizerDSP: @unchecked Sendable {
                             }
 
                             if loudnessNormEnabled {
-                                value *= loudnessGain
+                                value *= levelGain
                             }
 
-                            samples[sampleIndex] = min(max(value, -1), 1)
+                            // Soft ceiling keeps AGC/EQ boosts from hard-clipping.
+                            samples[sampleIndex] = softCeiling(value)
                             sampleIndex += stride
                         }
                     }
                 }
             }
         }
+    }
+
+    private func updateAdaptiveLoudnessGain(
+        buffers: UnsafeMutableAudioBufferListPointer,
+        frameCount: Int
+    ) {
+        var bufferPeak: Float = 0
+        for buffer in buffers {
+            guard let rawData = buffer.mData else { continue }
+            let samples = rawData.assumingMemoryBound(to: Float.self)
+            let count = frameCount * max(Int(buffer.mNumberChannels), 1)
+            var localPeak: Float = 0
+            vDSP_maxmgv(samples, 1, &localPeak, vDSP_Length(count))
+            bufferPeak = max(bufferPeak, localPeak)
+        }
+        guard bufferPeak > 0.000_5 else { return }
+
+        // Fast attack / slow release so quiet→loud transitions settle without
+        // pumping, while a new track's first peaks still pull gain quickly.
+        if bufferPeak > measuredPeak {
+            measuredPeak += (bufferPeak - measuredPeak) * 0.35
+        } else {
+            measuredPeak += (bufferPeak - measuredPeak) * 0.02
+        }
+
+        let desired = Self.loudnessTargetPeak
+            / max(measuredPeak * loudnessGain, 0.000_5)
+        let clamped = min(
+            max(desired, Self.adaptiveGainMin),
+            Self.adaptiveGainMax
+        )
+        adaptiveGain += (clamped - adaptiveGain) * 0.08
+    }
+
+    private func softCeiling(_ value: Float) -> Float {
+        let limit: Float = 0.98
+        if value > limit {
+            return limit + (value - limit) / (1 + (value - limit) * 4)
+        }
+        if value < -limit {
+            return -limit + (value + limit) / (1 + (-value - limit) * 4)
+        }
+        return value
     }
 
     private func processBoomCut(

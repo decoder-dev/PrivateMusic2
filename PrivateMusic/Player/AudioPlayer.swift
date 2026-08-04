@@ -1109,6 +1109,9 @@ final class AudioPlayer: ObservableObject {
         player.replaceCurrentItem(with: item)
         loadedTrackID = track.id
         loadedOfflineTrackID = isOffline ? track.id : nil
+        // Fresh AGC baseline so the previous track's peak does not keep the
+        // next song artificially quiet or loud.
+        equalizer.resetLoudnessMeasurement()
         updateElapsedTime(position, forceProgressPublish: true)
         duration = track.duration
         let shouldAutoplay = autoplay && activateAudioSession()
