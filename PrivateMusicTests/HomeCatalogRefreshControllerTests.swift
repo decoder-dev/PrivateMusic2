@@ -24,8 +24,8 @@ final class HomeCatalogRefreshControllerTests: XCTestCase {
     // MARK: - Single request for the shared catalog endpoint
 
     func testCatalogSectionsIsRequestedExactlyOnceInARefresh() async {
-        let (controller, store, service, _) = makeSubject()
-        await connectSession(store, accessToken: validAccessToken)
+        let (controller, sessionStore, store, service, _) = makeSubject()
+        await connectSession(sessionStore, accessToken: validAccessToken)
 
         await controller.refreshHomeCatalog(force: true)
 
@@ -42,8 +42,8 @@ final class HomeCatalogRefreshControllerTests: XCTestCase {
 
     func testIndependentSectionsStartConcurrently() async {
         let timeline = Timeline()
-        let (controller, store, service, _) = makeSubject()
-        await connectSession(store, accessToken: validAccessToken)
+        let (controller, sessionStore, store, service, _) = makeSubject()
+        await connectSession(sessionStore, accessToken: validAccessToken)
         await service.update { configuration in
             configuration.recommendations = {
                 await timeline.record("recommendations")
@@ -86,8 +86,8 @@ final class HomeCatalogRefreshControllerTests: XCTestCase {
     // MARK: - Partial failure preserves successful sections
 
     func testPartialFailurePreservesSuccessfulSections() async {
-        let (controller, store, service, _) = makeSubject()
-        await connectSession(store, accessToken: validAccessToken)
+        let (controller, sessionStore, store, service, _) = makeSubject()
+        await connectSession(sessionStore, accessToken: validAccessToken)
         let recommendation = makeTrack(id: 1)
         let playlist = Playlist(
             id: 10,
@@ -130,8 +130,8 @@ final class HomeCatalogRefreshControllerTests: XCTestCase {
     // MARK: - Cancellation leaves state untouched
 
     func testCancelledRefreshDoesNotChangeState() async {
-        let (controller, store, service, _) = makeSubject()
-        await connectSession(store, accessToken: validAccessToken)
+        let (controller, sessionStore, store, service, _) = makeSubject()
+        await connectSession(sessionStore, accessToken: validAccessToken)
         await service.update { configuration in
             configuration.recommendations = {
                 try await Task.sleep(for: .seconds(30))
@@ -167,8 +167,8 @@ final class HomeCatalogRefreshControllerTests: XCTestCase {
     // MARK: - A superseded (stale) refresh does not clobber newer state
 
     func testStaleRefreshDoesNotOverwriteNewerState() async {
-        let (controller, store, service, _) = makeSubject()
-        await connectSession(store, accessToken: validAccessToken)
+        let (controller, sessionStore, store, service, _) = makeSubject()
+        await connectSession(sessionStore, accessToken: validAccessToken)
 
         let staleTrack = makeTrack(id: 1)
         let gate = Gate()
@@ -211,9 +211,9 @@ final class HomeCatalogRefreshControllerTests: XCTestCase {
     // MARK: - Unauthorized coalesces into one session recovery
 
     func testUnauthorizedTriggersAtMostOneSessionRecovery() async {
-        let (controller, store, service, webAuth) = makeSubject()
+        let (controller, sessionStore, store, service, webAuth) = makeSubject()
         await connectSession(
-            store,
+            sessionStore,
             accessToken: staleAccessToken,
             refreshCookie: "session=abc",
             webUserAgent: "TestAgent/1.0"
@@ -260,6 +260,7 @@ final class HomeCatalogRefreshControllerTests: XCTestCase {
 
     private func makeSubject() -> (
         HomeCatalogRefreshController,
+        SessionStore,
         HomeCatalogStore,
         FakeMusicService,
         FakeWebAuthExchanger
@@ -276,7 +277,7 @@ final class HomeCatalogRefreshControllerTests: XCTestCase {
             homeCatalogStore: homeCatalogStore,
             onUserAgentChanged: { _ in }
         )
-        return (controller, homeCatalogStore, service, webAuth)
+        return (controller, sessionStore, homeCatalogStore, service, webAuth)
     }
 
     private func connectSession(
