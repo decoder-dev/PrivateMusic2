@@ -14,7 +14,10 @@ protocol MusicService: Sendable {
         accessToken: String
     ) async throws -> Track
     func mixes(accessToken: String) async throws -> [MusicMix]
-    func newReleases(accessToken: String) async throws -> [Album]
+    /// Mixes and new releases both live inside `catalog.getAudio` blocks;
+    /// this fetches that endpoint once and derives both sections from the
+    /// same response instead of issuing two independent requests.
+    func catalogSections(accessToken: String) async throws -> CatalogSections
     func mixTracks(
         _ mix: MusicMix,
         accessToken: String

@@ -32,7 +32,16 @@ enum VKWebAuthError: LocalizedError {
     }
 }
 
-struct VKWebAuthService: Sendable {
+/// Narrow seam over the web-token exchange so tests can substitute a fake
+/// instead of making a real network call to `login.vk.ru`.
+protocol VKWebAuthExchanging: Sendable {
+    func exchange(
+        cookieHeader: String,
+        webUserAgent: String
+    ) async throws -> VKWebAuthResult
+}
+
+struct VKWebAuthService: VKWebAuthExchanging, Sendable {
     // VK's public web client identifier used by the vk.ru web session itself.
     private let webClientID = "6287487"
     private let tokenURL = URL(string: "https://login.vk.ru/?act=web_token")!

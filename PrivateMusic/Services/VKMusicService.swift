@@ -221,13 +221,20 @@ struct VKMusicService: MusicService {
         return discovered
     }
 
-    /// Speculative: no documented VK endpoint returns "new releases" for
-    /// this client, so this scans the same catalog blocks used for mixes
-    /// (and, as a fallback, a guessed releases section) for album-shaped
-    /// objects. Returns an empty array rather than throwing when nothing
-    /// is found — callers should hide the section instead of erroring.
-    func newReleases(accessToken: String) async throws -> [Album] {
-        var discovered: [Album] = []
+    /// Mixes and new releases both live inside the blocks returned by
+    /// `catalog.getAudio`, so this fetches it once and derives both
+    /// sections from the same response instead of the two independent
+    /// requests `mixes()` and the old `newReleases()` used to make.
+    ///
+    /// New releases remain speculative: no documented VK endpoint returns
+    /// "new releases" for this client, so this scans the same catalog
+    /// blocks used for mixes (and, as a fallback, a guessed releases
+    /// section) for album-shaped objects. An empty array is returned
+    /// rather than throwing when nothing is found — callers should hide
+    /// the section instead of erroring.
+    func catalogSections(accessToken: String) async throws -> CatalogSections {
+        var mixes: [MusicMix] = []
+        var newReleases: [Album] = []
         do {
             let envelope: VKResponse<JSONValue> = try await client.post(
                 path: "/method/catalog.getAudio",
@@ -236,7 +243,8 @@ struct VKMusicService: MusicService {
                 ]) { _, new in new },
                 responseType: VKResponse<JSONValue>.self
             )
-            discovered = envelope.response.releaseAlbums
+            mixes = envelope.response.musicMixes
+            newReleases = envelope.response.releaseAlbums
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as APIError where error == .unauthorized {
@@ -244,33 +252,80 @@ struct VKMusicService: MusicService {
         } catch let error as APIError where error.isConnectivityFailure {
             throw error
         } catch {
-            // Fall through to the section-based lookup below.
+            // Some VK sessions only expose these through per-section
+            // fallbacks below.
         }
 
-        if discovered.isEmpty {
-            do {
-                let envelope: VKResponse<JSONValue> = try await client.post(
-                    path: "/method/catalog.getSection",
-                    form: common(accessToken).merging([
-                        "section_id": "audio_new_releases",
-                        "need_blocks": "1",
-                        "count": "30"
-                    ]) { _, new in new },
-                    responseType: VKResponse<JSONValue>.self
-                )
-                discovered = envelope.response.releaseAlbums
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch let error as APIError where error == .unauthorized {
-                throw error
-            } catch let error as APIError where error.isConnectivityFailure {
-                throw error
-            } catch {
-                // No releases section available for this account/session.
-            }
+        if mixes.isEmpty && newReleases.isEmpty {
+            async let mixesFallback = fetchMixesSection(accessToken: accessToken)
+            async let releasesFallback = fetchReleasesSection(
+                accessToken: accessToken
+            )
+            (mixes, newReleases) = try await (mixesFallback, releasesFallback)
+        } else if mixes.isEmpty {
+            mixes = try await fetchMixesSection(accessToken: accessToken)
+        } else if newReleases.isEmpty {
+            newReleases = try await fetchReleasesSection(
+                accessToken: accessToken
+            )
         }
 
-        return discovered
+        if !mixes.contains(where: { $0.id == MusicMix.common.id }) {
+            mixes.insert(.common, at: 0)
+        }
+        return CatalogSections(mixes: mixes, newReleases: newReleases)
+    }
+
+    private func fetchMixesSection(
+        accessToken: String
+    ) async throws -> [MusicMix] {
+        do {
+            let envelope: VKResponse<JSONValue> = try await client.post(
+                path: "/method/catalog.getSection",
+                form: common(accessToken).merging([
+                    "section_id": "audio_stream_mixes",
+                    "need_blocks": "1",
+                    "count": "30"
+                ]) { _, new in new },
+                responseType: VKResponse<JSONValue>.self
+            )
+            return envelope.response.musicMixes
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as APIError where error == .unauthorized {
+            throw error
+        } catch let error as APIError where error.isConnectivityFailure {
+            throw error
+        } catch {
+            // The common mix is still a real VK stream endpoint.
+            return []
+        }
+    }
+
+    private func fetchReleasesSection(
+        accessToken: String
+    ) async throws -> [Album] {
+        do {
+            let envelope: VKResponse<JSONValue> = try await client.post(
+                path: "/method/catalog.getSection",
+                form: common(accessToken).merging([
+                    "section_id": "audio_new_releases",
+                    "need_blocks": "1",
+                    "count": "30"
+                ]) { _, new in new },
+                responseType: VKResponse<JSONValue>.self
+            )
+            return envelope.response.releaseAlbums
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as APIError where error == .unauthorized {
+            throw error
+        } catch let error as APIError where error.isConnectivityFailure {
+            throw error
+        } catch {
+            // No releases section available for this account/session.
+            return []
+        }
     }
 
     func mixTracks(

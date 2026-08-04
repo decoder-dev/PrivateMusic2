@@ -16,16 +16,12 @@ final class AppEnvironment: ObservableObject {
     let player: AudioPlayer
     let watchRemoteCoordinator: WatchRemoteCoordinator
     let musicService: any MusicService
-    let webAuthService: VKWebAuthService
+    let webAuthService: any VKWebAuthExchanging
+    let refreshController: HomeCatalogRefreshController
     @Published private(set) var isRecoveringSession = false
     /// While a share export is active, offline downloads and automatic
     /// caching are paused and hidden so the share transfer gets bandwidth.
     @Published private(set) var isShareSessionActive = false
-    private struct SessionRecovery {
-        let id: UUID
-        let task: Task<String, Error>
-    }
-    private var sessionRecovery: SessionRecovery?
     private var shareSessionDepth = 0
     private var cancellables = Set<AnyCancellable>()
     private var automaticCacheTask: Task<Void, Never>?
@@ -33,7 +29,9 @@ final class AppEnvironment: ObservableObject {
 
     init(
         configuration: AppConfiguration = .current,
-        keychain: KeychainStore = KeychainStore()
+        keychain: KeychainStore = KeychainStore(),
+        musicService: (any MusicService)? = nil,
+        webAuthService: (any VKWebAuthExchanging)? = nil
     ) {
         self.configuration = configuration
         self.settings = AppSettings()
@@ -67,18 +65,33 @@ final class AppEnvironment: ObservableObject {
         offlineStore.configureEvictionProtection { [weak player] in
             player?.currentTrack?.id
         }
-        self.webAuthService = VKWebAuthService()
+        self.webAuthService = webAuthService ?? VKWebAuthService()
 
         let client = APIClient(
             baseURL: configuration.vkAPIBaseURL,
             userAgent: sessionStore.userAgent
         )
-        let service = VKMusicService(
+        let service = musicService ?? VKMusicService(
             client: client,
             apiVersion: configuration.apiVersion,
             initialUserID: sessionStore.resolvedOfflineAccountID
         )
         self.musicService = service
+        let refreshController = HomeCatalogRefreshController(
+            sessionStore: sessionStore,
+            musicService: service,
+            webAuthService: self.webAuthService,
+            homeCatalogStore: homeCatalogStore,
+            onUserAgentChanged: { [weak player] userAgent in
+                player?.configureNetwork(userAgent: userAgent)
+            }
+        )
+        self.refreshController = refreshController
+        refreshController.$isRecoveringSession
+            .sink { [weak self] value in
+                self?.isRecoveringSession = value
+            }
+            .store(in: &cancellables)
         player.configureContinuation { [weak self, service] in
             guard let self else { return [] }
             return try await self.withAuthorizedToken { token in
@@ -186,76 +199,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     func refreshHomeCatalog(force: Bool = false) async {
-        homeCatalogStore.prepare(
-            accountID: sessionStore.resolvedOfflineAccountID
-        )
-        guard sessionStore.accessToken != nil,
-              homeCatalogStore.shouldRefresh(force: force) else {
-            return
-        }
-        let refreshID = homeCatalogStore.beginRefreshing()
-        var recommendations: [Track]?
-        var mixes: [MusicMix]?
-        var playlists: [Playlist]?
-        var newReleases: [Album]?
-        var failures: [String] = []
-        do {
-            recommendations = try await withAuthorizedToken { token in
-                try await musicService.recommendations(accessToken: token)
-            }
-        } catch is CancellationError {
-            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
-            return
-        } catch {
-            failures.append(error.localizedDescription)
-        }
-        do {
-            mixes = try await withAuthorizedToken { token in
-                try await musicService.mixes(accessToken: token)
-            }
-        } catch is CancellationError {
-            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
-            return
-        } catch {
-            failures.append(error.localizedDescription)
-        }
-        do {
-            playlists = try await withAuthorizedToken { token in
-                let page = try await musicService.playlists(
-                    accessToken: token,
-                    offset: 0,
-                    count: 30
-                )
-                return page.items
-            }
-        } catch is CancellationError {
-            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
-            return
-        } catch {
-            failures.append(error.localizedDescription)
-        }
-        do {
-            newReleases = try await withAuthorizedToken { token in
-                try await musicService.newReleases(accessToken: token)
-            }
-        } catch is CancellationError {
-            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
-            return
-        } catch {
-            // Speculative endpoint (VK does not document a stable "new
-            // releases" source for this client) — absence or failure just
-            // hides the section, it should not surface alongside real
-            // catalog failures.
-            newReleases = []
-        }
-        homeCatalogStore.finish(
-            recommendations: recommendations,
-            mixes: mixes,
-            playlists: playlists,
-            newReleases: newReleases,
-            errorMessage: failures.first,
-            refreshID: refreshID
-        )
+        await refreshController.refreshHomeCatalog(force: force)
     }
 
     private var resumePlaybackAfterShare = false
@@ -456,120 +400,15 @@ final class AppEnvironment: ObservableObject {
     func withAuthorizedToken<Value>(
         _ operation: (String) async throws -> Value
     ) async throws -> Value {
-        try Task.checkCancellation()
-        guard let attemptedToken = sessionStore.accessToken else {
-            throw APIError.unauthorized
-        }
-
-        do {
-            return try await operation(attemptedToken)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch let error as APIError where error == .unauthorized {
-            try Task.checkCancellation()
-        }
-
-        if let latestToken = sessionStore.accessToken,
-           latestToken != attemptedToken {
-            do {
-                return try await operation(latestToken)
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch let error as APIError where error == .unauthorized {
-                try Task.checkCancellation()
-            }
-        }
-
-        let refreshedToken = try await recoverSession()
-        try Task.checkCancellation()
-
-        // A web exchange may legitimately return the same token with refreshed
-        // cookies. The rejected operation still gets one clean retry.
-        return try await operation(refreshedToken)
+        try await refreshController.withAuthorizedToken(operation)
     }
 
     func recoverSession() async throws -> String {
-        if let sessionRecovery {
-            return try await sessionRecovery.task.value
-        }
-        guard let baselineSession = sessionStore.session,
-              let cookie = baselineSession.refreshCookie,
-              let webUserAgent = baselineSession.webUserAgent else {
-            throw APIError.unauthorized
-        }
-        let baselineRevision = sessionStore.sessionRevision
-
-        let recoveryID = UUID()
-        isRecoveringSession = true
-        let task = Task { @MainActor [weak self] in
-            guard let self else { throw CancellationError() }
-            let result = try await webAuthService.exchange(
-                cookieHeader: cookie,
-                webUserAgent: webUserAgent
-            )
-            try Task.checkCancellation()
-
-            // Never let an exchange started for an old account overwrite a
-            // logout, a new login or a token rotated by another workflow.
-            guard let currentSession = sessionStore.session else {
-                throw CancellationError()
-            }
-            guard sessionStore.sessionRevision == baselineRevision,
-                  currentSession == baselineSession else {
-                await musicService.configure(
-                    userAgent: currentSession.userAgent
-                )
-                player.configureNetwork(
-                    userAgent: currentSession.userAgent
-                )
-                return currentSession.accessToken
-            }
-
-            await musicService.configure(userAgent: result.apiUserAgent)
-            player.configureNetwork(userAgent: result.apiUserAgent)
-            do {
-                let profile = try await musicService.profile(
-                    accessToken: result.accessToken
-                )
-                try Task.checkCancellation()
-
-                guard let latestSession = sessionStore.session else {
-                    throw CancellationError()
-                }
-                guard sessionStore.sessionRevision == baselineRevision,
-                      latestSession == baselineSession else {
-                    await musicService.configure(
-                        userAgent: latestSession.userAgent
-                    )
-                    player.configureNetwork(
-                        userAgent: latestSession.userAgent
-                    )
-                    return latestSession.accessToken
-                }
-
-                try sessionStore.updateWebSession(result, profile: profile)
-                return result.accessToken
-            } catch {
-                let retainedUserAgent = sessionStore.session?.userAgent
-                await musicService.configure(userAgent: retainedUserAgent)
-                player.configureNetwork(userAgent: retainedUserAgent)
-                throw error
-            }
-        }
-        sessionRecovery = SessionRecovery(id: recoveryID, task: task)
-        defer {
-            if sessionRecovery?.id == recoveryID {
-                sessionRecovery = nil
-                isRecoveringSession = false
-            }
-        }
-        return try await task.value
+        try await refreshController.recoverSession()
     }
 
     func cancelSessionRecovery() {
-        sessionRecovery?.task.cancel()
-        sessionRecovery = nil
-        isRecoveringSession = false
+        refreshController.cancelSessionRecovery()
     }
 }
 
