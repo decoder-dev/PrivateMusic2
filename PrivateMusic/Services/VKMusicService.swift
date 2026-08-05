@@ -177,8 +177,8 @@ struct VKMusicService: MusicService {
     }
 
     /// Loads mixes and new-release albums from real catalog section ids
-    /// returned by `catalog.getAudio`, then hydrates thin results via
-    /// `catalog.getSection`. Avoids guessed section names.
+    /// returned by `catalog.getAudio`, then hydrates matching official
+    /// sections via `catalog.getSection` in parallel.
     func catalogSnapshot(
         accessToken: String
     ) async throws -> VKCatalogSnapshot {
@@ -207,31 +207,38 @@ struct VKMusicService: MusicService {
             // Section hydration below may still recover usable content.
         }
 
-        let mixSections = sections.filter(CatalogSectionPolicy.looksLikeMixSection)
-        let releaseSections = sections.filter(
-            CatalogSectionPolicy.looksLikeReleasesSection
+        let mixSections = Array(
+            sections
+                .filter(CatalogSectionPolicy.looksLikeMixSection)
+                .prefix(CatalogSectionPolicy.hydrationLimit)
+        )
+        let releaseSections = Array(
+            sections
+                .filter(CatalogSectionPolicy.looksLikeReleasesSection)
+                .prefix(CatalogSectionPolicy.hydrationLimit)
         )
 
-        if mixes.count <= 1 {
-            for section in mixSections.prefix(4) {
-                if let extra = try? await catalogSectionPayload(
-                    sectionID: section.id,
-                    accessToken: accessToken
-                ) {
-                    mixes = mergingMixes(mixes, extra.musicMixes)
-                }
+        // Always hydrate official mix sections (not only when the root
+        // catalog returned ≤1 mix). Thin root payloads with 2–3 mixes still
+        // miss most of the VK mixes page.
+        if !mixSections.isEmpty {
+            let hydrated = await hydrateSections(
+                mixSections,
+                accessToken: accessToken
+            ) { payload, section in
+                payload.musicMixes.map { $0.withSectionTitle(section.title) }
             }
+            mixes = mergingMixes(mixes, hydrated)
         }
 
-        if releases.isEmpty {
-            for section in releaseSections.prefix(4) {
-                if let extra = try? await catalogSectionPayload(
-                    sectionID: section.id,
-                    accessToken: accessToken
-                ) {
-                    releases = mergingAlbums(releases, extra.releaseAlbums)
-                }
+        if releases.isEmpty, !releaseSections.isEmpty {
+            let hydrated = await hydrateSections(
+                releaseSections,
+                accessToken: accessToken
+            ) { payload, _ in
+                payload.releaseAlbums
             }
+            releases = mergingAlbums(releases, hydrated)
         }
 
         if !mixes.contains(where: { $0.id == MusicMix.common.id }) {
@@ -252,16 +259,16 @@ struct VKMusicService: MusicService {
 
     func mixTracks(
         _ mix: MusicMix,
-        accessToken: String
+        accessToken: String,
+        startingOffset: Int,
+        pages: Int
     ) async throws -> [Track] {
         let userID = try await resolvedUserID(accessToken: accessToken)
-        // Stream mixes commonly return only a few items per response even
-        // when a larger count is requested. A small concurrent fan-out fills
-        // a real queue without the old 10-page waste + hard prefix(30).
         let pageSize = MixTrackRequestPolicy.pageSize
-        let pageCount = MixTrackRequestPolicy.pageCount
-        let offsets = (0..<pageCount).map { $0 * pageSize }
-        let pages = try await withThrowingTaskGroup(
+        let pageCount = max(pages, 1)
+        let baseOffset = max(startingOffset, 0)
+        let offsets = (0..<pageCount).map { baseOffset + $0 * pageSize }
+        let collectedPages = try await withThrowingTaskGroup(
             of: (offset: Int, tracks: [Track]).self
         ) { group -> [(offset: Int, tracks: [Track])] in
             for offset in offsets {
@@ -296,7 +303,7 @@ struct VKMusicService: MusicService {
         }
         var known = Set<String>()
         var tracks: [Track] = []
-        for page in pages.sorted(by: { $0.offset < $1.offset }) {
+        for page in collectedPages.sorted(by: { $0.offset < $1.offset }) {
             for track in page.tracks where known.insert(track.id).inserted {
                 tracks.append(track)
             }
@@ -1143,6 +1150,35 @@ struct VKMusicService: MusicService {
             responseType: VKResponse<JSONValue>.self
         )
         return envelope.response
+    }
+
+    /// Bounded parallel `catalog.getSection` hydration. Failures for one
+    /// section do not abort the rest.
+    private func hydrateSections<Item>(
+        _ sections: [CatalogSectionRef],
+        accessToken: String,
+        extract: @Sendable (JSONValue, CatalogSectionRef) -> [Item]
+    ) async -> [Item] where Item: Sendable {
+        await withTaskGroup(of: [Item].self) { group in
+            for section in sections {
+                group.addTask {
+                    do {
+                        let payload = try await catalogSectionPayload(
+                            sectionID: section.id,
+                            accessToken: accessToken
+                        )
+                        return extract(payload, section)
+                    } catch {
+                        return []
+                    }
+                }
+            }
+            var collected: [Item] = []
+            for await items in group {
+                collected.append(contentsOf: items)
+            }
+            return collected
+        }
     }
 
     private func mergingMixes(

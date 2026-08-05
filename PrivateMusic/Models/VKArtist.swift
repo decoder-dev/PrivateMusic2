@@ -199,16 +199,33 @@ enum MixTrackRequestPolicy {
     static let pageSize = 100
     /// Concurrent pages to fill a usable queue without 10× API spam.
     static let pageCount = 4
+    /// First page only — start playback before the rest arrive.
+    static let bootstrapPages = 1
     /// Cap kept for the player queue (was 30 after fetching 10 pages).
     static let queueLimit = 80
+    /// Prefetch the next mix batch when this many tracks remain after current.
+    static let continuationRemainingThreshold = 6
+}
+
+enum ContinuationPrefetchPolicy {
+    static func shouldPrefetch(currentIndex: Int?, queueCount: Int) -> Bool {
+        guard let currentIndex, queueCount > 0 else { return false }
+        let remaining = queueCount - currentIndex - 1
+        return remaining <= MixTrackRequestPolicy.continuationRemainingThreshold
+    }
 }
 
 enum CatalogSectionPolicy {
+    /// Max official mix/release sections to hydrate in parallel.
+    static let hydrationLimit = 6
+
     static func looksLikeMixSection(_ section: CatalogSectionRef) -> Bool {
         let blob = section.searchableBlob
         let markers = [
             "mix", "микс", "stream", "подбор", "radio", "вкус",
-            "для вас", "for you", "discover", "поток"
+            "для вас", "for you", "discover", "поток", "mood",
+            "настроен", "активност", "activity", "жанр", "genre",
+            "section=mix", "listen together", "друг"
         ]
         return markers.contains { blob.contains($0) }
     }

@@ -688,7 +688,7 @@ final class AudioPlayer: ObservableObject {
         resetProgressForTrackTransition()
         persistPlayback()
         loadCurrentAndPlay()
-        startContinuationPrefetch()
+        maybeStartContinuationPrefetch()
     }
 
     func playNext(_ track: Track) {
@@ -1195,6 +1195,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func scheduleNeighborPreloads() {
+        maybeStartContinuationPrefetch()
         let lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
         let remotePreloadingAllowed = canPreloadPlayback()
         if !lowPowerMode, remotePreloadingAllowed {
@@ -2294,6 +2295,42 @@ final class AudioPlayer: ObservableObject {
                 self.startContinuationIfNeeded()
             }
         }
+    }
+
+    /// Prefetch continuation only when the queue is about to run out —
+    /// avoids an immediate second full mix fan-out right after play().
+    private func maybeStartContinuationPrefetch() {
+        guard activeContinuationProvider != nil,
+              continuationPrefetchTask == nil,
+              continuationTask == nil else {
+            return
+        }
+        guard ContinuationPrefetchPolicy.shouldPrefetch(
+            currentIndex: currentIndex,
+            queueCount: queue.count
+        ) else {
+            return
+        }
+        startContinuationPrefetch()
+    }
+
+    /// Append unique tracks to the active queue (background mix fill).
+    func appendToQueue(_ tracks: [Track]) {
+        let additions = PlaybackQueueBuilder.uniqueAdditions(
+            existing: queue,
+            candidates: tracks
+        )
+        guard !additions.isEmpty else { return }
+        let capped = Array(
+            additions.prefix(
+                max(MixTrackRequestPolicy.queueLimit - queue.count, 0)
+            )
+        )
+        guard !capped.isEmpty else { return }
+        queue.append(contentsOf: capped)
+        persistPlayback()
+        publishNowPlayingQueue()
+        scheduleNeighborPreloads()
     }
 
     private func continueQueueIfPossible(
