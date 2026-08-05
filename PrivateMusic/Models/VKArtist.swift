@@ -99,41 +99,93 @@ enum AlbumAccessPolicy {
             return exact
         }
 
-        let title = album.title.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        ).lowercased()
-        guard !title.isEmpty else { return nil }
-        let artistHints = Set(
-            album.artists.map {
-                $0.folding(
-                    options: [.caseInsensitive, .diacriticInsensitive],
-                    locale: Locale(identifier: "en_US_POSIX")
-                ).lowercased()
-            }
-        )
+        let title = normalized(album.title)
+        guard !title.isEmpty else {
+            return candidates.first(where: hasUsableAccessKey)
+        }
+        let artistHints = Set(album.artists.map(normalized).filter { !$0.isEmpty })
 
         let titled = candidates.filter {
-            $0.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased() == title
+            titlesMatch(normalized($0.title), title)
         }
         if !artistHints.isEmpty {
-            let artistMatched = titled.first {
-                hasUsableAccessKey($0)
-                    && !$0.artists.isEmpty
-                    && $0.artists.contains { artist in
-                        let value = artist.folding(
-                            options: [.caseInsensitive, .diacriticInsensitive],
-                            locale: Locale(identifier: "en_US_POSIX")
-                        ).lowercased()
+            let artistMatched = titled.filter { candidate in
+                !candidate.artists.isEmpty
+                    && candidate.artists.contains { artist in
+                        let value = normalized(artist)
                         return artistHints.contains {
                             value.contains($0) || $0.contains(value)
                         }
                     }
             }
-            if let artistMatched { return artistMatched }
+            if let withKey = artistMatched.first(where: hasUsableAccessKey) {
+                return withKey
+            }
+            if let first = artistMatched.first {
+                return first
+            }
         }
         return titled.first(where: hasUsableAccessKey)
             ?? titled.first
+            ?? candidates.first(where: hasUsableAccessKey)
+    }
+
+    static func searchQueries(for album: Album) -> [String] {
+        var queries: [String] = []
+        let title = album.title.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let artist = album.artists.first?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if Album.isUsableTitle(title), !artist.isEmpty {
+            queries.append("\(title) \(artist)")
+            queries.append("\(artist) \(title)")
+        }
+        if Album.isUsableTitle(title) {
+            queries.append(title)
+        }
+        if !artist.isEmpty {
+            queries.append(artist)
+        }
+        var seen = Set<String>()
+        return queries.filter { seen.insert($0.lowercased()).inserted }
+    }
+
+    static func trackBelongs(_ track: Track, to album: Album) -> Bool {
+        if let reference = track.albumReference,
+           reference.albumID == album.albumID,
+           reference.ownerID == album.ownerID {
+            return true
+        }
+        let albumTitle = normalized(album.title)
+        guard !albumTitle.isEmpty,
+              let trackAlbum = track.albumTitle.map(normalized),
+              !trackAlbum.isEmpty,
+              titlesMatch(trackAlbum, albumTitle) else {
+            return false
+        }
+        let artistHints = Set(
+            album.artists.map(normalized).filter { !$0.isEmpty }
+        )
+        guard !artistHints.isEmpty else { return true }
+        let trackArtist = normalized(track.artist)
+        return artistHints.contains {
+            trackArtist.contains($0) || $0.contains(trackArtist)
+        }
+    }
+
+    private static func titlesMatch(_ lhs: String, _ rhs: String) -> Bool {
+        lhs == rhs || lhs.contains(rhs) || rhs.contains(lhs)
+    }
+
+    private static func normalized(_ value: String) -> String {
+        value
+            .folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
