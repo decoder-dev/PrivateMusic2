@@ -75,7 +75,6 @@ struct PlaylistEditorView: View {
     }
 
     private func save() async {
-        guard let token = sessionStore.accessToken else { return }
         let cleanTitle = title.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
@@ -83,23 +82,27 @@ struct PlaylistEditorView: View {
         defer { isSaving = false }
         do {
             if let playlist {
-                try await environment.musicService.editPlaylist(
-                    playlist,
-                    title: cleanTitle,
-                    description: description,
-                    accessToken: token
-                )
+                try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.editPlaylist(
+                        playlist,
+                        title: cleanTitle,
+                        description: description,
+                        accessToken: token
+                    )
+                }
             } else {
                 guard let ownerID = sessionStore.session?.userID
                     ?? sessionStore.profile?.id else {
                     throw APIError.invalidResponse
                 }
-                _ = try await environment.musicService.createPlaylist(
-                    title: cleanTitle,
-                    description: description,
-                    ownerID: ownerID,
-                    accessToken: token
-                )
+                _ = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.createPlaylist(
+                        title: cleanTitle,
+                        description: description,
+                        ownerID: ownerID,
+                        accessToken: token
+                    )
+                }
             }
             onSaved()
             dismiss()
