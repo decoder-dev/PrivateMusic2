@@ -127,26 +127,27 @@ jobs:
           test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.32-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.33-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.32"
+          test "$GITHUB_REF_NAME" = "v3.28.33"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.32 (pre-release)
+          # Private Music 3.28.33 (pre-release)
 
-          Пре-релиз: альбомы вроде «Письмо домой» открываются даже когда
-          playlist API VK отвечает Access denied.
+          Фикс открытия альбомов: access_key больше не клеится к чужому
+          owner_id/album_id из рекомендаций.
 
           ## Альбомы
-          - После отказа `audio.get` / execute.getPlaylist собираем треки
-            через публичный `audio.search` (+ каталог исполнителя)
-          - Улучшенный поиск access_key (несколько query-вариантов)
-          - Иконка ошибки — lock, не «нет Wi‑Fi»
+          - Если search находит другой locator с валидным ключом — берём
+            его целиком (ключ привязан к паре id)
+          - Мягкий матч треков из audio.search, когда Kate не отдаёт
+            album_title
+          - Fallback на топ выдачи по названию альбома
 
           ## Установка
           IPA не подписан. Перед установкой подпишите собственным сертификатом:
@@ -154,17 +155,17 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.32-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.28.33-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.32" \
+              --title "Private Music 3.28.33" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.32-unsigned.ipa" \
-              --title "Private Music 3.28.32" \
+              "$PWD/artifacts/PrivateMusic-3.28.33-unsigned.ipa" \
+              --title "Private Music 3.28.33" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -173,7 +174,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.32-unsigned
-          path: artifacts/PrivateMusic-3.28.32-unsigned.ipa
+          name: PrivateMusic-3.28.33-unsigned
+          path: artifacts/PrivateMusic-3.28.33-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
