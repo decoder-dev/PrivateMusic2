@@ -414,6 +414,9 @@ final class AudioPlayer: ObservableObject {
     private var continuationTask: Task<Void, Never>?
     private var continuationPrefetchTask: Task<Void, Never>?
     private var advanceAfterContinuationPrefetch = false
+    /// Latches while the queue is inside the near-end window so we only
+    /// fire one prefetch per entry into that window (not after every fill).
+    private var continuationPrefetchInThreshold = false
     private var streamRefreshTask: Task<Void, Never>?
     private var lastPersistedSecond = -1
     private var playbackGeneration = 0
@@ -687,6 +690,7 @@ final class AudioPlayer: ObservableObject {
         }
         resetProgressForTrackTransition()
         persistPlayback()
+        continuationPrefetchInThreshold = false
         loadCurrentAndPlay()
         maybeStartContinuationPrefetch()
     }
@@ -2205,6 +2209,13 @@ final class AudioPlayer: ObservableObject {
         continuationPrefetchTask?.cancel()
         continuationPrefetchTask = nil
         advanceAfterContinuationPrefetch = false
+        // Stay latched in the current near-end window so jump/cancel does
+        // not immediately start another prefetch for the same queue tip.
+        continuationPrefetchInThreshold = ContinuationPrefetchPolicy
+            .shouldPrefetch(
+                currentIndex: currentIndex,
+                queueCount: queue.count
+            )
     }
 
     private func cancelStreamRefresh() {
@@ -2297,20 +2308,21 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    /// Prefetch continuation only when the queue is about to run out —
-    /// avoids an immediate second full mix fan-out right after play().
+    /// Prefetch continuation only when entering the near-end window —
+    /// avoids an immediate second mix fan-out after every successful fill.
     private func maybeStartContinuationPrefetch() {
         guard activeContinuationProvider != nil,
               continuationPrefetchTask == nil,
               continuationTask == nil else {
             return
         }
-        guard ContinuationPrefetchPolicy.shouldPrefetch(
+        let should = ContinuationPrefetchPolicy.shouldPrefetch(
             currentIndex: currentIndex,
             queueCount: queue.count
-        ) else {
-            return
-        }
+        )
+        let enteredThreshold = should && !continuationPrefetchInThreshold
+        continuationPrefetchInThreshold = should
+        guard enteredThreshold else { return }
         startContinuationPrefetch()
     }
 
