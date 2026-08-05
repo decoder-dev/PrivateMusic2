@@ -247,6 +247,109 @@ final class ListeningProgressPolicyTests: XCTestCase {
     }
 }
 
+final class AlbumAccessPolicyTests: XCTestCase {
+    func testCommunityAlbumsRequireAccessKey() {
+        let community = Album(id: 1, ownerID: -200, title: "A", count: 1)
+        let user = Album(id: 1, ownerID: 42, title: "A", count: 1)
+
+        XCTAssertTrue(AlbumAccessPolicy.requiresAccessKey(community))
+        XCTAssertTrue(AlbumAccessPolicy.needsAccessKeyResolution(community))
+        XCTAssertFalse(AlbumAccessPolicy.requiresAccessKey(user))
+        XCTAssertFalse(AlbumAccessPolicy.needsAccessKeyResolution(user))
+    }
+
+    func testWhitespaceAccessKeyIsNotUsable() {
+        let album = Album(
+            id: 1,
+            ownerID: -200,
+            title: "A",
+            count: 1,
+            accessKey: "   "
+        )
+        XCTAssertFalse(AlbumAccessPolicy.hasUsableAccessKey(album))
+        XCTAssertTrue(AlbumAccessPolicy.needsAccessKeyResolution(album))
+    }
+
+    func testPreferredMatchPrefersExactIdWithAccessKey() {
+        let target = Album(
+            id: 9,
+            ownerID: -3,
+            title: "Письмо домой",
+            count: 0,
+            artists: ["Сектор Газа"]
+        )
+        let wrongKeyless = Album(
+            id: 9,
+            ownerID: -3,
+            title: "Письмо домой",
+            count: 12
+        )
+        let right = Album(
+            id: 9,
+            ownerID: -3,
+            title: "Письмо домой",
+            count: 12,
+            accessKey: "ak",
+            artists: ["Сектор Газа"]
+        )
+        let other = Album(
+            id: 99,
+            ownerID: -3,
+            title: "Письмо домой",
+            count: 12,
+            accessKey: "other",
+            artists: ["Сектор Газа"]
+        )
+
+        let match = AlbumAccessPolicy.preferredMatch(
+            in: [other, wrongKeyless, right],
+            for: target
+        )
+        XCTAssertEqual(match?.accessKey, "ak")
+        XCTAssertEqual(match?.compositeID, "-3_9")
+    }
+
+    func testMergingAccessMetadataKeepsLocatorAndFillsKey() {
+        let thin = Album(
+            id: 9,
+            ownerID: -3,
+            title: "Письмо домой",
+            count: 0,
+            artists: ["Сектор Газа"]
+        )
+        let rich = Album(
+            id: 9,
+            ownerID: -3,
+            title: "Письмо домой",
+            count: 14,
+            accessKey: "secret",
+            artists: ["Сектор Газа"],
+            followHash: "hash"
+        )
+        let merged = thin.mergingAccessMetadata(from: rich)
+        XCTAssertEqual(merged.accessKey, "secret")
+        XCTAssertEqual(merged.count, 14)
+        XCTAssertEqual(merged.followHash, "hash")
+        XCTAssertEqual(merged.compositeID, thin.compositeID)
+    }
+
+    func testAudioAccessDeniedDetection() {
+        XCTAssertTrue(
+            AlbumAccessPolicy.isAudioAccessDenied(
+                APIError.server(
+                    code: 15,
+                    message: "Access denied: access to users audio is denied"
+                )
+            )
+        )
+        XCTAssertFalse(
+            AlbumAccessPolicy.isAudioAccessDenied(
+                APIError.server(code: 10, message: "Internal server error")
+            )
+        )
+    }
+}
+
 @MainActor
 final class HomeCatalogStoreTests: XCTestCase {
     func testFreshContentDoesNotRefreshAgain() {
