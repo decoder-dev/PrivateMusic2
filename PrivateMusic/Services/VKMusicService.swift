@@ -1157,7 +1157,7 @@ struct VKMusicService: MusicService {
     private func hydrateSections<Item>(
         _ sections: [CatalogSectionRef],
         accessToken: String,
-        extract: @Sendable (JSONValue, CatalogSectionRef) -> [Item]
+        extract: @escaping @Sendable (JSONValue, CatalogSectionRef) -> [Item]
     ) async -> [Item] where Item: Sendable {
         await withTaskGroup(of: [Item].self) { group in
             for section in sections {
