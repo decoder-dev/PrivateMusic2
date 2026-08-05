@@ -12,6 +12,8 @@ struct MixView: View {
     @State private var loadingMixID: String?
     @State private var errorMessage: String?
     @State private var sharingTrack: Track?
+    @State private var selectedMix: MusicMix?
+    @State private var queueFillTask: Task<Void, Never>?
 
     init(mix: MusicMix = .common) {
         self.mix = mix
@@ -40,14 +42,25 @@ struct MixView: View {
         .background(ThemeBackground())
         .navigationTitle(mix.title)
         .trackShareSheet(track: $sharingTrack)
-        .task(id: sessionStore.accessToken) {
+        .navigationDestination(
+            isPresented: Binding(
+                get: { selectedMix != nil },
+                set: { if !$0 { selectedMix = nil } }
+            )
+        ) {
+            if let selectedMix {
+                MixView(mix: selectedMix)
+            }
+        }
+        .task(id: "\(sessionStore.accessToken ?? "")-\(mix.id)") {
             await load(force: true)
         }
         .refreshable { await load(force: true) }
+        .onDisappear { queueFillTask?.cancel() }
     }
 
     private var hero: some View {
-        Button { start(mix) } label: {
+        Button { start(mix, preferLoaded: true) } label: {
             ZStack(alignment: .bottomLeading) {
                 LinearGradient(
                     colors: [
@@ -92,7 +105,7 @@ struct MixView: View {
         }
         .buttonStyle(PremiumPressStyle())
         .contextMenu {
-            Button { start(mix) } label: {
+            Button { start(mix, preferLoaded: true) } label: {
                 Label("Воспроизвести микс", systemImage: "play.fill")
             }
         }
@@ -101,24 +114,24 @@ struct MixView: View {
 
     private var mixShelf: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Ваши VK Миксы")
+            Text(L10n.text("Ваши VK Миксы"))
                 .font(.title2.weight(.bold))
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 14) {
-                    ForEach(mixes.filter { $0.id != mix.id }) { mix in
-                        Button { start(mix) } label: {
+                    ForEach(mixes.filter { $0.id != mix.id }) { other in
+                        Button { selectedMix = other } label: {
                             VStack(alignment: .leading, spacing: 8) {
                                 MixArtworkView(
-                                    mix: mix,
+                                    mix: other,
                                     tracks: tracks,
                                     size: 166,
                                     cornerRadius: 14
                                 )
-                                Text(mix.title)
+                                Text(other.title)
                                     .font(.headline)
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
-                                Text(mix.subtitle)
+                                Text(other.subtitle)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -127,8 +140,14 @@ struct MixView: View {
                         }
                         .buttonStyle(PremiumPressStyle())
                         .contextMenu {
-                            Button { start(mix) } label: {
-                                Label("Воспроизвести микс", systemImage: "play.fill")
+                            Button { start(other, preferLoaded: false) } label: {
+                                Label(
+                                    "Воспроизвести микс",
+                                    systemImage: "play.fill"
+                                )
+                            }
+                            Button { selectedMix = other } label: {
+                                Label("Открыть микс", systemImage: "list.bullet")
                             }
                         }
                     }
@@ -139,9 +158,9 @@ struct MixView: View {
 
     private var recommendationShelf: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Для вас")
+            Text(L10n.text("Для вас"))
                 .font(.title2.weight(.bold))
-            Text("Подобрано по вашим прослушиваниям VK")
+            Text(L10n.text("Подобрано по вашим прослушиваниям VK"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -227,19 +246,21 @@ struct MixView: View {
     }
 
     private var algorithmSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Продолжить поток")
+        let list = Array(tracks.dropFirst(12).prefix(36))
+        return VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.text("Продолжить поток"))
                 .font(.title2.weight(.bold))
             VStack(spacing: 0) {
-                ForEach(Array(tracks.dropFirst(12).prefix(12).enumerated()),
-                        id: \.element.id) { index, track in
+                ForEach(Array(list.enumerated()), id: \.element.id) {
+                    index,
+                    track in
                     TrackRow(
                         track: track,
                         queue: tracks,
                         source: .mix(title: mix.title)
                     )
                         .padding(.vertical, 7)
-                    if index < min(max(tracks.count - 12, 0), 12) - 1 {
+                    if index < list.count - 1 {
                         Divider().padding(.leading, 64)
                     }
                 }
@@ -281,26 +302,59 @@ struct MixView: View {
         }
     }
 
-    private func start(_ mix: MusicMix) {
+    private func start(_ mix: MusicMix, preferLoaded: Bool) {
         guard sessionStore.accessToken != nil else { return }
+        if preferLoaded,
+           mix.id == self.mix.id,
+           let first = tracks.first {
+            play(
+                first,
+                queue: tracks,
+                mix: mix,
+                source: .mix(title: mix.title)
+            )
+            return
+        }
         loadingMixID = mix.id
+        queueFillTask?.cancel()
         Task {
             defer { loadingMixID = nil }
             do {
-                let queue = try await environment.withAuthorizedToken {
+                let bootstrap = try await environment.withAuthorizedToken {
                     token in
-                    try await environment.musicService.mixTracks(
+                    try await environment.musicService.mixTracksBootstrap(
                         mix,
                         accessToken: token
                     )
                 }
-                guard let first = queue.first else { return }
+                guard let first = bootstrap.first else { return }
                 play(
                     first,
-                    queue: queue,
+                    queue: bootstrap,
                     mix: mix,
                     source: .mix(title: mix.title)
                 )
+                queueFillTask = Task {
+                    do {
+                        let more = try await environment.withAuthorizedToken {
+                            token in
+                            try await environment.musicService
+                                .mixTracksContinuation(
+                                    mix,
+                                    accessToken: token
+                                )
+                        }
+                        guard !Task.isCancelled else { return }
+                        await MainActor.run {
+                            player.appendToQueue(more)
+                            if mix.id == self.mix.id {
+                                tracks = mergeTracks(tracks, more)
+                            }
+                        }
+                    } catch {
+                        // Playback already started.
+                    }
+                }
             } catch is CancellationError {
                 return
             } catch {
@@ -321,7 +375,7 @@ struct MixView: View {
             in: queue,
             continuation: {
                 try await environment.withAuthorizedToken { token in
-                    try await environment.musicService.mixTracks(
+                    try await environment.musicService.mixTracksContinuation(
                         mix,
                         accessToken: token
                     )
@@ -340,29 +394,81 @@ struct MixView: View {
         isLoading = true
         defer { isLoading = false }
         var failures: [String] = []
-        do {
-            mixes = try await environment.withAuthorizedToken { token in
-                try await environment.musicService.mixes(
-                    accessToken: token
-                )
+
+        async let mixesResult: Result<[MusicMix], Error> = {
+            do {
+                let value = try await environment.withAuthorizedToken {
+                    token in
+                    try await environment.musicService.mixes(accessToken: token)
+                }
+                return .success(value)
+            } catch {
+                return .failure(error)
             }
-        } catch is CancellationError {
-            return
-        } catch {
+        }()
+        async let tracksResult: Result<[Track], Error> = {
+            do {
+                let value = try await environment.withAuthorizedToken {
+                    token in
+                    try await environment.musicService.mixTracksBootstrap(
+                        mix,
+                        accessToken: token
+                    )
+                }
+                return .success(value)
+            } catch {
+                return .failure(error)
+            }
+        }()
+
+        switch await mixesResult {
+        case let .success(value):
+            mixes = value
+        case let .failure(error):
+            if error is CancellationError { return }
             failures.append(error.localizedDescription)
         }
-        do {
-            tracks = try await environment.withAuthorizedToken { token in
-                try await environment.musicService.mixTracks(
-                    mix,
-                    accessToken: token
-                )
-            }
-        } catch is CancellationError {
-            return
-        } catch {
+
+        switch await tracksResult {
+        case let .success(value):
+            tracks = value
+        case let .failure(error):
+            if error is CancellationError { return }
             failures.append(error.localizedDescription)
         }
+
         errorMessage = failures.first
+
+        // Background fill of the remaining mix pages for the detail list.
+        if !tracks.isEmpty {
+            queueFillTask?.cancel()
+            queueFillTask = Task {
+                do {
+                    let more = try await environment.withAuthorizedToken {
+                        token in
+                        try await environment.musicService
+                            .mixTracksContinuation(
+                                mix,
+                                accessToken: token
+                            )
+                    }
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run {
+                        tracks = mergeTracks(tracks, more)
+                    }
+                } catch {
+                    // Detail UI already has the bootstrap page.
+                }
+            }
+        }
+    }
+
+    private func mergeTracks(_ lhs: [Track], _ rhs: [Track]) -> [Track] {
+        var known = Set(lhs.map(\.id))
+        var result = lhs
+        for track in rhs where known.insert(track.id).inserted {
+            result.append(track)
+        }
+        return Array(result.prefix(MixTrackRequestPolicy.queueLimit))
     }
 }
