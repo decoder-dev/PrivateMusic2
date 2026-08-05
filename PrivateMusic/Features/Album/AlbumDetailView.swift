@@ -78,7 +78,7 @@ struct AlbumDetailView: View {
                             : "Не удалось открыть альбом",
                         systemImage: model.errorMessage == nil
                             ? "music.note.list"
-                            : "wifi.exclamationmark",
+                            : "lock.fill",
                         description: model.errorMessage
                             ?? "VK не вернул доступные аудиозаписи."
                     )
