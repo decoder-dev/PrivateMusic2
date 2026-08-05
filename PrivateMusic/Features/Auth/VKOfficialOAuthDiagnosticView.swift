@@ -94,6 +94,33 @@ struct VKOfficialOAuthDiagnosticView: View {
                     LabeledContent("user_id", value: String(userID))
                 }
             }
+            Section("Реальный вызов audio.get") {
+                switch model.apiTestOutcome {
+                case .none:
+                    HStack {
+                        ProgressView()
+                        Text("Проверяем этим токеном…")
+                            .foregroundStyle(.secondary)
+                    }
+                case let .some(.success(count)):
+                    Label(
+                        "Получено треков: \(count)",
+                        systemImage: "checkmark.circle.fill"
+                    )
+                    .foregroundStyle(.green)
+                case let .some(.failure(message)):
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(
+                            "VK отклонил вызов",
+                            systemImage: "xmark.circle.fill"
+                        )
+                        .foregroundStyle(.red)
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
         .navigationTitle("Результат")
     }
@@ -134,11 +161,17 @@ private struct VKOAuthWebView: UIViewRepresentable {
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
 
+enum VKOAuthAPITestOutcome {
+    case success(trackCount: Int)
+    case failure(message: String)
+}
+
 @MainActor
 private final class VKOfficialOAuthDiagnosticModel: NSObject, ObservableObject {
     @Published private(set) var isLoading = true
     @Published private(set) var result: VKOAuthDiagnosticResult?
     @Published private(set) var errorMessage: String?
+    @Published private(set) var apiTestOutcome: VKOAuthAPITestOutcome?
 
     let webView: WKWebView
 
@@ -161,6 +194,7 @@ private final class VKOfficialOAuthDiagnosticModel: NSObject, ObservableObject {
     func reload() {
         errorMessage = nil
         result = nil
+        apiTestOutcome = nil
         load()
     }
 
@@ -214,11 +248,11 @@ private final class VKOfficialOAuthDiagnosticModel: NSObject, ObservableObject {
         }
 
         let scope = pairs["scope"] ?? ""
-        let hasToken = !(pairs["access_token"] ?? "").isEmpty
+        let accessToken = pairs["access_token"] ?? ""
         let expiresIn = Int(pairs["expires_in"] ?? "") ?? -1
         let userID = Int(pairs["user_id"] ?? "")
 
-        guard hasToken else {
+        guard !accessToken.isEmpty else {
             errorMessage = L10n.text(
                 "VK не вернул access_token в ответе."
             )
@@ -228,11 +262,34 @@ private final class VKOfficialOAuthDiagnosticModel: NSObject, ObservableObject {
 
         result = VKOAuthDiagnosticResult(
             rawScope: scope.isEmpty ? "(пусто)" : scope,
-            hasToken: hasToken,
+            hasToken: true,
             expiresIn: expiresIn,
             userID: userID
         )
         isLoading = false
+        Task { await runAPITest(accessToken: accessToken) }
+    }
+
+    /// The real test: not just whether "audio" shows up in the granted
+    /// `scope` string, but whether VK actually serves audio.get with this
+    /// token. Reuses the app's own VKMusicService unchanged — every method
+    /// there takes the access token as a call parameter rather than
+    /// storing one internally, so no new service implementation is needed
+    /// to try it against an officially-obtained token.
+    private func runAPITest(accessToken: String) async {
+        guard let baseURL = URL(string: "https://api.vk.ru") else { return }
+        let client = APIClient(baseURL: baseURL, userAgent: nil)
+        let service = VKMusicService(client: client, apiVersion: "5.199")
+        do {
+            let page = try await service.library(
+                accessToken: accessToken,
+                offset: 0,
+                count: 5
+            )
+            apiTestOutcome = .success(trackCount: page.items.count)
+        } catch {
+            apiTestOutcome = .failure(message: error.localizedDescription)
+        }
     }
 }
 
