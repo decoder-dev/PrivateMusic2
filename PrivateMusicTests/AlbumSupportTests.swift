@@ -333,6 +333,27 @@ final class AlbumAccessPolicyTests: XCTestCase {
         XCTAssertEqual(merged.compositeID, thin.compositeID)
     }
 
+    func testMergingAccessMetadataAdoptsSearchLocatorWhenIdsDiffer() {
+        let stale = Album(
+            id: 1,
+            ownerID: -100,
+            title: "Письмо домой",
+            count: 0,
+            artists: ["Сектор Газа"]
+        )
+        let searchable = Album(
+            id: 9,
+            ownerID: -3,
+            title: "Письмо домой",
+            count: 14,
+            accessKey: "album-key",
+            artists: ["Сектор Газа"]
+        )
+        let merged = stale.mergingAccessMetadata(from: searchable)
+        XCTAssertEqual(merged.compositeID, "-3_9")
+        XCTAssertEqual(merged.accessKey, "album-key")
+    }
+
     func testAudioAccessDeniedDetection() {
         XCTAssertTrue(
             AlbumAccessPolicy.isAudioAccessDenied(

@@ -717,6 +717,22 @@ struct VKMusicService: MusicService {
     ) async throws -> MusicPage<Track> {
         var collected: [Track] = []
         var known = Set<String>()
+
+        func append(
+            _ tracks: [Track],
+            softArtistMatch: Bool
+        ) {
+            for track in tracks {
+                let matches = AlbumAccessPolicy.trackBelongs(track, to: album)
+                    || (softArtistMatch
+                        && AlbumAccessPolicy.artistMatches(track, album: album))
+                guard matches, known.insert(track.id).inserted else {
+                    continue
+                }
+                collected.append(track)
+            }
+        }
+
         for query in AlbumAccessPolicy.searchQueries(for: album) {
             let page = try await search(
                 query: query,
@@ -724,14 +740,27 @@ struct VKMusicService: MusicService {
                 offset: 0,
                 count: 100
             )
-            for track in page.items
-            where AlbumAccessPolicy.trackBelongs(track, to: album)
-                && known.insert(track.id).inserted {
-                collected.append(track)
-            }
+            // Kate search often omits album_title. For queries that already
+            // include the album name, artist match is enough.
+            let queryHasTitle = Album.isUsableTitle(album.title)
+                && query.localizedCaseInsensitiveContains(album.title)
+            append(page.items, softArtistMatch: queryHasTitle)
             if collected.count >= max(count + offset, 40) {
                 break
             }
+        }
+
+        // If the resolved search album has a key, try playlist fetch on that
+        // locator before giving up on structured album order.
+        if collected.count < 8,
+           AlbumAccessPolicy.hasUsableAccessKey(album),
+           let page = try? await fetchAlbumTracks(
+            album,
+            accessToken: accessToken,
+            offset: 0,
+            count: max(count + offset, 100)
+           ) {
+            append(page.items, softArtistMatch: false)
         }
 
         // Artist catalog is a second public source when title search is thin.
@@ -749,10 +778,31 @@ struct VKMusicService: MusicService {
             offset: 0,
             count: 100
            ) {
-            for track in artistPage.items
-            where AlbumAccessPolicy.trackBelongs(track, to: album)
-                && known.insert(track.id).inserted {
-                collected.append(track)
+            append(artistPage.items, softArtistMatch: false)
+            // Last resort: keep artist tracks whose album title is missing
+            // but which appeared under a title-bearing search above already
+            // handled; here only strict belongs applies.
+        }
+
+        // Absolute last resort — artist-matched search hits for the album
+        // title alone, even when album_title is absent on every item.
+        if collected.isEmpty,
+           Album.isUsableTitle(album.title) {
+            let page = try await search(
+                query: album.title,
+                accessToken: accessToken,
+                offset: 0,
+                count: 100
+            )
+            append(page.items, softArtistMatch: true)
+            if collected.isEmpty {
+                // Still nothing filtered — return top search hits so the
+                // screen is not empty for a known album title query.
+                for track in page.items
+                where known.insert(track.id).inserted {
+                    collected.append(track)
+                    if collected.count >= count { break }
+                }
             }
         }
 

@@ -164,6 +164,11 @@ enum AlbumAccessPolicy {
               titlesMatch(trackAlbum, albumTitle) else {
             return false
         }
+        return artistMatches(track, album: album)
+            || album.artists.isEmpty
+    }
+
+    static func artistMatches(_ track: Track, album: Album) -> Bool {
         let artistHints = Set(
             album.artists.map(normalized).filter { !$0.isEmpty }
         )
