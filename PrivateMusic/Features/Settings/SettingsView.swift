@@ -947,9 +947,28 @@ private struct ConnectionSettingsView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @State private var isRefreshing = false
     @State private var refreshError: String?
+    @State private var showsOAuthDiagnostic = false
 
     var body: some View {
         Form {
+            Section("Эксперимент") {
+                Button {
+                    showsOAuthDiagnostic = true
+                } label: {
+                    Label(
+                        "Проверить audio-доступ через VK OAuth",
+                        systemImage: "checkmark.shield"
+                    )
+                }
+                Text(
+                    "Диагностика для отдельной ветки: не входит в "
+                        + "рабочую сессию приложения, ничего не "
+                        + "сохраняет."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
             Section("Сеть") {
                 HStack(spacing: 12) {
                     Text("Статус")
@@ -1015,6 +1034,9 @@ private struct ConnectionSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle("Подключение")
+        .sheet(isPresented: $showsOAuthDiagnostic) {
+            VKOfficialOAuthDiagnosticView()
+        }
     }
 
     private func refreshSession() {
