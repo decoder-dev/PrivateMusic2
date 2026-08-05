@@ -150,6 +150,7 @@
 "Трек добавлен в медиатеку" = "Track Is in Your Library";
 "Трек не добавлен в медиатеку" = "Track Is Not in Your Library";
 "Музыка" = "Music";
+"Исполнитель VK" = "VK Artist";
 "%@, импортировано из %@" = "%@, imported from %@";
 
 "Оформление" = "Appearance";
