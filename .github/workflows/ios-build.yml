@@ -127,33 +127,28 @@ jobs:
           test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.30-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.31-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.30"
+          test "$GITHUB_REF_NAME" = "v3.28.31"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.30 (pre-release)
+          # Private Music 3.28.31 (pre-release)
 
-          Пре-релиз: VK-каталог и страница исполнителя по настоящим API-методам.
+          Пре-релиз поверх 3.28.30: открытие альбомов сообществ без Access denied.
 
-          ## VK API
-          - Каталог: реальные `section_id` из `catalog.getAudio` +
-            `catalog.getSection` (без угадывания `audio_stream_mixes` /
-            `audio_new_releases`)
-          - Один `catalogSnapshot` на Home вместо двойного catalog round-trip
-          - Исполнители: `audio.searchArtists` → `audio.getAudiosByArtist` /
-            `audio.getAlbumsByArtist` / `catalog.getAudioArtist`, с fallback
-            на поиск
-          - Микс-очередь: 4 страницы / до 80 треков (было 10 страниц → 30)
-          - Unfollow альбома зафиксирован на `audio.deletePlaylist`
-          - Создание/редактирование плейлистов через `withAuthorizedToken`
-          - Stream URL unmask: `users.get` при отсутствии userID
-          - Обложки плейлистов: nested `thumb`/`photo`
+          ## Альбомы
+          - Для `owner_id < 0` подтягиваем `access_key` через searchAlbums /
+            getPlaylistById перед `audio.get` / execute.getPlaylist
+          - Home больше не открывает «голый» album reference без ключа
+          - Понятное русское сообщение, если VK всё же отказал
+
+          ## Из 3.28.30
+          - Реальные catalog section ids, VK artist API, mix queue, unfollow
 
           ## Установка
           IPA не подписан. Перед установкой подпишите собственным сертификатом:
@@ -161,17 +156,17 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.30-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.28.31-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.30" \
+              --title "Private Music 3.28.31" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.30-unsigned.ipa" \
-              --title "Private Music 3.28.30" \
+              "$PWD/artifacts/PrivateMusic-3.28.31-unsigned.ipa" \
+              --title "Private Music 3.28.31" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -180,7 +175,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.30-unsigned
-          path: artifacts/PrivateMusic-3.28.30-unsigned.ipa
+          name: PrivateMusic-3.28.31-unsigned
+          path: artifacts/PrivateMusic-3.28.31-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
