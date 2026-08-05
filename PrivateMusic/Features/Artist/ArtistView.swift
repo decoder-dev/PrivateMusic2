@@ -293,13 +293,15 @@ struct ArtistView: View {
         }
 
         do {
-            let matched = resolvedArtist
-                ?? (try await resolveArtist(named: requestedArtist))
-            try Task.checkCancellation()
-            guard artist == requestedArtist else { return }
-            if resolvedArtist == nil {
+            let matched: VKArtist?
+            if let existing = resolvedArtist {
+                matched = existing
+            } else {
+                matched = try await resolveArtist(named: requestedArtist)
                 resolvedArtist = matched
             }
+            try Task.checkCancellation()
+            guard artist == requestedArtist else { return }
 
             let page: MusicPage<Track>
             if let matched {
