@@ -348,6 +348,52 @@ final class AlbumAccessPolicyTests: XCTestCase {
             )
         )
     }
+
+    func testSearchQueriesPreferTitleAndArtistCombos() {
+        let album = Album(
+            id: 9,
+            ownerID: -3,
+            title: "Письмо домой",
+            count: 0,
+            artists: ["Сектор Газа"]
+        )
+        let queries = AlbumAccessPolicy.searchQueries(for: album)
+        XCTAssertEqual(queries.first, "Письмо домой Сектор Газа")
+        XCTAssertTrue(queries.contains("Письмо домой"))
+        XCTAssertTrue(queries.contains("Сектор Газа"))
+    }
+
+    func testTrackBelongsMatchesAlbumTitleAndArtist() {
+        let album = Album(
+            id: 9,
+            ownerID: -3,
+            title: "Письмо домой",
+            count: 0,
+            artists: ["Сектор Газа"]
+        )
+        let matching = Track(
+            trackID: 1,
+            ownerID: 2,
+            title: "Лирика",
+            artist: "Сектор Газа",
+            albumTitle: "Письмо домой",
+            duration: 180,
+            streamURL: nil,
+            artworkURL: nil
+        )
+        let other = Track(
+            trackID: 2,
+            ownerID: 2,
+            title: "Other",
+            artist: "Other Band",
+            albumTitle: "Письмо домой",
+            duration: 180,
+            streamURL: nil,
+            artworkURL: nil
+        )
+        XCTAssertTrue(AlbumAccessPolicy.trackBelongs(matching, to: album))
+        XCTAssertFalse(AlbumAccessPolicy.trackBelongs(other, to: album))
+    }
 }
 
 @MainActor
