@@ -61,6 +61,10 @@ protocol MusicService: Sendable {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Track>
+    func resolvedAlbum(
+        _ album: Album,
+        accessToken: String
+    ) async throws -> Album
     func toggleAlbumFollow(
         _ album: Album,
         follow: Bool,

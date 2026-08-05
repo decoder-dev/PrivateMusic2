@@ -512,13 +512,54 @@ struct CatalogView: View {
         albumLookupTask = nil
         loadingAlbumTrackID = nil
         if let reference = track.albumReference {
-            selectedAlbum = reference.album(
+            let provisional = reference.album(
                 title: Album.isUsableTitle(track.albumTitle)
                     ? track.albumTitle ?? ""
                     : "",
                 artist: track.artist,
                 artworkURL: track.artworkURL
             )
+            if !AlbumAccessPolicy.needsAccessKeyResolution(provisional) {
+                selectedAlbum = provisional
+                return
+            }
+            // Community albums from recommendations often omit access_key —
+            // resolve it before pushing AlbumDetailView so the first load
+            // does not hit "access to users audio is denied".
+            loadingAlbumTrackID = track.id
+            let requestedTrackID = track.id
+            albumLookupTask = Task {
+                defer {
+                    if loadingAlbumTrackID == requestedTrackID {
+                        loadingAlbumTrackID = nil
+                        albumLookupTask = nil
+                    }
+                }
+                do {
+                    let enriched = try await environment.withAuthorizedToken {
+                        token in
+                        try await environment.musicService.resolvedAlbum(
+                            provisional,
+                            accessToken: token
+                        )
+                    }
+                    try Task.checkCancellation()
+                    guard loadingAlbumTrackID == requestedTrackID else {
+                        return
+                    }
+                    selectedAlbum = enriched
+                    actionErrorMessage = nil
+                } catch is CancellationError {
+                    return
+                } catch {
+                    guard loadingAlbumTrackID == requestedTrackID else {
+                        return
+                    }
+                    // Still open the provisional album — AlbumDetailView /
+                    // albumTracks will retry resolution on load.
+                    selectedAlbum = provisional
+                }
+            }
             return
         }
         guard let title = track.albumTitle,

@@ -103,6 +103,26 @@ struct Album: Decodable, Hashable, Identifiable, Sendable {
         )
     }
 
+    /// Prefer metadata from a richer VK payload (search / playlist-by-id)
+    /// while keeping the original locator when ids already match.
+    func mergingAccessMetadata(from other: Album) -> Album {
+        Album(
+            id: albumID,
+            ownerID: ownerID,
+            title: Self.isUsableTitle(title) ? title : other.title,
+            description: description ?? other.description,
+            count: count > 0 ? count : other.count,
+            artworkURL: artworkURL ?? other.artworkURL,
+            accessKey: AlbumAccessPolicy.usableAccessKey(from: other)
+                ?? AlbumAccessPolicy.usableAccessKey(from: self),
+            artists: artists.isEmpty ? other.artists : artists,
+            releaseDate: releaseDate ?? other.releaseDate,
+            releaseYear: releaseYear ?? other.releaseYear,
+            isFollowed: isFollowed || other.isFollowed,
+            followHash: followHash ?? other.followHash
+        )
+    }
+
     enum CodingKeys: String, CodingKey {
         case albumID = "id"
         case title, description, count, size, year, artist, artists, photo

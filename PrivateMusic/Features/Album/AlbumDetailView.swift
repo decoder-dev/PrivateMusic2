@@ -8,6 +8,7 @@ struct AlbumDetailView: View {
     @EnvironmentObject private var settings: AppSettings
     let album: Album
     @StateObject private var model = AlbumDetailViewModel()
+    @State private var resolvedAlbum: Album?
     @State private var isUpdatingFollow = false
     @State private var actionErrorMessage: String?
 
@@ -226,7 +227,7 @@ struct AlbumDetailView: View {
     }
 
     private var displayedAlbum: Album {
-        album.normalized(using: model.tracks)
+        (resolvedAlbum ?? album).normalized(using: model.tracks)
     }
 
     private var displayedTitle: String {
@@ -287,8 +288,13 @@ struct AlbumDetailView: View {
         guard sessionStore.accessToken != nil else { return }
         await model.load(force: force) {
             try await environment.withAuthorizedToken { token in
-                try await environment.musicService.albumTracks(
+                let enriched = try await environment.musicService.resolvedAlbum(
                     album,
+                    accessToken: token
+                )
+                resolvedAlbum = enriched
+                return try await environment.musicService.albumTracks(
+                    enriched,
                     accessToken: token,
                     offset: 0,
                     count: 100
@@ -298,10 +304,11 @@ struct AlbumDetailView: View {
     }
 
     private func loadMore() async {
+        let active = resolvedAlbum ?? album
         await model.loadMore { offset in
             try await environment.withAuthorizedToken { token in
                 try await environment.musicService.albumTracks(
-                    album,
+                    active,
                     accessToken: token,
                     offset: offset,
                     count: 100
