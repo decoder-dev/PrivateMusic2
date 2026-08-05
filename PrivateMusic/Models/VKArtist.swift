@@ -46,6 +46,97 @@ enum AlbumFollowPolicy {
     }
 }
 
+enum AlbumAccessPolicy {
+    /// Community / official album owners are negative; VK requires
+    /// `access_key` for `audio.get` / `execute.getPlaylist` on those.
+    static func requiresAccessKey(_ album: Album) -> Bool {
+        album.ownerID < 0
+    }
+
+    static func usableAccessKey(from album: Album) -> String? {
+        guard let key = album.accessKey?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !key.isEmpty else {
+            return nil
+        }
+        return key
+    }
+
+    static func hasUsableAccessKey(_ album: Album) -> Bool {
+        usableAccessKey(from: album) != nil
+    }
+
+    static func needsAccessKeyResolution(_ album: Album) -> Bool {
+        requiresAccessKey(album) && !hasUsableAccessKey(album)
+    }
+
+    static func isAudioAccessDenied(_ error: Error) -> Bool {
+        guard let apiError = error as? APIError,
+              case let .server(code, message) = apiError else {
+            return false
+        }
+        if [15, 201, 203, 204].contains(code) {
+            return true
+        }
+        let lower = message.lowercased()
+        return lower.contains("access denied")
+            || lower.contains("access to users audio")
+            || lower.contains("permission to perform this action")
+    }
+
+    static func preferredMatch(
+        in candidates: [Album],
+        for album: Album
+    ) -> Album? {
+        if let exact = candidates.first(where: {
+            $0.compositeID == album.compositeID && hasUsableAccessKey($0)
+        }) {
+            return exact
+        }
+        if let exact = candidates.first(where: {
+            $0.compositeID == album.compositeID
+        }) {
+            return exact
+        }
+
+        let title = album.title.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).lowercased()
+        guard !title.isEmpty else { return nil }
+        let artistHints = Set(
+            album.artists.map {
+                $0.folding(
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    locale: Locale(identifier: "en_US_POSIX")
+                ).lowercased()
+            }
+        )
+
+        let titled = candidates.filter {
+            $0.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased() == title
+        }
+        if !artistHints.isEmpty {
+            let artistMatched = titled.first {
+                hasUsableAccessKey($0)
+                    && !$0.artists.isEmpty
+                    && $0.artists.contains { artist in
+                        let value = artist.folding(
+                            options: [.caseInsensitive, .diacriticInsensitive],
+                            locale: Locale(identifier: "en_US_POSIX")
+                        ).lowercased()
+                        return artistHints.contains {
+                            value.contains($0) || $0.contains(value)
+                        }
+                    }
+            }
+            if let artistMatched { return artistMatched }
+        }
+        return titled.first(where: hasUsableAccessKey)
+            ?? titled.first
+    }
+}
+
 enum MixTrackRequestPolicy {
     /// Stream mixes often return ~3 items even when a larger count is asked.
     static let pageSize = 100
