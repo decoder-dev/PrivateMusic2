@@ -526,5 +526,6 @@
 "Буферизация" = "Buffering";
 "VK не вернул данные альбома для этого трека." = "VK did not return album data for this track.";
 "Не удалось открыть альбом: %@" = "Could not open album: %@";
+"VK не дал доступ к этому альбому. Откройте его через поиск или медиатеку." = "VK denied access to this album. Open it from Search or your library.";
 "Громкость" = "Volume";
 "Обработка выполняется на устройстве и применяется к наушникам, колонкам и CarKit / Bluetooth автомобиля." = "Processing runs on device and applies to headphones, speakers, and CarKit / car Bluetooth.";

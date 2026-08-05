@@ -509,6 +509,74 @@ struct VKMusicService: MusicService {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Track> {
+        let effective = try await resolvedAlbum(
+            album,
+            accessToken: accessToken
+        )
+        do {
+            return try await fetchAlbumTracks(
+                effective,
+                accessToken: accessToken,
+                offset: offset,
+                count: count
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as APIError where error == .unauthorized {
+            throw error
+        } catch let error as APIError where error.isConnectivityFailure {
+            throw error
+        } catch {
+            // First attempt may still miss a fresh access_key (stale
+            // reference from recommendations). Resolve again and retry once.
+            guard AlbumAccessPolicy.isAudioAccessDenied(error) else {
+                throw error
+            }
+            guard let recovered = try? await resolveAlbumAccessKey(
+                album,
+                accessToken: accessToken,
+                forceSearch: true
+            ),
+                  AlbumAccessPolicy.usableAccessKey(from: recovered)
+                    != AlbumAccessPolicy.usableAccessKey(from: effective)
+            else {
+                throw Self.albumAccessDeniedError(from: error)
+            }
+            do {
+                return try await fetchAlbumTracks(
+                    recovered,
+                    accessToken: accessToken,
+                    offset: offset,
+                    count: count
+                )
+            } catch {
+                throw Self.albumAccessDeniedError(from: error)
+            }
+        }
+    }
+
+    /// Ensures community albums carry a usable `access_key` before track /
+    /// follow calls. No-op when the key is already present or owner is a user.
+    func resolvedAlbum(
+        _ album: Album,
+        accessToken: String
+    ) async throws -> Album {
+        if !AlbumAccessPolicy.needsAccessKeyResolution(album) {
+            return album
+        }
+        return try await resolveAlbumAccessKey(
+            album,
+            accessToken: accessToken,
+            forceSearch: false
+        ) ?? album
+    }
+
+    private func fetchAlbumTracks(
+        _ album: Album,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Track> {
         let userID = try await resolvedUserID(accessToken: accessToken)
         do {
             let envelope: VKResponse<JSONValue> = try await client.post(
@@ -551,6 +619,8 @@ struct VKMusicService: MusicService {
             throw error
         } catch let error as APIError where error.isConnectivityFailure {
             throw error
+        } catch let error where AlbumAccessPolicy.isAudioAccessDenied(error) {
+            throw error
         } catch {
             // Older sessions can reject execute.getPlaylist. The canonical
             // audio.get album query remains a compatible fallback.
@@ -574,6 +644,92 @@ struct VKMusicService: MusicService {
             }
         )
         return page(resolved, offset: offset, requested: count)
+    }
+
+    private func resolveAlbumAccessKey(
+        _ album: Album,
+        accessToken: String,
+        forceSearch: Bool
+    ) async throws -> Album? {
+        if !forceSearch,
+           AlbumAccessPolicy.hasUsableAccessKey(album) {
+            return album
+        }
+
+        // Prefer getPlaylistById when we already have a key or a user-owned
+        // playlist; for missing community keys, search usually returns one.
+        if AlbumAccessPolicy.hasUsableAccessKey(album)
+            || album.ownerID > 0 {
+            if let detailed = try? await playlistByID(
+                album,
+                accessToken: accessToken
+            ) {
+                return album.mergingAccessMetadata(from: detailed)
+            }
+        }
+
+        let query: String
+        if Album.isUsableTitle(album.title) {
+            let artist = album.artists.first ?? ""
+            query = artist.isEmpty
+                ? album.title
+                : "\(album.title) \(artist)"
+        } else if let artist = album.artists.first, !artist.isEmpty {
+            query = artist
+        } else {
+            return nil
+        }
+
+        let page = try await searchAlbums(
+            query: query,
+            accessToken: accessToken,
+            offset: 0,
+            count: 20
+        )
+        guard let match = AlbumAccessPolicy.preferredMatch(
+            in: page.items,
+            for: album
+        ) else {
+            return nil
+        }
+        return album.mergingAccessMetadata(from: match)
+    }
+
+    private func playlistByID(
+        _ album: Album,
+        accessToken: String
+    ) async throws -> Album {
+        var parameters = [
+            "owner_id": String(album.ownerID),
+            "playlist_id": String(album.albumID)
+        ]
+        if let accessKey = AlbumAccessPolicy.usableAccessKey(from: album) {
+            parameters["access_key"] = accessKey
+        }
+        let envelope: VKResponse<Album> = try await client.post(
+            path: "/method/audio.getPlaylistById",
+            form: common(accessToken).merging(parameters) { _, new in new },
+            responseType: VKResponse<Album>.self
+        )
+        return envelope.response
+    }
+
+    private static func albumAccessDeniedError(from error: Error) -> APIError {
+        if let apiError = error as? APIError,
+           case let .server(code, _) = apiError {
+            return .server(
+                code: code,
+                message: L10n.text(
+                    "VK не дал доступ к этому альбому. Откройте его через поиск или медиатеку."
+                )
+            )
+        }
+        return .server(
+            code: 15,
+            message: L10n.text(
+                "VK не дал доступ к этому альбому. Откройте его через поиск или медиатеку."
+            )
+        )
     }
 
     func toggleAlbumFollow(
