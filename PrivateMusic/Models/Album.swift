@@ -103,15 +103,18 @@ struct Album: Decodable, Hashable, Identifiable, Sendable {
         )
     }
 
-    /// Prefer metadata from a richer VK payload (search / playlist-by-id)
-    /// while keeping the original locator when ids already match.
+    /// Prefer a searchable VK album payload. `access_key` is only valid for
+    /// its own `owner_id` + `id` pair, so a different composite id replaces
+    /// the locator entirely instead of grafting the key onto a stale id.
     func mergingAccessMetadata(from other: Album) -> Album {
-        Album(
-            id: albumID,
-            ownerID: ownerID,
+        let useOtherLocator = other.compositeID != compositeID
+            && AlbumAccessPolicy.hasUsableAccessKey(other)
+        return Album(
+            id: useOtherLocator ? other.albumID : albumID,
+            ownerID: useOtherLocator ? other.ownerID : ownerID,
             title: Self.isUsableTitle(title) ? title : other.title,
             description: description ?? other.description,
-            count: count > 0 ? count : other.count,
+            count: other.count > 0 ? other.count : count,
             artworkURL: artworkURL ?? other.artworkURL,
             accessKey: AlbumAccessPolicy.usableAccessKey(from: other)
                 ?? AlbumAccessPolicy.usableAccessKey(from: self),
@@ -119,7 +122,7 @@ struct Album: Decodable, Hashable, Identifiable, Sendable {
             releaseDate: releaseDate ?? other.releaseDate,
             releaseYear: releaseYear ?? other.releaseYear,
             isFollowed: isFollowed || other.isFollowed,
-            followHash: followHash ?? other.followHash
+            followHash: other.followHash ?? followHash
         )
     }
 
