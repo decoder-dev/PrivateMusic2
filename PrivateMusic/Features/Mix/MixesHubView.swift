@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Dedicated Mix tab hub: personal hero + social shelf + algorithmic mixes.
+/// Dedicated Mix tab hub: personal hero + official VK mix shelves.
 struct MixesHubView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
@@ -14,6 +14,7 @@ struct MixesHubView: View {
     @State private var selectedMix: MusicMix?
     @State private var loadingMixID: String?
     @State private var actionError: String?
+    @State private var queueFillTask: Task<Void, Never>?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -30,6 +31,7 @@ struct MixesHubView: View {
                             skeleton(metrics: metrics)
                         } else if let loadErrorMessage,
                                   socialMixes.isEmpty,
+                                  officialShelves.isEmpty,
                                   algorithmicMixes.isEmpty {
                             loadErrorState(loadErrorMessage)
                         } else {
@@ -41,6 +43,14 @@ struct MixesHubView: View {
                                     showsMatchBadge: true
                                 )
                             }
+                            ForEach(officialShelves, id: \.title) { shelf in
+                                mixShelf(
+                                    title: shelf.title,
+                                    mixes: shelf.mixes,
+                                    metrics: metrics,
+                                    showsMatchBadge: false
+                                )
+                            }
                             if !algorithmicMixes.isEmpty {
                                 mixShelf(
                                     title: "Собрано алгоритмами",
@@ -49,7 +59,9 @@ struct MixesHubView: View {
                                     showsMatchBadge: false
                                 )
                             }
-                            if socialMixes.isEmpty, algorithmicMixes.isEmpty {
+                            if socialMixes.isEmpty,
+                               officialShelves.isEmpty,
+                               algorithmicMixes.isEmpty {
                                 emptyMixesState
                             }
                         }
@@ -96,6 +108,9 @@ struct MixesHubView: View {
         .task(id: sessionStore.accessToken) {
             await load()
         }
+        .onDisappear {
+            queueFillTask?.cancel()
+        }
     }
 
     // Loaded independently from HomeCatalogStore: mixes used to be a Home
@@ -125,8 +140,39 @@ struct MixesHubView: View {
         mixes.filter { $0.id != MusicMix.common.id && $0.isSocial }
     }
 
+    /// Official catalog sections (mood / genre / VK mixes page), excluding
+    /// social cards which already have their own shelf.
+    private var officialShelves: [(title: String, mixes: [MusicMix])] {
+        let candidates = mixes.filter {
+            $0.id != MusicMix.common.id
+                && !$0.isSocial
+                && ($0.sectionTitle?.isEmpty == false)
+        }
+        var order: [String] = []
+        var grouped: [String: [MusicMix]] = [:]
+        for mix in candidates {
+            let title = mix.sectionTitle!
+            if grouped[title] == nil {
+                order.append(title)
+                grouped[title] = []
+            }
+            grouped[title]?.append(mix)
+        }
+        return order.compactMap { title in
+            guard let items = grouped[title], !items.isEmpty else {
+                return nil
+            }
+            return (title, items)
+        }
+    }
+
     private var algorithmicMixes: [MusicMix] {
-        mixes.filter { $0.id != MusicMix.common.id && !$0.isSocial }
+        let shelvedIDs = Set(officialShelves.flatMap(\.mixes).map(\.id))
+        return mixes.filter {
+            $0.id != MusicMix.common.id
+                && !$0.isSocial
+                && !shelvedIDs.contains($0.id)
+        }
     }
 
     private var personalMix: MusicMix {
@@ -157,17 +203,11 @@ struct MixesHubView: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Spacer(minLength: 0)
-                    Text(L10n.text("Экспериментальная функция"))
+                    Text(L10n.text("Персональный микс"))
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.72))
                         .textCase(.uppercase)
                         .tracking(0.55)
-                    // The bold headline stays a short, fixed mix title
-                    // (never longer than "Составлено Селеной") and the
-                    // personalized, unbounded-length greeting goes in the
-                    // smaller subtitle instead — a hero card of fixed
-                    // height and a profile first name of arbitrary length
-                    // otherwise combine into mid-word ellipsis truncation.
                     Text(mix.title)
                         .font(.title2.weight(.bold))
                         .lineLimit(2)
@@ -437,30 +477,52 @@ struct MixesHubView: View {
     private func start(_ mix: MusicMix) {
         guard sessionStore.accessToken != nil else { return }
         loadingMixID = mix.id
+        queueFillTask?.cancel()
         Task {
             defer { loadingMixID = nil }
             do {
-                let queue = try await environment.withAuthorizedToken {
+                // First page only — start playback immediately.
+                let bootstrap = try await environment.withAuthorizedToken {
                     token in
-                    try await environment.musicService.mixTracks(
+                    try await environment.musicService.mixTracksBootstrap(
                         mix,
                         accessToken: token
                     )
                 }
-                guard let first = queue.first else { return }
+                guard let first = bootstrap.first else { return }
                 player.play(
                     first,
-                    in: queue,
+                    in: bootstrap,
                     continuation: {
                         try await environment.withAuthorizedToken { token in
-                            try await environment.musicService.mixTracks(
-                                mix,
-                                accessToken: token
-                            )
+                            try await environment.musicService
+                                .mixTracksContinuation(
+                                    mix,
+                                    accessToken: token
+                                )
                         }
                     },
                     source: .mix(title: mix.title)
                 )
+                // Quiet background fill — one more batch, no 4+4 spam.
+                queueFillTask = Task {
+                    do {
+                        let more = try await environment.withAuthorizedToken {
+                            token in
+                            try await environment.musicService
+                                .mixTracksContinuation(
+                                    mix,
+                                    accessToken: token
+                                )
+                        }
+                        guard !Task.isCancelled else { return }
+                        await MainActor.run {
+                            player.appendToQueue(more)
+                        }
+                    } catch {
+                        // Playback already started; fill is best-effort.
+                    }
+                }
             } catch is CancellationError {
                 return
             } catch {

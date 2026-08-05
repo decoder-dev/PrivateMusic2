@@ -19,9 +19,35 @@ final class VKCatalogArtistTests: XCTestCase {
 
     func testMixQueuePolicyStopsWastefulTenPageFanOut() {
         XCTAssertEqual(MixTrackRequestPolicy.pageCount, 4)
+        XCTAssertEqual(MixTrackRequestPolicy.bootstrapPages, 1)
         XCTAssertEqual(MixTrackRequestPolicy.queueLimit, 80)
         XCTAssertLessThan(MixTrackRequestPolicy.pageCount, 10)
         XCTAssertGreaterThan(MixTrackRequestPolicy.queueLimit, 30)
+        XCTAssertLessThan(
+            MixTrackRequestPolicy.bootstrapPages,
+            MixTrackRequestPolicy.pageCount
+        )
+    }
+
+    func testContinuationPrefetchWaitsUntilQueueIsNearEnd() {
+        XCTAssertFalse(
+            ContinuationPrefetchPolicy.shouldPrefetch(
+                currentIndex: 0,
+                queueCount: 40
+            )
+        )
+        XCTAssertTrue(
+            ContinuationPrefetchPolicy.shouldPrefetch(
+                currentIndex: 35,
+                queueCount: 40
+            )
+        )
+        XCTAssertTrue(
+            ContinuationPrefetchPolicy.shouldPrefetch(
+                currentIndex: 0,
+                queueCount: 3
+            )
+        )
     }
 
     func testCatalogSectionDetectionUsesTitlesAndUrls() {
@@ -29,6 +55,11 @@ final class VKCatalogArtistTests: XCTestCase {
             id: "sec-mix",
             title: "Ваши миксы",
             url: "https://vk.com/audios0?section=mixes"
+        )
+        let mood = CatalogSectionRef(
+            id: "sec-mood",
+            title: "Настроение",
+            url: "https://vk.com/audios0?section=moods"
         )
         let releases = CatalogSectionRef(
             id: "sec-new",
@@ -42,9 +73,20 @@ final class VKCatalogArtistTests: XCTestCase {
         )
 
         XCTAssertTrue(CatalogSectionPolicy.looksLikeMixSection(mix))
+        XCTAssertTrue(CatalogSectionPolicy.looksLikeMixSection(mood))
         XCTAssertTrue(CatalogSectionPolicy.looksLikeReleasesSection(releases))
         XCTAssertFalse(CatalogSectionPolicy.looksLikeMixSection(other))
         XCTAssertFalse(CatalogSectionPolicy.looksLikeReleasesSection(other))
+    }
+
+    func testMusicMixKeepsOfficialSectionTitle() {
+        let mix = MusicMix(
+            id: "m1",
+            title: "Вечер",
+            subtitle: "Спокойное",
+            artworkURL: nil
+        ).withSectionTitle("Настроение")
+        XCTAssertEqual(mix.sectionTitle, "Настроение")
     }
 
     func testCatalogSectionsParsedFromGetAudioShape() throws {

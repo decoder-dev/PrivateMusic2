@@ -18,7 +18,9 @@ protocol MusicService: Sendable {
     func newReleases(accessToken: String) async throws -> [Album]
     func mixTracks(
         _ mix: MusicMix,
-        accessToken: String
+        accessToken: String,
+        startingOffset: Int,
+        pages: Int
     ) async throws -> [Track]
     func search(
         query: String,
@@ -119,4 +121,51 @@ protocol MusicService: Sendable {
         from playlist: Playlist,
         accessToken: String
     ) async throws
+}
+
+extension MusicService {
+    /// Full mix queue fill (bootstrap + remaining pages).
+    func mixTracks(
+        _ mix: MusicMix,
+        accessToken: String
+    ) async throws -> [Track] {
+        try await mixTracks(
+            mix,
+            accessToken: accessToken,
+            startingOffset: 0,
+            pages: MixTrackRequestPolicy.pageCount
+        )
+    }
+
+    /// First page only — start playback before the rest of the queue arrives.
+    func mixTracksBootstrap(
+        _ mix: MusicMix,
+        accessToken: String
+    ) async throws -> [Track] {
+        try await mixTracks(
+            mix,
+            accessToken: accessToken,
+            startingOffset: 0,
+            pages: MixTrackRequestPolicy.bootstrapPages
+        )
+    }
+
+    /// Pages after the bootstrap, for background queue fill / continuation.
+    func mixTracksContinuation(
+        _ mix: MusicMix,
+        accessToken: String
+    ) async throws -> [Track] {
+        let pageSize = MixTrackRequestPolicy.pageSize
+        let bootstrap = MixTrackRequestPolicy.bootstrapPages
+        let remaining = max(
+            MixTrackRequestPolicy.pageCount - bootstrap,
+            1
+        )
+        return try await mixTracks(
+            mix,
+            accessToken: accessToken,
+            startingOffset: bootstrap * pageSize,
+            pages: remaining
+        )
+    }
 }

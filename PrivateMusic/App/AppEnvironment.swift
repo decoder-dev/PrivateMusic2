@@ -199,48 +199,80 @@ final class AppEnvironment: ObservableObject {
         var playlists: [Playlist]?
         var newReleases: [Album]?
         var failures: [String] = []
-        do {
-            recommendations = try await withAuthorizedToken { token in
-                try await musicService.recommendations(accessToken: token)
+
+        // Independent home sources load in parallel — one catalog round-trip
+        // still covers mixes + new releases.
+        async let recommendationsResult: Result<[Track], Error> = {
+            do {
+                let value = try await withAuthorizedToken { token in
+                    try await musicService.recommendations(accessToken: token)
+                }
+                return .success(value)
+            } catch {
+                return .failure(error)
             }
-        } catch is CancellationError {
-            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
-            return
-        } catch {
+        }()
+        async let snapshotResult: Result<VKCatalogSnapshot, Error> = {
+            do {
+                let value = try await withAuthorizedToken { token in
+                    try await musicService.catalogSnapshot(accessToken: token)
+                }
+                return .success(value)
+            } catch {
+                return .failure(error)
+            }
+        }()
+        async let playlistsResult: Result<[Playlist], Error> = {
+            do {
+                let value = try await withAuthorizedToken { token in
+                    let page = try await musicService.playlists(
+                        accessToken: token,
+                        offset: 0,
+                        count: 30
+                    )
+                    return page.items
+                }
+                return .success(value)
+            } catch {
+                return .failure(error)
+            }
+        }()
+
+        switch await recommendationsResult {
+        case let .success(value):
+            recommendations = value
+        case let .failure(error):
+            if error is CancellationError {
+                homeCatalogStore.cancelRefreshing(refreshID: refreshID)
+                return
+            }
             failures.append(error.localizedDescription)
         }
 
-        // One catalog.getAudio (+ real section hydration) for mixes and
-        // new releases — avoids the old double catalog round-trip.
-        do {
-            let snapshot = try await withAuthorizedToken { token in
-                try await musicService.catalogSnapshot(accessToken: token)
-            }
+        switch await snapshotResult {
+        case let .success(snapshot):
             mixes = snapshot.mixes
             newReleases = snapshot.newReleases
-        } catch is CancellationError {
-            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
-            return
-        } catch {
+        case let .failure(error):
+            if error is CancellationError {
+                homeCatalogStore.cancelRefreshing(refreshID: refreshID)
+                return
+            }
             failures.append(error.localizedDescription)
             newReleases = []
         }
 
-        do {
-            playlists = try await withAuthorizedToken { token in
-                let page = try await musicService.playlists(
-                    accessToken: token,
-                    offset: 0,
-                    count: 30
-                )
-                return page.items
+        switch await playlistsResult {
+        case let .success(value):
+            playlists = value
+        case let .failure(error):
+            if error is CancellationError {
+                homeCatalogStore.cancelRefreshing(refreshID: refreshID)
+                return
             }
-        } catch is CancellationError {
-            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
-            return
-        } catch {
             failures.append(error.localizedDescription)
         }
+
         homeCatalogStore.finish(
             recommendations: recommendations,
             mixes: mixes,

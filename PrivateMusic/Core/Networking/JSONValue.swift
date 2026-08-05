@@ -162,6 +162,8 @@ enum JSONValue: Codable, Sendable {
                     ?? object["name"]?.stringValue
                     ?? L10n.text("VK Микс")
                 let subtitle = object["subtitle"]?.stringValue
+                    ?? object["description"]?.stringValue
+                    ?? object["caption"]?.stringValue
                     ?? L10n.text("Персональная подборка VK")
                 let matchPercent = object.mixMatchPercent
                 let social = object.looksLikeSocialMix(
