@@ -8,6 +8,7 @@ struct ArtistView: View {
     let artist: String
     @State private var tracks: [Track] = []
     @State private var albums: [Album] = []
+    @State private var resolvedArtist: VKArtist?
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var selectedAlbum: Album?
@@ -43,6 +44,10 @@ struct ArtistView: View {
             NavigationStack { AlbumDetailView(album: album) }
         }
         .task(id: artist) {
+            resolvedArtist = nil
+            if sessionStore.accessToken != nil {
+                resolvedArtist = try? await resolveArtist(named: artist)
+            }
             async let trackLoad: Void = load(resetContent: true)
             async let albumLoad: Void = loadAlbums()
             _ = await (trackLoad, albumLoad)
@@ -223,7 +228,7 @@ struct ArtistView: View {
     private var artistHeader: some View {
         HStack(spacing: 16) {
             AsyncArtwork(
-                url: tracks.first?.artworkURL,
+                url: resolvedArtist?.photoURL ?? tracks.first?.artworkURL,
                 size: 88
             )
 
@@ -232,7 +237,11 @@ struct ArtistView: View {
                     .font(.title2.weight(.bold))
                     .lineLimit(2)
                     .minimumScaleFactor(0.82)
-                Text(L10n.text("Музыка"))
+                Text(
+                    resolvedArtist == nil
+                        ? L10n.text("Музыка")
+                        : L10n.text("Исполнитель VK")
+                )
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -284,14 +293,31 @@ struct ArtistView: View {
         }
 
         do {
-            let page = try await fetchPage(for: requestedArtist)
+            let matched = resolvedArtist
+                ?? (try await resolveArtist(named: requestedArtist))
+            try Task.checkCancellation()
+            guard artist == requestedArtist else { return }
+            if resolvedArtist == nil {
+                resolvedArtist = matched
+            }
+
+            let page: MusicPage<Track>
+            if let matched {
+                page = try await fetchArtistTracks(
+                    artistID: matched.id,
+                    fallbackQuery: requestedArtist
+                )
+            } else {
+                page = try await fetchSearchPage(for: requestedArtist)
+            }
             try Task.checkCancellation()
             guard artist == requestedArtist else { return }
 
-            tracks = ArtistTrackFilter.filtered(
+            let filtered = ArtistTrackFilter.filtered(
                 page.items,
                 artist: requestedArtist
             )
+            tracks = filtered.isEmpty ? page.items : filtered
             errorMessage = nil
         } catch is CancellationError {
             return
@@ -306,42 +332,104 @@ struct ArtistView: View {
         let requestedArtist = artist
         guard sessionStore.accessToken != nil else { return }
         do {
-            let page = try await environment.withAuthorizedToken { token in
-                try await environment.musicService.searchAlbums(
-                    query: requestedArtist,
-                    accessToken: token,
-                    offset: 0,
-                    count: 20
-                )
+            let matched = resolvedArtist
+            let page: MusicPage<Album>
+            if let matched {
+                page = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.artistAlbums(
+                        artistID: matched.id,
+                        accessToken: token,
+                        offset: 0,
+                        count: 30
+                    )
+                }
+            } else {
+                page = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.searchAlbums(
+                        query: requestedArtist,
+                        accessToken: token,
+                        offset: 0,
+                        count: 20
+                    )
+                }
             }
             try Task.checkCancellation()
             guard artist == requestedArtist else { return }
-            albums = ArtistAlbumFilter.filtered(
+            let filtered = ArtistAlbumFilter.filtered(
                 page.items,
                 artist: requestedArtist
             )
+            albums = filtered.isEmpty && matched != nil
+                ? page.items
+                : filtered
         } catch {
             return
         }
     }
 
     @MainActor
-    private func fetchPage(
-        for requestedArtist: String
+    private func resolveArtist(named name: String) async throws -> VKArtist? {
+        let candidates = try await environment.withAuthorizedToken { token in
+            try await environment.musicService.searchArtists(
+                query: name,
+                accessToken: token,
+                offset: 0,
+                count: 8
+            )
+        }
+        return VKArtistMatch.best(in: candidates, named: name)
+    }
+
+    @MainActor
+    private func fetchArtistTracks(
+        artistID: String,
+        fallbackQuery: String
     ) async throws -> MusicPage<Track> {
-        let appEnvironment = environment
-        return try await withThrowingTaskGroup(
-            of: MusicPage<Track>.self
-        ) { group in
-            group.addTask { @MainActor in
-                try await appEnvironment.withAuthorizedToken { token in
-                    try await appEnvironment.musicService.search(
-                        query: requestedArtist,
+        do {
+            return try await withArtistDeadline {
+                try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.artistTracks(
+                        artistID: artistID,
                         accessToken: token,
                         offset: 0,
                         count: 50
                     )
                 }
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as APIError where error == .unauthorized {
+            throw error
+        } catch let error as APIError where error == .timedOut {
+            throw error
+        } catch {
+            return try await fetchSearchPage(for: fallbackQuery)
+        }
+    }
+
+    @MainActor
+    private func fetchSearchPage(
+        for requestedArtist: String
+    ) async throws -> MusicPage<Track> {
+        try await withArtistDeadline {
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.search(
+                    query: requestedArtist,
+                    accessToken: token,
+                    offset: 0,
+                    count: 50
+                )
+            }
+        }
+    }
+
+    @MainActor
+    private func withArtistDeadline<Value: Sendable>(
+        _ operation: @escaping @MainActor () async throws -> Value
+    ) async throws -> Value {
+        try await withThrowingTaskGroup(of: Value.self) { group in
+            group.addTask { @MainActor in
+                try await operation()
             }
             group.addTask {
                 try await Task.sleep(
@@ -349,13 +437,19 @@ struct ArtistView: View {
                 )
                 throw APIError.timedOut
             }
-
             defer { group.cancelAll() }
             guard let result = try await group.next() else {
                 throw CancellationError()
             }
             return result
         }
+    }
+
+    @MainActor
+    private func fetchPage(
+        for requestedArtist: String
+    ) async throws -> MusicPage<Track> {
+        try await fetchSearchPage(for: requestedArtist)
     }
 }
 
