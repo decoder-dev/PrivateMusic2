@@ -209,16 +209,23 @@ final class AppEnvironment: ObservableObject {
         } catch {
             failures.append(error.localizedDescription)
         }
+
+        // One catalog.getAudio (+ real section hydration) for mixes and
+        // new releases — avoids the old double catalog round-trip.
         do {
-            mixes = try await withAuthorizedToken { token in
-                try await musicService.mixes(accessToken: token)
+            let snapshot = try await withAuthorizedToken { token in
+                try await musicService.catalogSnapshot(accessToken: token)
             }
+            mixes = snapshot.mixes
+            newReleases = snapshot.newReleases
         } catch is CancellationError {
             homeCatalogStore.cancelRefreshing(refreshID: refreshID)
             return
         } catch {
             failures.append(error.localizedDescription)
+            newReleases = []
         }
+
         do {
             playlists = try await withAuthorizedToken { token in
                 let page = try await musicService.playlists(
@@ -233,20 +240,6 @@ final class AppEnvironment: ObservableObject {
             return
         } catch {
             failures.append(error.localizedDescription)
-        }
-        do {
-            newReleases = try await withAuthorizedToken { token in
-                try await musicService.newReleases(accessToken: token)
-            }
-        } catch is CancellationError {
-            homeCatalogStore.cancelRefreshing(refreshID: refreshID)
-            return
-        } catch {
-            // Speculative endpoint (VK does not document a stable "new
-            // releases" source for this client) — absence or failure just
-            // hides the section, it should not surface alongside real
-            // catalog failures.
-            newReleases = []
         }
         homeCatalogStore.finish(
             recommendations: recommendations,

@@ -83,7 +83,7 @@ struct VKMusicService: MusicService {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Track> {
-        let userID = await context.userID
+        let userID = try await resolvedUserID(accessToken: accessToken)
         var parameters = [
             "count": String(count),
             "offset": String(offset)
@@ -113,7 +113,7 @@ struct VKMusicService: MusicService {
 
     func recommendations(accessToken: String) async throws -> [Track] {
         do {
-            let userID = await context.userID
+            let userID = try await resolvedUserID(accessToken: accessToken)
             var parameters = [
                 "count": "100",
                 "shuffle": "1"
@@ -160,7 +160,7 @@ struct VKMusicService: MusicService {
             ]) { _, new in new },
             responseType: VKResponse<[Track]>.self
         )
-        let userID = await context.userID
+        let userID = try await resolvedUserID(accessToken: accessToken)
         guard let first = envelope.response.first else {
             throw APIError.invalidResponse
         }
@@ -172,62 +172,20 @@ struct VKMusicService: MusicService {
     }
 
     func mixes(accessToken: String) async throws -> [MusicMix] {
-        var discovered: [MusicMix] = []
-        do {
-            let envelope: VKResponse<JSONValue> = try await client.post(
-                path: "/method/catalog.getAudio",
-                form: common(accessToken).merging([
-                    "need_blocks": "1"
-                ]) { _, new in new },
-                responseType: VKResponse<JSONValue>.self
-            )
-            discovered = envelope.response.musicMixes
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch let error as APIError where error == .unauthorized {
-            throw error
-        } catch let error as APIError where error.isConnectivityFailure {
-            throw error
-        } catch {
-            // Some VK sessions only expose stream mixes through the section.
-        }
-
-        if discovered.isEmpty {
-            do {
-                let envelope: VKResponse<JSONValue> = try await client.post(
-                    path: "/method/catalog.getSection",
-                    form: common(accessToken).merging([
-                        "section_id": "audio_stream_mixes",
-                        "need_blocks": "1",
-                        "count": "30"
-                    ]) { _, new in new },
-                    responseType: VKResponse<JSONValue>.self
-                )
-                discovered = envelope.response.musicMixes
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch let error as APIError where error == .unauthorized {
-                throw error
-            } catch let error as APIError where error.isConnectivityFailure {
-                throw error
-            } catch {
-                // The common mix is still a real VK stream endpoint.
-            }
-        }
-
-        if !discovered.contains(where: { $0.id == MusicMix.common.id }) {
-            discovered.insert(.common, at: 0)
-        }
-        return discovered
+        let snapshot = try await catalogSnapshot(accessToken: accessToken)
+        return snapshot.mixes
     }
 
-    /// Speculative: no documented VK endpoint returns "new releases" for
-    /// this client, so this scans the same catalog blocks used for mixes
-    /// (and, as a fallback, a guessed releases section) for album-shaped
-    /// objects. Returns an empty array rather than throwing when nothing
-    /// is found — callers should hide the section instead of erroring.
-    func newReleases(accessToken: String) async throws -> [Album] {
-        var discovered: [Album] = []
+    /// Loads mixes and new-release albums from real catalog section ids
+    /// returned by `catalog.getAudio`, then hydrates thin results via
+    /// `catalog.getSection`. Avoids guessed section names.
+    func catalogSnapshot(
+        accessToken: String
+    ) async throws -> VKCatalogSnapshot {
+        var mixes: [MusicMix] = []
+        var releases: [Album] = []
+        var sections: [CatalogSectionRef] = []
+
         do {
             let envelope: VKResponse<JSONValue> = try await client.post(
                 path: "/method/catalog.getAudio",
@@ -236,7 +194,9 @@ struct VKMusicService: MusicService {
                 ]) { _, new in new },
                 responseType: VKResponse<JSONValue>.self
             )
-            discovered = envelope.response.releaseAlbums
+            mixes = envelope.response.musicMixes
+            releases = envelope.response.releaseAlbums
+            sections = envelope.response.catalogSections
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as APIError where error == .unauthorized {
@@ -244,49 +204,63 @@ struct VKMusicService: MusicService {
         } catch let error as APIError where error.isConnectivityFailure {
             throw error
         } catch {
-            // Fall through to the section-based lookup below.
+            // Section hydration below may still recover usable content.
         }
 
-        if discovered.isEmpty {
-            do {
-                let envelope: VKResponse<JSONValue> = try await client.post(
-                    path: "/method/catalog.getSection",
-                    form: common(accessToken).merging([
-                        "section_id": "audio_new_releases",
-                        "need_blocks": "1",
-                        "count": "30"
-                    ]) { _, new in new },
-                    responseType: VKResponse<JSONValue>.self
-                )
-                discovered = envelope.response.releaseAlbums
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch let error as APIError where error == .unauthorized {
-                throw error
-            } catch let error as APIError where error.isConnectivityFailure {
-                throw error
-            } catch {
-                // No releases section available for this account/session.
+        let mixSections = sections.filter(CatalogSectionPolicy.looksLikeMixSection)
+        let releaseSections = sections.filter(
+            CatalogSectionPolicy.looksLikeReleasesSection
+        )
+
+        if mixes.count <= 1 {
+            for section in mixSections.prefix(4) {
+                if let extra = try? await catalogSectionPayload(
+                    sectionID: section.id,
+                    accessToken: accessToken
+                ) {
+                    mixes = mergingMixes(mixes, extra.musicMixes)
+                }
             }
         }
 
-        return discovered
+        if releases.isEmpty {
+            for section in releaseSections.prefix(4) {
+                if let extra = try? await catalogSectionPayload(
+                    sectionID: section.id,
+                    accessToken: accessToken
+                ) {
+                    releases = mergingAlbums(releases, extra.releaseAlbums)
+                }
+            }
+        }
+
+        if !mixes.contains(where: { $0.id == MusicMix.common.id }) {
+            mixes.insert(.common, at: 0)
+        }
+
+        return VKCatalogSnapshot(
+            mixes: mixes,
+            newReleases: releases,
+            sections: sections
+        )
+    }
+
+    func newReleases(accessToken: String) async throws -> [Album] {
+        let snapshot = try await catalogSnapshot(accessToken: accessToken)
+        return snapshot.newReleases
     }
 
     func mixTracks(
         _ mix: MusicMix,
         accessToken: String
     ) async throws -> [Track] {
-        let userID = await context.userID
-        // Stream mixes commonly return only three items per response even
-        // when a larger count is requested, so filling a real queue needs
-        // several pages. Fetching those pages concurrently instead of one
-        // at a time turns what used to be up to 10 sequential round trips
-        // (multi-second load, the common complaint) into roughly one
-        // round trip's worth of wall-clock time. A page that fails is
-        // just dropped rather than failing the whole mix, since the other
-        // concurrent pages already carry usable tracks.
-        let offsets = stride(from: 0, to: 1_000, by: 100)
+        let userID = try await resolvedUserID(accessToken: accessToken)
+        // Stream mixes commonly return only a few items per response even
+        // when a larger count is requested. A small concurrent fan-out fills
+        // a real queue without the old 10-page waste + hard prefix(30).
+        let pageSize = MixTrackRequestPolicy.pageSize
+        let pageCount = MixTrackRequestPolicy.pageCount
+        let offsets = (0..<pageCount).map { $0 * pageSize }
         let pages = try await withThrowingTaskGroup(
             of: (offset: Int, tracks: [Track]).self
         ) { group -> [(offset: Int, tracks: [Track])] in
@@ -298,7 +272,7 @@ struct VKMusicService: MusicService {
                                 path: "/method/audio.getStreamMixAudios",
                                 form: common(accessToken).merging([
                                     "mix_id": mix.id,
-                                    "count": "100",
+                                    "count": String(pageSize),
                                     "offset": String(offset)
                                 ]) { _, new in new },
                                 responseType: VKResponse<JSONValue>.self
@@ -328,7 +302,7 @@ struct VKMusicService: MusicService {
             }
         }
         guard !tracks.isEmpty else { throw APIError.invalidResponse }
-        return Array(tracks.prefix(30))
+        return Array(tracks.prefix(MixTrackRequestPolicy.queueLimit))
     }
 
     func search(
@@ -348,7 +322,7 @@ struct VKMusicService: MusicService {
             ]) { _, new in new },
             responseType: VKResponse<VKItems<Track>>.self
         )
-        let userID = await context.userID
+        let userID = try await resolvedUserID(accessToken: accessToken)
         let resolved = VKItems(
             count: envelope.response.count,
             items: envelope.response.items.map {
@@ -356,6 +330,137 @@ struct VKMusicService: MusicService {
             }
         )
         return page(resolved, offset: offset, requested: count)
+    }
+
+    func searchArtists(
+        query: String,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> [VKArtist] {
+        let envelope: VKResponse<JSONValue> = try await client.post(
+            path: "/method/audio.searchArtists",
+            form: common(accessToken).merging([
+                "q": query,
+                "count": String(count),
+                "offset": String(offset)
+            ]) { _, new in new },
+            responseType: VKResponse<JSONValue>.self
+        )
+        let artists = envelope.response.artists
+        if !artists.isEmpty {
+            return artists
+        }
+        // Kate sometimes returns `{count, items:[artist…]}` which the
+        // recursive collector already walks via `artists`.
+        return []
+    }
+
+    func artistTracks(
+        artistID: String,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Track> {
+        let userID = try await resolvedUserID(accessToken: accessToken)
+        do {
+            let envelope: VKResponse<VKItems<Track>> = try await client.post(
+                path: "/method/audio.getAudiosByArtist",
+                form: common(accessToken).merging([
+                    "artist_id": artistID,
+                    "count": String(count),
+                    "offset": String(offset)
+                ]) { _, new in new },
+                responseType: VKResponse<VKItems<Track>>.self
+            )
+            let resolved = VKItems(
+                count: envelope.response.count,
+                items: envelope.response.items.map {
+                    $0.resolvingStreamURL(userID: userID)
+                }
+            )
+            if !resolved.items.isEmpty {
+                return page(resolved, offset: offset, requested: count)
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as APIError where error == .unauthorized {
+            throw error
+        } catch let error as APIError where error.isConnectivityFailure {
+            throw error
+        } catch {
+            // Fall through to catalog artist page.
+        }
+
+        let envelope: VKResponse<JSONValue> = try await client.post(
+            path: "/method/catalog.getAudioArtist",
+            form: common(accessToken).merging([
+                "artist_id": artistID,
+                "need_blocks": "1"
+            ]) { _, new in new },
+            responseType: VKResponse<JSONValue>.self
+        )
+        let tracks = envelope.response.tracks.map {
+            $0.resolvingStreamURL(userID: userID)
+        }
+        let sliced = Array(tracks.dropFirst(offset).prefix(count))
+        let consumed = offset + sliced.count
+        return MusicPage(
+            items: sliced,
+            totalCount: tracks.count,
+            nextOffset: consumed < tracks.count ? consumed : nil
+        )
+    }
+
+    func artistAlbums(
+        artistID: String,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Album> {
+        do {
+            let envelope: VKResponse<VKItems<Album>> = try await client.post(
+                path: "/method/audio.getAlbumsByArtist",
+                form: common(accessToken).merging([
+                    "artist_id": artistID,
+                    "count": String(count),
+                    "offset": String(offset)
+                ]) { _, new in new },
+                responseType: VKResponse<VKItems<Album>>.self
+            )
+            if !envelope.response.items.isEmpty {
+                return page(
+                    envelope.response,
+                    offset: offset,
+                    requested: count
+                )
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as APIError where error == .unauthorized {
+            throw error
+        } catch let error as APIError where error.isConnectivityFailure {
+            throw error
+        } catch {
+            // Fall through to catalog artist page albums.
+        }
+
+        let envelope: VKResponse<JSONValue> = try await client.post(
+            path: "/method/catalog.getAudioArtist",
+            form: common(accessToken).merging([
+                "artist_id": artistID,
+                "need_blocks": "1"
+            ]) { _, new in new },
+            responseType: VKResponse<JSONValue>.self
+        )
+        let albums = envelope.response.releaseAlbums
+        let sliced = Array(albums.dropFirst(offset).prefix(count))
+        let consumed = offset + sliced.count
+        return MusicPage(
+            items: sliced,
+            totalCount: albums.count,
+            nextOffset: consumed < albums.count ? consumed : nil
+        )
     }
 
     func searchAlbums(
@@ -381,7 +486,7 @@ struct VKMusicService: MusicService {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Album> {
-        let userID = await context.userID
+        let userID = try await resolvedUserID(accessToken: accessToken)
         var parameters = [
             "count": String(count),
             "offset": String(offset),
@@ -404,7 +509,7 @@ struct VKMusicService: MusicService {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Track> {
-        let userID = await context.userID
+        let userID = try await resolvedUserID(accessToken: accessToken)
         do {
             let envelope: VKResponse<JSONValue> = try await client.post(
                 path: "/method/execute.getPlaylist",
@@ -490,9 +595,7 @@ struct VKMusicService: MusicService {
         // real counterpart to followPlaylist for removing a followed
         // playlist/album from the library is the same deletePlaylist call
         // used for a user's own playlists.
-        let path = follow
-            ? "/method/audio.followPlaylist"
-            : "/method/audio.deletePlaylist"
+        let path = AlbumFollowPolicy.methodPath(follow: follow)
         let _: VKResponse<VKIgnored> = try await client.post(
             path: path,
             form: common(accessToken).merging(parameters) { _, new in new },
@@ -506,7 +609,7 @@ struct VKMusicService: MusicService {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Playlist> {
-        let userID = await context.userID
+        let userID = try await resolvedUserID(accessToken: accessToken)
         var parameters = [
             "count": String(count),
             "offset": String(offset)
@@ -542,7 +645,7 @@ struct VKMusicService: MusicService {
             form: common(accessToken).merging(parameters) { _, new in new },
             responseType: VKResponse<VKItems<Track>>.self
         )
-        let userID = await context.userID
+        let userID = try await resolvedUserID(accessToken: accessToken)
         let resolved = VKItems(
             count: envelope.response.count,
             items: envelope.response.items.map {
@@ -569,7 +672,7 @@ struct VKMusicService: MusicService {
             retryPolicy: .never,
             responseType: VKResponse<VKAudioAddResult>.self
         )
-        let userID = await context.userID
+        let userID = try await resolvedUserID(accessToken: accessToken)
         return Track(
             trackID: envelope.response.id,
             ownerID: userID ?? track.ownerID,
@@ -730,6 +833,61 @@ struct VKMusicService: MusicService {
             "https": "1",
             "lang": "ru"
         ]
+    }
+
+    /// Ensures stream URL unmasking has a user id (from context or users.get).
+    private func resolvedUserID(accessToken: String) async throws -> Int? {
+        if let userID = await context.userID {
+            return userID
+        }
+        do {
+            let profile = try await profile(accessToken: accessToken)
+            return profile.id
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as APIError where error == .unauthorized {
+            throw error
+        } catch {
+            return await context.userID
+        }
+    }
+
+    private func catalogSectionPayload(
+        sectionID: String,
+        accessToken: String
+    ) async throws -> JSONValue {
+        let envelope: VKResponse<JSONValue> = try await client.post(
+            path: "/method/catalog.getSection",
+            form: common(accessToken).merging([
+                "section_id": sectionID
+            ]) { _, new in new },
+            responseType: VKResponse<JSONValue>.self
+        )
+        return envelope.response
+    }
+
+    private func mergingMixes(
+        _ lhs: [MusicMix],
+        _ rhs: [MusicMix]
+    ) -> [MusicMix] {
+        var known = Set(lhs.map(\.id))
+        var result = lhs
+        for mix in rhs where known.insert(mix.id).inserted {
+            result.append(mix)
+        }
+        return result
+    }
+
+    private func mergingAlbums(
+        _ lhs: [Album],
+        _ rhs: [Album]
+    ) -> [Album] {
+        var known = Set(lhs.map(\.id))
+        var result = lhs
+        for album in rhs where known.insert(album.id).inserted {
+            result.append(album)
+        }
+        return result
     }
 
     func page<Item: Decodable & Sendable>(
