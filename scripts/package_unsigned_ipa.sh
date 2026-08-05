@@ -61,7 +61,7 @@ rm -f "$output_path"
   # Apple unsigned IPA recipe (see .ipa on Wikipedia):
   # store compression, preserve symlinks, recurse Payload/.
   # Info-ZIP writes Payload/ directory entries + S_IFREG/S_IFDIR attrs.
-  zip -0 -y -r "$output_path" Payload
+  zip -0 -y -q -r "$output_path" Payload
 )
 
 unzip -t "$output_path" >/dev/null
