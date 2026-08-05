@@ -513,13 +513,17 @@ struct VKMusicService: MusicService {
             album,
             accessToken: accessToken
         )
+        var lastError: Error?
         do {
-            return try await fetchAlbumTracks(
+            let page = try await fetchAlbumTracks(
                 effective,
                 accessToken: accessToken,
                 offset: offset,
                 count: count
             )
+            if !page.items.isEmpty {
+                return page
+            }
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as APIError where error == .unauthorized {
@@ -527,32 +531,45 @@ struct VKMusicService: MusicService {
         } catch let error as APIError where error.isConnectivityFailure {
             throw error
         } catch {
-            // First attempt may still miss a fresh access_key (stale
-            // reference from recommendations). Resolve again and retry once.
-            guard AlbumAccessPolicy.isAudioAccessDenied(error) else {
-                throw error
-            }
-            guard let recovered = try? await resolveAlbumAccessKey(
+            lastError = error
+            if AlbumAccessPolicy.isAudioAccessDenied(error),
+               let recovered = try? await resolveAlbumAccessKey(
                 album,
                 accessToken: accessToken,
                 forceSearch: true
-            ),
-                  AlbumAccessPolicy.usableAccessKey(from: recovered)
-                    != AlbumAccessPolicy.usableAccessKey(from: effective)
-            else {
-                throw Self.albumAccessDeniedError(from: error)
-            }
-            do {
-                return try await fetchAlbumTracks(
-                    recovered,
-                    accessToken: accessToken,
-                    offset: offset,
-                    count: count
-                )
-            } catch {
-                throw Self.albumAccessDeniedError(from: error)
+               ),
+               AlbumAccessPolicy.usableAccessKey(from: recovered)
+                != AlbumAccessPolicy.usableAccessKey(from: effective),
+               let page = try? await fetchAlbumTracks(
+                recovered,
+                accessToken: accessToken,
+                offset: offset,
+                count: count
+               ),
+               !page.items.isEmpty {
+                return page
             }
         }
+
+        // Playlist endpoints stay denied / empty for some Kate sessions even
+        // with a key. Reconstruct the album from public audio.search hits.
+        if let fallback = try? await albumTracksViaSearch(
+            album,
+            accessToken: accessToken,
+            offset: offset,
+            count: count
+        ), !fallback.items.isEmpty {
+            return fallback
+        }
+
+        if let lastError,
+           AlbumAccessPolicy.isAudioAccessDenied(lastError) {
+            throw Self.albumAccessDeniedError(from: lastError)
+        }
+        if let lastError {
+            throw lastError
+        }
+        throw APIError.invalidResponse
     }
 
     /// Ensures community albums carry a usable `access_key` before track /
@@ -668,31 +685,87 @@ struct VKMusicService: MusicService {
             }
         }
 
-        let query: String
-        if Album.isUsableTitle(album.title) {
-            let artist = album.artists.first ?? ""
-            query = artist.isEmpty
-                ? album.title
-                : "\(album.title) \(artist)"
-        } else if let artist = album.artists.first, !artist.isEmpty {
-            query = artist
-        } else {
-            return nil
+        var candidates: [Album] = []
+        var seen = Set<String>()
+        for query in AlbumAccessPolicy.searchQueries(for: album) {
+            let page = try await searchAlbums(
+                query: query,
+                accessToken: accessToken,
+                offset: 0,
+                count: 30
+            )
+            for item in page.items where seen.insert(item.compositeID).inserted {
+                candidates.append(item)
+            }
         }
-
-        let page = try await searchAlbums(
-            query: query,
-            accessToken: accessToken,
-            offset: 0,
-            count: 20
-        )
         guard let match = AlbumAccessPolicy.preferredMatch(
-            in: page.items,
+            in: candidates,
             for: album
         ) else {
             return nil
         }
         return album.mergingAccessMetadata(from: match)
+    }
+
+    /// When playlist APIs deny access, rebuild a usable track list from
+    /// public `audio.search` results that belong to the same album.
+    private func albumTracksViaSearch(
+        _ album: Album,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Track> {
+        var collected: [Track] = []
+        var known = Set<String>()
+        for query in AlbumAccessPolicy.searchQueries(for: album) {
+            let page = try await search(
+                query: query,
+                accessToken: accessToken,
+                offset: 0,
+                count: 100
+            )
+            for track in page.items
+            where AlbumAccessPolicy.trackBelongs(track, to: album)
+                && known.insert(track.id).inserted {
+                collected.append(track)
+            }
+            if collected.count >= max(count + offset, 40) {
+                break
+            }
+        }
+
+        // Artist catalog is a second public source when title search is thin.
+        if collected.count < 8,
+           let artistName = album.artists.first,
+           let artist = try? await searchArtists(
+            query: artistName,
+            accessToken: accessToken,
+            offset: 0,
+            count: 5
+           ).first,
+           let artistPage = try? await artistTracks(
+            artistID: artist.id,
+            accessToken: accessToken,
+            offset: 0,
+            count: 100
+           ) {
+            for track in artistPage.items
+            where AlbumAccessPolicy.trackBelongs(track, to: album)
+                && known.insert(track.id).inserted {
+                collected.append(track)
+            }
+        }
+
+        guard !collected.isEmpty else {
+            throw APIError.invalidResponse
+        }
+        let sliced = Array(collected.dropFirst(offset).prefix(count))
+        let consumed = offset + sliced.count
+        return MusicPage(
+            items: sliced,
+            totalCount: collected.count,
+            nextOffset: consumed < collected.count ? consumed : nil
+        )
     }
 
     private func playlistByID(
@@ -720,14 +793,14 @@ struct VKMusicService: MusicService {
             return .server(
                 code: code,
                 message: L10n.text(
-                    "VK не дал доступ к этому альбому. Откройте его через поиск или медиатеку."
+                    "Не удалось загрузить треки этого альбома. Попробуйте ещё раз или найдите его в поиске."
                 )
             )
         }
         return .server(
             code: 15,
             message: L10n.text(
-                "VK не дал доступ к этому альбому. Откройте его через поиск или медиатеку."
+                "Не удалось загрузить треки этого альбома. Попробуйте ещё раз или найдите его в поиске."
             )
         )
     }
