@@ -85,14 +85,29 @@ enum JSONValue: Codable, Sendable {
         return result.filter { ids.insert($0.id).inserted }
     }
 
+    /// Section list from `catalog.getAudio` (`response.catalog.sections`).
+    /// Real section ids must be passed to `catalog.getSection` — guessed
+    /// names like `audio_stream_mixes` are not stable.
+    var catalogSections: [CatalogSectionRef] {
+        var result: [CatalogSectionRef] = []
+        collectCatalogSections(into: &result)
+        var ids = Set<String>()
+        return result.filter { ids.insert($0.id).inserted }
+    }
+
     /// Scans a `catalog.getAudio` / `catalog.getSection` response for album
     /// blocks (official releases carry `main_artists`/`year`, which plain
-    /// user playlists never have). Speculative: VK does not document a
-    /// stable "new releases" endpoint for this client, so this best-effort
-    /// scan may legitimately find nothing on some accounts/sessions.
+    /// user playlists never have).
     var releaseAlbums: [Album] {
         var result: [Album] = []
         collectAlbums(into: &result)
+        var ids = Set<String>()
+        return result.filter { ids.insert($0.id).inserted }
+    }
+
+    var artists: [VKArtist] {
+        var result: [VKArtist] = []
+        collectArtists(into: &result)
         var ids = Set<String>()
         return result.filter { ids.insert($0.id).inserted }
     }
@@ -174,6 +189,63 @@ enum JSONValue: Codable, Sendable {
         }
     }
 
+    private func collectCatalogSections(
+        into result: inout [CatalogSectionRef]
+    ) {
+        switch self {
+        case let .object(object):
+            if case let .object(catalog)? = object["catalog"],
+               case let .array(sections)? = catalog["sections"] {
+                for section in sections {
+                    if let parsed = section.asCatalogSection {
+                        result.append(parsed)
+                    }
+                }
+            }
+            if case let .array(sections)? = object["sections"] {
+                for section in sections {
+                    if let parsed = section.asCatalogSection {
+                        result.append(parsed)
+                    }
+                }
+            }
+            if let parsed = asCatalogSection {
+                result.append(parsed)
+            }
+            object.values.forEach { $0.collectCatalogSections(into: &result) }
+        case let .array(values):
+            values.forEach { $0.collectCatalogSections(into: &result) }
+        default:
+            break
+        }
+    }
+
+    private var asCatalogSection: CatalogSectionRef? {
+        guard case let .object(object) = self else { return nil }
+        let id = object["id"]?.stringValue
+            ?? object["section_id"]?.stringValue
+        guard let id, !id.isEmpty else { return nil }
+        // Mix / audio objects also have id+title — require section-ish shape.
+        let type = object["type"]?.stringValue
+            ?? object["data_type"]?.stringValue
+            ?? ""
+        let url = object["url"]?.stringValue
+        let looksLikeSection = url?.contains("audios") == true
+            || type.localizedCaseInsensitiveContains("section")
+            || object["blocks"] != nil
+            || object["next_from"] != nil
+        guard looksLikeSection || (object["title"] != nil && url != nil) else {
+            return nil
+        }
+        return CatalogSectionRef(
+            id: id,
+            title: object["title"]?.stringValue
+                ?? object["name"]?.stringValue
+                ?? "",
+            url: url
+        )
+    }
+
     private func collectAlbums(into result: inout [Album]) {
         switch self {
         case let .object(object):
@@ -190,6 +262,20 @@ enum JSONValue: Codable, Sendable {
             object.values.forEach { $0.collectAlbums(into: &result) }
         case let .array(values):
             values.forEach { $0.collectAlbums(into: &result) }
+        default:
+            break
+        }
+    }
+
+    private func collectArtists(into result: inout [VKArtist]) {
+        switch self {
+        case let .object(object):
+            if let artist = object.asVKArtist {
+                result.append(artist)
+            }
+            object.values.forEach { $0.collectArtists(into: &result) }
+        case let .array(values):
+            values.forEach { $0.collectArtists(into: &result) }
         default:
             break
         }
@@ -274,5 +360,46 @@ private extension Dictionary where Key == String, Value == JSONValue {
             }
         }
         return nil
+    }
+
+    var asVKArtist: VKArtist? {
+        let name = self["name"]?.stringValue
+            ?? self["title"]?.stringValue
+        guard let name, !name.isEmpty else { return nil }
+        let id = self["id"]?.stringValue
+            ?? self["artist_id"]?.stringValue
+            ?? self["domain"]?.stringValue
+        guard let id, !id.isEmpty else { return nil }
+        // Reject track / album shaped objects that also have id+name.
+        if self["owner_id"] != nil, self["duration"] != nil { return nil }
+        if self["owner_id"] != nil, self["main_artists"] != nil { return nil }
+        let type = self["type"]?.stringValue
+            ?? self["data_type"]?.stringValue
+            ?? ""
+        if !type.isEmpty,
+           !type.localizedCaseInsensitiveContains("artist"),
+           self["photo"] == nil,
+           self["photo_600"] == nil,
+           firstRemoteURL == nil {
+            return nil
+        }
+        return VKArtist(
+            id: id,
+            name: name,
+            photoURL: firstRemoteURL,
+            isAlbumCover: self["is_album_cover"]?.boolValue == true
+        )
+    }
+}
+
+private extension JSONValue {
+    var boolValue: Bool? {
+        switch self {
+        case let .bool(value): value
+        case let .number(value): value != 0
+        case let .string(value):
+            ["1", "true", "yes"].contains(value.lowercased())
+        default: nil
+        }
     }
 }

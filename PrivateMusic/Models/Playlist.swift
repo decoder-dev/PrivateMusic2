@@ -71,7 +71,15 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
         case count
         case photo600 = "photo_600"
         case photo300 = "photo_300"
+        case photo
+        case thumb
         case accessKey = "access_key"
+    }
+
+    private enum ThumbKeys: String, CodingKey {
+        case photo600 = "photo_600"
+        case photo300 = "photo_300"
+        case photo270 = "photo_270"
     }
 
     init(from decoder: Decoder) throws {
@@ -88,10 +96,25 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
             String.self,
             forKey: .accessKey
         )
-        let rawArtwork = try container.decodeIfPresent(
+        var rawArtwork = try container.decodeIfPresent(
             String.self,
             forKey: .photo600
         ) ?? container.decodeIfPresent(String.self, forKey: .photo300)
+        if rawArtwork == nil {
+            for key in [CodingKeys.thumb, .photo] {
+                guard let thumb = try? container.nestedContainer(
+                    keyedBy: ThumbKeys.self,
+                    forKey: key
+                ) else { continue }
+                rawArtwork = try thumb.decodeIfPresent(
+                    String.self,
+                    forKey: .photo600
+                )
+                    ?? thumb.decodeIfPresent(String.self, forKey: .photo300)
+                    ?? thumb.decodeIfPresent(String.self, forKey: .photo270)
+                if rawArtwork != nil { break }
+            }
+        }
         artworkURL = rawArtwork.flatMap(URL.secureRemoteURL)
     }
 

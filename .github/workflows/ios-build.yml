@@ -127,31 +127,33 @@ jobs:
           test -d "$APP_PATH"
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.29-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.30-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.29"
+          test "$GITHUB_REF_NAME" = "v3.28.30"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.29
+          # Private Music 3.28.30 (pre-release)
 
-          Релиз с `main`: вкладка «Микс», Селена и quick-play на релизах.
+          Пре-релиз: VK-каталог и страница исполнителя по настоящим API-методам.
 
-          ## Миксы
-          - Вкладка «Микс» грузит свой список напрямую (не через кэш Home)
-            с retry и понятным empty/error-состоянием
-          - Персональный микс: «Составлено Селеной», метка экспериментальной
-            функции, приветствие в подзаголовке без обрезки длинных имён
-          - На карточках миксов в полках — отдельная кнопка ▷ для
-            мгновенного воспроизведения
-
-          ## Каталог
-          - На «Новых релизах» (полка и экран) добавлен quick-play,
-            как у треков и миксов
+          ## VK API
+          - Каталог: реальные `section_id` из `catalog.getAudio` +
+            `catalog.getSection` (без угадывания `audio_stream_mixes` /
+            `audio_new_releases`)
+          - Один `catalogSnapshot` на Home вместо двойного catalog round-trip
+          - Исполнители: `audio.searchArtists` → `audio.getAudiosByArtist` /
+            `audio.getAlbumsByArtist` / `catalog.getAudioArtist`, с fallback
+            на поиск
+          - Микс-очередь: 4 страницы / до 80 треков (было 10 страниц → 30)
+          - Unfollow альбома зафиксирован на `audio.deletePlaylist`
+          - Создание/редактирование плейлистов через `withAuthorizedToken`
+          - Stream URL unmask: `users.get` при отсутствии userID
+          - Обложки плейлистов: nested `thumb`/`photo`
 
           ## Установка
           IPA не подписан. Перед установкой подпишите собственным сертификатом:
@@ -159,27 +161,26 @@ jobs:
           EOF
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.29-unsigned.ipa" \
+              "$PWD/artifacts/PrivateMusic-3.28.30-unsigned.ipa" \
               --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.29" \
+              --title "Private Music 3.28.30" \
               --notes-file "$NOTES" \
               --draft=false \
-              --prerelease=false
-            gh release edit "$GITHUB_REF_NAME" --latest
+              --prerelease
           else
             gh release create "$GITHUB_REF_NAME" \
-              "$PWD/artifacts/PrivateMusic-3.28.29-unsigned.ipa" \
-              --title "Private Music 3.28.29" \
+              "$PWD/artifacts/PrivateMusic-3.28.30-unsigned.ipa" \
+              --title "Private Music 3.28.30" \
               --notes-file "$NOTES" \
-              --latest
+              --prerelease
           fi
 
       - name: Upload unsigned IPA
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.29-unsigned
-          path: artifacts/PrivateMusic-3.28.29-unsigned.ipa
+          name: PrivateMusic-3.28.30-unsigned
+          path: artifacts/PrivateMusic-3.28.30-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

@@ -14,6 +14,7 @@ protocol MusicService: Sendable {
         accessToken: String
     ) async throws -> Track
     func mixes(accessToken: String) async throws -> [MusicMix]
+    func catalogSnapshot(accessToken: String) async throws -> VKCatalogSnapshot
     func newReleases(accessToken: String) async throws -> [Album]
     func mixTracks(
         _ mix: MusicMix,
@@ -25,6 +26,24 @@ protocol MusicService: Sendable {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Track>
+    func searchArtists(
+        query: String,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> [VKArtist]
+    func artistTracks(
+        artistID: String,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Track>
+    func artistAlbums(
+        artistID: String,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Album>
     func searchAlbums(
         query: String,
         accessToken: String,

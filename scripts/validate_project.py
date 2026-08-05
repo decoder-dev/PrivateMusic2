@@ -340,6 +340,11 @@ for required_catalog_symbol in (
     "HomeCatalogStore",
     "audio.searchAlbums",
     "audio.followPlaylist",
+    "audio.searchArtists",
+    "audio.getAudiosByArtist",
+    "catalog.getAudioArtist",
+    "AlbumFollowPolicy.methodPath",
+    "catalogSnapshot",
     "AlbumDetailView",
     "AlbumShareLinkBuilder",
     "likedAlbumsStore",
@@ -348,6 +353,13 @@ for required_catalog_symbol in (
 ):
     if required_catalog_symbol not in all_source:
         fail(f"catalog/album support is missing: {required_catalog_symbol}")
+if '/method/audio.unfollowPlaylist' in all_source:
+    fail("album unfollow must use audio.deletePlaylist, not unfollowPlaylist")
+vk_music_source = (SOURCE / "Services" / "VKMusicService.swift").read_text(
+    encoding="utf-8"
+)
+if '"audio_stream_mixes"' in vk_music_source or '"audio_new_releases"' in vk_music_source:
+    fail("catalog sections must use real ids from catalog.getAudio")
 for required_queue_symbol in (
     "func removeFromQueue(at index: Int)",
     ".swipeActions(",
