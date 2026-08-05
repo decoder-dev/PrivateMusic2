@@ -88,6 +88,48 @@ final class SpatialAudioDSPTests: XCTestCase {
         XCTAssertFalse(processor.isEnabled)
     }
 
+    func testLoudnessNormalizationRequiresTapWithoutEqualizer() {
+        let processor = EqualizerDSP()
+        processor.update(
+            enabled: false,
+            gains: EqualizerPreset.flat.gains,
+            preamp: 0,
+            loudnessNorm: true
+        )
+        XCTAssertTrue(processor.requiresAudioTap)
+        XCTAssertFalse(processor.isEnabled)
+        XCTAssertFalse(
+            AudioProcessingRoutePolicy.allowsExternalPlayback(
+                requiresAudioTap: processor.requiresAudioTap
+            )
+        )
+    }
+
+    func testDynamicRangeCompressionRequiresTapWithoutEqualizer() {
+        let processor = EqualizerDSP()
+        processor.update(
+            enabled: false,
+            gains: EqualizerPreset.flat.gains,
+            preamp: 0,
+            dynamicRangeCompression: true
+        )
+        XCTAssertTrue(processor.requiresAudioTap)
+    }
+
+    func testLoudnessResetClearsAdaptiveStateAcrossTracks() {
+        let processor = EqualizerDSP()
+        processor.update(
+            enabled: false,
+            gains: EqualizerPreset.flat.gains,
+            preamp: 0,
+            loudnessNorm: true
+        )
+        processor.resetLoudnessMeasurement()
+        // Second reset must be idempotent and keep tap requirement.
+        processor.resetLoudnessMeasurement()
+        XCTAssertTrue(processor.requiresAudioTap)
+    }
+
     func testSpatialAndEqualizerKeepLocalDecodeForAllSessionRoutes() {
         // Local decode is what lets the MTAudioProcessingTap reach speaker,
         // headphones, Bluetooth A2DP, and CarKit `.carAudio`.

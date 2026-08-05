@@ -341,6 +341,45 @@ private struct PlayerAudioSettingsView: View {
                 .foregroundStyle(.secondary)
             }
 
+            Section {
+                Toggle(
+                    isOn: $settings.loudnessNormalization
+                ) {
+                    Label(
+                        L10n.text("Выравнивать громкость"),
+                        systemImage: "waveform"
+                    )
+                }
+                Text(
+                    L10n.text(
+                        "Сглаживает скачки громкости между треками "
+                            + "(целевой уровень как у стриминговых сервисов). "
+                            + "Системная громкость не меняется — обработка "
+                            + "идёт в DSP до наушников, колонок и CarKit."
+                    )
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+                Toggle(
+                    isOn: $settings.dynamicRangeCompression
+                ) {
+                    Label(
+                        L10n.text("Сжимать динамический диапазон"),
+                        systemImage: "chart.bar.xaxis"
+                    )
+                }
+                Text(
+                    L10n.text(
+                        "Приглушает резкие пики, чтобы тихие и громкие "
+                            + "фрагменты звучали ровнее. Можно включить "
+                            + "вместе с выравниванием громкости."
+                    )
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
             Section("Пространственный звук") {
                 Toggle(
                     isOn: $settings.spatialAudioEnabled
