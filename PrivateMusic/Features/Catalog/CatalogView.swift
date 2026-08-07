@@ -36,7 +36,9 @@ struct CatalogView: View {
                             }
                             if !recommendations.isEmpty {
                                 recommendationsSection(metrics: metrics)
-                                trackListSection
+                                if !moreRecommendations.isEmpty {
+                                    trackListSection
+                                }
                             }
                             if !playlists.isEmpty {
                                 playlistsSection(metrics: metrics)
@@ -102,6 +104,12 @@ struct CatalogView: View {
     }
 
     private var recommendations: [Track] { homeCatalog.recommendations }
+    private var featuredRecommendations: [Track] {
+        Array(recommendations.prefix(14))
+    }
+    private var moreRecommendations: [Track] {
+        Array(recommendations.dropFirst(14).prefix(16))
+    }
     private var playlists: [Playlist] { homeCatalog.playlists }
     private var isLoading: Bool { homeCatalog.isRefreshing }
     private var errorMessage: String? {
@@ -159,7 +167,7 @@ struct CatalogView: View {
                     alignment: .top,
                     spacing: metrics.cardSpacing
                 ) {
-                    ForEach(recommendations.prefix(14)) { track in
+                    ForEach(featuredRecommendations) { track in
                         homeTrackItem(
                             track,
                             queue: recommendations,
@@ -207,14 +215,19 @@ struct CatalogView: View {
 
     private var trackListSection: some View {
         VStack(alignment: .leading, spacing: 11) {
-            HomeSectionHeader("Ещё для вас")
+            HomeSectionHeader(
+                "Ещё для вас",
+                subtitle: "Продолжение рекомендаций"
+            )
             VStack(spacing: 0) {
-                ForEach(Array(recommendations.prefix(10).enumerated()), id: \.element.id) {
-                    index, track in
+                ForEach(
+                    Array(moreRecommendations.enumerated()),
+                    id: \.element.id
+                ) { index, track in
                     TrackRow(track: track, queue: recommendations)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                    if index < min(recommendations.count, 10) - 1 {
+                    if index < moreRecommendations.count - 1 {
                         Divider().padding(.leading, 72)
                     }
                 }

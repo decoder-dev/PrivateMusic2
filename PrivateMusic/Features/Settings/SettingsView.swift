@@ -903,14 +903,21 @@ private struct SleepTimerSettingsView: View {
     var body: some View {
         Form {
             Section {
-                if let endDate = player.sleepTimerEndDate {
-                    LabeledContent(
-                        "Остановка",
-                        value: endDate.formatted(
-                            date: .omitted,
-                            time: .shortened
+                if let mode = player.sleepTimerMode {
+                    if let endDate = player.sleepTimerEndDate {
+                        LabeledContent(
+                            "Остановка",
+                            value: endDate.formatted(
+                                date: .omitted,
+                                time: .shortened
+                            )
                         )
-                    )
+                    } else {
+                        LabeledContent(
+                            "Остановка",
+                            value: mode.statusLabel
+                        )
+                    }
                     Button(
                         "Отключить таймер",
                         role: .destructive
@@ -919,6 +926,12 @@ private struct SleepTimerSettingsView: View {
                     }
                 } else {
                     Menu("Остановить воспроизведение через…") {
+                        Button(L10n.text("До конца трека")) {
+                            player.scheduleSleepTimer(.endOfTrack)
+                        }
+                        Button(L10n.text("До конца очереди")) {
+                            player.scheduleSleepTimer(.endOfQueue)
+                        }
                         ForEach(
                             [15, 30, 45, 60, 90],
                             id: \.self
