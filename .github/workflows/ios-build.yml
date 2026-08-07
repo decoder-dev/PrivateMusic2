@@ -129,35 +129,34 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.40-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.41-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.40-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.41-iphone-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.40"
+          test "$GITHUB_REF_NAME" = "v3.28.41"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.40 (pre-release)
+          # Private Music 3.28.41 (pre-release)
 
-          Радио микса больше не расходится между экранами и не «мёртвое».
+          Фиксы по фидбеку: лоадер, тайтл при скролле, дубли главной, таймер сна.
 
-          ## Радио микса
-          - Режим переехал в плеер: хаб миксов и лист очереди держали по
-            своему независимому состоянию, поэтому два переключателя
-            показывали разные режимы для одной и той же очереди
-          - Выбор режима, когда микс ещё не играет, теперь запускает его
-            в этом режиме — раньше переключатель просто ничего не делал
-          - «Слушать позже» восстанавливает сохранённый режим по-настоящему:
-            очередь переупорядочивается, а не только меняется вид пикера
-          - Новая очередь сбрасывает режим на «Баланс», потому что приходит
-            в исходном порядке
+          ## Альбомы и плейлисты
+          - Пока грузятся треки — только индикатор, без хедера поверх
+          - Титул в top bar появляется только после скролла ниже hero
+
+          ## Главная
+          - «Для вас» и «Ещё для вас» больше не показывают одни и те же треки
+
+          ## Таймер сна
+          - Опции «До конца трека» и «До конца очереди»
 
           ## Установка
           IPA не подписан.
@@ -165,19 +164,19 @@ jobs:
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.40-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.40-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.41-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.41-unsigned.ipa"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.40" \
+              --title "Private Music 3.28.41" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.40" \
+              --title "Private Music 3.28.41" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -186,9 +185,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.40-unsigned
+          name: PrivateMusic-3.28.41-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.40-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.40-unsigned.ipa
+            artifacts/PrivateMusic-3.28.41-iphone-unsigned.ipa
+            artifacts/PrivateMusic-3.28.41-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

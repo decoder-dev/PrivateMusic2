@@ -186,6 +186,10 @@
 "Остановка" = "Stops At";
 "Отключить таймер" = "Cancel Timer";
 "Остановить воспроизведение через…" = "Stop playback in…";
+"До конца трека" = "End of Track";
+"До конца очереди" = "End of Queue";
+"Продолжение рекомендаций" = "More recommendations";
+"Загружаем альбом…" = "Loading Album…";
 "Подключение" = "Connection";
 "Сеть" = "Network";
 "Сессия VK" = "VK Session";

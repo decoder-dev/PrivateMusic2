@@ -12,6 +12,23 @@ enum RepeatMode: String, CaseIterable {
     }
 }
 
+enum SleepTimerMode: Equatable, Sendable {
+    case afterMinutes(Int)
+    case endOfTrack
+    case endOfQueue
+
+    var statusLabel: String {
+        switch self {
+        case let .afterMinutes(minutes):
+            return L10n.minutes(minutes)
+        case .endOfTrack:
+            return L10n.text("До конца трека")
+        case .endOfQueue:
+            return L10n.text("До конца очереди")
+        }
+    }
+}
+
 /// What started the current queue, for display in the full-screen player.
 /// Callers that start playback from a named collection pass the matching
 /// case; anything else (search results, recommendations, artist tracks,
@@ -386,6 +403,10 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var shuffleEnabled: Bool
     @Published private(set) var repeatMode: RepeatMode
     @Published private(set) var sleepTimerEndDate: Date?
+    /// Active sleep-timer mode. Minutes keep `sleepTimerEndDate` for the
+    /// countdown UI; end-of-track / end-of-queue are event-driven and
+    /// leave the date nil.
+    @Published private(set) var sleepTimerMode: SleepTimerMode?
     @Published var isPlayerPresented = false
     @Published var errorMessage: String?
 
@@ -803,25 +824,48 @@ final class AudioPlayer: ObservableObject {
     }
 
     func scheduleSleepTimer(minutes: Int) {
+        scheduleSleepTimer(.afterMinutes(minutes))
+    }
+
+    func scheduleSleepTimer(_ mode: SleepTimerMode) {
         sleepTask?.cancel()
-        let seconds = max(minutes, 1) * 60
-        sleepTimerEndDate = Date().addingTimeInterval(
-            TimeInterval(seconds)
-        )
-        sleepTask = Task { [weak self] in
-            try? await Task.sleep(
-                for: .seconds(seconds)
+        sleepTask = nil
+        sleepTimerMode = mode
+        switch mode {
+        case let .afterMinutes(minutes):
+            let seconds = max(minutes, 1) * 60
+            sleepTimerEndDate = Date().addingTimeInterval(
+                TimeInterval(seconds)
             )
-            guard !Task.isCancelled else { return }
-            self?.pause()
-            self?.sleepTimerEndDate = nil
+            sleepTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(seconds))
+                guard !Task.isCancelled else { return }
+                self?.pause()
+                self?.clearSleepTimerState()
+            }
+        case .endOfTrack, .endOfQueue:
+            sleepTimerEndDate = nil
         }
     }
 
     func cancelSleepTimer() {
         sleepTask?.cancel()
         sleepTask = nil
+        clearSleepTimerState()
+    }
+
+    private func clearSleepTimerState() {
         sleepTimerEndDate = nil
+        sleepTimerMode = nil
+    }
+
+    /// Whether an active end-of-queue timer should stop instead of
+    /// advancing (or fetching a continuation) past the last track.
+    private var shouldStopForEndOfQueueTimer: Bool {
+        guard sleepTimerMode == .endOfQueue else { return false }
+        guard let currentIndex, !queue.isEmpty else { return true }
+        if repeatMode == .all { return false }
+        return queue.index(after: currentIndex) >= queue.endIndex
     }
 
     func playPause() {
@@ -909,6 +953,11 @@ final class AudioPlayer: ObservableObject {
         guard let currentIndex, !queue.isEmpty else { return }
         let nextIndex = queue.index(after: currentIndex)
         if nextIndex >= queue.endIndex, repeatMode == .off {
+            if sleepTimerMode == .endOfQueue {
+                cancelSleepTimer()
+                pause()
+                return
+            }
             if continuationPrefetchTask != nil {
                 advanceAfterContinuationPrefetch = true
                 isBuffering = true
@@ -973,6 +1022,7 @@ final class AudioPlayer: ObservableObject {
         sleepTask?.cancel()
         sleepTask = nil
         sleepTimerEndDate = nil
+        sleepTimerMode = nil
         cancelContinuation()
         cancelStreamRefresh()
         cancelPreloading()
@@ -1971,6 +2021,16 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func advanceAfterCompletion() {
+        if sleepTimerMode == .endOfTrack {
+            cancelSleepTimer()
+            pause()
+            return
+        }
+        if shouldStopForEndOfQueueTimer {
+            cancelSleepTimer()
+            pause()
+            return
+        }
         if repeatMode == .one {
             seek(to: 0)
             resume()

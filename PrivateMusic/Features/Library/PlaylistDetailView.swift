@@ -9,8 +9,53 @@ struct PlaylistDetailView: View {
         OfflinePlaylistStore.shared
     let playlist: Playlist
     @StateObject private var model = PlaylistDetailViewModel()
+    @State private var showsNavTitle = false
 
     var body: some View {
+        Group {
+            if model.isLoading && model.tracks.isEmpty {
+                ProgressView(L10n.text("Загружаем треки…"))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = model.errorMessage, model.tracks.isEmpty {
+                EmptyStateView(
+                    title: "Не удалось открыть плейлист",
+                    systemImage: "wifi.exclamationmark",
+                    description: error
+                )
+            } else if model.tracks.isEmpty {
+                EmptyStateView(
+                    title: playlist.title,
+                    systemImage: "music.note",
+                    description: "В плейлисте пока нет доступных треков."
+                )
+            } else {
+                playlistList
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(ThemeBackground())
+        .collapsingInlineNavigationTitle(
+            playlist.title,
+            isVisible: $showsNavTitle
+        )
+        .toolbar {
+            if OfflineDownloadsFeature.showsControls,
+               !model.tracks.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    offlineButton
+                }
+            }
+        }
+        .task { await load() }
+        .task(id: sessionStore.resolvedOfflineAccountID) {
+            offlinePlaylists.configure(
+                accountID: sessionStore.resolvedOfflineAccountID
+            )
+        }
+        .refreshable { await load(force: true) }
+    }
+
+    private var playlistList: some View {
         List {
             Section {
                 playlistHeader
@@ -23,29 +68,27 @@ struct PlaylistDetailView: View {
                     queue: model.tracks,
                     source: .playlist(title: playlist.title)
                 )
-                    .listRowBackground(Color.clear)
-                    .swipeActions(edge: .trailing) {
-                        if playlist.ownerID
-                            == sessionStore.session?.userID {
-                            Button(role: .destructive) {
-                                Task {
-                                    await remove(track)
-                                }
-                            } label: {
-                                Label("Убрать", systemImage: "minus")
+                .listRowBackground(Color.clear)
+                .swipeActions(edge: .trailing) {
+                    if playlist.ownerID
+                        == sessionStore.session?.userID {
+                        Button(role: .destructive) {
+                            Task {
+                                await remove(track)
                             }
+                        } label: {
+                            Label("Убрать", systemImage: "minus")
                         }
                     }
-                    .onAppear {
-                        guard track.id == model.tracks.last?.id else {
-                            return
-                        }
-                        Task { await loadMore() }
+                }
+                .onAppear {
+                    guard track.id == model.tracks.last?.id else {
+                        return
                     }
+                    Task { await loadMore() }
+                }
             }
             if !model.tracks.isEmpty, let error = model.errorMessage {
-                // Defect 17: pagination failures surface as a retry row
-                // instead of replacing the already-loaded list.
                 Button {
                     Task { await loadMore() }
                 } label: {
@@ -59,42 +102,6 @@ struct PlaylistDetailView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(ThemeBackground())
-        .navigationTitle(playlist.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if OfflineDownloadsFeature.showsControls {
-                ToolbarItem(placement: .topBarTrailing) {
-                    offlineButton
-                }
-            }
-        }
-        .overlay {
-            if model.isLoading && model.tracks.isEmpty {
-                ProgressView("Загружаем треки…")
-            } else if let error = model.errorMessage, model.tracks.isEmpty {
-                EmptyStateView(
-                    title: "Не удалось открыть плейлист",
-                    systemImage: "wifi.exclamationmark",
-                    description: error
-                )
-                .background(ThemeBackground())
-            } else if model.tracks.isEmpty {
-                EmptyStateView(
-                    title: playlist.title,
-                    systemImage: "music.note",
-                    description: "В плейлисте пока нет доступных треков."
-                )
-                .background(ThemeBackground())
-            }
-        }
-        .task { await load() }
-        .task(id: sessionStore.resolvedOfflineAccountID) {
-            offlinePlaylists.configure(
-                accountID: sessionStore.resolvedOfflineAccountID
-            )
-        }
-        .refreshable { await load(force: true) }
     }
 
     private var playlistHeader: some View {
@@ -106,6 +113,7 @@ struct PlaylistDetailView: View {
                     .font(.title2.weight(.bold))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
+                    .heroTitleScrollAnchor()
                 Label(
                     L10n.format(
                         "Импортировано из %@",

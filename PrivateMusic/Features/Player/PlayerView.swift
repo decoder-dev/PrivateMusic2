@@ -1512,13 +1512,21 @@ private struct PlayerActionsSheet: View {
             isPresented: $showsSleepTimerOptions,
             titleVisibility: .visible
         ) {
+            Button(L10n.text("До конца трека")) {
+                player.scheduleSleepTimer(.endOfTrack)
+                Haptics.success()
+            }
+            Button(L10n.text("До конца очереди")) {
+                player.scheduleSleepTimer(.endOfQueue)
+                Haptics.success()
+            }
             ForEach([15, 30, 45, 60, 90], id: \.self) { minutes in
                 Button(L10n.minutes(minutes)) {
                     player.scheduleSleepTimer(minutes: minutes)
                     Haptics.success()
                 }
             }
-            if player.sleepTimerEndDate != nil {
+            if player.sleepTimerMode != nil {
                 Button(
                     L10n.text("Отключить таймер"),
                     role: .destructive
@@ -1626,6 +1634,11 @@ private struct PlayerActionsSheet: View {
                         Text(endDate, style: .timer)
                             .font(.subheadline.monospacedDigit().weight(.medium))
                             .foregroundStyle(Color.accentColor)
+                    } else if let mode = player.sleepTimerMode {
+                        Text(mode.statusLabel)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Color.accentColor)
+                            .lineLimit(1)
                     }
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
