@@ -129,41 +129,30 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.37-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.38-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.37-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.38-iphone-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.37"
+          test "$GITHUB_REF_NAME" = "v3.28.38"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.37 (pre-release)
+          # Private Music 3.28.38 (pre-release)
 
-          Селена, радио микса, «слушать позже», соц-полка и Watch like.
+          Один экран миксов: Селена и VK вкладками, без лишних пушей.
 
-          ## Селена и миксы
-          - «Почему Селена» — якоря из истории/рекомендаций
-          - Официальные полки VK + curator на социальных миксах
-          - Радио микса: баланс / ближе к треку / больше новизны
-            (локальный re-rank без новых API-запросов)
-
-          ## Слушать позже
-          - Pin микса в Медиатеке без оффлайн-файлов
-          - Resume с позиции + continuation потока
-
-          ## Watch
-          - Like текущего трека
-          - Бейдж «Микс» на пульте
-
-          ## Скорость
-          - Prefetch обложек bootstrap-страницы микса
+          ## Миксы
+          - Вкладки **Селена** / **VK Миксы** на одном экране
+          - VK-микс открывается inline («Все миксы»), без второго экрана
+          - Радио микса, «слушать позже», rationale и треки — на том же скролле
+          - Баннер «слушать позже» прямо во вкладке Микс
 
           ## Установка
           IPA не подписан.
@@ -171,19 +160,19 @@ jobs:
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.37-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.37-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.38-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.38-unsigned.ipa"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.37" \
+              --title "Private Music 3.28.38" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.37" \
+              --title "Private Music 3.28.38" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -192,9 +181,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.37-unsigned
+          name: PrivateMusic-3.28.38-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.37-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.37-unsigned.ipa
+            artifacts/PrivateMusic-3.28.38-iphone-unsigned.ipa
+            artifacts/PrivateMusic-3.28.38-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
