@@ -15,7 +15,7 @@ struct AlbumDetailView: View {
 
     var body: some View {
         Group {
-            if model.isLoading && model.tracks.isEmpty {
+            if model.tracks.isEmpty && (!model.hasLoaded || model.isLoading) {
                 ProgressView(L10n.text("Загружаем альбом…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if model.hasLoaded && model.tracks.isEmpty {

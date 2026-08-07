@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Reports the global minY of a hero title so the nav bar can reveal
 /// its own title only after the hero title has scrolled away.
@@ -29,8 +30,7 @@ extension View {
     /// chevron layout stays stable.
     func collapsingInlineNavigationTitle(
         _ title: String,
-        isVisible: Binding<Bool>,
-        threshold: CGFloat = 96
+        isVisible: Binding<Bool>
     ) -> some View {
         navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
@@ -44,11 +44,28 @@ extension View {
                 }
             }
             .onPreferenceChange(HeroTitleMinYKey.self) { minY in
+                let threshold = CollapsingNavMetrics.titleRevealThreshold
                 let shouldShow = minY < threshold
                 guard shouldShow != isVisible.wrappedValue else { return }
                 withAnimation(.easeInOut(duration: 0.18)) {
                     isVisible.wrappedValue = shouldShow
                 }
             }
+    }
+}
+
+private enum CollapsingNavMetrics {
+    /// Status bar + inline nav bar — hero title crossing this line
+    /// means the large in-content title is no longer readable.
+    static var titleRevealThreshold: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+        let inset = scenes
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)?
+            .safeAreaInsets.top
+            ?? scenes.first?.windows.first?.safeAreaInsets.top
+            ?? 47
+        return inset + 52
     }
 }

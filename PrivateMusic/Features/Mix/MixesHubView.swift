@@ -167,36 +167,41 @@ struct MixesHubView: View {
         metrics: MixHubMetrics,
         @ViewBuilder picker: () -> Picker
     ) -> some View {
-        playHero(
-            mix: mix,
-            tracks: tracks,
-            metrics: metrics,
-            subtitle: heroSubtitle
-        )
-        .premiumAppear(delay: 0.02)
-
-        if !rationale.isEmpty {
-            rationaleBlock(rationale, title: rationaleTitle)
-                .premiumAppear(delay: 0.06)
-        }
-
-        controlsPanel(mix: mix, tracks: tracks)
-            .premiumAppear(delay: 0.1)
-
-        picker()
-
+        // First-page load: only the spinner — never paint hero/controls
+        // underneath an overlay (feedback: indicator must replace UI).
         if loadingMixID == mix.id && tracks.isEmpty {
             ProgressView()
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 28)
-        } else if !tracks.isEmpty {
-            tracksBlock(
+                .padding(.vertical, 72)
+                .accessibilityLabel(L10n.text("Загружаем рекомендации и миксы"))
+        } else {
+            playHero(
                 mix: mix,
                 tracks: tracks,
-                subtitle: tracksSubtitle,
-                metrics: metrics
+                metrics: metrics,
+                subtitle: heroSubtitle
             )
-            .premiumAppear(delay: 0.14)
+            .premiumAppear(delay: 0.02)
+
+            if !rationale.isEmpty {
+                rationaleBlock(rationale, title: rationaleTitle)
+                    .premiumAppear(delay: 0.06)
+            }
+
+            controlsPanel(mix: mix, tracks: tracks)
+                .premiumAppear(delay: 0.1)
+
+            picker()
+
+            if !tracks.isEmpty {
+                tracksBlock(
+                    mix: mix,
+                    tracks: tracks,
+                    subtitle: tracksSubtitle,
+                    metrics: metrics
+                )
+                .premiumAppear(delay: 0.14)
+            }
         }
     }
 
@@ -463,13 +468,6 @@ struct MixesHubView: View {
                         alignment: .topTrailing
                     )
                     .padding(18)
-
-                if loadingMixID == mix.id {
-                    ProgressView()
-                        .tint(.white)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(.black.opacity(0.22))
-                }
             }
             .foregroundStyle(.white)
             .frame(height: metrics.heroHeight)
@@ -479,6 +477,20 @@ struct MixesHubView: View {
                     style: .continuous
                 )
             )
+            .overlay {
+                if loadingMixID == mix.id {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.black.opacity(0.28))
+                        .clipShape(
+                            RoundedRectangle(
+                                cornerRadius: PremiumLayout.cardRadius,
+                                style: .continuous
+                            )
+                        )
+                }
+            }
         }
         .buttonStyle(PremiumPressStyle())
         .disabled(loadingMixID != nil)
