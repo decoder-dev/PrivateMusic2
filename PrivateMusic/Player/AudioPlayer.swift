@@ -372,6 +372,11 @@ final class AudioPlayer: ObservableObject {
     @Published private(set) var currentIndex: Int?
     @Published private(set) var queueSource: QueueSource?
     @Published private(set) var queueSeedTrackTitle: String?
+    /// Active mix radio ordering. Owned here because it describes the
+    /// live queue: every surface offering the control (mix hub, queue
+    /// sheet) reads one value instead of keeping its own `@State`, which
+    /// let two pickers disagree about the current ordering.
+    @Published private(set) var mixRadioMode: MixRadioMode = .balanced
     @Published private(set) var isPlaying = false
     @Published private(set) var isBuffering = false
     /// Exact transport clock. Not `@Published` — UI observes `progress` so
@@ -674,6 +679,10 @@ final class AudioPlayer: ObservableObject {
             continuation ?? defaultContinuationProvider
         queueSource = source
         queueSeedTrackTitle = track.title
+        // A fresh queue arrives in source order, so a previous radio
+        // ranking no longer describes it — reset so the control never
+        // advertises an ordering the queue does not have.
+        mixRadioMode = .balanced
         let prepared = PlaybackQueueBuilder.normalized(
             selected: track,
             tracks: tracks
@@ -2351,6 +2360,7 @@ final class AudioPlayer: ObservableObject {
         seed: Track? = nil,
         historyArtists: Set<String> = []
     ) {
+        mixRadioMode = mode
         guard let currentIndex,
               queue.indices.contains(currentIndex) else {
             return

@@ -4,7 +4,6 @@ struct QueueView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var history: ListeningHistoryStore
     @Environment(\.dismiss) private var dismiss
-    @State private var radioMode: MixRadioMode = .balanced
 
     private var isMixQueue: Bool {
         if case .mix = player.queueSource { return true }
@@ -26,7 +25,19 @@ struct QueueView: View {
                             Section {
                                 Picker(
                                     L10n.text("Радио микса"),
-                                    selection: $radioMode
+                                    selection: Binding(
+                                        get: { player.mixRadioMode },
+                                        set: { mode in
+                                            let artists = Set(
+                                                history.entries.prefix(40)
+                                                    .map(\.track.artist)
+                                            )
+                                            player.rerankUpcomingMix(
+                                                mode: mode,
+                                                historyArtists: artists
+                                            )
+                                        }
+                                    )
                                 ) {
                                     ForEach(MixRadioMode.allCases) { mode in
                                         Text(mode.title).tag(mode)
@@ -34,16 +45,6 @@ struct QueueView: View {
                                 }
                                 .pickerStyle(.segmented)
                                 .listRowBackground(Color.clear)
-                                .onChange(of: radioMode) { mode in
-                                    let artists = Set(
-                                        history.entries.prefix(40)
-                                            .map(\.track.artist)
-                                    )
-                                    player.rerankUpcomingMix(
-                                        mode: mode,
-                                        historyArtists: artists
-                                    )
-                                }
                             } header: {
                                 Text(L10n.text("Радио микса"))
                             } footer: {

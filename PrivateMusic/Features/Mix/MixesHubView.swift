@@ -43,7 +43,6 @@ struct MixesHubView: View {
     @State private var vkRationale: MixRationale = .empty
     @State private var vkTrackCache: [String: [Track]] = [:]
     @State private var vkRationaleCache: [String: MixRationale] = [:]
-    @State private var radioMode: MixRadioMode = .balanced
     @State private var sharingTrack: Track?
 
     var body: some View {
@@ -529,15 +528,18 @@ struct MixesHubView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            Picker(L10n.text("Режим"), selection: $radioMode) {
+            Picker(
+                L10n.text("Режим"),
+                selection: Binding(
+                    get: { player.mixRadioMode },
+                    set: { applyRadio($0, mix: mix) }
+                )
+            ) {
                 ForEach(MixRadioMode.allCases) { mode in
                     Text(mode.title).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
-            .onChange(of: radioMode) { mode in
-                applyRadio(mode, mix: mix)
-            }
 
             HStack(spacing: 10) {
                 Button { start(mix) } label: {
@@ -923,15 +925,11 @@ struct MixesHubView: View {
                 history: history.entries,
                 recommendations: homeCatalog.recommendations
             )
-            radioMode = MixRadioMode(rawValue: pin.radioMode ?? "")
-                ?? .balanced
         } else {
             hubTab = .vk
             applyVKSelection(
                 resolvedVKMix(from: pin) ?? mix,
-                tracks: pin.tracks,
-                resetRadio: true,
-                radio: MixRadioMode(rawValue: pin.radioMode ?? "")
+                tracks: pin.tracks
             )
         }
         player.resumePinned(pin) {
@@ -941,6 +939,18 @@ struct MixesHubView: View {
                     accessToken: token
                 )
             }
+        }
+        // `resumePinned` replays through `play`, which resets the ordering,
+        // so re-apply the pinned mode afterwards. Previously this only
+        // restored the picker's appearance while the queue stayed unranked.
+        if let saved = MixRadioMode(rawValue: pin.radioMode ?? ""),
+           saved != .balanced {
+            player.rerankUpcomingMix(
+                mode: saved,
+                historyArtists: Set(
+                    history.entries.prefix(40).map(\.track.artist)
+                )
+            )
         }
     }
 
@@ -1029,7 +1039,7 @@ struct MixesHubView: View {
             ?? orderedVKMixes.first
         guard let mix = preferred else { return }
         if selectedVKMix?.id != mix.id {
-            applyVKSelection(mix, tracks: vkTrackCache[mix.id], resetRadio: true)
+            applyVKSelection(mix, tracks: vkTrackCache[mix.id])
         } else if forceReload || vkTracks.isEmpty {
             loadVKTracks(mix)
         }
@@ -1040,7 +1050,6 @@ struct MixesHubView: View {
         if changed {
             Haptics.selection()
             selectedVKMix = mix
-            radioMode = .balanced
             if let cached = vkTrackCache[mix.id], !cached.isEmpty {
                 vkTracks = cached
                 vkRationale = vkRationaleCache[mix.id]
@@ -1063,14 +1072,9 @@ struct MixesHubView: View {
 
     private func applyVKSelection(
         _ mix: MusicMix,
-        tracks: [Track]?,
-        resetRadio: Bool,
-        radio: MixRadioMode? = nil
+        tracks: [Track]?
     ) {
         selectedVKMix = mix
-        if resetRadio {
-            radioMode = radio ?? .balanced
-        }
         if let tracks, !tracks.isEmpty {
             vkTracks = tracks
             let rationale = vkRationaleCache[mix.id]
@@ -1135,14 +1139,17 @@ struct MixesHubView: View {
         }
     }
 
-    private func start(_ mix: MusicMix) {
+    private func start(
+        _ mix: MusicMix,
+        applying mode: MixRadioMode? = nil
+    ) {
         guard sessionStore.accessToken != nil else { return }
         if mix.id != MusicMix.common.id, selectedVKMix?.id != mix.id {
             selectVKMix(mix)
         }
         let loaded = tracks(for: mix)
         if let first = loaded.first {
-            playTrack(first, queue: loaded, mix: mix)
+            playTrack(first, queue: loaded, mix: mix, applying: mode)
             fillQueueInBackground(mix)
             return
         }
@@ -1161,7 +1168,7 @@ struct MixesHubView: View {
                 guard let first = bootstrap.first else { return }
                 MixBootstrapPrefetch.artwork(for: bootstrap)
                 storeTracks(bootstrap, for: mix)
-                playTrack(first, queue: bootstrap, mix: mix)
+                playTrack(first, queue: bootstrap, mix: mix, applying: mode)
                 fillQueueInBackground(mix)
             } catch is CancellationError {
                 return
@@ -1174,7 +1181,8 @@ struct MixesHubView: View {
     private func playTrack(
         _ track: Track,
         queue: [Track],
-        mix: MusicMix
+        mix: MusicMix,
+        applying mode: MixRadioMode? = nil
     ) {
         player.play(
             track,
@@ -1189,6 +1197,11 @@ struct MixesHubView: View {
             },
             source: .mix(title: mix.title)
         )
+        // `play` resets the ordering for the fresh queue; re-apply when the
+        // user got here by choosing a mode rather than pressing play.
+        if let mode, mode != .balanced {
+            applyRadio(mode, mix: mix)
+        }
     }
 
     private func fillQueueInBackground(_ mix: MusicMix) {
@@ -1240,14 +1253,18 @@ struct MixesHubView: View {
             tracks: tracks,
             currentIndex: player.currentIndex ?? 0,
             elapsed: player.elapsedTime,
-            radioMode: radioMode
+            radioMode: player.mixRadioMode
         )
         Haptics.success()
     }
 
     private func applyRadio(_ mode: MixRadioMode, mix: MusicMix) {
+        // Radio describes the live queue. When this mix is not playing yet,
+        // picking a mode used to change nothing at all — start the mix in
+        // that ordering instead of leaving an inert control.
         guard case .mix = player.queueSource,
               !player.queue.isEmpty else {
+            start(mix, applying: mode)
             return
         }
         let artists = Set(history.entries.prefix(40).map(\.track.artist))
