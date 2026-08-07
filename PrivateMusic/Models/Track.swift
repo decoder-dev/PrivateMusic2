@@ -12,6 +12,8 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
     let accessKey: String?
     let lyricsID: Int?
     let albumReference: AlbumReference?
+    /// VK `is_hq` flag when present — progressive HQ / preferred encode.
+    let isHQ: Bool
 
     var id: String { "\(ownerID)_\(trackID)" }
 
@@ -26,7 +28,8 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         artworkURL: URL?,
         accessKey: String? = nil,
         lyricsID: Int? = nil,
-        albumReference: AlbumReference? = nil
+        albumReference: AlbumReference? = nil,
+        isHQ: Bool = false
     ) {
         self.trackID = trackID
         self.ownerID = ownerID
@@ -39,6 +42,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         self.accessKey = accessKey
         self.lyricsID = lyricsID
         self.albumReference = albumReference
+        self.isHQ = isHQ
     }
 
     enum CodingKeys: String, CodingKey {
@@ -53,6 +57,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         case albumID = "album_id"
         case accessKey = "access_key"
         case lyricsID = "lyrics_id"
+        case isHQ = "is_hq"
     }
 
     enum AlbumKeys: String, CodingKey {
@@ -89,6 +94,13 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         streamURL = stream.flatMap(URL.secureRemoteURL)
         accessKey = try container.decodeIfPresent(String.self, forKey: .accessKey)
         lyricsID = try container.decodeIfPresent(Int.self, forKey: .lyricsID)
+        if let flag = try container.decodeIfPresent(Bool.self, forKey: .isHQ) {
+            isHQ = flag
+        } else if let number = try container.decodeIfPresent(Int.self, forKey: .isHQ) {
+            isHQ = number != 0
+        } else {
+            isHQ = false
+        }
 
         if let album = try? container.nestedContainer(
             keyedBy: AlbumKeys.self,
@@ -184,6 +196,9 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(streamURL?.absoluteString, forKey: .url)
         try container.encodeIfPresent(accessKey, forKey: .accessKey)
         try container.encodeIfPresent(lyricsID, forKey: .lyricsID)
+        if isHQ {
+            try container.encode(true, forKey: .isHQ)
+        }
         try container.encodeIfPresent(
             albumReference?.albumID,
             forKey: .albumID
@@ -231,7 +246,8 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
             artworkURL: artworkURL,
             accessKey: accessKey,
             lyricsID: lyricsID,
-            albumReference: albumReference
+            albumReference: albumReference,
+            isHQ: isHQ
         )
     }
 }
