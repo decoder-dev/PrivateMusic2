@@ -147,6 +147,7 @@ struct AlbumDetailView: View {
             }
             HStack(spacing: 12) {
                 listenButton
+                shuffleButton
                 Button(action: toggleFollow) {
                     Image(systemName: isFollowed ? "heart.fill" : "heart")
                         .font(.system(size: 18, weight: .semibold))
@@ -224,6 +225,20 @@ struct AlbumDetailView: View {
         }
     }
 
+    private var shuffleButton: some View {
+        Button(action: shuffleAlbum) {
+            Image(systemName: "shuffle")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(settings.theme.accent)
+                .frame(width: 46, height: 46)
+                .contentShape(Circle())
+                .adaptiveGlass(in: Circle(), interactive: true)
+        }
+        .buttonStyle(.borderless)
+        .disabled(model.tracks.isEmpty)
+        .accessibilityLabel(L10n.text("Перемешать"))
+    }
+
     private var isFollowed: Bool {
         likedAlbumsStore.isFollowed(displayedAlbum)
     }
@@ -250,6 +265,13 @@ struct AlbumDetailView: View {
         guard let first = model.tracks.first else { return }
         player.play(
             first,
+            in: model.tracks,
+            source: .album(title: displayedTitle)
+        )
+    }
+
+    private func shuffleAlbum() {
+        player.playShuffled(
             in: model.tracks,
             source: .album(title: displayedTitle)
         )
