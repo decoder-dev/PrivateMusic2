@@ -215,9 +215,35 @@ final class PlayerSleepTimerTests: XCTestCase {
             15 * 60,
             accuracy: 2
         )
+        XCTAssertEqual(player.sleepTimerMode, .afterMinutes(15))
 
         player.cancelSleepTimer()
         XCTAssertNil(player.sleepTimerEndDate)
+        XCTAssertNil(player.sleepTimerMode)
+    }
+
+    func testEndOfTrackAndEndOfQueueModesHaveNoCountdownDate() throws {
+        let suite = "PlayerSleepTimerModes.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults)
+        let history = ListeningHistoryStore(defaults: defaults)
+        let player = AudioPlayer(
+            settings: settings,
+            historyStore: history,
+            defaults: defaults
+        )
+
+        player.scheduleSleepTimer(.endOfTrack)
+        XCTAssertEqual(player.sleepTimerMode, .endOfTrack)
+        XCTAssertNil(player.sleepTimerEndDate)
+
+        player.scheduleSleepTimer(.endOfQueue)
+        XCTAssertEqual(player.sleepTimerMode, .endOfQueue)
+        XCTAssertNil(player.sleepTimerEndDate)
+
+        player.cancelSleepTimer()
+        XCTAssertNil(player.sleepTimerMode)
     }
 }
 
