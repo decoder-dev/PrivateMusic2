@@ -218,7 +218,20 @@ struct LibraryView: View {
         .onReceive(
             NotificationCenter.default.publisher(for: .likedAlbumsDidChange)
         ) { _ in
-            Task { await loadAlbums() }
+            Task {
+                await loadAlbums()
+                // Liked albums used to leak into the playlist shelf via
+                // unfiltered getPlaylists — reload so the shelves stay split.
+                await playlists.load(force: true) {
+                    try await environment.withAuthorizedToken { token in
+                        try await environment.musicService.playlists(
+                            accessToken: token,
+                            offset: 0,
+                            count: 100
+                        )
+                    }
+                }
+            }
         }
     }
 

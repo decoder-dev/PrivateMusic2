@@ -896,9 +896,14 @@ struct VKMusicService: MusicService {
         count: Int
     ) async throws -> MusicPage<Playlist> {
         let userID = try await resolvedUserID(accessToken: accessToken)
+        // Exclude album follow-objects: VK returns followed albums inside
+        // the default `all` playlists filter, which made liked albums show
+        // up under «Ваши плейлисты». Albums stay on the Albums shelf via
+        // `likedAlbums` (`followed,albums`).
         var parameters = [
             "count": String(count),
-            "offset": String(offset)
+            "offset": String(offset),
+            "filters": "owned,followed"
         ]
         if let userID {
             parameters["owner_id"] = String(userID)

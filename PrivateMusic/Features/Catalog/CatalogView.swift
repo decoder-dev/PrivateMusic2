@@ -77,6 +77,11 @@ struct CatalogView: View {
         .task(id: sessionStore.resolvedOfflineAccountID) {
             await load()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .likedAlbumsDidChange)
+        ) { _ in
+            Task { await load(force: true) }
+        }
         .alert(
             "Не удалось открыть альбом",
             isPresented: Binding(

@@ -725,6 +725,23 @@ final class AudioPlayer: ObservableObject {
         maybeStartContinuationPrefetch()
     }
 
+    /// Starts a collection with shuffle on — for album/playlist detail
+    /// «Перемешать» without opening the full-screen player first.
+    func playShuffled(
+        in tracks: [Track],
+        continuation: (() async throws -> [Track])? = nil,
+        source: QueueSource? = nil
+    ) {
+        guard let seed = tracks.randomElement() ?? tracks.first else {
+            return
+        }
+        if !shuffleEnabled {
+            shuffleEnabled = true
+            defaults.set(true, forKey: "player.shuffle")
+        }
+        play(seed, in: tracks, continuation: continuation, source: source)
+    }
+
     func playNext(_ track: Track) {
         guard let currentIndex, let currentTrack else {
             play(track, in: [track])
