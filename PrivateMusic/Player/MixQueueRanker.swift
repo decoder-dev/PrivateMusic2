@@ -118,7 +118,8 @@ enum MixQueueRanker {
                 recent: recentArtists,
                 immediate: -48,
                 near: -22,
-                window: -10
+                window: -10,
+                fresh: 14
             )
             // Soft shuffle so Balans is not a frozen sort of VK order.
             value += Double.random(in: 0..<8, using: &rng)
@@ -128,14 +129,17 @@ enum MixQueueRanker {
             if !seedAlbum.isEmpty, album == seedAlbum { value += 18 }
             if history.contains(artist) { value += 6 }
             if !seedArtist.isEmpty, artist != seedArtist { value += 4 }
+            // Mild spacing only — affinity to the seed artist must still win
+            // the first pick after the current track.
             value += spacingBonus(
                 artist: artist,
                 recent: recentArtists,
-                immediate: -36,
-                near: -16,
-                window: -6
+                immediate: -16,
+                near: -8,
+                window: -3,
+                fresh: 0
             )
-            value += Double.random(in: 0..<4, using: &rng)
+            value += Double.random(in: 0..<3, using: &rng)
 
         case .moreNovel:
             if !seedArtist.isEmpty, artist != seedArtist { value += 32 }
@@ -148,7 +152,8 @@ enum MixQueueRanker {
                 recent: recentArtists,
                 immediate: -55,
                 near: -28,
-                window: -12
+                window: -12,
+                fresh: 12
             )
             value += Double.random(in: 0..<10, using: &rng)
         }
@@ -163,13 +168,15 @@ enum MixQueueRanker {
         recent: [String],
         immediate: Double,
         near: Double,
-        window: Double
+        window: Double,
+        fresh: Double
     ) -> Double {
-        guard !artist.isEmpty, !recent.isEmpty else { return 0 }
+        guard !artist.isEmpty else { return 0 }
+        guard !recent.isEmpty else { return fresh }
         if recent.last == artist { return immediate }
         if recent.suffix(2).contains(artist) { return near }
         if recent.contains(artist) { return window }
-        return 12
+        return fresh
     }
 
     private static func normalized(_ value: String) -> String {
