@@ -2594,6 +2594,9 @@ final class AudioPlayer: ObservableObject {
         }
         if mode == .closerToSeed || mode == .moreNovel {
             startMixRadioRefill(seed: seedTrack, mode: mode)
+        } else {
+            mixRadioRefillTask?.cancel()
+            mixRadioRefillTask = nil
         }
     }
 
