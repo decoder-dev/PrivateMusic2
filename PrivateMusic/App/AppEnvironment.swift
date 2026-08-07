@@ -12,6 +12,7 @@ final class AppEnvironment: ObservableObject {
     let homeCatalogStore: HomeCatalogStore
     let likedAlbumsStore: LikedAlbumsStore
     let offlineStore: OfflineTrackStore
+    let pinnedMixStore: PinnedMixStore
     let trackShareService: TrackShareService
     let player: AudioPlayer
     let watchRemoteCoordinator: WatchRemoteCoordinator
@@ -56,6 +57,11 @@ final class AppEnvironment: ObservableObject {
         offlineStore.configure(
             accountID: sessionStore.resolvedOfflineAccountID
         )
+        let pinnedMixStore = PinnedMixStore()
+        pinnedMixStore.configure(
+            accountID: sessionStore.resolvedOfflineAccountID
+        )
+        self.pinnedMixStore = pinnedMixStore
         let player = AudioPlayer(
             settings: settings,
             historyStore: historyStore,
@@ -176,6 +182,31 @@ final class AppEnvironment: ObservableObject {
         watchRemoteCoordinator.configureControlGate { [weak self] in
             self?.isShareSessionActive == false
         }
+        watchRemoteCoordinator.configureLibrary(
+            isLiked: { [weak self] track in
+                guard let self else { return false }
+                return self.libraryStore.isLiked(
+                    track,
+                    currentUserID: self.sessionStore.resolvedOfflineAccountID
+                )
+            },
+            likeCurrent: { [weak self] track in
+                guard let self else { return false }
+                if self.libraryStore.contains(track) { return true }
+                do {
+                    let added = try await self.withAuthorizedToken { token in
+                        try await self.musicService.addToLibrary(
+                            track,
+                            accessToken: token
+                        )
+                    }
+                    self.libraryStore.markAdded(source: track, stored: added)
+                    return true
+                } catch {
+                    return false
+                }
+            }
+        )
         watchRemoteCoordinator.start()
     }
 
@@ -183,6 +214,7 @@ final class AppEnvironment: ObservableObject {
         let accountID = sessionStore.resolvedOfflineAccountID
         offlineStore.configure(accountID: accountID)
         OfflinePlaylistStore.shared.configure(accountID: accountID)
+        pinnedMixStore.configure(accountID: accountID)
     }
 
     func refreshHomeCatalog(force: Bool = false) async {

@@ -2345,6 +2345,54 @@ final class AudioPlayer: ObservableObject {
         scheduleNeighborPreloads()
     }
 
+    /// Local mix radio: reorder only upcoming tracks without API calls.
+    func rerankUpcomingMix(
+        mode: MixRadioMode,
+        seed: Track? = nil,
+        historyArtists: Set<String> = []
+    ) {
+        guard let currentIndex,
+              queue.indices.contains(currentIndex) else {
+            return
+        }
+        let seedTrack = seed ?? queue[currentIndex]
+        let reranked = MixQueueRanker.rerank(
+            queue: queue,
+            currentIndex: currentIndex,
+            seed: seedTrack,
+            mode: mode,
+            historyArtists: historyArtists
+        )
+        guard reranked.map(\.id) != queue.map(\.id) else { return }
+        queue = reranked
+        invalidatePreloadedPlayback()
+        persistPlayback()
+        publishNowPlayingQueue()
+        scheduleNeighborPreloads()
+    }
+
+    /// Resume a pinned mix snapshot without re-fetching the whole stream.
+    func resumePinned(
+        _ snapshot: PinnedMixSnapshot,
+        continuation: (() async throws -> [Track])? = nil
+    ) {
+        guard !snapshot.tracks.isEmpty else { return }
+        let index = min(
+            max(snapshot.currentIndex, 0),
+            snapshot.tracks.count - 1
+        )
+        let track = snapshot.tracks[index]
+        play(
+            track,
+            in: snapshot.tracks,
+            continuation: continuation,
+            source: .mix(title: snapshot.mixTitle)
+        )
+        if snapshot.elapsed > 1 {
+            seek(to: snapshot.elapsed)
+        }
+    }
+
     private func continueQueueIfPossible(
         generation: Int,
         sourceIndex: Int?

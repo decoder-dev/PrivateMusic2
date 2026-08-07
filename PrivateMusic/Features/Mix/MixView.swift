@@ -6,6 +6,9 @@ struct MixView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var history: ListeningHistoryStore
+    @EnvironmentObject private var homeCatalog: HomeCatalogStore
+    @EnvironmentObject private var pinnedMixStore: PinnedMixStore
     @State private var mixes: [MusicMix] = []
     @State private var tracks: [Track] = []
     @State private var isLoading = true
@@ -14,6 +17,8 @@ struct MixView: View {
     @State private var sharingTrack: Track?
     @State private var selectedMix: MusicMix?
     @State private var queueFillTask: Task<Void, Never>?
+    @State private var rationale: MixRationale = .empty
+    @State private var radioMode: MixRadioMode = .balanced
 
     init(mix: MusicMix = .common) {
         self.mix = mix
@@ -26,6 +31,9 @@ struct MixView: View {
                     skeleton
                 } else {
                     hero
+                    if !rationale.isEmpty { rationaleSection }
+                    radioControls
+                    pinRow
                     if mixes.count > 1 { mixShelf }
                     if !tracks.isEmpty {
                         recommendationShelf
@@ -110,6 +118,60 @@ struct MixView: View {
             }
         }
         .disabled(loadingMixID != nil)
+    }
+
+    private var rationaleSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.text("Почему Селена"))
+                .font(.title3.weight(.bold))
+            ForEach(rationale.lines, id: \.self) { line in
+                Text("· \(line)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var radioControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L10n.text("Радио микса"))
+                .font(.title3.weight(.bold))
+            Text(L10n.text("Переставляет уже загруженную очередь без новых запросов"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker(L10n.text("Режим"), selection: $radioMode) {
+                ForEach(MixRadioMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: radioMode) { mode in
+                applyRadio(mode)
+            }
+        }
+    }
+
+    private var pinRow: some View {
+        Button {
+            guard !tracks.isEmpty else { return }
+            pinnedMixStore.pin(
+                mix: mix,
+                tracks: tracks,
+                currentIndex: player.currentIndex ?? 0,
+                elapsed: player.elapsedTime,
+                radioMode: radioMode
+            )
+        } label: {
+            Label(
+                L10n.text("Слушать позже"),
+                systemImage: pinnedMixStore.pin?.mixID == mix.id
+                    ? "bookmark.fill"
+                    : "bookmark"
+            )
+            .font(.subheadline.weight(.semibold))
+        }
+        .buttonStyle(.bordered)
+        .disabled(tracks.isEmpty)
     }
 
     private var mixShelf: some View {
@@ -328,6 +390,15 @@ struct MixView: View {
                     )
                 }
                 guard let first = bootstrap.first else { return }
+                MixBootstrapPrefetch.artwork(for: bootstrap)
+                if mix.id == self.mix.id {
+                    tracks = bootstrap
+                    rationale = MixRationaleBuilder.build(
+                        mixTracks: bootstrap,
+                        history: history.entries,
+                        recommendations: homeCatalog.recommendations
+                    )
+                }
                 play(
                     first,
                     queue: bootstrap,
@@ -432,6 +503,12 @@ struct MixView: View {
         switch await tracksResult {
         case let .success(value):
             tracks = value
+            MixBootstrapPrefetch.artwork(for: value)
+            rationale = MixRationaleBuilder.build(
+                mixTracks: value,
+                history: history.entries,
+                recommendations: homeCatalog.recommendations
+            )
         case let .failure(error):
             if error is CancellationError { return }
             failures.append(error.localizedDescription)
@@ -461,6 +538,18 @@ struct MixView: View {
                 }
             }
         }
+    }
+
+    private func applyRadio(_ mode: MixRadioMode) {
+        guard case .mix = player.queueSource,
+              !player.queue.isEmpty else {
+            return
+        }
+        let historyArtists = Set(history.entries.prefix(40).map(\.track.artist))
+        player.rerankUpcomingMix(
+            mode: mode,
+            historyArtists: historyArtists
+        )
     }
 
     private func mergeTracks(_ lhs: [Track], _ rhs: [Track]) -> [Track] {
