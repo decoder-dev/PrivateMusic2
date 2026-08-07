@@ -149,6 +149,11 @@ final class AppSettings: ObservableObject {
     @Published var equalizerPreamp: Double {
         didSet { defaults.set(equalizerPreamp, forKey: Keys.preamp) }
     }
+    @Published var preferHighQuality: Bool {
+        didSet {
+            defaults.set(preferHighQuality, forKey: Keys.preferHighQuality)
+        }
+    }
     @Published var loudnessNormalization: Bool {
         didSet {
             defaults.set(
@@ -280,6 +285,9 @@ final class AppSettings: ObservableObject {
             equalizerGains = EqualizerPreset.flat.gains
         }
         equalizerPreamp = defaults.object(forKey: Keys.preamp) as? Double ?? 0
+        preferHighQuality = defaults.object(
+            forKey: Keys.preferHighQuality
+        ) as? Bool ?? true
         loudnessNormalization = defaults.object(
             forKey: Keys.loudnessNormalization
         ) as? Bool ?? false
@@ -375,6 +383,7 @@ final class AppSettings: ObservableObject {
             "offline.storage.limitGB"
         static let automaticOfflineCacheEnabled =
             "offline.cache.automatic.enabled"
+        static let preferHighQuality = "audio.playback.preferHighQuality"
         static let loudnessNormalization =
             "audio.equalizer.loudnessNormalization"
         static let dynamicRangeCompression =
