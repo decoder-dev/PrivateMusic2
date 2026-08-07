@@ -1,5 +1,15 @@
 import Foundation
 
+struct MixCurator: Hashable, Sendable, Codable {
+    let id: String
+    let displayName: String
+    let photoURL: URL?
+
+    var isUsable: Bool {
+        !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 struct MusicMix: Hashable, Identifiable, Sendable {
     let id: String
     let title: String
@@ -11,6 +21,8 @@ struct MusicMix: Hashable, Identifiable, Sendable {
     let isSocial: Bool
     /// Official catalog section title when the mix came from `catalog.getSection`.
     let sectionTitle: String?
+    /// Friend / curator identity when VK exposes one on social mixes.
+    let curator: MixCurator?
 
     init(
         id: String,
@@ -19,15 +31,17 @@ struct MusicMix: Hashable, Identifiable, Sendable {
         artworkURL: URL?,
         matchPercent: Int? = nil,
         isSocial: Bool = false,
-        sectionTitle: String? = nil
+        sectionTitle: String? = nil,
+        curator: MixCurator? = nil
     ) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
         self.artworkURL = artworkURL
         self.matchPercent = matchPercent
-        self.isSocial = isSocial
+        self.isSocial = isSocial || (curator?.isUsable == true)
         self.sectionTitle = sectionTitle
+        self.curator = curator
     }
 
     func withSectionTitle(_ title: String?) -> MusicMix {
@@ -41,7 +55,21 @@ struct MusicMix: Hashable, Identifiable, Sendable {
             artworkURL: artworkURL,
             matchPercent: matchPercent,
             isSocial: isSocial,
-            sectionTitle: trimmed
+            sectionTitle: trimmed,
+            curator: curator
+        )
+    }
+
+    func merging(richer other: MusicMix) -> MusicMix {
+        MusicMix(
+            id: id,
+            title: title.isEmpty ? other.title : title,
+            subtitle: subtitle.isEmpty ? other.subtitle : subtitle,
+            artworkURL: artworkURL ?? other.artworkURL,
+            matchPercent: matchPercent ?? other.matchPercent,
+            isSocial: isSocial || other.isSocial,
+            sectionTitle: sectionTitle ?? other.sectionTitle,
+            curator: curator ?? other.curator
         )
     }
 
@@ -52,6 +80,7 @@ struct MusicMix: Hashable, Identifiable, Sendable {
         artworkURL: nil,
         matchPercent: nil,
         isSocial: false,
-        sectionTitle: nil
+        sectionTitle: nil,
+        curator: nil
     )
 }

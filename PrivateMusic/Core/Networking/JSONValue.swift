@@ -79,10 +79,19 @@ enum JSONValue: Codable, Sendable {
     }
 
     var musicMixes: [MusicMix] {
-        var result: [MusicMix] = []
-        collectMixes(into: &result)
-        var ids = Set<String>()
-        return result.filter { ids.insert($0.id).inserted }
+        var collected: [MusicMix] = []
+        collectMixes(into: &collected)
+        var order: [String] = []
+        var byID: [String: MusicMix] = [:]
+        for mix in collected {
+            if let existing = byID[mix.id] {
+                byID[mix.id] = existing.merging(richer: mix)
+            } else {
+                order.append(mix.id)
+                byID[mix.id] = mix
+            }
+        }
+        return order.compactMap { byID[$0] }
     }
 
     /// Section list from `catalog.getAudio` (`response.catalog.sections`).
@@ -166,20 +175,22 @@ enum JSONValue: Codable, Sendable {
                     ?? object["caption"]?.stringValue
                     ?? L10n.text("Персональная подборка VK")
                 let matchPercent = object.mixMatchPercent
+                let curator = object.mixCurator
                 let social = object.looksLikeSocialMix(
                     type: type,
                     title: title,
                     subtitle: subtitle,
                     matchPercent: matchPercent
-                )
+                ) || (curator?.isUsable == true)
                 result.append(
                     MusicMix(
                         id: id,
                         title: title,
                         subtitle: subtitle,
-                        artworkURL: object.firstRemoteURL,
+                        artworkURL: object.mixCoverURL,
                         matchPercent: matchPercent,
-                        isSocial: social
+                        isSocial: social,
+                        curator: curator
                     )
                 )
             }
@@ -316,6 +327,82 @@ private extension Dictionary where Key == String, Value == JSONValue {
             let percent = value <= 1 ? value * 100 : value
             let rounded = Int(percent.rounded())
             if (1...100).contains(rounded) { return rounded }
+        }
+        return nil
+    }
+
+    /// Mix cover only — never recurse into nested owner/user avatars.
+    var mixCoverURL: URL? {
+        let preferredKeys = [
+            "photo_1200", "photo_600", "photo_300", "photo_270",
+            "cover_url", "thumb_url", "image"
+        ]
+        for key in preferredKeys {
+            if case let .string(raw)? = self[key],
+               let url = URL.secureRemoteURL(raw) {
+                return url
+            }
+            if case let .object(nested)? = self[key],
+               let url = nested.firstRemoteURL {
+                return url
+            }
+        }
+        if case let .array(thumbs)? = self["thumbs"]
+            ?? self["images"]
+            ?? self["photos"] {
+            for item in thumbs {
+                if case let .object(object) = item,
+                   let url = object.firstRemoteURL {
+                    return url
+                }
+                if case let .string(raw) = item,
+                   let url = URL.secureRemoteURL(raw) {
+                    return url
+                }
+            }
+        }
+        return nil
+    }
+
+    var mixCurator: MixCurator? {
+        let candidates: [[String: JSONValue]] = [
+            self,
+            objectValue("owner"),
+            objectValue("user"),
+            objectValue("profile"),
+            objectValue("friend"),
+            objectValue("author")
+        ].compactMap { $0 }
+
+        for object in candidates {
+            let id = object["id"]?.stringValue
+                ?? object["user_id"]?.stringValue
+                ?? object["owner_id"]?.stringValue
+            let first = object["first_name"]?.stringValue
+            let last = object["last_name"]?.stringValue
+            let name = object["name"]?.stringValue
+                ?? object["title"]?.stringValue
+                ?? [first, last]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let trimmed, !trimmed.isEmpty else { continue }
+            let photo = object["photo_200"]?.stringValue
+                ?? object["photo_100"]?.stringValue
+                ?? object["photo"]?.stringValue
+            return MixCurator(
+                id: id ?? trimmed,
+                displayName: trimmed,
+                photoURL: photo.flatMap(URL.secureRemoteURL)
+            )
+        }
+        return nil
+    }
+
+    private func objectValue(_ key: String) -> [String: JSONValue]? {
+        if case let .object(value)? = self[key] {
+            return value
         }
         return nil
     }
