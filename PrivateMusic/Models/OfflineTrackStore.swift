@@ -518,7 +518,8 @@ final class OfflineTrackStore: ObservableObject {
             artworkURL: track.artworkURL,
             accessKey: track.accessKey,
             lyricsID: track.lyricsID,
-            albumReference: track.albumReference
+            albumReference: track.albumReference,
+            isHQ: track.isHQ
         )
         let relativePath = destination.path
             .replacingOccurrences(

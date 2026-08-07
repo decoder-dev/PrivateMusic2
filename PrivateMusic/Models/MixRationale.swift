@@ -16,7 +16,7 @@ enum MixRationaleBuilder {
         mixTracks: [Track],
         history: [ListeningHistoryEntry],
         recommendations: [Track] = [],
-        limit: Int = 3
+        limit: Int = 5
     ) -> MixRationale {
         guard !mixTracks.isEmpty else { return .empty }
 
@@ -31,6 +31,7 @@ enum MixRationaleBuilder {
             recommendations.prefix(40).map { normalized($0.artist) }
                 .filter { !$0.isEmpty }
         )
+        let historyArtistSet = Set(recentArtists.keys)
 
         var lines: [String] = []
 
@@ -45,6 +46,16 @@ enum MixRationaleBuilder {
                 ?? top
             lines.append(
                 L10n.format("Часто слушаете: %@", display)
+            )
+        }
+
+        if lines.count < limit, sharedRecent.count >= 2 {
+            let second = sharedRecent[1]
+            let display = displayArtist(second, from: mixTracks)
+                ?? displayArtist(second, from: history.map(\.track))
+                ?? second
+            lines.append(
+                L10n.format("Ещё из недавнего: %@", display)
             )
         }
 
@@ -82,6 +93,38 @@ enum MixRationaleBuilder {
             if !albums.intersection(historyAlbums).isEmpty {
                 lines.append(L10n.text("Есть альбомы из недавних прослушиваний"))
             }
+        }
+
+        if lines.count < limit {
+            let novelCount = mixArtists.keys.filter {
+                !historyArtistSet.contains($0)
+            }.count
+            let total = max(mixArtists.count, 1)
+            let novelPercent = Int(
+                (Double(novelCount) / Double(total) * 100).rounded()
+            )
+            if novelPercent >= 35 {
+                lines.append(
+                    L10n.format(
+                        "Около %d%% артистов — новые для недавней истории",
+                        novelPercent
+                    )
+                )
+            } else if mixArtists.count >= 4 {
+                lines.append(
+                    L10n.format(
+                        "В потоке %d разных артистов",
+                        mixArtists.count
+                    )
+                )
+            }
+        }
+
+        let hqCount = mixTracks.filter(\.isHQ).count
+        if lines.count < limit, hqCount >= 3 {
+            lines.append(
+                L10n.format("Есть HQ-записи: %d в подборке", hqCount)
+            )
         }
 
         if lines.isEmpty {
