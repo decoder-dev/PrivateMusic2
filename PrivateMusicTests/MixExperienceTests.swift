@@ -31,7 +31,8 @@ final class MixRationaleTests: XCTestCase {
 }
 
 final class MixQueueRankerTests: XCTestCase {
-    func testCloserToSeedPrefersSameArtist() {
+    func testCloserToSeedPrefersSameArtistFirst() {
+        var rng = SeededGenerator(seed: 7)
         let seed = makeTrack(id: 1, artist: "Alpha")
         let same = makeTrack(id: 2, artist: "Alpha")
         let other = makeTrack(id: 3, artist: "Beta")
@@ -39,12 +40,16 @@ final class MixQueueRankerTests: XCTestCase {
             queue: [seed, other, same],
             currentIndex: 0,
             seed: seed,
-            mode: .closerToSeed
+            mode: .closerToSeed,
+            rng: &rng
         )
-        XCTAssertEqual(ranked.map(\.id), [seed.id, same.id, other.id])
+        XCTAssertEqual(ranked.first?.id, seed.id)
+        XCTAssertEqual(ranked[1].id, same.id)
+        XCTAssertEqual(ranked[2].id, other.id)
     }
 
     func testMoreNovelPushesFamiliarArtistsDown() {
+        var rng = SeededGenerator(seed: 11)
         let seed = makeTrack(id: 1, artist: "Alpha")
         let familiar = makeTrack(id: 2, artist: "Alpha")
         let novel = makeTrack(id: 3, artist: "Zeta")
@@ -53,9 +58,70 @@ final class MixQueueRankerTests: XCTestCase {
             currentIndex: 0,
             seed: seed,
             mode: .moreNovel,
-            historyArtists: ["Alpha"]
+            historyArtists: ["Alpha"],
+            rng: &rng
         )
         XCTAssertEqual(ranked.map(\.id), [seed.id, novel.id, familiar.id])
+    }
+
+    func testBalancedBreaksArtistClusters() {
+        var rng = SeededGenerator(seed: 42)
+        let seed = makeTrack(id: 1, artist: "Alpha")
+        let clustered = [
+            seed,
+            makeTrack(id: 2, artist: "Alpha"),
+            makeTrack(id: 3, artist: "Alpha"),
+            makeTrack(id: 4, artist: "Alpha"),
+            makeTrack(id: 5, artist: "Beta"),
+            makeTrack(id: 6, artist: "Gamma"),
+            makeTrack(id: 7, artist: "Delta")
+        ]
+        let ranked = MixQueueRanker.rerank(
+            queue: clustered,
+            currentIndex: 0,
+            seed: seed,
+            mode: .balanced,
+            rng: &rng
+        )
+        let upcomingArtists = ranked.dropFirst().map(\.artist)
+        var immediateRepeats = 0
+        for index in upcomingArtists.indices.dropFirst() {
+            if upcomingArtists[index] == upcomingArtists[index - 1] {
+                immediateRepeats += 1
+            }
+        }
+        // Original upcoming was Alpha,Alpha,Alpha,Beta,Gamma,Delta → 2 repeats.
+        XCTAssertLessThan(
+            immediateRepeats,
+            2,
+            "Balanced radio should space artists instead of keeping VK clusters"
+        )
+        XCTAssertEqual(ranked.first?.id, seed.id)
+    }
+
+    func testBalancedChangesClusteredOrder() {
+        var rng = SeededGenerator(seed: 99)
+        let seed = makeTrack(id: 1, artist: "A")
+        let original = [
+            seed,
+            makeTrack(id: 2, artist: "A"),
+            makeTrack(id: 3, artist: "B"),
+            makeTrack(id: 4, artist: "A"),
+            makeTrack(id: 5, artist: "C"),
+            makeTrack(id: 6, artist: "B")
+        ]
+        let ranked = MixQueueRanker.rerank(
+            queue: original,
+            currentIndex: 0,
+            seed: seed,
+            mode: .balanced,
+            rng: &rng
+        )
+        XCTAssertNotEqual(
+            ranked.map(\.id),
+            original.map(\.id),
+            "Balanced must no longer be a no-op on clustered queues"
+        )
     }
 
     private func makeTrack(id: Int, artist: String) -> Track {
@@ -68,6 +134,23 @@ final class MixQueueRankerTests: XCTestCase {
             streamURL: nil,
             artworkURL: nil
         )
+    }
+}
+
+/// Deterministic RNG for ranker tests (SplitMix64).
+private struct SeededGenerator: RandomNumberGenerator {
+    private var state: UInt64
+
+    init(seed: UInt64) {
+        self.state = seed &+ 0x9E3779B97F4A7C15
+    }
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9E3779B97F4A7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        return z ^ (z >> 31)
     }
 }
 

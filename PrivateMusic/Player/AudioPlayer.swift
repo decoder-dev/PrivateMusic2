@@ -718,6 +718,22 @@ final class AudioPlayer: ObservableObject {
                 $0.id == track.id
             } ?? 0
         }
+        // Mix queues from VK often cluster the same artists. Apply
+        // balanced radio diversity up front so «Баланс» is not a no-op
+        // that leaves the original clustered order.
+        if case .mix = source, !shuffleEnabled,
+           let index = currentIndex {
+            let historyArtists = Set(
+                historyStore.entries.prefix(40).map(\.track.artist)
+            )
+            queue = MixQueueRanker.rerank(
+                queue: queue,
+                currentIndex: index,
+                seed: track,
+                mode: .balanced,
+                historyArtists: historyArtists
+            )
+        }
         resetProgressForTrackTransition()
         persistPlayback()
         continuationPrefetchInThreshold = false
@@ -2429,6 +2445,16 @@ final class AudioPlayer: ObservableObject {
         persistPlayback()
         publishNowPlayingQueue()
         scheduleNeighborPreloads()
+        // Newly fetched mix pages arrive in VK order — weave them into the
+        // active radio ranking instead of leaving a clustered tail.
+        if case .mix = queueSource, !shuffleEnabled {
+            rerankUpcomingMix(
+                mode: mixRadioMode,
+                historyArtists: Set(
+                    historyStore.entries.prefix(40).map(\.track.artist)
+                )
+            )
+        }
     }
 
     /// Local mix radio: reorder only upcoming tracks without API calls.
