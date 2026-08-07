@@ -151,7 +151,7 @@ final class StreamQualityPolicyTests: XCTestCase {
 
 final class TrackHQDecodingTests: XCTestCase {
     func testDecodesIsHQFlag() throws {
-        let json = """
+        let numeric = """
         {
           "id": 10,
           "owner_id": 20,
@@ -162,9 +162,22 @@ final class TrackHQDecodingTests: XCTestCase {
           "is_hq": 1
         }
         """.data(using: .utf8)!
-        let track = try JSONDecoder().decode(Track.self, from: json)
-        XCTAssertTrue(track.isHQ)
-        XCTAssertEqual(track.id, "20_10")
+        let fromNumber = try JSONDecoder().decode(Track.self, from: numeric)
+        XCTAssertTrue(fromNumber.isHQ)
+        XCTAssertEqual(fromNumber.id, "20_10")
+
+        let boolean = """
+        {
+          "id": 12,
+          "owner_id": 20,
+          "title": "HQ Song",
+          "artist": "Artist",
+          "duration": 120,
+          "is_hq": true
+        }
+        """.data(using: .utf8)!
+        let fromBool = try JSONDecoder().decode(Track.self, from: boolean)
+        XCTAssertTrue(fromBool.isHQ)
     }
 
     func testMissingIsHQDefaultsFalse() throws {

@@ -94,10 +94,11 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         streamURL = stream.flatMap(URL.secureRemoteURL)
         accessKey = try container.decodeIfPresent(String.self, forKey: .accessKey)
         lyricsID = try container.decodeIfPresent(Int.self, forKey: .lyricsID)
-        if let flag = try container.decodeIfPresent(Bool.self, forKey: .isHQ) {
-            isHQ = flag
-        } else if let number = try container.decodeIfPresent(Int.self, forKey: .isHQ) {
+        // VK sends `is_hq` as 0/1 more often than a JSON bool.
+        if let number = try? container.decode(Int.self, forKey: .isHQ) {
             isHQ = number != 0
+        } else if let flag = try? container.decode(Bool.self, forKey: .isHQ) {
+            isHQ = flag
         } else {
             isHQ = false
         }
