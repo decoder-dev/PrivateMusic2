@@ -104,48 +104,75 @@ struct RemotePlayerView: View {
     }
 
     private var controls: some View {
-        HStack(spacing: 16) {
-            Button {
-                remote.send(.previous)
-            } label: {
-                Image(systemName: "backward.fill")
+        VStack(spacing: 10) {
+            if remote.state.isMixQueue {
+                Text(WatchL10n.text("mix_queue"))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(WatchL10n.text("previous_track"))
 
-            Button {
-                remote.send(.togglePlayPause)
-            } label: {
-                ZStack {
-                    Image(
-                        systemName: remote.state.isPlaying
-                            ? "pause.circle.fill"
-                            : "play.circle.fill"
-                    )
-                    .font(.system(size: 42))
-                    if remote.state.isBuffering {
-                        ProgressView()
-                            .controlSize(.mini)
+            HStack(spacing: 16) {
+                Button {
+                    remote.send(.previous)
+                } label: {
+                    Image(systemName: "backward.fill")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(WatchL10n.text("previous_track"))
+
+                Button {
+                    remote.send(.togglePlayPause)
+                } label: {
+                    ZStack {
+                        Image(
+                            systemName: remote.state.isPlaying
+                                ? "pause.circle.fill"
+                                : "play.circle.fill"
+                        )
+                        .font(.system(size: 42))
+                        if remote.state.isBuffering {
+                            ProgressView()
+                                .controlSize(.mini)
+                        }
                     }
                 }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(
-                WatchL10n.text(
-                    remote.state.isPlaying ? "pause" : "play"
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    WatchL10n.text(
+                        remote.state.isPlaying ? "pause" : "play"
+                    )
                 )
-            )
+
+                Button {
+                    remote.send(.next)
+                } label: {
+                    Image(systemName: "forward.fill")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(WatchL10n.text("next_track"))
+            }
+            .font(.title3)
+            .padding(.vertical, 4)
 
             Button {
-                remote.send(.next)
+                remote.send(.likeCurrent)
             } label: {
-                Image(systemName: "forward.fill")
+                Label(
+                    WatchL10n.text(
+                        remote.state.isLiked ? "liked_track" : "like_track"
+                    ),
+                    systemImage: remote.state.isLiked
+                        ? "heart.fill"
+                        : "heart"
+                )
+                .font(.caption.weight(.semibold))
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(WatchL10n.text("next_track"))
+            .buttonStyle(.bordered)
+            .tint(remote.state.isLiked ? .pink : .white)
+            .disabled(remote.state.isLiked)
         }
-        .font(.title3)
-        .padding(.vertical, 4)
         .disabled(!remote.isReachable || remote.state.isBuffering)
         .opacity(remote.isReachable ? 1 : 0.45)
     }
