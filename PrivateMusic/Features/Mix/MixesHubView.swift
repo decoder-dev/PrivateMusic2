@@ -7,6 +7,8 @@ struct MixesHubView: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var homeCatalog: HomeCatalogStore
     @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
+    @EnvironmentObject private var history: ListeningHistoryStore
+    @EnvironmentObject private var pinnedMixStore: PinnedMixStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var mixes: [MusicMix] = []
     @State private var isLoading = false
@@ -15,6 +17,8 @@ struct MixesHubView: View {
     @State private var loadingMixID: String?
     @State private var actionError: String?
     @State private var queueFillTask: Task<Void, Never>?
+    @State private var personalRationale: MixRationale = .empty
+    @State private var personalBootstrap: [Track] = []
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -26,6 +30,10 @@ struct MixesHubView: View {
                             .id(MainTabScrollDestination.mix)
 
                         personalHero(metrics: metrics)
+
+                        if !personalRationale.isEmpty {
+                            rationaleBlock(personalRationale)
+                        }
 
                         if isLoading && mixes.count <= 1 {
                             skeleton(metrics: metrics)
@@ -129,6 +137,24 @@ struct MixesHubView: View {
                 try await environment.musicService.mixes(accessToken: token)
             }
             loadErrorMessage = nil
+            // Quiet personal bootstrap for Selena rationale + pin — one page only.
+            if personalBootstrap.isEmpty {
+                if let bootstrap = try? await environment.withAuthorizedToken({
+                    token in
+                    try await environment.musicService.mixTracksBootstrap(
+                        .common,
+                        accessToken: token
+                    )
+                }) {
+                    personalBootstrap = bootstrap
+                    MixBootstrapPrefetch.artwork(for: bootstrap)
+                    personalRationale = MixRationaleBuilder.build(
+                        mixTracks: bootstrap,
+                        history: history.entries,
+                        recommendations: homeCatalog.recommendations
+                    )
+                }
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -258,7 +284,28 @@ struct MixesHubView: View {
             Button { selectedMix = mix } label: {
                 Label("Открыть микс", systemImage: "list.bullet")
             }
+            if !personalBootstrap.isEmpty {
+                Button {
+                    pinnedMixStore.pin(mix: mix, tracks: personalBootstrap)
+                } label: {
+                    Label("Слушать позже", systemImage: "bookmark")
+                }
+            }
         }
+    }
+
+    private func rationaleBlock(_ rationale: MixRationale) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.text("Почему Селена"))
+                .font(.subheadline.weight(.semibold))
+            ForEach(rationale.lines, id: \.self) { line in
+                Text("· \(line)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     private var heroSubtitle: String {
@@ -368,6 +415,16 @@ struct MixesHubView: View {
     }
 
     private func cardSubtitle(for mix: MusicMix, social: Bool) -> String {
+        if let curator = mix.curator, curator.isUsable {
+            if let percent = mix.matchPercent {
+                return L10n.format(
+                    "%@ · совпадение %d%%",
+                    curator.displayName,
+                    percent
+                )
+            }
+            return curator.displayName
+        }
         if social, let percent = mix.matchPercent {
             return L10n.format("совпадение с вашим вкусом · %d%%", percent)
         }
@@ -490,6 +547,15 @@ struct MixesHubView: View {
                     )
                 }
                 guard let first = bootstrap.first else { return }
+                MixBootstrapPrefetch.artwork(for: bootstrap)
+                if mix.id == MusicMix.common.id {
+                    personalBootstrap = bootstrap
+                    personalRationale = MixRationaleBuilder.build(
+                        mixTracks: bootstrap,
+                        history: history.entries,
+                        recommendations: homeCatalog.recommendations
+                    )
+                }
                 player.play(
                     first,
                     in: bootstrap,

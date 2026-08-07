@@ -10,6 +10,7 @@ struct LibraryView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var networkMonitor: NetworkMonitor
     @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
+    @EnvironmentObject private var pinnedMixStore: PinnedMixStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var offlinePlaylists =
         OfflinePlaylistStore.shared
@@ -23,6 +24,8 @@ struct LibraryView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 24) {
+                    listenLaterSection
+
                     if playlists.isLoading && playlists.playlists.isEmpty {
                         playlistSkeleton
                     } else if !playlists.playlists.isEmpty {
@@ -216,6 +219,73 @@ struct LibraryView: View {
             NotificationCenter.default.publisher(for: .likedAlbumsDidChange)
         ) { _ in
             Task { await loadAlbums() }
+        }
+    }
+
+    @ViewBuilder
+    private var listenLaterSection: some View {
+        if let pin = pinnedMixStore.pin, !pin.tracks.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(L10n.text("Слушать позже"))
+                    .font(.title2.weight(.bold))
+                Button {
+                    resumePinned(pin)
+                } label: {
+                    HStack(spacing: 14) {
+                        AsyncArtwork(url: pin.artworkURL, size: 64)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(pin.mixTitle)
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            Text(
+                                L10n.format(
+                                    "%d треков · продолжить",
+                                    pin.tracks.count
+                                )
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "play.fill")
+                            .foregroundStyle(.primary)
+                    }
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(
+                            cornerRadius: PremiumLayout.cardRadius,
+                            style: .continuous
+                        )
+                        .fill(.primary.opacity(0.06))
+                    )
+                }
+                .buttonStyle(PremiumPressStyle())
+                .contextMenu {
+                    Button {
+                        resumePinned(pin)
+                    } label: {
+                        Label("Продолжить", systemImage: "play.fill")
+                    }
+                    Button(role: .destructive) {
+                        pinnedMixStore.clear()
+                    } label: {
+                        Label("Убрать", systemImage: "bookmark.slash")
+                    }
+                }
+            }
+        }
+    }
+
+    private func resumePinned(_ pin: PinnedMixSnapshot) {
+        let mix = pin.mix
+        player.resumePinned(pin) {
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.mixTracksContinuation(
+                    mix,
+                    accessToken: token
+                )
+            }
         }
     }
 

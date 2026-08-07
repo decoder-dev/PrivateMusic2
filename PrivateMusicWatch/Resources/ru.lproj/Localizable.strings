@@ -6,5 +6,8 @@
 "pause" = "Пауза";
 "play" = "Воспроизвести";
 "next_track" = "Следующий трек";
+"like_track" = "В любимые";
+"liked_track" = "В любимых";
 "open_on_iphone" = "Откройте Private Music на iPhone";
 "start_track_hint" = "Запустите трек — он появится здесь.";
+"mix_queue" = "Микс";

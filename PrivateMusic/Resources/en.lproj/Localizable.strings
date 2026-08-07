@@ -531,3 +531,19 @@
 "Не удалось загрузить треки этого альбома. Попробуйте ещё раз или найдите его в поиске." = "Could not load this album’s tracks. Try again or find it in Search.";
 "Громкость" = "Volume";
 "Обработка выполняется на устройстве и применяется к наушникам, колонкам и CarKit / Bluetooth автомобиля." = "Processing runs on device and applies to headphones, speakers, and CarKit / car Bluetooth.";
+
+"Почему Селена" = "Why Selena";
+"Часто слушаете: %@" = "You often listen to %@";
+"Пересекается с рекомендациями: %@" = "Overlaps recommendations: %@";
+"Есть альбомы из недавних прослушиваний" = "Includes albums from recent listening";
+"Подобрано под ваш недавний вкус" = "Matched to your recent taste";
+"Слушать позже" = "Listen Later";
+"%d треков · продолжить" = "%d tracks · resume";
+"Продолжить" = "Resume";
+"Радио микса" = "Mix Radio";
+"Переставляет уже загруженную очередь без новых запросов" = "Reorders the loaded queue with no extra requests";
+"Режим" = "Mode";
+"Баланс" = "Balanced";
+"Ближе к треку" = "Closer to Track";
+"Больше новизны" = "More Novelty";
+"%@ · совпадение %d%%" = "%@ · %d%% match";
