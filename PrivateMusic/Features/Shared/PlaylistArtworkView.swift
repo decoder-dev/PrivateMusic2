@@ -9,7 +9,7 @@ struct PlaylistArtworkView: View {
 
     var body: some View {
         artwork
-            .overlay(alignment: .bottomLeading) {
+            .overlay(alignment: .topTrailing) {
                 if showsSource {
                     sourceBadge
                         .padding(max(6, size * 0.065))
@@ -40,8 +40,14 @@ struct PlaylistArtworkView: View {
             }
             .frame(width: size, height: size)
             .clipShape(artworkShape)
-        } else {
+        } else if playlist.artworkURL != nil {
             AsyncArtwork(url: playlist.artworkURL, size: size)
+        } else {
+            // Missing cover: keep note muted/centered — AsyncArtwork's
+            // accent-blue note sat under the VK badge and looked broken.
+            artworkPlaceholder
+                .frame(width: size, height: size)
+                .clipShape(artworkShape)
         }
     }
 
@@ -49,9 +55,10 @@ struct PlaylistArtworkView: View {
         Rectangle()
             .fill(Color(uiColor: .secondarySystemBackground))
             .overlay {
-                Image(systemName: "music.note")
-                    .font(.system(size: size * 0.3, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                Image(systemName: "music.note.list")
+                    .font(.system(size: size * 0.28, weight: .medium))
+                    .foregroundStyle(.secondary.opacity(0.85))
+                    .offset(y: showsSource ? size * 0.04 : 0)
             }
     }
 
@@ -73,7 +80,7 @@ struct PlaylistArtworkView: View {
         }
         .foregroundStyle(.white)
         .padding(.horizontal, size >= 100 ? 8 : 6)
-        .frame(height: size >= 100 ? 24 : 19)
+        .frame(height: size >= 100 ? 22 : 18)
         .background(
             Color(red: 0.0, green: 0.47, blue: 0.96).opacity(0.96),
             in: Capsule()
