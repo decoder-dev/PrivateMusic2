@@ -111,15 +111,25 @@ struct VKMusicService: MusicService {
         )
     }
 
-    func recommendations(accessToken: String) async throws -> [Track] {
+    func recommendations(
+        accessToken: String,
+        targetAudio: String?,
+        shuffle: Bool
+    ) async throws -> [Track] {
         do {
             let userID = try await resolvedUserID(accessToken: accessToken)
             var parameters = [
                 "count": "100",
-                "shuffle": "1"
+                "shuffle": shuffle ? "1" : "0"
             ]
             if let userID {
                 parameters["user_id"] = String(userID)
+            }
+            // Official «микс по треку» / radio-from-seed entry point.
+            if let targetAudio,
+               !targetAudio.trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty {
+                parameters["target_audio"] = targetAudio
             }
             let envelope: VKResponse<VKItems<Track>> = try await client.post(
                 path: "/method/audio.getRecommendations",
@@ -142,6 +152,10 @@ struct VKMusicService: MusicService {
 
         // Some valid VK sessions do not expose getRecommendations, while the
         // personal stream endpoint remains available for the same account.
+        // Seeded radio cannot fall back to the personal stream meaningfully.
+        if targetAudio != nil {
+            throw APIError.invalidResponse
+        }
         return try await mixTracks(.common, accessToken: accessToken)
     }
 
@@ -975,7 +989,8 @@ struct VKMusicService: MusicService {
             artworkURL: track.artworkURL,
             accessKey: nil,
             lyricsID: track.lyricsID,
-            albumReference: track.albumReference
+            albumReference: track.albumReference,
+            isHQ: track.isHQ
         )
     }
 
