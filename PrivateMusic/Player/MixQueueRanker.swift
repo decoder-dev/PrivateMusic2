@@ -60,6 +60,59 @@ enum MixQueueRanker {
         let seedAlbum = seed.albumTitle.map(normalized) ?? ""
         let history = Set(historyArtists.map(normalized))
 
+        let built: [Track]
+        switch mode {
+        case .balanced:
+            built = diversifyBalanced(remaining, rng: &rng)
+        case .closerToSeed, .moreNovel:
+            built = greedilyRank(
+                remaining,
+                seedArtist: seedArtist,
+                seedAlbum: seedAlbum,
+                history: history,
+                head: head,
+                mode: mode,
+                rng: &rng
+            )
+        }
+
+        return head + built
+    }
+
+    /// Shuffle then repair adjacent same-artist pairs so VK clusters do
+    /// not survive as a no-op «Баланс» ordering.
+    private static func diversifyBalanced<G: RandomNumberGenerator>(
+        _ upcoming: [Track],
+        rng: inout G
+    ) -> [Track] {
+        var items = upcoming
+        items.shuffle(using: &rng)
+        guard items.count > 1 else { return items }
+
+        for index in 1..<items.count {
+            let prev = normalized(items[index - 1].artist)
+            let current = normalized(items[index].artist)
+            guard !prev.isEmpty, prev == current else { continue }
+            if let swapIndex = (index + 1..<items.count).first(where: {
+                let artist = normalized(items[$0].artist)
+                return artist != prev
+            }) {
+                items.swapAt(index, swapIndex)
+            }
+        }
+        return items
+    }
+
+    private static func greedilyRank<G: RandomNumberGenerator>(
+        _ upcoming: [Track],
+        seedArtist: String,
+        seedAlbum: String,
+        history: Set<String>,
+        head: [Track],
+        mode: MixRadioMode,
+        rng: inout G
+    ) -> [Track] {
+        var remaining = upcoming
         var recentArtists = head.suffix(4).map { normalized($0.artist) }
         var built: [Track] = []
         built.reserveCapacity(remaining.count)
@@ -89,8 +142,7 @@ enum MixQueueRanker {
                 recentArtists.removeFirst(recentArtists.count - 5)
             }
         }
-
-        return head + built
+        return built
     }
 
     private static func score<G: RandomNumberGenerator>(
@@ -108,22 +160,7 @@ enum MixQueueRanker {
 
         switch mode {
         case .balanced:
-            if !seedArtist.isEmpty, artist == seedArtist { value += 6 }
-            if !seedArtist.isEmpty, artist != seedArtist { value += 14 }
-            if !history.contains(artist) { value += 12 }
-            if history.contains(artist) { value -= 6 }
-            if !seedAlbum.isEmpty, album != seedAlbum { value += 5 }
-            value += spacingBonus(
-                artist: artist,
-                recent: recentArtists,
-                immediate: -48,
-                near: -22,
-                window: -10,
-                fresh: 14
-            )
-            // Soft shuffle so Balans is not a frozen sort of VK order.
-            value += Double.random(in: 0..<8, using: &rng)
-
+            break
         case .closerToSeed:
             if !seedArtist.isEmpty, artist == seedArtist { value += 42 }
             if !seedAlbum.isEmpty, album == seedAlbum { value += 18 }
