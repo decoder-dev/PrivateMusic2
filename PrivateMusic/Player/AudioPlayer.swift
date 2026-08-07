@@ -456,6 +456,13 @@ final class AudioPlayer: ObservableObject {
     private var resumeOnBluetoothConnection = true
     private var pauseAtMinimumVolume = true
     private var advanceOnPlaybackError = true
+    private var preferHighQuality = true
+    /// Optional filter applied to mix queue fills (local dislike memory).
+    private var mixTrackFilter: (([Track]) -> [Track])?
+    /// Optional server-backed refill for closerToSeed / moreNovel modes.
+    private var mixRadioRefillProvider:
+        ((Track, MixRadioMode) async throws -> [Track])?
+    private var mixRadioRefillTask: Task<Void, Never>?
     private var lastNowPlayingSecond = -1
     private var playbackIntended = false
     private var pausedForMinimumVolume = false
@@ -538,6 +545,7 @@ final class AudioPlayer: ObservableObject {
         // Playback level follows hardware / CarKit volume. Keep AVPlayer at
         // unity so the system volume slider is the only attenuation.
         advanceOnPlaybackError = settings.advanceOnPlaybackError
+        preferHighQuality = settings.preferHighQuality
         shuffleEnabled = defaults.bool(forKey: "player.shuffle")
         repeatMode = RepeatMode(
             rawValue: defaults.string(forKey: "player.repeat") ?? ""
@@ -613,6 +621,13 @@ final class AudioPlayer: ObservableObject {
                 self?.advanceOnPlaybackError = enabled
             }
             .store(in: &cancellables)
+        settings.$preferHighQuality
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                self.preferHighQuality = enabled
+                self.applyStreamQualityPreference()
+            }
+            .store(in: &cancellables)
         restorePlayback()
     }
 
@@ -622,6 +637,18 @@ final class AudioPlayer: ObservableObject {
         cancelContinuation()
         defaultContinuationProvider = provider
         activeContinuationProvider = provider
+    }
+
+    func configureMixTrackFilter(
+        _ filter: @escaping ([Track]) -> [Track]
+    ) {
+        mixTrackFilter = filter
+    }
+
+    func configureMixRadioRefill(
+        _ provider: @escaping (Track, MixRadioMode) async throws -> [Track]
+    ) {
+        mixRadioRefillProvider = provider
     }
 
     func configureStreamRefresh(
@@ -717,6 +744,18 @@ final class AudioPlayer: ObservableObject {
             currentIndex = prepared.firstIndex {
                 $0.id == track.id
             } ?? 0
+        }
+        // Drop locally disliked mix tracks before ranking so bans survive
+        // a fresh play() of the same stream.
+        if case .mix = source, let filter = mixTrackFilter {
+            let seedID = track.id
+            let cleaned = filter(queue)
+            if cleaned.contains(where: { $0.id == seedID }) {
+                queue = cleaned
+            } else {
+                queue = [track] + cleaned.filter { $0.id != seedID }
+            }
+            currentIndex = queue.firstIndex { $0.id == seedID } ?? 0
         }
         // Mix queues from VK often cluster the same artists. Apply
         // balanced radio diversity up front so «Баланс» is not a no-op
@@ -1240,7 +1279,17 @@ final class AudioPlayer: ObservableObject {
         )
         item.preferredForwardBufferDuration =
             StreamFailureRetryPolicy.preferredForwardBufferDuration
+        item.preferredPeakBitRate = StreamQualityPolicy.preferredPeakBitRate(
+            preferHighQuality: preferHighQuality
+        )
         return item
+    }
+
+    private func applyStreamQualityPreference() {
+        player.currentItem?.preferredPeakBitRate =
+            StreamQualityPolicy.preferredPeakBitRate(
+                preferHighQuality: preferHighQuality
+            )
     }
 
     private func makePlaybackAsset(
@@ -2430,9 +2479,10 @@ final class AudioPlayer: ObservableObject {
 
     /// Append unique tracks to the active queue (background mix fill).
     func appendToQueue(_ tracks: [Track]) {
+        let filtered = mixTrackFilter?(tracks) ?? tracks
         let additions = PlaybackQueueBuilder.uniqueAdditions(
             existing: queue,
-            candidates: tracks
+            candidates: filtered
         )
         guard !additions.isEmpty else { return }
         let capped = Array(
@@ -2457,7 +2507,66 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    /// Local mix radio: reorder only upcoming tracks without API calls.
+    /// Replace only the unplayed suffix — used when radio mode pulls a
+    /// server-seeded recommendation page (`target_audio`).
+    func replaceUpcoming(with tracks: [Track]) {
+        guard let currentIndex,
+              queue.indices.contains(currentIndex) else {
+            return
+        }
+        let head = Array(queue.prefix(currentIndex + 1))
+        let filtered = mixTrackFilter?(tracks) ?? tracks
+        let known = Set(head.map(\.id))
+        var upcoming: [Track] = []
+        for track in filtered where known.insert(track.id).inserted {
+            upcoming.append(track)
+            if upcoming.count >= MixTrackRequestPolicy.queueLimit {
+                break
+            }
+        }
+        let next = head + upcoming
+        guard next.map(\.id) != queue.map(\.id) else { return }
+        queue = next
+        invalidatePreloadedPlayback()
+        persistPlayback()
+        publishNowPlayingQueue()
+        scheduleNeighborPreloads()
+    }
+
+    /// Drop the current track (dislike) and advance. Removes other copies of
+    /// the same id from the remaining queue.
+    func skipAndDropCurrent() {
+        guard let currentIndex,
+              queue.indices.contains(currentIndex) else {
+            return
+        }
+        let droppedID = queue[currentIndex].id
+        var nextQueue = queue
+        nextQueue.remove(at: currentIndex)
+        nextQueue.removeAll { $0.id == droppedID }
+        cancelContinuation()
+        cancelStreamRefresh()
+        requiresStreamRefresh = false
+        didAttemptStreamRefresh = false
+        guard !nextQueue.isEmpty else {
+            queue = []
+            self.currentIndex = nil
+            pause()
+            persistPlayback()
+            publishNowPlayingQueue()
+            return
+        }
+        let nextIndex = min(currentIndex, nextQueue.count - 1)
+        queue = nextQueue
+        self.currentIndex = nextIndex
+        resetProgressForTrackTransition()
+        persistPlayback()
+        loadCurrentAndPlay()
+        maybeStartContinuationPrefetch()
+    }
+
+    /// Mix radio: reorder upcoming tracks locally, then optionally refill
+    /// from VK recommendations when the mode asks for a new candidate pool.
     func rerankUpcomingMix(
         mode: MixRadioMode,
         seed: Track? = nil,
@@ -2476,12 +2585,44 @@ final class AudioPlayer: ObservableObject {
             mode: mode,
             historyArtists: historyArtists
         )
-        guard reranked.map(\.id) != queue.map(\.id) else { return }
-        queue = reranked
-        invalidatePreloadedPlayback()
-        persistPlayback()
-        publishNowPlayingQueue()
-        scheduleNeighborPreloads()
+        if reranked.map(\.id) != queue.map(\.id) {
+            queue = reranked
+            invalidatePreloadedPlayback()
+            persistPlayback()
+            publishNowPlayingQueue()
+            scheduleNeighborPreloads()
+        }
+        if mode == .closerToSeed || mode == .moreNovel {
+            startMixRadioRefill(seed: seedTrack, mode: mode)
+        }
+    }
+
+    private func startMixRadioRefill(seed: Track, mode: MixRadioMode) {
+        guard let provider = mixRadioRefillProvider else { return }
+        mixRadioRefillTask?.cancel()
+        mixRadioRefillTask = Task { [weak self] in
+            do {
+                let remote = try await provider(seed, mode)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    guard let self else { return }
+                    let filtered = self.mixTrackFilter?(remote) ?? remote
+                    let ranked = MixQueueRanker.rerank(
+                        queue: [seed] + filtered,
+                        currentIndex: 0,
+                        seed: seed,
+                        mode: mode,
+                        historyArtists: Set(
+                            self.historyStore.entries.prefix(40)
+                                .map(\.track.artist)
+                        )
+                    )
+                    self.replaceUpcoming(with: Array(ranked.dropFirst()))
+                }
+            } catch {
+                // Local ranking already applied.
+            }
+        }
     }
 
     /// Resume a pinned mix snapshot without re-fetching the whole stream.

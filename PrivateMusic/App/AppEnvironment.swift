@@ -13,6 +13,7 @@ final class AppEnvironment: ObservableObject {
     let likedAlbumsStore: LikedAlbumsStore
     let offlineStore: OfflineTrackStore
     let pinnedMixStore: PinnedMixStore
+    let mixFeedbackStore: MixFeedbackStore
     let trackShareService: TrackShareService
     let player: AudioPlayer
     let watchRemoteCoordinator: WatchRemoteCoordinator
@@ -62,11 +63,19 @@ final class AppEnvironment: ObservableObject {
             accountID: sessionStore.resolvedOfflineAccountID
         )
         self.pinnedMixStore = pinnedMixStore
+        let mixFeedbackStore = MixFeedbackStore()
+        mixFeedbackStore.configure(
+            accountID: sessionStore.resolvedOfflineAccountID
+        )
+        self.mixFeedbackStore = mixFeedbackStore
         let player = AudioPlayer(
             settings: settings,
             historyStore: historyStore,
             userAgent: sessionStore.userAgent
         )
+        player.configureMixTrackFilter { [weak mixFeedbackStore] tracks in
+            mixFeedbackStore?.filtering(tracks) ?? tracks
+        }
         self.player = player
         let watchRemoteCoordinator = WatchRemoteCoordinator(player: player)
         self.watchRemoteCoordinator = watchRemoteCoordinator
@@ -85,6 +94,16 @@ final class AppEnvironment: ObservableObject {
             initialUserID: sessionStore.resolvedOfflineAccountID
         )
         self.musicService = service
+        player.configureMixRadioRefill { [weak self, service] seed, mode in
+            guard let self else { return [] }
+            return try await self.withAuthorizedToken { token in
+                try await service.recommendations(
+                    seededBy: seed,
+                    accessToken: token,
+                    shuffle: mode == .moreNovel
+                )
+            }
+        }
         player.configureContinuation { [weak self, service] in
             guard let self else { return [] }
             return try await self.withAuthorizedToken { token in
@@ -215,6 +234,7 @@ final class AppEnvironment: ObservableObject {
         offlineStore.configure(accountID: accountID)
         OfflinePlaylistStore.shared.configure(accountID: accountID)
         pinnedMixStore.configure(accountID: accountID)
+        mixFeedbackStore.configure(accountID: accountID)
     }
 
     func refreshHomeCatalog(force: Bool = false) async {

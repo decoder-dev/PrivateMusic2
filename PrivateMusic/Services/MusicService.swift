@@ -8,7 +8,11 @@ protocol MusicService: Sendable {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Track>
-    func recommendations(accessToken: String) async throws -> [Track]
+    func recommendations(
+        accessToken: String,
+        targetAudio: String?,
+        shuffle: Bool
+    ) async throws -> [Track]
     func refreshedTrack(
         _ track: Track,
         accessToken: String
@@ -124,6 +128,28 @@ protocol MusicService: Sendable {
 }
 
 extension MusicService {
+    /// Personal recommendations — optional `targetAudio` seeds «микс по треку».
+    func recommendations(accessToken: String) async throws -> [Track] {
+        try await recommendations(
+            accessToken: accessToken,
+            targetAudio: nil,
+            shuffle: true
+        )
+    }
+
+    /// Recommendations based on a concrete track (`owner_id_audio_id`).
+    func recommendations(
+        seededBy track: Track,
+        accessToken: String,
+        shuffle: Bool = true
+    ) async throws -> [Track] {
+        try await recommendations(
+            accessToken: accessToken,
+            targetAudio: track.id,
+            shuffle: shuffle
+        )
+    }
+
     /// Full mix queue fill (bootstrap + remaining pages).
     func mixTracks(
         _ mix: MusicMix,

@@ -24,6 +24,7 @@ struct MixesHubView: View {
     @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
     @EnvironmentObject private var history: ListeningHistoryStore
     @EnvironmentObject private var pinnedMixStore: PinnedMixStore
+    @EnvironmentObject private var mixFeedbackStore: MixFeedbackStore
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -35,6 +36,7 @@ struct MixesHubView: View {
     @State private var actionError: String?
     @State private var queueFillTask: Task<Void, Never>?
     @State private var trackLoadTask: Task<Void, Never>?
+    @State private var seedRadioTask: Task<Void, Never>?
 
     @State private var selenaTracks: [Track] = []
     @State private var selenaRationale: MixRationale = .empty
@@ -99,6 +101,7 @@ struct MixesHubView: View {
         .onDisappear {
             queueFillTask?.cancel()
             trackLoadTask?.cancel()
+            seedRadioTask?.cancel()
         }
     }
 
@@ -121,8 +124,20 @@ struct MixesHubView: View {
                     "Подобрано по вашим прослушиваниям VK"
                 ),
                 metrics: metrics,
-                picker: { EmptyView() }
+                picker: {
+                    selenaExtras(metrics: metrics)
+                }
             )
+        }
+    }
+
+    @ViewBuilder
+    private func selenaExtras(metrics: MixHubMetrics) -> some View {
+        selenaQuickStarts
+            .premiumAppear(delay: 0.08)
+        if !vibeShelves.isEmpty {
+            vibeShelfBlock(metrics: metrics)
+                .premiumAppear(delay: 0.12)
         }
     }
 
@@ -534,7 +549,8 @@ struct MixesHubView: View {
                 .font(.headline)
             Text(
                 L10n.text(
-                    "Разбавляет очередь: реже одни и те же артисты подряд, без новых запросов"
+                    "Разбавляет очередь и при «Ближе к треку» / «Больше новизны» "
+                        + "подтягивает рекомендации VK по текущему треку"
                 )
             )
             .font(.caption)
@@ -691,11 +707,143 @@ struct MixesHubView: View {
             } label: {
                 Label("Открыть плеер", systemImage: "play.circle")
             }
+            Button {
+                startSeededRadio(from: track)
+            } label: {
+                Label("Микс по треку", systemImage: "dot.radiowaves.up.forward")
+            }
+            Button(role: .destructive) {
+                dislike(track, includeArtist: false, skipIfCurrent: true)
+            } label: {
+                Label("Не нравится", systemImage: "hand.thumbsdown")
+            }
+            Button(role: .destructive) {
+                dislike(track, includeArtist: true, skipIfCurrent: true)
+            } label: {
+                Label(
+                    "Скрыть исполнителя в миксах",
+                    systemImage: "person.badge.minus"
+                )
+            }
             Button { sharingTrack = track } label: {
                 Label(
                     "Поделиться аудиофайлом",
                     systemImage: "square.and.arrow.up"
                 )
+            }
+        }
+    }
+
+    private var selenaQuickStarts: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L10n.text("Как начать"))
+                .font(.headline)
+            Text(
+                L10n.text(
+                    "То, что в официальном VK Music зовут миксом по музыке и по треку"
+                )
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    quickStartChip(
+                        title: L10n.text("Селена"),
+                        systemImage: "sparkles"
+                    ) {
+                        start(personalMix)
+                    }
+                    quickStartChip(
+                        title: L10n.text("По моей музыке"),
+                        systemImage: "music.note.list"
+                    ) {
+                        startFromMyMusic()
+                    }
+                    quickStartChip(
+                        title: L10n.text("Микс по треку"),
+                        systemImage: "dot.radiowaves.up.forward"
+                    ) {
+                        if let seed = history.entries.first?.track
+                            ?? selenaTracks.first {
+                            startSeededRadio(from: seed)
+                        } else {
+                            actionError = L10n.text(
+                                "Нужен хотя бы один недавний трек"
+                            )
+                        }
+                    }
+                    quickStartChip(
+                        title: L10n.text("Больше новизны"),
+                        systemImage: "shuffle"
+                    ) {
+                        start(personalMix, applying: .moreNovel)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .premiumCard()
+    }
+
+    private func quickStartChip(
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+        }
+        .buttonStyle(.bordered)
+        .disabled(loadingMixID != nil)
+    }
+
+    private func vibeShelfBlock(metrics: MixHubMetrics) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L10n.text("Вайбы из VK"))
+                .font(.headline)
+            Text(
+                L10n.text(
+                    "Настроения и тематические полки из каталога — как в приложении VK"
+                )
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: metrics.cardSpacing) {
+                    ForEach(vibeShelves, id: \.title) { shelf in
+                        Button {
+                            openVibeShelf(shelf)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(shelf.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(2)
+                                Text(
+                                    L10n.format(
+                                        "%d миксов",
+                                        shelf.mixes.count
+                                    )
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            .frame(
+                                width: metrics.cardWidth,
+                                alignment: .leading
+                            )
+                            .padding(12)
+                            .premiumCard()
+                        }
+                        .buttonStyle(PremiumPressStyle())
+                    }
+                }
             }
         }
     }
@@ -754,6 +902,12 @@ struct MixesHubView: View {
     private var algorithmicMixes: [MusicMix] {
         let shelved = Set(officialShelves.flatMap(\.mixes).map(\.id))
         return vkMixes.filter { !$0.isSocial && !shelved.contains($0.id) }
+    }
+
+    private var vibeShelves: [(title: String, mixes: [MusicMix])] {
+        officialShelves.filter {
+            MixSeedRadio.looksLikeVibeShelf($0.title)
+        }
     }
 
     private var selenaHeroSubtitle: String {
@@ -1240,20 +1394,21 @@ struct MixesHubView: View {
     }
 
     private func storeTracks(_ tracks: [Track], for mix: MusicMix) {
+        let cleaned = mixFeedbackStore.filtering(tracks)
         let rationale = MixRationaleBuilder.build(
-            mixTracks: tracks,
+            mixTracks: cleaned,
             history: history.entries,
             recommendations: homeCatalog.recommendations
         )
         if mix.id == MusicMix.common.id {
-            selenaTracks = tracks
+            selenaTracks = cleaned
             selenaRationale = rationale
             return
         }
-        vkTrackCache[mix.id] = tracks
+        vkTrackCache[mix.id] = cleaned
         vkRationaleCache[mix.id] = rationale
         if selectedVKMix?.id == mix.id {
-            vkTracks = tracks
+            vkTracks = cleaned
             vkRationale = rationale
         }
     }
@@ -1294,6 +1449,185 @@ struct MixesHubView: View {
             ),
             for: mix
         )
+        // Server refill for closerToSeed / moreNovel is owned by AudioPlayer.
+    }
+
+    private func startFromMyMusic() {
+        guard sessionStore.accessToken != nil else { return }
+        let mix = MusicMix(
+            id: "seed_my_music",
+            title: L10n.text("Микс по моей музыке"),
+            subtitle: L10n.text(
+                "Ваша медиатека и рекомендации VK"
+            ),
+            artworkURL: nil
+        )
+        loadingMixID = mix.id
+        seedRadioTask?.cancel()
+        seedRadioTask = Task {
+            defer {
+                if loadingMixID == mix.id {
+                    loadingMixID = nil
+                }
+            }
+            do {
+                let page = try await environment.withAuthorizedToken {
+                    token in
+                    try await environment.musicService.library(
+                        accessToken: token,
+                        offset: 0,
+                        count: 80
+                    )
+                }
+                let recs = try await environment.withAuthorizedToken {
+                    token in
+                    try await environment.musicService.recommendations(
+                        accessToken: token
+                    )
+                }
+                guard !Task.isCancelled else { return }
+                let blended = mixFeedbackStore.filtering(
+                    MixSeedRadio.blend(
+                        seeds: page.items,
+                        recommendations: recs
+                    )
+                )
+                guard let first = blended.first else {
+                    await MainActor.run {
+                        actionError = L10n.text(
+                            "Не удалось собрать микс по медиатеке"
+                        )
+                    }
+                    return
+                }
+                await MainActor.run {
+                    player.play(
+                        first,
+                        in: blended,
+                        continuation: {
+                            try await environment.withAuthorizedToken {
+                                token in
+                                try await environment.musicService
+                                    .recommendations(accessToken: token)
+                            }
+                        },
+                        source: .mix(title: mix.title)
+                    )
+                    Haptics.success()
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                await MainActor.run {
+                    actionError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func startSeededRadio(from track: Track) {
+        guard sessionStore.accessToken != nil else { return }
+        let mix = MusicMix(
+            id: "seed_\(track.id)",
+            title: L10n.format("Микс по «%@»", track.title),
+            subtitle: track.artist,
+            artworkURL: track.artworkURL
+        )
+        loadingMixID = mix.id
+        seedRadioTask?.cancel()
+        seedRadioTask = Task {
+            defer {
+                if loadingMixID == mix.id {
+                    loadingMixID = nil
+                }
+            }
+            do {
+                let remote = try await environment.withAuthorizedToken {
+                    token in
+                    try await environment.musicService.recommendations(
+                        seededBy: track,
+                        accessToken: token,
+                        shuffle: false
+                    )
+                }
+                guard !Task.isCancelled else { return }
+                var queue = [track]
+                let filtered = mixFeedbackStore.filtering(remote)
+                var known: Set<String> = [track.id]
+                for item in filtered where known.insert(item.id).inserted {
+                    queue.append(item)
+                }
+                await MainActor.run {
+                    player.play(
+                        track,
+                        in: queue,
+                        continuation: {
+                            try await environment.withAuthorizedToken {
+                                token in
+                                try await environment.musicService
+                                    .recommendations(
+                                        seededBy: track,
+                                        accessToken: token,
+                                        shuffle: true
+                                    )
+                            }
+                        },
+                        source: .mix(title: mix.title)
+                    )
+                    player.rerankUpcomingMix(
+                        mode: .closerToSeed,
+                        seed: track,
+                        historyArtists: Set(
+                            history.entries.prefix(40).map(\.track.artist)
+                        )
+                    )
+                    Haptics.success()
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                await MainActor.run {
+                    actionError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func openVibeShelf(
+        _ shelf: (title: String, mixes: [MusicMix])
+    ) {
+        guard let first = shelf.mixes.first else { return }
+        hubTab = .vk
+        selectVKMix(first)
+        Haptics.selection()
+    }
+
+    private func dislike(
+        _ track: Track,
+        includeArtist: Bool,
+        skipIfCurrent: Bool
+    ) {
+        mixFeedbackStore.ban(track, includeArtist: includeArtist)
+        if skipIfCurrent, player.currentTrack?.id == track.id {
+            player.skipAndDropCurrent()
+        }
+        if case .mix = player.queueSource,
+           let index = player.currentIndex,
+           player.queue.indices.contains(index) {
+            let upcoming = Array(player.queue.suffix(from: index + 1))
+            player.replaceUpcoming(
+                with: mixFeedbackStore.filtering(upcoming)
+            )
+        }
+        // Also scrub cached mix lists so the hub reflects bans.
+        selenaTracks = mixFeedbackStore.filtering(selenaTracks)
+        vkTracks = mixFeedbackStore.filtering(vkTracks)
+        for key in vkTrackCache.keys {
+            vkTrackCache[key] = mixFeedbackStore.filtering(
+                vkTrackCache[key] ?? []
+            )
+        }
+        Haptics.selection()
     }
 
     private func mergeTracks(_ lhs: [Track], _ rhs: [Track]) -> [Track] {
@@ -1302,7 +1636,9 @@ struct MixesHubView: View {
         for track in rhs where known.insert(track.id).inserted {
             result.append(track)
         }
-        return Array(result.prefix(MixTrackRequestPolicy.queueLimit))
+        return mixFeedbackStore.filtering(
+            Array(result.prefix(MixTrackRequestPolicy.queueLimit))
+        )
     }
 }
 

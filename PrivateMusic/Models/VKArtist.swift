@@ -225,7 +225,8 @@ enum CatalogSectionPolicy {
             "mix", "микс", "stream", "подбор", "radio", "вкус",
             "для вас", "for you", "discover", "поток", "mood",
             "настроен", "активност", "activity", "жанр", "genre",
-            "section=mix", "listen together", "друг"
+            "section=mix", "listen together", "друг", "вайб", "vibe",
+            "спокойн", "грустн", "радост", "энерг"
         ]
         return markers.contains { blob.contains($0) }
     }

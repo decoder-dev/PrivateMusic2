@@ -285,6 +285,61 @@ private struct PlayerAudioSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Качество звука") {
+                Toggle(
+                    isOn: $settings.preferHighQuality
+                ) {
+                    Label(
+                        "Высокое качество",
+                        systemImage: "waveform"
+                    )
+                }
+                Text(
+                    L10n.text(
+                        "Предпочитает HQ-потоки VK и не ограничивает "
+                            + "битрейт HLS. Выключите, чтобы экономить трафик "
+                            + "(~160 кбит/с). Lossless у VK нет."
+                    )
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+                Toggle(
+                    isOn: $settings.loudnessNormalization
+                ) {
+                    Label(
+                        "Нормализация громкости",
+                        systemImage: "speaker.wave.2"
+                    )
+                }
+                Text(
+                    L10n.text(
+                        "Сглаживает скачки громкости между треками. "
+                            + "Работает на прогрессивных потоках; для HLS "
+                            + "обработка на устройстве недоступна."
+                    )
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+                Toggle(
+                    isOn: $settings.dynamicRangeCompression
+                ) {
+                    Label(
+                        "Компрессия динамики",
+                        systemImage: "waveform.path"
+                    )
+                }
+                Text(
+                    L10n.text(
+                        "Делает тихие места слышнее в шумной обстановке "
+                            + "(наушники в метро, колонка в машине)."
+                    )
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+
             Section {
                 Toggle(
                     isOn: $settings.resumeOnBluetoothConnection
@@ -404,6 +459,14 @@ struct EqualizerSettingsView: View {
                 Toggle(
                     "Обработка звука",
                     isOn: $settings.equalizerEnabled
+                )
+                Toggle(
+                    "Нормализация громкости",
+                    isOn: $settings.loudnessNormalization
+                )
+                Toggle(
+                    "Компрессия динамики",
+                    isOn: $settings.dynamicRangeCompression
                 )
             }
 
