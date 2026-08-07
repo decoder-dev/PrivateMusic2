@@ -4,6 +4,7 @@ enum WatchRemoteCommand: String, Codable, Sendable {
     case togglePlayPause
     case next
     case previous
+    case likeCurrent
 }
 
 struct WatchRemoteState: Codable, Equatable, Sendable {
@@ -16,6 +17,8 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
     let elapsed: TimeInterval
     let duration: TimeInterval
     let snapshotDate: Date
+    let isLiked: Bool
+    let isMixQueue: Bool
 
     /// `snapshotDate` is only used for Watch-side elapsed interpolation; it
     /// must not defeat push deduplication or every half-second player tick
@@ -29,6 +32,8 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
             && lhs.isBuffering == rhs.isBuffering
             && lhs.elapsed == rhs.elapsed
             && lhs.duration == rhs.duration
+            && lhs.isLiked == rhs.isLiked
+            && lhs.isMixQueue == rhs.isMixQueue
     }
 
     static let empty = WatchRemoteState(
@@ -40,7 +45,9 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
         isBuffering: false,
         elapsed: 0,
         duration: 0,
-        snapshotDate: .distantPast
+        snapshotDate: .distantPast,
+        isLiked: false,
+        isMixQueue: false
     )
 
     var context: [String: Any] {
@@ -68,7 +75,9 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
         isBuffering: Bool,
         elapsed: TimeInterval,
         duration: TimeInterval,
-        snapshotDate: Date = Date()
+        snapshotDate: Date = Date(),
+        isLiked: Bool = false,
+        isMixQueue: Bool = false
     ) {
         self.trackID = trackID
         self.title = title
@@ -79,6 +88,24 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
         self.elapsed = elapsed
         self.duration = duration
         self.snapshotDate = snapshotDate
+        self.isLiked = isLiked
+        self.isMixQueue = isMixQueue
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        trackID = try container.decodeIfPresent(String.self, forKey: .trackID)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        artist = try container.decodeIfPresent(String.self, forKey: .artist) ?? ""
+        artworkURL = try container.decodeIfPresent(URL.self, forKey: .artworkURL)
+        isPlaying = try container.decodeIfPresent(Bool.self, forKey: .isPlaying) ?? false
+        isBuffering = try container.decodeIfPresent(Bool.self, forKey: .isBuffering) ?? false
+        elapsed = try container.decodeIfPresent(TimeInterval.self, forKey: .elapsed) ?? 0
+        duration = try container.decodeIfPresent(TimeInterval.self, forKey: .duration) ?? 0
+        snapshotDate = try container.decodeIfPresent(Date.self, forKey: .snapshotDate)
+            ?? .distantPast
+        isLiked = try container.decodeIfPresent(Bool.self, forKey: .isLiked) ?? false
+        isMixQueue = try container.decodeIfPresent(Bool.self, forKey: .isMixQueue) ?? false
     }
 
     func displayedElapsed(at date: Date) -> TimeInterval {

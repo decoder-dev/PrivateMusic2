@@ -129,55 +129,61 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.36-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.37-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.36-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.37-iphone-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.36"
+          test "$GITHUB_REF_NAME" = "v3.28.37"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.36 (pre-release)
+          # Private Music 3.28.37 (pre-release)
 
-          Миксы как на официальной странице VK + быстрее старт без спама.
+          Селена, радио микса, «слушать позже», соц-полка и Watch like.
 
-          ## Миксы
-          - Параллельная гидратация официальных секций `catalog.getSection`
-            (микс / настроение / жанр / активность)
-          - Полки по названиям секций VK, не только «алгоритмы»
-          - Старт с первой страницы потока, остальное догружается в фоне
-          - Continuation prefetch только когда очередь почти кончилась
+          ## Селена и миксы
+          - «Почему Селена» — якоря из истории/рекомендаций
+          - Официальные полки VK + curator на социальных миксах
+          - Радио микса: баланс / ближе к треку / больше новизны
+            (локальный re-rank без новых API-запросов)
+
+          ## Слушать позже
+          - Pin микса в Медиатеке без оффлайн-файлов
+          - Resume с позиции + continuation потока
+
+          ## Watch
+          - Like текущего трека
+          - Бейдж «Микс» на пульте
 
           ## Скорость
-          - Home: рекомендации / каталог / плейлисты параллельно
-          - Mix detail: метаданные и треки параллельно, список до 48 треков
+          - Prefetch обложек bootstrap-страницы микса
 
           ## Установка
           IPA не подписан.
-          - **`…-iphone-unsigned.ipa`** — без Watch (удобнее для ESign/Sideloadly)
+          - **`…-iphone-unsigned.ipa`** — без Watch
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.36-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.36-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.37-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.37-unsigned.ipa"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.36" \
+              --title "Private Music 3.28.37" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.36" \
+              --title "Private Music 3.28.37" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -186,9 +192,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.36-unsigned
+          name: PrivateMusic-3.28.37-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.36-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.36-unsigned.ipa
+            artifacts/PrivateMusic-3.28.37-iphone-unsigned.ipa
+            artifacts/PrivateMusic-3.28.37-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

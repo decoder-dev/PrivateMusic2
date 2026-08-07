@@ -32,6 +32,25 @@ final class WatchRemoteProtocolTests: XCTestCase {
         )
         XCTAssertEqual(WatchRemoteCommand.next.rawValue, "next")
         XCTAssertEqual(WatchRemoteCommand.previous.rawValue, "previous")
+        XCTAssertEqual(WatchRemoteCommand.likeCurrent.rawValue, "likeCurrent")
+    }
+
+    func testLegacyStateDecodesWithoutLikeFields() throws {
+        let legacy = """
+        {
+          "trackID": "1_2",
+          "title": "Track",
+          "artist": "Artist",
+          "isPlaying": true,
+          "isBuffering": false,
+          "elapsed": 1,
+          "duration": 10
+        }
+        """.data(using: .utf8)!
+        let state = try JSONDecoder().decode(WatchRemoteState.self, from: legacy)
+        XCTAssertEqual(state.trackID, "1_2")
+        XCTAssertFalse(state.isLiked)
+        XCTAssertFalse(state.isMixQueue)
     }
 
     func testPlayingStateInterpolatesElapsedTime() {

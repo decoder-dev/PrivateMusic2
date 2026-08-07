@@ -18,6 +18,7 @@ struct PrivateMusicApp: App {
                 .environmentObject(environment.homeCatalogStore)
                 .environmentObject(environment.likedAlbumsStore)
                 .environmentObject(environment.offlineStore)
+                .environmentObject(environment.pinnedMixStore)
                 .environmentObject(environment.player)
                 .environmentObject(environment.player.progress)
         }

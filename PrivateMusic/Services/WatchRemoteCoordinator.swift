@@ -11,6 +11,8 @@ final class WatchRemoteCoordinator: NSObject {
     private var cancellables = Set<AnyCancellable>()
     private var lastState: WatchRemoteState?
     private var canControlPlayback: @MainActor () -> Bool = { true }
+    private var isLiked: @MainActor (Track) -> Bool = { _ in false }
+    private var likeCurrent: (@MainActor (Track) async -> Bool)?
 
     init(player: AudioPlayer) {
         self.player = player
@@ -56,6 +58,13 @@ final class WatchRemoteCoordinator: NSObject {
                 self?.pushLatestState()
             }
             .store(in: &cancellables)
+
+        player.$queueSource
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                self?.pushLatestState()
+            }
+            .store(in: &cancellables)
     }
 
     func configureControlGate(
@@ -64,10 +73,22 @@ final class WatchRemoteCoordinator: NSObject {
         canControlPlayback = gate
     }
 
+    func configureLibrary(
+        isLiked: @escaping @MainActor (Track) -> Bool,
+        likeCurrent: @escaping @MainActor (Track) async -> Bool
+    ) {
+        self.isLiked = isLiked
+        self.likeCurrent = likeCurrent
+    }
+
     private func currentState() -> WatchRemoteState {
         guard let player, let track = player.currentTrack else {
             return .empty
         }
+        let mixQueue: Bool = {
+            if case .mix = player.queueSource { return true }
+            return false
+        }()
         return WatchRemoteState(
             trackID: track.id,
             title: track.title,
@@ -77,7 +98,9 @@ final class WatchRemoteCoordinator: NSObject {
             isBuffering: player.isBuffering,
             elapsed: player.elapsedTime,
             duration: player.duration > 0 ? player.duration : track.duration,
-            snapshotDate: Date()
+            snapshotDate: Date(),
+            isLiked: isLiked(track),
+            isMixQueue: mixQueue
         )
     }
 
@@ -120,13 +143,30 @@ final class WatchRemoteCoordinator: NSObject {
         switch envelope.command {
         case .togglePlayPause:
             player.playPause()
+            pushLatestState(force: true)
+            return reply(accepted: true)
         case .next:
             player.next()
+            pushLatestState(force: true)
+            return reply(accepted: true)
         case .previous:
             player.previous()
+            pushLatestState(force: true)
+            return reply(accepted: true)
+        case .likeCurrent:
+            guard let track = player.currentTrack,
+                  let likeCurrent else {
+                return reply(accepted: false)
+            }
+            // Reply after the async like finishes via a synchronous false if
+            // we cannot start; WCSession reply must be immediate, so accept
+            // optimistically and push state when done.
+            Task { @MainActor [weak self] in
+                _ = await likeCurrent(track)
+                self?.pushLatestState(force: true)
+            }
+            return reply(accepted: true)
         }
-        pushLatestState(force: true)
-        return reply(accepted: true)
     }
 }
 
@@ -160,15 +200,25 @@ extension WatchRemoteCoordinator: WCSessionDelegate {
         replyHandler: @escaping ([String: Any]) -> Void
     ) {
         Task { @MainActor [weak self] in
-            replyHandler(self?.handle(message) ?? WatchRemoteState.empty.context)
+            let reply = self?.handle(message) ?? [
+                WatchRemoteMessageKey.accepted: false
+            ]
+            replyHandler(reply)
         }
     }
 
     nonisolated func session(
         _ session: WCSession,
-        didReceiveUserInfo userInfo: [String: Any] = [:]
+        didReceiveMessage message: [String: Any]
     ) {
-        // Transport controls are intentionally never queued. Old queued
-        // messages from pre-3.26 builds are discarded to avoid stale replay.
+        Task { @MainActor [weak self] in
+            _ = self?.handle(message)
+        }
+    }
+
+    nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
+        Task { @MainActor [weak self] in
+            self?.pushLatestState(force: true)
+        }
     }
 }

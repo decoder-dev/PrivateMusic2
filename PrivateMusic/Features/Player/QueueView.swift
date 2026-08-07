@@ -2,7 +2,14 @@ import SwiftUI
 
 struct QueueView: View {
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var history: ListeningHistoryStore
     @Environment(\.dismiss) private var dismiss
+    @State private var radioMode: MixRadioMode = .balanced
+
+    private var isMixQueue: Bool {
+        if case .mix = player.queueSource { return true }
+        return false
+    }
 
     var body: some View {
         NavigationStack {
@@ -15,6 +22,38 @@ struct QueueView: View {
                     )
                 } else {
                     List {
+                        if isMixQueue {
+                            Section {
+                                Picker(
+                                    L10n.text("Радио микса"),
+                                    selection: $radioMode
+                                ) {
+                                    ForEach(MixRadioMode.allCases) { mode in
+                                        Text(mode.title).tag(mode)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                                .listRowBackground(Color.clear)
+                                .onChange(of: radioMode) { mode in
+                                    let artists = Set(
+                                        history.entries.prefix(40)
+                                            .map(\.track.artist)
+                                    )
+                                    player.rerankUpcomingMix(
+                                        mode: mode,
+                                        historyArtists: artists
+                                    )
+                                }
+                            } header: {
+                                Text(L10n.text("Радио микса"))
+                            } footer: {
+                                Text(
+                                    L10n.text(
+                                        "Переставляет уже загруженную очередь без новых запросов"
+                                    )
+                                )
+                            }
+                        }
                         if let index = player.currentIndex {
                             Text(
                                 L10n.format(
