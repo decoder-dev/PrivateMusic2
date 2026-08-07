@@ -560,6 +560,7 @@
 "Продолжить" = "Resume";
 "Радио микса" = "Mix Radio";
 "Переставляет уже загруженную очередь без новых запросов" = "Reorders the loaded queue with no extra requests";
+"Разбавляет очередь: реже одни и те же артисты подряд, без новых запросов" = "Diversifies the queue: fewer same-artist runs, no extra requests";
 "Режим" = "Mode";
 "Баланс" = "Balanced";
 "Ближе к треку" = "Closer to Track";
