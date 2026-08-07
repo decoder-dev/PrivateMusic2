@@ -533,6 +533,14 @@
 "Обработка выполняется на устройстве и применяется к наушникам, колонкам и CarKit / Bluetooth автомобиля." = "Processing runs on device and applies to headphones, speakers, and CarKit / car Bluetooth.";
 
 "Почему Селена" = "Why Selena";
+"Почему этот микс" = "Why This Mix";
+"Селена" = "Selena";
+"VK Миксы" = "VK Mixes";
+"Раздел миксов" = "Mix sections";
+"Все миксы" = "All Mixes";
+"Слушать" = "Listen";
+"Открыть здесь" = "Open Here";
+"Открыть Селену" = "Open Selena";
 "Часто слушаете: %@" = "You often listen to %@";
 "Пересекается с рекомендациями: %@" = "Overlaps recommendations: %@";
 "Есть альбомы из недавних прослушиваний" = "Includes albums from recent listening";
@@ -547,3 +555,4 @@
 "Ближе к треку" = "Closer to Track";
 "Больше новизны" = "More Novelty";
 "%@ · совпадение %d%%" = "%@ · %d%% match";
+"VK ещё не подготовил тематические подборки для вашего аккаунта — загляните позже или откройте Селену." = "VK has not prepared themed mixes for your account yet — check back later or open Selena.";
