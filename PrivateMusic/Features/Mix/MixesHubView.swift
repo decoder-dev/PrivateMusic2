@@ -208,7 +208,7 @@ struct MixesHubView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             PremiumSectionHeader(
-                "Другие миксы",
+                "Ваши VK Миксы",
                 subtitle: "Тот же экран — просто смените подборку"
             )
 
