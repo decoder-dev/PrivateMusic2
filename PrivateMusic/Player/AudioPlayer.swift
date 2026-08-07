@@ -2516,7 +2516,7 @@ final class AudioPlayer: ObservableObject {
         }
         let head = Array(queue.prefix(currentIndex + 1))
         let filtered = mixTrackFilter?(tracks) ?? tracks
-        let known = Set(head.map(\.id))
+        var known = Set(head.map(\.id))
         var upcoming: [Track] = []
         for track in filtered where known.insert(track.id).inserted {
             upcoming.append(track)
