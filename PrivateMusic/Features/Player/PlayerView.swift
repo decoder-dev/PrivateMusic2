@@ -879,7 +879,51 @@ struct PlayerView: View {
                 },
                 onSettings: {
                     deferFromActionSheet(.sheet(.settings))
-                }
+                },
+                onDislikeTrack: {
+                    presentedSheet = nil
+                    environment.mixFeedbackStore.ban(
+                        track,
+                        includeArtist: false
+                    )
+                    if case .mix = player.queueSource {
+                        player.skipAndDropCurrent()
+                    } else {
+                        player.next()
+                    }
+                    Haptics.selection()
+                },
+                onDislikeArtist: {
+                    presentedSheet = nil
+                    environment.mixFeedbackStore.ban(
+                        track,
+                        includeArtist: true
+                    )
+                    if case .mix = player.queueSource {
+                        player.skipAndDropCurrent()
+                        if let index = player.currentIndex,
+                           player.queue.indices.contains(index) {
+                            let upcoming = Array(
+                                player.queue.suffix(from: index + 1)
+                            )
+                            player.replaceUpcoming(
+                                with: environment.mixFeedbackStore.filtering(
+                                    upcoming
+                                )
+                            )
+                        }
+                    } else {
+                        player.next()
+                    }
+                    Haptics.selection()
+                },
+                showsMixFeedback: {
+                    if case .mix = player.queueSource { return true }
+                    return false
+                }(),
+                qualityCaption: settings.preferHighQuality
+                    ? L10n.text("Качество: высокое (HQ / без лимита HLS)")
+                    : L10n.text("Качество: экономия трафика (~160 кбит/с)")
             )
         }
     }
@@ -1427,6 +1471,10 @@ private struct PlayerActionsSheet: View {
     let onCopyLink: () -> Void
     let onOffline: () -> Void
     let onSettings: () -> Void
+    let onDislikeTrack: () -> Void
+    let onDislikeArtist: () -> Void
+    let showsMixFeedback: Bool
+    let qualityCaption: String
 
     private let columns = [
         GridItem(.flexible(), spacing: 10),
@@ -1484,12 +1532,24 @@ private struct PlayerActionsSheet: View {
                                     action: onOffline
                                 )
                             }
+                            if showsMixFeedback {
+                                actionTile(
+                                    "Не нравится",
+                                    systemImage: "hand.thumbsdown",
+                                    action: onDislikeTrack
+                                )
+                                actionTile(
+                                    "Скрыть исполнителя",
+                                    systemImage: "person.badge.minus",
+                                    action: onDislikeArtist
+                                )
+                            }
                         }
 
                         sectionTitle("Плеер и аудио")
                         audioControls
 
-                        Text(L10n.text("Качество: автоматически VK"))
+                        Text(qualityCaption)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .padding(.top, 12)
