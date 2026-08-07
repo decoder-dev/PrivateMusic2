@@ -541,6 +541,12 @@
 "Слушать" = "Listen";
 "Открыть здесь" = "Open Here";
 "Открыть Селену" = "Open Selena";
+"Другие миксы" = "Other Mixes";
+"Тот же экран — просто смените подборку" = "Same screen — just switch the mix";
+"Социальный микс" = "Social Mix";
+"Подобрано по пересечению вкусов" = "Matched from overlapping tastes";
+"Официальная подборка VK" = "Official VK selection";
+"Подобрано алгоритмами VK" = "Picked by VK algorithms";
 "Часто слушаете: %@" = "You often listen to %@";
 "Пересекается с рекомендациями: %@" = "Overlaps recommendations: %@";
 "Есть альбомы из недавних прослушиваний" = "Includes albums from recent listening";
