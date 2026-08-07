@@ -74,8 +74,17 @@ final class MixQueueRankerTests: XCTestCase {
             makeTrack(id: 4, artist: "Alpha"),
             makeTrack(id: 5, artist: "Beta"),
             makeTrack(id: 6, artist: "Gamma"),
-            makeTrack(id: 7, artist: "Delta")
+            makeTrack(id: 7, artist: "Delta"),
+            makeTrack(id: 8, artist: "Epsilon")
         ]
+        let originalUpcoming = clustered.dropFirst().map(\.artist)
+        var originalRepeats = 0
+        for index in originalUpcoming.indices.dropFirst() {
+            if originalUpcoming[index] == originalUpcoming[index - 1] {
+                originalRepeats += 1
+            }
+        }
+
         let ranked = MixQueueRanker.rerank(
             queue: clustered,
             currentIndex: 0,
@@ -90,13 +99,13 @@ final class MixQueueRankerTests: XCTestCase {
                 immediateRepeats += 1
             }
         }
-        // Original upcoming was Alpha,Alpha,Alpha,Beta,Gamma,Delta → 2 repeats.
         XCTAssertLessThan(
             immediateRepeats,
-            2,
-            "Balanced radio should space artists instead of keeping VK clusters"
+            originalRepeats,
+            "Balanced radio should reduce immediate artist repeats vs VK order"
         )
         XCTAssertEqual(ranked.first?.id, seed.id)
+        XCTAssertNotEqual(ranked.map(\.id), clustered.map(\.id))
     }
 
     func testBalancedChangesClusteredOrder() {
