@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Single Mix tab screen: Selena vs VK as segments — no nested detail pushes.
+/// Single Mix tab: Selena and VK share the same listening window.
+/// VK mix switching happens inline — no browse/detail push.
 struct MixesHubView: View {
     private enum HubTab: String, CaseIterable, Identifiable {
         case selena
@@ -23,6 +24,7 @@ struct MixesHubView: View {
     @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
     @EnvironmentObject private var history: ListeningHistoryStore
     @EnvironmentObject private var pinnedMixStore: PinnedMixStore
+    @EnvironmentObject private var settings: AppSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var hubTab: HubTab = .selena
@@ -36,9 +38,11 @@ struct MixesHubView: View {
 
     @State private var selenaTracks: [Track] = []
     @State private var selenaRationale: MixRationale = .empty
-    @State private var focusedVKMix: MusicMix?
-    @State private var focusedVKTracks: [Track] = []
-    @State private var focusedVKRationale: MixRationale = .empty
+    @State private var selectedVKMix: MusicMix?
+    @State private var vkTracks: [Track] = []
+    @State private var vkRationale: MixRationale = .empty
+    @State private var vkTrackCache: [String: [Track]] = [:]
+    @State private var vkRationaleCache: [String: MixRationale] = [:]
     @State private var radioMode: MixRadioMode = .balanced
     @State private var sharingTrack: Track?
 
@@ -47,7 +51,7 @@ struct MixesHubView: View {
             GeometryReader { geometry in
                 let metrics = MixHubMetrics(width: geometry.size.width)
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 22) {
+                    LazyVStack(alignment: .leading, spacing: 20) {
                         titleHeader
                             .id(MainTabScrollDestination.mix)
 
@@ -81,10 +85,6 @@ struct MixesHubView: View {
                 guard request?.destination == .mix else { return }
                 scrollHubToTop(proxy: proxy)
             }
-            .onChange(of: focusedVKMix?.id) { id in
-                guard id != nil else { return }
-                scrollHubToTop(proxy: proxy)
-            }
         }
         .background(ThemeBackground())
         .navigationBarTitleDisplayMode(.inline)
@@ -93,9 +93,8 @@ struct MixesHubView: View {
         .refreshable { await load(force: true) }
         .task(id: sessionStore.accessToken) { await load() }
         .onChange(of: hubTab) { tab in
-            if tab == .selena {
-                focusedVKMix = nil
-                focusedVKTracks = []
+            if tab == .vk {
+                ensureVKSelection()
             }
         }
         .onDisappear {
@@ -104,126 +103,230 @@ struct MixesHubView: View {
         }
     }
 
-    // MARK: - Selena tab
+    // MARK: - Selena
 
     @ViewBuilder
     private func selenaContent(metrics: MixHubMetrics) -> some View {
-        playHero(
-            mix: personalMix,
-            metrics: metrics,
-            subtitle: selenaHeroSubtitle
-        )
-
-        if !selenaRationale.isEmpty {
-            rationaleBlock(
-                selenaRationale,
-                title: L10n.text("Почему Селена")
-            )
-        }
-
-        controlsPanel(
-            mix: personalMix,
-            tracks: selenaTracks
-        )
-
         if isLoading && selenaTracks.isEmpty {
             skeleton(metrics: metrics)
         } else if let loadErrorMessage, selenaTracks.isEmpty {
             loadErrorState(loadErrorMessage)
-        } else if !selenaTracks.isEmpty {
-            tracksBlock(
+        } else {
+            listeningWindow(
                 mix: personalMix,
                 tracks: selenaTracks,
-                metrics: metrics
+                rationale: selenaRationale,
+                rationaleTitle: L10n.text("Почему Селена"),
+                heroSubtitle: selenaHeroSubtitle,
+                tracksSubtitle: L10n.text(
+                    "Подобрано по вашим прослушиваниям VK"
+                ),
+                metrics: metrics,
+                picker: { EmptyView() }
             )
         }
     }
 
-    // MARK: - VK tab
+    // MARK: - VK
 
     @ViewBuilder
     private func vkContent(metrics: MixHubMetrics) -> some View {
-        if let focused = focusedVKMix {
-            focusedVKPanel(mix: focused, metrics: metrics)
-        } else if isLoading && vkMixes.isEmpty {
+        if isLoading && vkMixes.isEmpty {
             skeleton(metrics: metrics)
         } else if let loadErrorMessage, vkMixes.isEmpty {
             loadErrorState(loadErrorMessage)
         } else if vkMixes.isEmpty {
             emptyMixesState
-        } else {
-            if !socialMixes.isEmpty {
-                mixShelf(
-                    title: "Слушайте друг друга",
-                    mixes: socialMixes,
-                    metrics: metrics,
-                    showsMatchBadge: true
-                )
-            }
-            ForEach(officialShelves, id: \.title) { shelf in
-                mixShelf(
-                    title: shelf.title,
-                    mixes: shelf.mixes,
-                    metrics: metrics,
-                    showsMatchBadge: false
-                )
-            }
-            if !algorithmicMixes.isEmpty {
-                mixShelf(
-                    title: "Собрано алгоритмами",
-                    mixes: algorithmicMixes,
-                    metrics: metrics,
-                    showsMatchBadge: false
-                )
-            }
+        } else if let mix = selectedVKMix ?? orderedVKMixes.first {
+            listeningWindow(
+                mix: mix,
+                tracks: vkTracks,
+                rationale: vkRationale,
+                rationaleTitle: L10n.text("Почему этот микс"),
+                heroSubtitle: cardSubtitle(for: mix),
+                tracksSubtitle: vkTracksSubtitle(for: mix),
+                metrics: metrics,
+                picker: {
+                    if orderedVKMixes.count > 1 {
+                        vkMixPicker(selected: mix, metrics: metrics)
+                    }
+                }
+            )
+        }
+    }
+
+    // MARK: - Shared listening window
+
+    @ViewBuilder
+    private func listeningWindow<Picker: View>(
+        mix: MusicMix,
+        tracks: [Track],
+        rationale: MixRationale,
+        rationaleTitle: String,
+        heroSubtitle: String,
+        tracksSubtitle: String,
+        metrics: MixHubMetrics,
+        @ViewBuilder picker: () -> Picker
+    ) -> some View {
+        playHero(
+            mix: mix,
+            tracks: tracks,
+            metrics: metrics,
+            subtitle: heroSubtitle
+        )
+        .premiumAppear(delay: 0.02)
+
+        if !rationale.isEmpty {
+            rationaleBlock(rationale, title: rationaleTitle)
+                .premiumAppear(delay: 0.06)
+        }
+
+        controlsPanel(mix: mix, tracks: tracks)
+            .premiumAppear(delay: 0.1)
+
+        picker()
+
+        if loadingMixID == mix.id && tracks.isEmpty {
+            ProgressView()
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 28)
+        } else if !tracks.isEmpty {
+            tracksBlock(
+                mix: mix,
+                tracks: tracks,
+                subtitle: tracksSubtitle,
+                metrics: metrics
+            )
+            .premiumAppear(delay: 0.14)
         }
     }
 
     @ViewBuilder
-    private func focusedVKPanel(
-        mix: MusicMix,
+    private func vkMixPicker(
+        selected: MusicMix,
         metrics: MixHubMetrics
     ) -> some View {
-        Button {
-            focusedVKMix = nil
-            focusedVKTracks = []
-            focusedVKRationale = .empty
-            radioMode = .balanced
-        } label: {
-            Label(L10n.text("Все миксы"), systemImage: "chevron.left")
-                .font(.subheadline.weight(.semibold))
-        }
-        .buttonStyle(.plain)
-
-        playHero(
-            mix: mix,
-            metrics: metrics,
-            subtitle: cardSubtitle(for: mix, social: mix.isSocial)
-        )
-
-        if !focusedVKRationale.isEmpty {
-            rationaleBlock(
-                focusedVKRationale,
-                title: L10n.text("Почему этот микс")
+        VStack(alignment: .leading, spacing: 12) {
+            PremiumSectionHeader(
+                "Другие миксы",
+                subtitle: "Тот же экран — просто смените подборку"
             )
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: metrics.cardSpacing) {
+                    ForEach(orderedVKMixes) { mix in
+                        mixPickerCard(
+                            mix,
+                            isSelected: mix.id == selected.id,
+                            metrics: metrics
+                        )
+                    }
+                }
+            }
         }
+        .padding(.top, 4)
+        .premiumAppear(delay: 0.12)
+    }
 
-        controlsPanel(mix: mix, tracks: focusedVKTracks)
+    private func mixPickerCard(
+        _ mix: MusicMix,
+        isSelected: Bool,
+        metrics: MixHubMetrics
+    ) -> some View {
+        let artTracks = vkTrackCache[mix.id] ?? homeCatalog.recommendations
+        return VStack(alignment: .leading, spacing: 8) {
+            ZStack(alignment: .bottomTrailing) {
+                Button {
+                    selectVKMix(mix)
+                } label: {
+                    ZStack(alignment: .topLeading) {
+                        MixArtworkView(
+                            mix: mix,
+                            tracks: artTracks,
+                            size: metrics.cardWidth,
+                            height: metrics.cardHeight,
+                            cornerRadius: PremiumLayout.compactRadius
+                        )
+                        .overlay {
+                            RoundedRectangle(
+                                cornerRadius: PremiumLayout.compactRadius,
+                                style: .continuous
+                            )
+                            .strokeBorder(
+                                isSelected
+                                    ? settings.theme.accent
+                                    : .clear,
+                                lineWidth: 2.5
+                            )
+                        }
+                        if let percent = mix.matchPercent, mix.isSocial {
+                            Text("\(percent)%")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(.black.opacity(0.55))
+                                )
+                                .padding(10)
+                        }
+                    }
+                }
+                .buttonStyle(PremiumPressStyle())
+                .disabled(loadingMixID != nil)
+                .accessibilityLabel(mix.title)
+                .modifier(SelectedTraitModifier(isSelected: isSelected))
 
-        if loadingMixID == mix.id && focusedVKTracks.isEmpty {
-            ProgressView()
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 24)
-        } else if !focusedVKTracks.isEmpty {
-            tracksBlock(
-                mix: mix,
-                tracks: focusedVKTracks,
-                metrics: metrics
-            )
+                Button {
+                    selectVKMix(mix, andPlay: true)
+                } label: {
+                    Image(systemName: "play.fill")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 30, height: 30)
+                        .foregroundStyle(.black)
+                        .background(.white, in: Circle())
+                }
+                .buttonStyle(PremiumPressStyle())
+                .padding(8)
+                .disabled(loadingMixID != nil)
+                .accessibilityLabel(L10n.text("Воспроизвести микс"))
+            }
+
+            Button {
+                selectVKMix(mix)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(mix.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(
+                            isSelected ? settings.theme.accent : .primary
+                        )
+                        .lineLimit(1)
+                    Text(cardSubtitle(for: mix))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                .frame(width: metrics.cardWidth, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+        }
+        .contextMenu {
+            Button {
+                selectVKMix(mix, andPlay: true)
+            } label: {
+                Label("Воспроизвести микс", systemImage: "play.fill")
+            }
+            Button {
+                selectVKMix(mix)
+            } label: {
+                Label("Открыть здесь", systemImage: "list.bullet")
+            }
         }
     }
 
-    // MARK: - Shared blocks
+    // MARK: - Chrome
 
     private var titleHeader: some View {
         Text(L10n.text("Микс"))
@@ -263,10 +366,10 @@ struct MixesHubView: View {
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.primary)
                 }
-                .padding(10)
+                .padding(12)
                 .background(
                     RoundedRectangle(
-                        cornerRadius: 14,
+                        cornerRadius: PremiumLayout.controlRadius,
                         style: .continuous
                     )
                     .fill(.primary.opacity(0.06))
@@ -289,33 +392,52 @@ struct MixesHubView: View {
 
     private func playHero(
         mix: MusicMix,
+        tracks: [Track],
         metrics: MixHubMetrics,
         subtitle: String
     ) -> some View {
-        Button { start(mix) } label: {
+        let artSource = tracks.isEmpty
+            ? homeCatalog.recommendations
+            : tracks
+        return Button { start(mix) } label: {
             ZStack(alignment: .bottomLeading) {
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.10, green: 0.38, blue: 0.98),
-                        Color(red: 0.42, green: 0.18, blue: 0.92),
-                        Color(red: 0.55, green: 0.22, blue: 0.78)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+                MixArtworkView(
+                    mix: mix,
+                    tracks: artSource,
+                    size: metrics.contentWidth,
+                    height: metrics.heroHeight,
+                    cornerRadius: 0
                 )
+                .overlay {
+                    LinearGradient(
+                        colors: [
+                            settings.theme.accent.opacity(0.35),
+                            Color.black.opacity(0.28),
+                            Color.black.opacity(0.78)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Spacer(minLength: 0)
                     if let curator = mix.curator, curator.isUsable {
                         Text(curator.displayName)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.72))
+                            .foregroundStyle(.white.opacity(0.78))
                             .textCase(.uppercase)
                             .tracking(0.55)
                     } else if mix.id == MusicMix.common.id {
                         Text(L10n.text("Персональный микс"))
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.72))
+                            .foregroundStyle(.white.opacity(0.78))
+                            .textCase(.uppercase)
+                            .tracking(0.55)
+                    } else if mix.isSocial {
+                        Text(L10n.text("Социальный микс"))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.78))
                             .textCase(.uppercase)
                             .tracking(0.55)
                     }
@@ -324,7 +446,7 @@ struct MixesHubView: View {
                         .lineLimit(2)
                     Text(subtitle)
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.82))
+                        .foregroundStyle(.white.opacity(0.86))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -333,7 +455,7 @@ struct MixesHubView: View {
 
                 Image(systemName: "play.fill")
                     .font(.title3.weight(.bold))
-                    .foregroundStyle(.indigo)
+                    .foregroundStyle(settings.theme.accent)
                     .frame(width: 52, height: 52)
                     .background(.white, in: Circle())
                     .frame(
@@ -367,11 +489,11 @@ struct MixesHubView: View {
                 Label("Воспроизвести микс", systemImage: "play.fill")
             }
             Button {
-                pin(mix: mix, tracks: tracks(for: mix))
+                pin(mix: mix, tracks: tracks)
             } label: {
                 Label("Слушать позже", systemImage: "bookmark")
             }
-            .disabled(tracks(for: mix).isEmpty)
+            .disabled(tracks.isEmpty)
         }
     }
 
@@ -443,25 +565,29 @@ struct MixesHubView: View {
                 .disabled(tracks.isEmpty)
             }
         }
-        .padding(.top, 4)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .premiumCard()
     }
 
     private func tracksBlock(
         mix: MusicMix,
         tracks: [Track],
+        subtitle: String,
         metrics: MixHubMetrics
     ) -> some View {
         VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 12) {
-                Text(L10n.text("Для вас"))
-                    .font(.title2.weight(.bold))
-                Text(L10n.text("Подобрано по вашим прослушиваниям VK"))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                PremiumSectionHeader("Для вас", subtitle: subtitle)
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 14) {
                         ForEach(tracks.prefix(12)) { track in
-                            trackCard(track, mix: mix, queue: tracks)
+                            trackCard(
+                                track,
+                                mix: mix,
+                                queue: tracks,
+                                width: metrics.trackWidth
+                            )
                         }
                     }
                 }
@@ -470,8 +596,7 @@ struct MixesHubView: View {
             let list = Array(tracks.dropFirst(12).prefix(36))
             if !list.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(L10n.text("Продолжить поток"))
-                        .font(.title2.weight(.bold))
+                    PremiumSectionHeader("Продолжить поток")
                     VStack(spacing: 0) {
                         ForEach(
                             Array(list.enumerated()),
@@ -488,6 +613,9 @@ struct MixesHubView: View {
                             }
                         }
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .premiumCard()
                 }
             }
         }
@@ -496,14 +624,15 @@ struct MixesHubView: View {
     private func trackCard(
         _ track: Track,
         mix: MusicMix,
-        queue: [Track]
+        queue: [Track],
+        width: CGFloat
     ) -> some View {
         Button {
             playTrack(track, queue: queue, mix: mix)
         } label: {
             VStack(alignment: .leading, spacing: 8) {
                 ZStack(alignment: .bottomTrailing) {
-                    AsyncArtwork(url: track.artworkURL, size: 148)
+                    AsyncArtwork(url: track.artworkURL, size: width)
                         .overlay(alignment: .topTrailing) {
                             LikedTrackBadge(
                                 track: track,
@@ -535,7 +664,7 @@ struct MixesHubView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            .frame(width: 148, alignment: .leading)
+            .frame(width: width, alignment: .leading)
         }
         .buttonStyle(PremiumPressStyle())
         .contextMenu {
@@ -557,109 +686,6 @@ struct MixesHubView: View {
         }
     }
 
-    private func mixShelf(
-        title: String,
-        mixes: [MusicMix],
-        metrics: MixHubMetrics,
-        showsMatchBadge: Bool
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(L10n.text(title))
-                .font(.title2.weight(.bold))
-                .foregroundStyle(.primary)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: metrics.cardSpacing) {
-                    ForEach(mixes) { mix in
-                        mixCard(
-                            mix,
-                            metrics: metrics,
-                            showsMatchBadge: showsMatchBadge
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private func mixCard(
-        _ mix: MusicMix,
-        metrics: MixHubMetrics,
-        showsMatchBadge: Bool
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ZStack(alignment: .bottomTrailing) {
-                Button {
-                    focusVKMix(mix)
-                } label: {
-                    ZStack(alignment: .topLeading) {
-                        MixArtworkView(
-                            mix: mix,
-                            tracks: homeCatalog.recommendations,
-                            size: metrics.cardWidth,
-                            height: metrics.cardHeight,
-                            cornerRadius: 16
-                        )
-                        if showsMatchBadge, let percent = mix.matchPercent {
-                            Text("\(percent)%")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    Capsule(style: .continuous)
-                                        .fill(.black.opacity(0.55))
-                                )
-                                .padding(10)
-                        }
-                    }
-                }
-                .buttonStyle(PremiumPressStyle())
-                .disabled(loadingMixID != nil)
-                .accessibilityLabel(mix.title)
-
-                Button {
-                    startFocused(mix)
-                } label: {
-                    Image(systemName: "play.fill")
-                        .font(.caption.weight(.bold))
-                        .frame(width: 30, height: 30)
-                        .foregroundStyle(.black)
-                        .background(.white, in: Circle())
-                }
-                .buttonStyle(PremiumPressStyle())
-                .padding(8)
-                .disabled(loadingMixID != nil)
-                .accessibilityLabel(L10n.text("Воспроизвести микс"))
-            }
-
-            Button {
-                focusVKMix(mix)
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(mix.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(cardSubtitle(for: mix, social: showsMatchBadge))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-                .frame(width: metrics.cardWidth, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-        }
-        .contextMenu {
-            Button { startFocused(mix) } label: {
-                Label("Воспроизвести микс", systemImage: "play.fill")
-            }
-            Button { focusVKMix(mix) } label: {
-                Label("Открыть здесь", systemImage: "list.bullet")
-            }
-        }
-    }
-
     // MARK: - Data
 
     private var personalMix: MusicMix {
@@ -670,8 +696,23 @@ struct MixesHubView: View {
         mixes.filter { $0.id != MusicMix.common.id }
     }
 
-    private var socialMixes: [MusicMix] {
-        vkMixes.filter(\.isSocial)
+    private var orderedVKMixes: [MusicMix] {
+        var seen = Set<String>()
+        var result: [MusicMix] = []
+        let buckets: [[MusicMix]] = [
+            vkMixes.filter(\.isSocial),
+            officialShelves.flatMap(\.mixes),
+            algorithmicMixes
+        ]
+        for bucket in buckets {
+            for mix in bucket where seen.insert(mix.id).inserted {
+                result.append(mix)
+            }
+        }
+        for mix in vkMixes where seen.insert(mix.id).inserted {
+            result.append(mix)
+        }
+        return result
     }
 
     private var officialShelves: [(title: String, mixes: [MusicMix])] {
@@ -709,7 +750,7 @@ struct MixesHubView: View {
         return L10n.text("Селена подготовила подборку специально для вас")
     }
 
-    private func cardSubtitle(for mix: MusicMix, social: Bool) -> String {
+    private func cardSubtitle(for mix: MusicMix) -> String {
         if let curator = mix.curator, curator.isUsable {
             if let percent = mix.matchPercent {
                 return L10n.format(
@@ -720,17 +761,37 @@ struct MixesHubView: View {
             }
             return curator.displayName
         }
-        if social, let percent = mix.matchPercent {
+        if mix.isSocial, let percent = mix.matchPercent {
             return L10n.format("совпадение с вашим вкусом · %d%%", percent)
         }
-        if social {
+        if mix.isSocial {
             return L10n.text("совпадение с вашим вкусом")
+        }
+        if let section = mix.sectionTitle,
+           !section.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return section
         }
         return mix.subtitle
     }
 
+    private func vkTracksSubtitle(for mix: MusicMix) -> String {
+        if mix.isSocial {
+            return L10n.text("Подобрано по пересечению вкусов")
+        }
+        if mix.sectionTitle != nil {
+            return L10n.text("Официальная подборка VK")
+        }
+        return L10n.text("Подобрано алгоритмами VK")
+    }
+
     private func tracks(for mix: MusicMix) -> [Track] {
-        mix.id == MusicMix.common.id ? selenaTracks : focusedVKTracks
+        if mix.id == MusicMix.common.id {
+            return selenaTracks
+        }
+        if selectedVKMix?.id == mix.id {
+            return vkTracks
+        }
+        return vkTrackCache[mix.id] ?? []
     }
 
     private var emptyMixesState: some View {
@@ -803,14 +864,17 @@ struct MixesHubView: View {
             )
             .fill(.primary.opacity(0.08))
             .frame(height: metrics.heroHeight)
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.primary.opacity(0.08))
-                .frame(height: 44)
+            RoundedRectangle(
+                cornerRadius: PremiumLayout.controlRadius,
+                style: .continuous
+            )
+            .fill(.primary.opacity(0.08))
+            .frame(height: 96)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: metrics.cardSpacing) {
                     ForEach(0..<3, id: \.self) { _ in
                         RoundedRectangle(
-                            cornerRadius: 16,
+                            cornerRadius: PremiumLayout.compactRadius,
                             style: .continuous
                         )
                         .fill(.primary.opacity(0.08))
@@ -859,17 +923,16 @@ struct MixesHubView: View {
                 history: history.entries,
                 recommendations: homeCatalog.recommendations
             )
-            radioMode = MixRadioMode(rawValue: pin.radioMode ?? "") ?? .balanced
+            radioMode = MixRadioMode(rawValue: pin.radioMode ?? "")
+                ?? .balanced
         } else {
             hubTab = .vk
-            focusedVKMix = mix
-            focusedVKTracks = pin.tracks
-            focusedVKRationale = MixRationaleBuilder.build(
-                mixTracks: pin.tracks,
-                history: history.entries,
-                recommendations: homeCatalog.recommendations
+            applyVKSelection(
+                resolvedVKMix(from: pin) ?? mix,
+                tracks: pin.tracks,
+                resetRadio: true,
+                radio: MixRadioMode(rawValue: pin.radioMode ?? "")
             )
-            radioMode = MixRadioMode(rawValue: pin.radioMode ?? "") ?? .balanced
         }
         player.resumePinned(pin) {
             try await environment.withAuthorizedToken { token in
@@ -879,6 +942,13 @@ struct MixesHubView: View {
                 )
             }
         }
+    }
+
+    private func resolvedVKMix(from pin: PinnedMixSnapshot) -> MusicMix? {
+        if let live = vkMixes.first(where: { $0.id == pin.mixID }) {
+            return live
+        }
+        return nil
     }
 
     private func load(force: Bool = false) async {
@@ -894,6 +964,7 @@ struct MixesHubView: View {
             if force || selenaTracks.isEmpty {
                 await loadSelenaTracks()
             }
+            ensureVKSelection(forceReload: force)
         } catch is CancellationError {
             return
         } catch {
@@ -941,15 +1012,92 @@ struct MixesHubView: View {
         }
     }
 
-    private func focusVKMix(_ mix: MusicMix) {
-        focusedVKMix = mix
-        focusedVKTracks = []
-        focusedVKRationale = .empty
-        radioMode = .balanced
+    private func ensureVKSelection(forceReload: Bool = false) {
+        guard !orderedVKMixes.isEmpty else {
+            selectedVKMix = nil
+            vkTracks = []
+            vkRationale = .empty
+            return
+        }
+        let preferred =
+            selectedVKMix.flatMap { current in
+                orderedVKMixes.first { $0.id == current.id }
+            }
+            ?? pinnedMixStore.pin.flatMap { pin in
+                orderedVKMixes.first { $0.id == pin.mixID }
+            }
+            ?? orderedVKMixes.first
+        guard let mix = preferred else { return }
+        if selectedVKMix?.id != mix.id {
+            applyVKSelection(mix, tracks: vkTrackCache[mix.id], resetRadio: true)
+        } else if forceReload || vkTracks.isEmpty {
+            loadVKTracks(mix)
+        }
+    }
+
+    private func selectVKMix(_ mix: MusicMix, andPlay: Bool = false) {
+        let changed = selectedVKMix?.id != mix.id
+        if changed {
+            Haptics.selection()
+            selectedVKMix = mix
+            radioMode = .balanced
+            if let cached = vkTrackCache[mix.id], !cached.isEmpty {
+                vkTracks = cached
+                vkRationale = vkRationaleCache[mix.id]
+                    ?? MixRationaleBuilder.build(
+                        mixTracks: cached,
+                        history: history.entries,
+                        recommendations: homeCatalog.recommendations
+                    )
+            } else {
+                vkTracks = []
+                vkRationale = .empty
+            }
+        }
+        if andPlay {
+            start(mix)
+        } else if changed, vkTracks.isEmpty {
+            loadVKTracks(mix)
+        }
+    }
+
+    private func applyVKSelection(
+        _ mix: MusicMix,
+        tracks: [Track]?,
+        resetRadio: Bool,
+        radio: MixRadioMode? = nil
+    ) {
+        selectedVKMix = mix
+        if resetRadio {
+            radioMode = radio ?? .balanced
+        }
+        if let tracks, !tracks.isEmpty {
+            vkTracks = tracks
+            let rationale = vkRationaleCache[mix.id]
+                ?? MixRationaleBuilder.build(
+                    mixTracks: tracks,
+                    history: history.entries,
+                    recommendations: homeCatalog.recommendations
+                )
+            vkRationale = rationale
+            vkTrackCache[mix.id] = tracks
+            vkRationaleCache[mix.id] = rationale
+        } else {
+            vkTracks = []
+            vkRationale = .empty
+            loadVKTracks(mix)
+        }
+    }
+
+    private func loadVKTracks(_ mix: MusicMix) {
         trackLoadTask?.cancel()
         loadingMixID = mix.id
         trackLoadTask = Task {
-            defer { loadingMixID = nil }
+            defer {
+                if loadingMixID == mix.id {
+                    loadingMixID = nil
+                }
+            }
             do {
                 let bootstrap = try await environment.withAuthorizedToken {
                     token in
@@ -960,13 +1108,8 @@ struct MixesHubView: View {
                 }
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
-                    focusedVKTracks = bootstrap
+                    storeTracks(bootstrap, for: mix)
                     MixBootstrapPrefetch.artwork(for: bootstrap)
-                    focusedVKRationale = MixRationaleBuilder.build(
-                        mixTracks: bootstrap,
-                        history: history.entries,
-                        recommendations: homeCatalog.recommendations
-                    )
                 }
                 let more = try await environment.withAuthorizedToken {
                     token in
@@ -977,7 +1120,10 @@ struct MixesHubView: View {
                 }
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
-                    focusedVKTracks = mergeTracks(focusedVKTracks, more)
+                    storeTracks(
+                        mergeTracks(tracks(for: mix), more),
+                        for: mix
+                    )
                 }
             } catch is CancellationError {
                 return
@@ -989,20 +1135,11 @@ struct MixesHubView: View {
         }
     }
 
-    private func startFocused(_ mix: MusicMix) {
-        hubTab = .vk
-        trackLoadTask?.cancel()
-        if focusedVKMix?.id != mix.id {
-            focusedVKMix = mix
-            focusedVKTracks = []
-            focusedVKRationale = .empty
-            radioMode = .balanced
-        }
-        start(mix)
-    }
-
     private func start(_ mix: MusicMix) {
         guard sessionStore.accessToken != nil else { return }
+        if mix.id != MusicMix.common.id, selectedVKMix?.id != mix.id {
+            selectVKMix(mix)
+        }
         let loaded = tracks(for: mix)
         if let first = loaded.first {
             playTrack(first, queue: loaded, mix: mix)
@@ -1068,27 +1205,31 @@ struct MixesHubView: View {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     player.appendToQueue(more)
-                    storeTracks(mergeTracks(tracks(for: mix), more), for: mix)
+                    storeTracks(
+                        mergeTracks(tracks(for: mix), more),
+                        for: mix
+                    )
                 }
             } catch {}
         }
     }
 
     private func storeTracks(_ tracks: [Track], for mix: MusicMix) {
+        let rationale = MixRationaleBuilder.build(
+            mixTracks: tracks,
+            history: history.entries,
+            recommendations: homeCatalog.recommendations
+        )
         if mix.id == MusicMix.common.id {
             selenaTracks = tracks
-            selenaRationale = MixRationaleBuilder.build(
-                mixTracks: tracks,
-                history: history.entries,
-                recommendations: homeCatalog.recommendations
-            )
-        } else if focusedVKMix?.id == mix.id {
-            focusedVKTracks = tracks
-            focusedVKRationale = MixRationaleBuilder.build(
-                mixTracks: tracks,
-                history: history.entries,
-                recommendations: homeCatalog.recommendations
-            )
+            selenaRationale = rationale
+            return
+        }
+        vkTrackCache[mix.id] = tracks
+        vkRationaleCache[mix.id] = rationale
+        if selectedVKMix?.id == mix.id {
+            vkTracks = tracks
+            vkRationale = rationale
         }
     }
 
@@ -1101,6 +1242,7 @@ struct MixesHubView: View {
             elapsed: player.elapsedTime,
             radioMode: radioMode
         )
+        Haptics.success()
     }
 
     private func applyRadio(_ mode: MixRadioMode, mix: MusicMix) {
@@ -1138,11 +1280,28 @@ struct MixesHubView: View {
 private struct MixHubMetrics {
     let width: CGFloat
 
-    var horizontalPadding: CGFloat { 16 }
-    var cardSpacing: CGFloat { 12 }
-    var heroHeight: CGFloat { 188 }
+    var horizontalPadding: CGFloat { width <= 350 ? 14 : 16 }
+    var cardSpacing: CGFloat { width <= 350 ? 10 : 12 }
+    var heroHeight: CGFloat { width <= 350 ? 176 : 200 }
+    var contentWidth: CGFloat { max(0, width - horizontalPadding * 2) }
     var cardWidth: CGFloat {
-        max(148, (width - horizontalPadding * 2 - cardSpacing) * 0.42)
+        max(136, contentWidth * 0.38)
     }
     var cardHeight: CGFloat { cardWidth }
+    var trackWidth: CGFloat {
+        min(max(width * 0.36, 114), 148)
+    }
+}
+
+private struct SelectedTraitModifier: ViewModifier {
+    let isSelected: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isSelected {
+            content.accessibilityAddTraits(.isSelected)
+        } else {
+            content
+        }
+    }
 }
