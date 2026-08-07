@@ -380,13 +380,15 @@ private extension Dictionary where Key == String, Value == JSONValue {
                 ?? object["owner_id"]?.stringValue
             let first = object["first_name"]?.stringValue
             let last = object["last_name"]?.stringValue
-            let name = object["name"]?.stringValue
-                ?? object["title"]?.stringValue
-                ?? [first, last]
+            let joinedName = [first, last]
                 .compactMap { $0 }
                 .filter { !$0.isEmpty }
                 .joined(separator: " ")
-            let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let name = object["name"]?.stringValue
+                ?? object["title"]?.stringValue
+                ?? (joinedName.isEmpty ? nil : joinedName)
+            let trimmed = name?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             guard let trimmed, !trimmed.isEmpty else { continue }
             let photo = object["photo_200"]?.stringValue
                 ?? object["photo_100"]?.stringValue
