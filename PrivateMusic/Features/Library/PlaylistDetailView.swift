@@ -144,7 +144,10 @@ struct PlaylistDetailView: View {
                     }
                 }
             }
-            listenButton
+            HStack(spacing: 12) {
+                listenButton
+                shuffleButton
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
@@ -189,10 +192,31 @@ struct PlaylistDetailView: View {
         }
     }
 
+    private var shuffleButton: some View {
+        Button(action: shufflePlaylist) {
+            Image(systemName: "shuffle")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(settings.theme.accent)
+                .frame(width: 46, height: 46)
+                .contentShape(Circle())
+                .adaptiveGlass(in: Circle(), interactive: true)
+        }
+        .buttonStyle(.borderless)
+        .disabled(model.tracks.isEmpty)
+        .accessibilityLabel(L10n.text("Перемешать"))
+    }
+
     private func playPlaylist() {
         guard let first = model.tracks.first else { return }
         player.play(
             first,
+            in: model.tracks,
+            source: .playlist(title: playlist.title)
+        )
+    }
+
+    private func shufflePlaylist() {
+        player.playShuffled(
             in: model.tracks,
             source: .playlist(title: playlist.title)
         )
