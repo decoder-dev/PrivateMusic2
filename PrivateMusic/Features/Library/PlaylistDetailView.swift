@@ -13,7 +13,7 @@ struct PlaylistDetailView: View {
 
     var body: some View {
         Group {
-            if model.isLoading && model.tracks.isEmpty {
+            if model.tracks.isEmpty && (!model.hasLoaded || model.isLoading) {
                 ProgressView(L10n.text("Загружаем треки…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = model.errorMessage, model.tracks.isEmpty {
@@ -22,7 +22,7 @@ struct PlaylistDetailView: View {
                     systemImage: "wifi.exclamationmark",
                     description: error
                 )
-            } else if model.tracks.isEmpty {
+            } else if model.hasLoaded && model.tracks.isEmpty {
                 EmptyStateView(
                     title: playlist.title,
                     systemImage: "music.note",
@@ -340,6 +340,7 @@ private final class PlaylistDetailViewModel: ObservableObject {
     @Published private(set) var tracks: [Track] = []
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingMore = false
+    @Published private(set) var hasLoaded = false
     @Published var errorMessage: String?
     private var nextOffset: Int?
 
@@ -355,10 +356,12 @@ private final class PlaylistDetailViewModel: ObservableObject {
             tracks = page.items
             nextOffset = page.nextOffset
             errorMessage = nil
+            hasLoaded = true
         } catch is CancellationError {
             return
         } catch {
             errorMessage = error.localizedDescription
+            hasLoaded = true
         }
     }
 
