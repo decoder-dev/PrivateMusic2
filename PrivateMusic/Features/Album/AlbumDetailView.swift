@@ -11,8 +11,57 @@ struct AlbumDetailView: View {
     @State private var resolvedAlbum: Album?
     @State private var isUpdatingFollow = false
     @State private var actionErrorMessage: String?
+    @State private var showsNavTitle = false
 
     var body: some View {
+        Group {
+            if model.isLoading && model.tracks.isEmpty {
+                ProgressView(L10n.text("Загружаем альбом…"))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if model.hasLoaded && model.tracks.isEmpty {
+                VStack(spacing: 12) {
+                    EmptyStateView(
+                        title: model.errorMessage == nil
+                            ? "В альбоме нет доступных треков"
+                            : "Не удалось открыть альбом",
+                        systemImage: model.errorMessage == nil
+                            ? "music.note.list"
+                            : "lock.fill",
+                        description: model.errorMessage
+                            ?? "VK не вернул доступные аудиозаписи."
+                    )
+                    Button("Повторить") {
+                        Task { await load(force: true) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.bottom, 32)
+                }
+            } else {
+                albumList
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(ThemeBackground())
+        .collapsingInlineNavigationTitle(
+            displayedTitle,
+            isVisible: $showsNavTitle
+        )
+        .task { await load(force: false) }
+        .refreshable { await load(force: true) }
+        .alert(
+            "Не удалось изменить альбом",
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button("ОК", role: .cancel) {}
+        } message: {
+            Text(actionErrorMessage ?? "")
+        }
+    }
+
+    private var albumList: some View {
         List {
             Section {
                 albumHeader
@@ -25,12 +74,12 @@ struct AlbumDetailView: View {
                     queue: model.tracks,
                     source: .album(title: displayedTitle)
                 )
-                    .listRowBackground(Color.clear)
-                    .onAppear {
-                        if track.id == model.tracks.last?.id {
-                            Task { await loadMore() }
-                        }
+                .listRowBackground(Color.clear)
+                .onAppear {
+                    if track.id == model.tracks.last?.id {
+                        Task { await loadMore() }
                     }
+                }
             }
             if model.isLoadingMore {
                 HStack {
@@ -64,46 +113,6 @@ struct AlbumDetailView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(ThemeBackground())
-        .navigationTitle(displayedTitle)
-        .navigationBarTitleDisplayMode(.inline)
-        .overlay {
-            if model.isLoading && model.tracks.isEmpty {
-                ProgressView("Загружаем альбом…")
-            } else if model.hasLoaded && model.tracks.isEmpty {
-                VStack(spacing: 12) {
-                    EmptyStateView(
-                        title: model.errorMessage == nil
-                            ? "В альбоме нет доступных треков"
-                            : "Не удалось открыть альбом",
-                        systemImage: model.errorMessage == nil
-                            ? "music.note.list"
-                            : "lock.fill",
-                        description: model.errorMessage
-                            ?? "VK не вернул доступные аудиозаписи."
-                    )
-                    Button("Повторить") {
-                        Task { await load(force: true) }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .padding(.bottom, 32)
-                }
-                .background(ThemeBackground())
-            }
-        }
-        .task { await load(force: false) }
-        .refreshable { await load(force: true) }
-        .alert(
-            "Не удалось изменить альбом",
-            isPresented: Binding(
-                get: { actionErrorMessage != nil },
-                set: { if !$0 { actionErrorMessage = nil } }
-            )
-        ) {
-            Button("ОК", role: .cancel) {}
-        } message: {
-            Text(actionErrorMessage ?? "")
-        }
     }
 
     private var albumHeader: some View {
@@ -114,6 +123,7 @@ struct AlbumDetailView: View {
                 Text(displayedTitle)
                     .font(.title2.weight(.bold))
                     .multilineTextAlignment(.center)
+                    .heroTitleScrollAnchor()
                 if !displayedAlbum.artists.isEmpty {
                     Text(displayedAlbum.artistText)
                         .font(.subheadline)
