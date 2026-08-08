@@ -217,7 +217,7 @@ enum ContinuationPrefetchPolicy {
 
 enum CatalogSectionPolicy {
     /// Max official mix/release sections to hydrate in parallel.
-    static let hydrationLimit = 6
+    static let hydrationLimit = 8
 
     static func looksLikeMixSection(_ section: CatalogSectionRef) -> Bool {
         let blob = section.searchableBlob
@@ -226,7 +226,8 @@ enum CatalogSectionPolicy {
             "для вас", "for you", "discover", "поток", "mood",
             "настроен", "активност", "activity", "жанр", "genre",
             "section=mix", "listen together", "друг", "вайб", "vibe",
-            "спокойн", "грустн", "радост", "энерг"
+            "спокойн", "грустн", "радост", "энерг", "chart", "чарт",
+            "открыт", "новинк", "плейлист дня", "хит", "kids", "дет"
         ]
         return markers.contains { blob.contains($0) }
     }
@@ -236,6 +237,22 @@ enum CatalogSectionPolicy {
         let markers = [
             "release", "релиз", "нов", "выход", "премьер", "album",
             "альбом", "new music", "свеж"
+        ]
+        return markers.contains { blob.contains($0) }
+    }
+
+    static func looksLikeKidsSection(_ section: CatalogSectionRef) -> Bool {
+        let blob = section.searchableBlob
+        let markers = [
+            "дет", "kids", "child", "сказк", "колыбел", "семья", "family"
+        ]
+        return markers.contains { blob.contains($0) }
+    }
+
+    static func looksLikeChartSection(_ section: CatalogSectionRef) -> Bool {
+        let blob = section.searchableBlob
+        let markers = [
+            "chart", "чарт", "топ", "top", "хит", "hit", "популяр"
         ]
         return markers.contains { blob.contains($0) }
     }

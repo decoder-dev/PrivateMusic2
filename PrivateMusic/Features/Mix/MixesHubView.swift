@@ -46,6 +46,7 @@ struct MixesHubView: View {
     @State private var vkTrackCache: [String: [Track]] = [:]
     @State private var vkRationaleCache: [String: MixRationale] = [:]
     @State private var sharingTrack: Track?
+    @State private var selectedCurator: MixCurator?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -91,12 +92,37 @@ struct MixesHubView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
         .trackShareSheet(track: $sharingTrack)
+        .navigationDestination(
+            isPresented: Binding(
+                get: { selectedCurator != nil },
+                set: { if !$0 { selectedCurator = nil } }
+            )
+        ) {
+            if let selectedCurator {
+                CuratorMixesView(
+                    curator: selectedCurator,
+                    mixes: vkMixes.filter {
+                        $0.curator?.id == selectedCurator.id
+                    },
+                    onPlay: { mix in
+                        self.selectedCurator = nil
+                        hubTab = .vk
+                        start(mix)
+                    }
+                )
+            }
+        }
         .refreshable { await load(force: true) }
         .task(id: sessionStore.accessToken) { await load() }
         .onChange(of: hubTab) { tab in
             if tab == .vk {
                 ensureVKSelection()
             }
+        }
+        .onReceive(environment.$mixActionError) { error in
+            guard let error else { return }
+            actionError = error
+            environment.mixActionError = nil
         }
         .onDisappear {
             queueFillTask?.cancel()
@@ -442,11 +468,16 @@ struct MixesHubView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Spacer(minLength: 0)
                     if let curator = mix.curator, curator.isUsable {
-                        Text(curator.displayName)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.78))
-                            .textCase(.uppercase)
-                            .tracking(0.55)
+                        Button {
+                            selectedCurator = curator
+                        } label: {
+                            Text(curator.displayName)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.78))
+                                .textCase(.uppercase)
+                                .tracking(0.55)
+                        }
+                        .buttonStyle(.plain)
                     } else if mix.id == MusicMix.common.id {
                         Text(L10n.text("Персональный микс"))
                             .font(.caption2.weight(.semibold))
@@ -594,6 +625,16 @@ struct MixesHubView: View {
                 .buttonStyle(.bordered)
                 .disabled(tracks.isEmpty)
             }
+
+            NavigationLink {
+                MixFiltersSettingsView()
+            } label: {
+                Label(
+                    L10n.text("Фильтры микса"),
+                    systemImage: "line.3.horizontal.decrease.circle"
+                )
+                .font(.subheadline.weight(.semibold))
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -707,24 +748,10 @@ struct MixesHubView: View {
             } label: {
                 Label("Открыть плеер", systemImage: "play.circle")
             }
-            Button {
-                startSeededRadio(from: track)
-            } label: {
-                Label("Микс по треку", systemImage: "dot.radiowaves.up.forward")
-            }
-            Button(role: .destructive) {
-                dislike(track, includeArtist: false, skipIfCurrent: true)
-            } label: {
-                Label("Не нравится", systemImage: "hand.thumbsdown")
-            }
-            Button(role: .destructive) {
-                dislike(track, includeArtist: true, skipIfCurrent: true)
-            } label: {
-                Label(
-                    "Скрыть исполнителя в миксах",
-                    systemImage: "person.badge.minus"
-                )
-            }
+            TrackMixActions.menuButtons(
+                for: track,
+                environment: environment
+            )
             Button { sharingTrack = track } label: {
                 Label(
                     "Поделиться аудиофайлом",
@@ -758,7 +785,7 @@ struct MixesHubView: View {
                         title: L10n.text("По моей музыке"),
                         systemImage: "music.note.list"
                     ) {
-                        startFromMyMusic()
+                        Task { await environment.startMixFromMyMusic() }
                     }
                     quickStartChip(
                         title: L10n.text("Микс по треку"),
@@ -766,7 +793,9 @@ struct MixesHubView: View {
                     ) {
                         if let seed = history.entries.first?.track
                             ?? selenaTracks.first {
-                            startSeededRadio(from: seed)
+                            Task {
+                                await environment.startMixFromTrack(seed)
+                            }
                         } else {
                             actionError = L10n.text(
                                 "Нужен хотя бы один недавний трек"
@@ -1394,7 +1423,7 @@ struct MixesHubView: View {
     }
 
     private func storeTracks(_ tracks: [Track], for mix: MusicMix) {
-        let cleaned = mixFeedbackStore.filtering(tracks)
+        let cleaned = environment.filteredMixTracks(tracks)
         let rationale = MixRationaleBuilder.build(
             mixTracks: cleaned,
             history: history.entries,
@@ -1452,147 +1481,6 @@ struct MixesHubView: View {
         // Server refill for closerToSeed / moreNovel is owned by AudioPlayer.
     }
 
-    private func startFromMyMusic() {
-        guard sessionStore.accessToken != nil else { return }
-        let mix = MusicMix(
-            id: "seed_my_music",
-            title: L10n.text("Микс по моей музыке"),
-            subtitle: L10n.text(
-                "Ваша медиатека и рекомендации VK"
-            ),
-            artworkURL: nil
-        )
-        loadingMixID = mix.id
-        seedRadioTask?.cancel()
-        seedRadioTask = Task {
-            defer {
-                if loadingMixID == mix.id {
-                    loadingMixID = nil
-                }
-            }
-            do {
-                let page = try await environment.withAuthorizedToken {
-                    token in
-                    try await environment.musicService.library(
-                        accessToken: token,
-                        offset: 0,
-                        count: 80
-                    )
-                }
-                let recs = try await environment.withAuthorizedToken {
-                    token in
-                    try await environment.musicService.recommendations(
-                        accessToken: token
-                    )
-                }
-                guard !Task.isCancelled else { return }
-                let blended = mixFeedbackStore.filtering(
-                    MixSeedRadio.blend(
-                        seeds: page.items,
-                        recommendations: recs
-                    )
-                )
-                guard let first = blended.first else {
-                    await MainActor.run {
-                        actionError = L10n.text(
-                            "Не удалось собрать микс по медиатеке"
-                        )
-                    }
-                    return
-                }
-                await MainActor.run {
-                    player.play(
-                        first,
-                        in: blended,
-                        continuation: {
-                            try await environment.withAuthorizedToken {
-                                token in
-                                try await environment.musicService
-                                    .recommendations(accessToken: token)
-                            }
-                        },
-                        source: .mix(title: mix.title)
-                    )
-                    Haptics.success()
-                }
-            } catch is CancellationError {
-                return
-            } catch {
-                await MainActor.run {
-                    actionError = error.localizedDescription
-                }
-            }
-        }
-    }
-
-    private func startSeededRadio(from track: Track) {
-        guard sessionStore.accessToken != nil else { return }
-        let mix = MusicMix(
-            id: "seed_\(track.id)",
-            title: L10n.format("Микс по «%@»", track.title),
-            subtitle: track.artist,
-            artworkURL: track.artworkURL
-        )
-        loadingMixID = mix.id
-        seedRadioTask?.cancel()
-        seedRadioTask = Task {
-            defer {
-                if loadingMixID == mix.id {
-                    loadingMixID = nil
-                }
-            }
-            do {
-                let remote = try await environment.withAuthorizedToken {
-                    token in
-                    try await environment.musicService.recommendations(
-                        seededBy: track,
-                        accessToken: token,
-                        shuffle: false
-                    )
-                }
-                guard !Task.isCancelled else { return }
-                var queue = [track]
-                let filtered = mixFeedbackStore.filtering(remote)
-                var known: Set<String> = [track.id]
-                for item in filtered where known.insert(item.id).inserted {
-                    queue.append(item)
-                }
-                await MainActor.run {
-                    player.play(
-                        track,
-                        in: queue,
-                        continuation: {
-                            try await environment.withAuthorizedToken {
-                                token in
-                                try await environment.musicService
-                                    .recommendations(
-                                        seededBy: track,
-                                        accessToken: token,
-                                        shuffle: true
-                                    )
-                            }
-                        },
-                        source: .mix(title: mix.title)
-                    )
-                    player.rerankUpcomingMix(
-                        mode: .closerToSeed,
-                        seed: track,
-                        historyArtists: Set(
-                            history.entries.prefix(40).map(\.track.artist)
-                        )
-                    )
-                    Haptics.success()
-                }
-            } catch is CancellationError {
-                return
-            } catch {
-                await MainActor.run {
-                    actionError = error.localizedDescription
-                }
-            }
-        }
-    }
-
     private func openVibeShelf(
         _ shelf: (title: String, mixes: [MusicMix])
     ) {
@@ -1602,41 +1490,13 @@ struct MixesHubView: View {
         Haptics.selection()
     }
 
-    private func dislike(
-        _ track: Track,
-        includeArtist: Bool,
-        skipIfCurrent: Bool
-    ) {
-        mixFeedbackStore.ban(track, includeArtist: includeArtist)
-        if skipIfCurrent, player.currentTrack?.id == track.id {
-            player.skipAndDropCurrent()
-        }
-        if case .mix = player.queueSource,
-           let index = player.currentIndex,
-           player.queue.indices.contains(index) {
-            let upcoming = Array(player.queue.suffix(from: index + 1))
-            player.replaceUpcoming(
-                with: mixFeedbackStore.filtering(upcoming)
-            )
-        }
-        // Also scrub cached mix lists so the hub reflects bans.
-        selenaTracks = mixFeedbackStore.filtering(selenaTracks)
-        vkTracks = mixFeedbackStore.filtering(vkTracks)
-        for key in vkTrackCache.keys {
-            vkTrackCache[key] = mixFeedbackStore.filtering(
-                vkTrackCache[key] ?? []
-            )
-        }
-        Haptics.selection()
-    }
-
     private func mergeTracks(_ lhs: [Track], _ rhs: [Track]) -> [Track] {
         var known = Set(lhs.map(\.id))
         var result = lhs
         for track in rhs where known.insert(track.id).inserted {
             result.append(track)
         }
-        return mixFeedbackStore.filtering(
+        return environment.filteredMixTracks(
             Array(result.prefix(MixTrackRequestPolicy.queueLimit))
         )
     }

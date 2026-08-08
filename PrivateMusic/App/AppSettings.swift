@@ -154,6 +154,30 @@ final class AppSettings: ObservableObject {
             defaults.set(preferHighQuality, forKey: Keys.preferHighQuality)
         }
     }
+    @Published var mixMoodPreference: MixMoodPreference {
+        didSet {
+            defaults.set(
+                mixMoodPreference.rawValue,
+                forKey: Keys.mixMoodPreference
+            )
+        }
+    }
+    @Published var mixLanguagePreference: MixLanguagePreference {
+        didSet {
+            defaults.set(
+                mixLanguagePreference.rawValue,
+                forKey: Keys.mixLanguagePreference
+            )
+        }
+    }
+    @Published var mixFamiliarityPreference: MixFamiliarityPreference {
+        didSet {
+            defaults.set(
+                mixFamiliarityPreference.rawValue,
+                forKey: Keys.mixFamiliarityPreference
+            )
+        }
+    }
     @Published var loudnessNormalization: Bool {
         didSet {
             defaults.set(
@@ -288,6 +312,17 @@ final class AppSettings: ObservableObject {
         preferHighQuality = defaults.object(
             forKey: Keys.preferHighQuality
         ) as? Bool ?? true
+        mixMoodPreference = MixMoodPreference(
+            rawValue: defaults.string(forKey: Keys.mixMoodPreference) ?? ""
+        ) ?? .any
+        mixLanguagePreference = MixLanguagePreference(
+            rawValue: defaults.string(forKey: Keys.mixLanguagePreference) ?? ""
+        ) ?? .any
+        mixFamiliarityPreference = MixFamiliarityPreference(
+            rawValue: defaults.string(
+                forKey: Keys.mixFamiliarityPreference
+            ) ?? ""
+        ) ?? .any
         loudnessNormalization = defaults.object(
             forKey: Keys.loudnessNormalization
         ) as? Bool ?? false
@@ -384,6 +419,9 @@ final class AppSettings: ObservableObject {
         static let automaticOfflineCacheEnabled =
             "offline.cache.automatic.enabled"
         static let preferHighQuality = "audio.playback.preferHighQuality"
+        static let mixMoodPreference = "mix.filters.mood"
+        static let mixLanguagePreference = "mix.filters.language"
+        static let mixFamiliarityPreference = "mix.filters.familiarity"
         static let loudnessNormalization =
             "audio.equalizer.loudnessNormalization"
         static let dynamicRangeCompression =

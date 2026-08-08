@@ -849,6 +849,7 @@ struct PlayerView: View {
                 ),
                 equalizerEnabled: $settings.equalizerEnabled,
                 spatialAudioEnabled: $settings.spatialAudioEnabled,
+                preferHighQuality: $settings.preferHighQuality,
                 onDismiss: {
                     presentedSheet = nil
                 },
@@ -882,45 +883,21 @@ struct PlayerView: View {
                 },
                 onDislikeTrack: {
                     presentedSheet = nil
-                    environment.mixFeedbackStore.ban(
-                        track,
-                        includeArtist: false
-                    )
-                    if case .mix = player.queueSource {
-                        player.skipAndDropCurrent()
-                    } else {
-                        player.next()
-                    }
-                    Haptics.selection()
+                    environment.dislike(track, includeArtist: false)
                 },
                 onDislikeArtist: {
                     presentedSheet = nil
-                    environment.mixFeedbackStore.ban(
-                        track,
-                        includeArtist: true
-                    )
-                    if case .mix = player.queueSource {
-                        player.skipAndDropCurrent()
-                        if let index = player.currentIndex,
-                           player.queue.indices.contains(index) {
-                            let upcoming = Array(
-                                player.queue.suffix(from: index + 1)
-                            )
-                            player.replaceUpcoming(
-                                with: environment.mixFeedbackStore.filtering(
-                                    upcoming
-                                )
-                            )
-                        }
-                    } else {
-                        player.next()
-                    }
-                    Haptics.selection()
+                    environment.dislike(track, includeArtist: true)
                 },
-                showsMixFeedback: {
-                    if case .mix = player.queueSource { return true }
-                    return false
-                }(),
+                onMixFromTrack: {
+                    presentedSheet = nil
+                    Task { await environment.startMixFromTrack(track) }
+                },
+                onSnippet: {
+                    presentedSheet = nil
+                    Task { await environment.previewSnippet(track) }
+                },
+                showsMixFeedback: true,
                 qualityCaption: settings.preferHighQuality
                     ? L10n.text("Качество: высокое (HQ / без лимита HLS)")
                     : L10n.text("Качество: экономия трафика (~160 кбит/с)")
@@ -1460,6 +1437,7 @@ private struct PlayerActionsSheet: View {
     let availability: PlayerActionAvailability
     @Binding var equalizerEnabled: Bool
     @Binding var spatialAudioEnabled: Bool
+    @Binding var preferHighQuality: Bool
     @EnvironmentObject private var player: AudioPlayer
     @StateObject private var systemVolume = SystemVolumeObserver()
     @State private var showsSleepTimerOptions = false
@@ -1473,6 +1451,8 @@ private struct PlayerActionsSheet: View {
     let onSettings: () -> Void
     let onDislikeTrack: () -> Void
     let onDislikeArtist: () -> Void
+    let onMixFromTrack: () -> Void
+    let onSnippet: () -> Void
     let showsMixFeedback: Bool
     let qualityCaption: String
 
@@ -1532,6 +1512,16 @@ private struct PlayerActionsSheet: View {
                                     action: onOffline
                                 )
                             }
+                            actionTile(
+                                "Микс по треку",
+                                systemImage: "dot.radiowaves.up.forward",
+                                action: onMixFromTrack
+                            )
+                            actionTile(
+                                "Сниппет",
+                                systemImage: "waveform",
+                                action: onSnippet
+                            )
                             if showsMixFeedback {
                                 actionTile(
                                     "Не нравится",
@@ -1547,13 +1537,21 @@ private struct PlayerActionsSheet: View {
                         }
 
                         sectionTitle("Плеер и аудио")
-                        audioControls
-
+                        Toggle(
+                            isOn: $preferHighQuality
+                        ) {
+                            Label(
+                                L10n.text("Высокое качество"),
+                                systemImage: "waveform"
+                            )
+                        }
+                        .padding(.vertical, 4)
                         Text(qualityCaption)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                            .padding(.top, 12)
-                            .padding(.horizontal, 4)
+                            .padding(.bottom, 8)
+
+                        audioControls
                     }
                     .padding(.horizontal, PremiumLayout.screenPadding)
                     .padding(.bottom, 24)

@@ -34,6 +34,30 @@ struct CatalogView: View {
                             if !homeCatalog.newReleases.isEmpty {
                                 newReleasesSection(metrics: metrics)
                             }
+                            vibeChipsSection
+                            if !homeMixes.isEmpty {
+                                mixesSection(metrics: metrics)
+                            }
+                            if !chartMixes.isEmpty {
+                                shelfMixesSection(
+                                    title: L10n.text("Чарты и хиты"),
+                                    subtitle: L10n.text(
+                                        "Полки каталога VK"
+                                    ),
+                                    mixes: chartMixes,
+                                    metrics: metrics
+                                )
+                            }
+                            if !kidsMixes.isEmpty {
+                                shelfMixesSection(
+                                    title: L10n.text("Детям"),
+                                    subtitle: L10n.text(
+                                        "Сказки, колыбельные и семейные миксы"
+                                    ),
+                                    mixes: kidsMixes,
+                                    metrics: metrics
+                                )
+                            }
                             if !recommendations.isEmpty {
                                 recommendationsSection(metrics: metrics)
                                 if !moreRecommendations.isEmpty {
@@ -82,6 +106,11 @@ struct CatalogView: View {
         ) { _ in
             Task { await load(force: true) }
         }
+        .onReceive(environment.$mixActionError) { error in
+            guard let error else { return }
+            actionErrorMessage = error
+            environment.mixActionError = nil
+        }
         .alert(
             "Не удалось открыть альбом",
             isPresented: Binding(
@@ -124,6 +153,28 @@ struct CatalogView: View {
     private var contentIsEmpty: Bool {
         recommendations.isEmpty && playlists.isEmpty
             && homeCatalog.newReleases.isEmpty
+            && homeCatalog.mixes.isEmpty
+    }
+
+    private var homeMixes: [MusicMix] {
+        Array(
+            homeCatalog.mixes
+                .filter { $0.id != MusicMix.common.id }
+                .prefix(16)
+        )
+    }
+
+    private var kidsMixes: [MusicMix] {
+        homeCatalog.mixes.filter {
+            MixSeedRadio.looksLikeKidsShelf($0.sectionTitle ?? $0.title)
+                || MixSeedRadio.looksLikeKidsShelf($0.subtitle)
+        }
+    }
+
+    private var chartMixes: [MusicMix] {
+        homeCatalog.mixes.filter {
+            MixSeedRadio.looksLikeChartShelf($0.sectionTitle ?? $0.title)
+        }
     }
 
     private var welcomeHeader: some View {
@@ -159,6 +210,134 @@ struct CatalogView: View {
         case 18..<23: L10n.text("Добрый вечер")
         default: L10n.text("Доброй ночи")
         }
+    }
+
+    private var vibeChipsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HomeSectionHeader(
+                L10n.text("Какой сейчас вайб"),
+                subtitle: L10n.text("Быстрый старт по настроению")
+            )
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(MixMoodPreference.allCases.filter { $0 != .any }) {
+                        mood in
+                        Button {
+                            settings.mixMoodPreference = mood
+                            Task { await playVibe(mood) }
+                        } label: {
+                            Text(mood.title)
+                                .font(.subheadline.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(
+                            settings.mixMoodPreference == mood
+                                ? settings.theme.accent
+                                : Color.secondary
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func mixesSection(metrics: HomeMetrics) -> some View {
+        shelfMixesSection(
+            title: L10n.text("Миксы"),
+            subtitle: L10n.text("Селена, социальные и алгоритмические подборки"),
+            mixes: homeMixes,
+            metrics: metrics
+        )
+    }
+
+    private func shelfMixesSection(
+        title: String,
+        subtitle: String,
+        mixes: [MusicMix],
+        metrics: HomeMetrics
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HomeSectionHeader(title, subtitle: subtitle)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: metrics.cardSpacing) {
+                    ForEach(mixes) { mix in
+                        Button {
+                            Task {
+                                await environment.startCatalogMix(mix)
+                            }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                MixArtworkView(
+                                    mix: mix,
+                                    tracks: [],
+                                    size: metrics.trackWidth
+                                )
+                                Text(mix.title)
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(2)
+                                    .frame(
+                                        width: metrics.trackWidth,
+                                        alignment: .leading
+                                    )
+                                if let percent = mix.matchPercent {
+                                    Text(
+                                        L10n.format("%d%%", percent)
+                                    )
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                } else if let curator = mix.curator?.displayName {
+                                    Text(curator)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                        .buttonStyle(PremiumPressStyle())
+                        .contextMenu {
+                            Button {
+                                Task {
+                                    await environment.startCatalogMix(mix)
+                                }
+                            } label: {
+                                Label(
+                                    "Слушать",
+                                    systemImage: "play.fill"
+                                )
+                            }
+                            if let curator = mix.curator, curator.isUsable {
+                                Text(curator.displayName)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func playVibe(_ mood: MixMoodPreference) async {
+        let matches = homeCatalog.mixes.filter {
+            MixQueueFilter.shelfMatchesMood(
+                $0.sectionTitle ?? $0.title,
+                mood: mood
+            )
+                || MixQueueFilter.shelfMatchesMood($0.subtitle, mood: mood)
+                || MixSeedRadio.looksLikeVibeShelf($0.sectionTitle ?? $0.title)
+        }
+        if let mix = matches.first {
+            await environment.startCatalogMix(mix)
+            return
+        }
+        if let personal = homeCatalog.mixes.first(
+            where: { $0.id == MusicMix.common.id }
+        ) {
+            await environment.startCatalogMix(personal)
+            return
+        }
+        await environment.startMixFromMyMusic()
     }
 
     private func recommendationsSection(metrics: HomeMetrics) -> some View {
@@ -681,6 +860,10 @@ struct CatalogView: View {
         } label: {
             Label("Открыть плеер", systemImage: "play.circle")
         }
+        TrackMixActions.menuButtons(
+            for: track,
+            environment: environment
+        )
         Button {
             sharingTrack = track
         } label: {

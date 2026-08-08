@@ -23,6 +23,8 @@ final class AppEnvironment: ObservableObject {
     /// While a share export is active, offline downloads and automatic
     /// caching are paused and hidden so the share transfer gets bandwidth.
     @Published private(set) var isShareSessionActive = false
+    @Published var mixActionError: String?
+    private var snippetTask: Task<Void, Never>?
     private struct SessionRecovery {
         let id: UUID
         let task: Task<String, Error>
@@ -647,6 +649,204 @@ final class AppEnvironment: ObservableObject {
         sessionRecovery?.task.cancel()
         sessionRecovery = nil
         isRecoveringSession = false
+    }
+
+    // MARK: - Mix experience (global)
+
+    func filteredMixTracks(_ tracks: [Track]) -> [Track] {
+        let historyArtists = Set(
+            historyStore.entries.prefix(80).map(\.track.artist)
+        )
+        let afterFeedback = mixFeedbackStore.filtering(tracks)
+        let filtered = MixQueueFilter.apply(
+            afterFeedback,
+            language: settings.mixLanguagePreference,
+            familiarity: settings.mixFamiliarityPreference,
+            historyArtists: historyArtists
+        )
+        // Never empty a seed queue because filters were too strict.
+        return filtered.isEmpty ? afterFeedback : filtered
+    }
+
+    func dislike(_ track: Track, includeArtist: Bool) {
+        mixFeedbackStore.ban(track, includeArtist: includeArtist)
+        if player.currentTrack?.id == track.id {
+            player.skipAndDropCurrent()
+        }
+        if case .mix = player.queueSource,
+           let index = player.currentIndex,
+           player.queue.indices.contains(index) {
+            let upcoming = Array(player.queue.suffix(from: index + 1))
+            player.replaceUpcoming(with: filteredMixTracks(upcoming))
+        }
+        Haptics.selection()
+    }
+
+    func startMixFromTrack(_ track: Track) async {
+        mixActionError = nil
+        do {
+            let remote = try await withAuthorizedToken { token in
+                try await musicService.recommendations(
+                    seededBy: track,
+                    accessToken: token,
+                    shuffle: false
+                )
+            }
+            var queue = [track]
+            var known: Set<String> = [track.id]
+            for item in filteredMixTracks(remote)
+            where known.insert(item.id).inserted {
+                queue.append(item)
+            }
+            let title = L10n.format("Микс по «%@»", track.title)
+            player.play(
+                track,
+                in: queue,
+                continuation: { [weak self] in
+                    guard let self else { return [] }
+                    return try await self.withAuthorizedToken { token in
+                        try await self.musicService.recommendations(
+                            seededBy: track,
+                            accessToken: token,
+                            shuffle: true
+                        )
+                    }
+                },
+                source: .mix(title: title)
+            )
+            player.rerankUpcomingMix(
+                mode: .closerToSeed,
+                seed: track,
+                historyArtists: Set(
+                    historyStore.entries.prefix(40).map(\.track.artist)
+                )
+            )
+            Haptics.success()
+        } catch is CancellationError {
+            return
+        } catch {
+            mixActionError = error.localizedDescription
+        }
+    }
+
+    func startMixFromMyMusic() async {
+        mixActionError = nil
+        do {
+            let page = try await withAuthorizedToken { token in
+                try await musicService.library(
+                    accessToken: token,
+                    offset: 0,
+                    count: 80
+                )
+            }
+            let recs = try await withAuthorizedToken { token in
+                try await musicService.recommendations(accessToken: token)
+            }
+            let blended = filteredMixTracks(
+                MixSeedRadio.blend(
+                    seeds: page.items,
+                    recommendations: recs
+                )
+            )
+            guard let first = blended.first else {
+                mixActionError = L10n.text(
+                    "Не удалось собрать микс по медиатеке"
+                )
+                return
+            }
+            player.play(
+                first,
+                in: blended,
+                continuation: { [weak self] in
+                    guard let self else { return [] }
+                    return try await self.withAuthorizedToken { token in
+                        try await self.musicService.recommendations(
+                            accessToken: token
+                        )
+                    }
+                },
+                source: .mix(title: L10n.text("Микс по моей музыке"))
+            )
+            Haptics.success()
+        } catch is CancellationError {
+            return
+        } catch {
+            mixActionError = error.localizedDescription
+        }
+    }
+
+    func startCatalogMix(_ mix: MusicMix) async {
+        mixActionError = nil
+        do {
+            let bootstrap = try await withAuthorizedToken { token in
+                try await musicService.mixTracksBootstrap(
+                    mix,
+                    accessToken: token
+                )
+            }
+            let cleaned = filteredMixTracks(bootstrap)
+            guard let first = cleaned.first else {
+                mixActionError = L10n.text("Микс пока пуст")
+                return
+            }
+            player.play(
+                first,
+                in: cleaned,
+                continuation: { [weak self] in
+                    guard let self else { return [] }
+                    let more = try await self.withAuthorizedToken { token in
+                        try await self.musicService.mixTracksContinuation(
+                            mix,
+                            accessToken: token
+                        )
+                    }
+                    return self.filteredMixTracks(more)
+                },
+                source: .mix(title: mix.title)
+            )
+            Haptics.success()
+        } catch is CancellationError {
+            return
+        } catch {
+            mixActionError = error.localizedDescription
+        }
+    }
+
+    /// Hold-to-preview style snippet: jump into the track and stop ~32s later.
+    func previewSnippet(_ track: Track) async {
+        snippetTask?.cancel()
+        let start = SnippetPreviewPolicy.startOffset(for: track.duration)
+        player.play(track, in: [track])
+        snippetTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.player.seek(to: start)
+            }
+            try? await Task.sleep(
+                nanoseconds: SnippetPreviewPolicy.windowNanoseconds
+            )
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard self?.player.currentTrack?.id == track.id else { return }
+                self?.player.pause()
+            }
+        }
+        Haptics.selection()
+    }
+}
+
+enum SnippetPreviewPolicy {
+    static let windowSeconds: TimeInterval = 32
+    static var windowNanoseconds: UInt64 {
+        UInt64(windowSeconds * 1_000_000_000)
+    }
+
+    static func startOffset(for duration: TimeInterval) -> TimeInterval {
+        guard duration.isFinite, duration > 20 else { return 0 }
+        let ideal = duration * 0.35
+        let maxStart = max(0, duration - windowSeconds - 1)
+        return min(max(ideal, 0), maxStart)
     }
 }
 
