@@ -6,6 +6,7 @@ struct TrackRow: View {
     @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var offlineStore: OfflineTrackStore
+    @EnvironmentObject private var mixFeedbackStore: MixFeedbackStore
     let track: Track
     let queue: [Track]
     var source: QueueSource? = nil
@@ -111,6 +112,11 @@ struct TrackRow: View {
             } label: {
                 Label("Открыть плеер", systemImage: "play.circle")
             }
+            TrackMixActions.menuButtons(
+                for: track,
+                environment: environment,
+                includeDislike: !mixFeedbackStore.isBanned(track)
+            )
             Button {
                 Haptics.open()
                 sharingTrack = track
