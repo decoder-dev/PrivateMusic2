@@ -52,17 +52,37 @@ enum MixSeedRadio {
 
     /// Catalog shelf titles that behave like VK «вайбы» / mood entry points.
     static func looksLikeVibeShelf(_ title: String) -> Bool {
+        containsAny(
+            title,
+            [
+                "вайб", "vibe", "настроен", "mood", "активн", "спокойн",
+                "грустн", "радост", "любов", "энерг", "relax", "party",
+                "work", "спорт", "night", "вечер", "утро", "поездк"
+            ]
+        )
+    }
+
+    static func looksLikeKidsShelf(_ title: String) -> Bool {
+        containsAny(
+            title,
+            ["дет", "kids", "child", "сказк", "колыбел", "семья", "family"]
+        )
+    }
+
+    static func looksLikeChartShelf(_ title: String) -> Bool {
+        containsAny(
+            title,
+            ["chart", "чарт", "топ", "top ", "хит", "hit", "популяр"]
+        )
+    }
+
+    private static func containsAny(_ title: String, _ markers: [String]) -> Bool {
         let blob = title
             .folding(
                 options: [.caseInsensitive, .diacriticInsensitive],
                 locale: Locale(identifier: "ru_RU")
             )
             .lowercased()
-        let markers = [
-            "вайб", "vibe", "настроен", "mood", "активн", "спокойн",
-            "грустн", "радост", "любов", "энерг", "relax", "party",
-            "work", "спорт", "night", "вечер", "утро", "поездк"
-        ]
         return markers.contains { blob.contains($0) }
     }
 }
