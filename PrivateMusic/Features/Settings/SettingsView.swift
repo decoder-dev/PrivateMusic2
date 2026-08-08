@@ -162,6 +162,24 @@ struct SettingsView: View {
                         systemImage: "network"
                     )
                 }
+
+                NavigationLink {
+                    MixFiltersSettingsView()
+                } label: {
+                    Label(
+                        "Фильтры микса",
+                        systemImage: "line.3.horizontal.decrease.circle"
+                    )
+                }
+
+                NavigationLink {
+                    MixFeedbackManagerView()
+                } label: {
+                    Label(
+                        "Скрытое в миксах",
+                        systemImage: "hand.thumbsdown"
+                    )
+                }
             }
 
             Section("О приложении") {
