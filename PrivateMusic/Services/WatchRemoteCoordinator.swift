@@ -10,6 +10,8 @@ final class WatchRemoteCoordinator: NSObject {
     private let session: WCSession?
     private var cancellables = Set<AnyCancellable>()
     private var lastState: WatchRemoteState?
+    private var pendingPushTask: Task<Void, Never>?
+    private var pendingForcePush = false
     private var canControlPlayback: @MainActor () -> Bool = { true }
     private var isLiked: @MainActor (Track) -> Bool = { _ in false }
     private var likeCurrent: (@MainActor (Track) async -> Bool)?
@@ -36,33 +38,35 @@ final class WatchRemoteCoordinator: NSObject {
                 .removeDuplicates()
         )
         .sink { [weak self] _, _, _, _ in
-            self?.pushLatestState()
+            self?.markNeedsPush()
         }
         .store(in: &cancellables)
 
+        // Watch interpolates elapsed from `snapshotDate` + rate. Keep a slow
+        // drift correction only — 1 Hz context updates heat the radio link.
         player.progress.$elapsedTime
             .removeDuplicates()
             .throttle(
-                for: .seconds(1),
+                for: .seconds(WatchStatePushCoalescingPolicy.driftCorrectionSeconds),
                 scheduler: RunLoop.main,
                 latest: true
             )
             .sink { [weak self] _ in
-                self?.pushLatestState()
+                self?.markNeedsPush()
             }
             .store(in: &cancellables)
 
         player.$isBuffering
             .removeDuplicates()
             .sink { [weak self] _ in
-                self?.pushLatestState()
+                self?.markNeedsPush()
             }
             .store(in: &cancellables)
 
         player.$queueSource
             .removeDuplicates()
             .sink { [weak self] _ in
-                self?.pushLatestState()
+                self?.markNeedsPush()
             }
             .store(in: &cancellables)
     }
@@ -104,6 +108,22 @@ final class WatchRemoteCoordinator: NSObject {
         )
     }
 
+    private func markNeedsPush(force: Bool = false) {
+        pendingForcePush = WatchStatePushCoalescingPolicy.mergedForce(
+            pending: pendingForcePush,
+            incoming: force
+        )
+        guard pendingPushTask == nil else { return }
+        pendingPushTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard !Task.isCancelled, let self else { return }
+            let force = pendingForcePush
+            pendingForcePush = false
+            pendingPushTask = nil
+            pushLatestState(force: force)
+        }
+    }
+
     private func pushLatestState(force: Bool = false) {
         guard let session,
               session.activationState == .activated,
@@ -143,15 +163,15 @@ final class WatchRemoteCoordinator: NSObject {
         switch envelope.command {
         case .togglePlayPause:
             player.playPause()
-            pushLatestState(force: true)
+            markNeedsPush(force: true)
             return reply(accepted: true)
         case .next:
             player.next()
-            pushLatestState(force: true)
+            markNeedsPush(force: true)
             return reply(accepted: true)
         case .previous:
             player.previous()
-            pushLatestState(force: true)
+            markNeedsPush(force: true)
             return reply(accepted: true)
         case .likeCurrent:
             guard let track = player.currentTrack,
@@ -163,10 +183,20 @@ final class WatchRemoteCoordinator: NSObject {
             // optimistically and push state when done.
             Task { @MainActor [weak self] in
                 _ = await likeCurrent(track)
-                self?.pushLatestState(force: true)
+                self?.markNeedsPush(force: true)
             }
             return reply(accepted: true)
         }
+    }
+}
+
+enum WatchStatePushCoalescingPolicy {
+    /// Progress-only pushes; transport / track changes still flush immediately.
+    static let driftCorrectionSeconds: TimeInterval =
+        WatchRemoteState.elapsedBucketSeconds
+
+    static func mergedForce(pending: Bool, incoming: Bool) -> Bool {
+        pending || incoming
     }
 }
 
@@ -178,7 +208,7 @@ extension WatchRemoteCoordinator: WCSessionDelegate {
     ) {
         guard activationState == .activated, error == nil else { return }
         Task { @MainActor [weak self] in
-            self?.pushLatestState(force: true)
+            self?.markNeedsPush(force: true)
         }
     }
 
@@ -190,7 +220,7 @@ extension WatchRemoteCoordinator: WCSessionDelegate {
 
     nonisolated func sessionWatchStateDidChange(_ session: WCSession) {
         Task { @MainActor [weak self] in
-            self?.pushLatestState(force: true)
+            self?.markNeedsPush(force: true)
         }
     }
 
@@ -218,7 +248,7 @@ extension WatchRemoteCoordinator: WCSessionDelegate {
 
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         Task { @MainActor [weak self] in
-            self?.pushLatestState(force: true)
+            self?.markNeedsPush(force: true)
         }
     }
 }

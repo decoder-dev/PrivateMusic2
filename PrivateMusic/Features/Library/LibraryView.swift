@@ -3,7 +3,10 @@ import SwiftUI
 struct LibraryView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var player: AudioPlayer
+    /// Highlight only: observing `AudioPlayer` would rebuild the library
+    /// list on every buffering / duration tick. Actions go through
+    /// `environment.player`.
+    @EnvironmentObject private var highlight: PlaybackHighlightModel
     @EnvironmentObject private var libraryStore: MusicLibraryStore
     @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
     @EnvironmentObject private var offlineStore: OfflineTrackStore
@@ -292,7 +295,7 @@ struct LibraryView: View {
 
     private func resumePinned(_ pin: PinnedMixSnapshot) {
         let mix = pin.mix
-        player.resumePinned(pin) {
+        environment.player.resumePinned(pin) {
             try await environment.withAuthorizedToken { token in
                 try await environment.musicService.mixTracksContinuation(
                     mix,
@@ -303,7 +306,7 @@ struct LibraryView: View {
     }
 
     private func isCurrent(_ track: Track) -> Bool {
-        player.currentTrack?.id == track.id
+        highlight.isCurrent(track.id)
     }
 
     /// Defect 12: the badge must reflect both in-flight track downloads and
@@ -408,7 +411,7 @@ struct LibraryView: View {
     private func libraryRow(_ track: Track) -> some View {
         HStack(spacing: 12) {
             Button {
-                player.play(track, in: tracks.tracks)
+                environment.player.play(track, in: tracks.tracks)
             } label: {
                 HStack(spacing: 12) {
                 AsyncArtwork(url: track.artworkURL, size: 48)
@@ -433,7 +436,7 @@ struct LibraryView: View {
                     .foregroundStyle(.secondary)
                 if isCurrent(track) {
                     PlaybackIndicatorView(
-                        isPlaying: player.isPlaying,
+                        isPlaying: highlight.isPlaying,
                         color: currentTrackColor
                     )
                     .font(.caption)
@@ -445,7 +448,7 @@ struct LibraryView: View {
             .buttonStyle(.plain)
             Menu {
                 Button {
-                    player.playNext(track)
+                    environment.player.playNext(track)
                 } label: {
                     Label("Играть следующим", systemImage: "text.badge.plus")
                 }
@@ -524,7 +527,7 @@ struct LibraryView: View {
                 return
             } catch {
                 Haptics.error()
-                player.errorMessage = L10n.format(
+                environment.player.errorMessage = L10n.format(
                     "Не удалось сохранить трек офлайн: %@",
                     error.localizedDescription
                 )
