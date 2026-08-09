@@ -48,6 +48,10 @@ struct MixesHubView: View {
     @State private var vkRationaleCache: [String: MixRationale] = [:]
     @State private var sharingTrack: Track?
     @State private var selectedCurator: MixCurator?
+    @State private var expandedTrackMixIDs: Set<String> = []
+
+    private let defaultPreviewTrackLimit = 15
+    private let expandedPreviewTrackLimit = 60
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -160,6 +164,8 @@ struct MixesHubView: View {
 
     @ViewBuilder
     private func selenaExtras(metrics: MixHubMetrics) -> some View {
+        selenaStationSummary(metrics: metrics)
+            .premiumAppear(delay: 0.06)
         selenaQuickStarts
             .premiumAppear(delay: 0.08)
         if !vibeShelves.isEmpty {
@@ -191,6 +197,7 @@ struct MixesHubView: View {
                     if orderedVKMixes.count > 1 {
                         vkMixPicker(selected: mix, metrics: metrics)
                     }
+                    vkMagazineShelves(metrics: metrics)
                 }
             )
         }
@@ -225,13 +232,16 @@ struct MixesHubView: View {
             )
             .premiumAppear(delay: 0.02)
 
+            mixMetadataStrip(mix: mix, tracks: tracks)
+                .premiumAppear(delay: 0.04)
+
             if !rationale.isEmpty {
                 rationaleBlock(rationale, title: rationaleTitle)
-                    .premiumAppear(delay: 0.06)
+                    .premiumAppear(delay: 0.08)
             }
 
             controlsPanel(mix: mix, tracks: tracks)
-                .premiumAppear(delay: 0.1)
+                .premiumAppear(delay: 0.12)
 
             picker()
 
@@ -242,7 +252,7 @@ struct MixesHubView: View {
                     subtitle: tracksSubtitle,
                     metrics: metrics
                 )
-                .premiumAppear(delay: 0.14)
+                .premiumAppear(delay: 0.16)
             }
         }
     }
@@ -280,6 +290,7 @@ struct MixesHubView: View {
         metrics: MixHubMetrics
     ) -> some View {
         let artTracks = vkTrackCache[mix.id] ?? homeCatalog.recommendations
+        let cachedTracks = vkTrackCache[mix.id] ?? []
         return VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .bottomTrailing) {
                 Button {
@@ -355,11 +366,159 @@ struct MixesHubView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+                    HStack(spacing: 6) {
+                        Text(mixTypeTitle(for: mix))
+                        if !cachedTracks.isEmpty {
+                            Text("·")
+                            Text(L10n.trackCount(cachedTracks.count))
+                        }
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 }
                 .frame(width: metrics.cardWidth, alignment: .leading)
             }
             .buttonStyle(.plain)
         }
+        .contextMenu {
+            Button {
+                selectVKMix(mix, andPlay: true)
+            } label: {
+                Label("Воспроизвести микс", systemImage: "play.fill")
+            }
+            Button {
+                selectVKMix(mix)
+            } label: {
+                Label("Открыть здесь", systemImage: "list.bullet")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func vkMagazineShelves(metrics: MixHubMetrics) -> some View {
+        if !officialShelves.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                PremiumSectionHeader(
+                    L10n.text("Журнал VK Миксов"),
+                    subtitle: L10n.text(
+                        "Полки каталога с быстрым запуском и превью треков"
+                    )
+                )
+
+                ForEach(officialShelves.prefix(6), id: \.title) { shelf in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(shelf.title)
+                                    .font(.headline)
+                                    .lineLimit(2)
+                                Text(
+                                    L10n.format(
+                                        "%d миксов",
+                                        shelf.mixes.count
+                                    )
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 12)
+                            Button {
+                                openVibeShelf(shelf)
+                            } label: {
+                                Text(L10n.text("Открыть"))
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .buttonStyle(.bordered)
+                        }
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            LazyHStack(
+                                alignment: .top,
+                                spacing: metrics.cardSpacing
+                            ) {
+                                ForEach(shelf.mixes.prefix(8)) { mix in
+                                    vkShelfCard(mix, metrics: metrics)
+                                }
+                            }
+                        }
+                    }
+                    .padding(14)
+                    .premiumCard()
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private func vkShelfCard(
+        _ mix: MusicMix,
+        metrics: MixHubMetrics
+    ) -> some View {
+        let cached = vkTrackCache[mix.id] ?? []
+        let artTracks = cached.isEmpty ? homeCatalog.recommendations : cached
+        return VStack(alignment: .leading, spacing: 7) {
+            Button {
+                selectVKMix(mix)
+            } label: {
+                MixArtworkView(
+                    mix: mix,
+                    tracks: artTracks,
+                    size: metrics.cardWidth,
+                    height: metrics.cardHeight,
+                    cornerRadius: PremiumLayout.compactRadius
+                )
+                .overlay(alignment: .topLeading) {
+                    Text(mixTypeTitle(for: mix))
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(.black.opacity(0.5))
+                        )
+                        .padding(8)
+                }
+            }
+            .buttonStyle(PremiumPressStyle())
+            .disabled(loadingMixID != nil)
+
+            Text(mix.title)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(cardSubtitle(for: mix))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            if !cached.isEmpty {
+                Text(L10n.trackCount(cached.count))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    selectVKMix(mix, andPlay: true)
+                } label: {
+                    Label(L10n.text("Слушать"), systemImage: "play.fill")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
+                Button {
+                    selectVKMix(mix)
+                } label: {
+                    Label(L10n.text("Открыть"), systemImage: "list.bullet")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .frame(width: metrics.cardWidth, alignment: .leading)
         .contextMenu {
             Button {
                 selectVKMix(mix, andPlay: true)
@@ -563,6 +722,76 @@ struct MixesHubView: View {
         }
     }
 
+    private func mixMetadataStrip(
+        mix: MusicMix,
+        tracks: [Track]
+    ) -> some View {
+        let stats = MixListeningStats(
+            tracks: tracks,
+            history: history.entries
+        )
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                metadataChip(
+                    mixTypeTitle(for: mix),
+                    systemImage: mixTypeIcon(for: mix),
+                    highlighted: true
+                )
+                if !tracks.isEmpty {
+                    metadataChip(
+                        L10n.trackCount(tracks.count),
+                        systemImage: "music.note.list"
+                    )
+                    metadataChip(
+                        stats.duration.formattedDuration,
+                        systemImage: "clock"
+                    )
+                    metadataChip(
+                        L10n.format("%d%% новизны", stats.noveltyPercent),
+                        systemImage: "sparkles"
+                    )
+                }
+                if let percent = mix.matchPercent {
+                    metadataChip(
+                        L10n.format("совпадение %d%%", percent),
+                        systemImage: "person.2"
+                    )
+                }
+                ForEach(stats.topArtists.prefix(4), id: \.self) { artist in
+                    metadataChip(
+                        artist,
+                        systemImage: "music.mic",
+                        compact: true
+                    )
+                }
+            }
+            .padding(.vertical, 1)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func metadataChip(
+        _ title: String,
+        systemImage: String,
+        highlighted: Bool = false,
+        compact: Bool = false
+    ) -> some View {
+        Label(title, systemImage: systemImage)
+            .font((compact ? Font.caption2 : Font.caption).weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, compact ? 9 : 10)
+            .padding(.vertical, compact ? 6 : 7)
+            .foregroundStyle(highlighted ? settings.theme.accent : .primary)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(
+                        highlighted
+                            ? settings.theme.accent.opacity(0.14)
+                            : Color.primary.opacity(0.06)
+                    )
+            )
+    }
+
     private func rationaleBlock(
         _ rationale: MixRationale,
         title: String
@@ -584,6 +813,7 @@ struct MixesHubView: View {
         mix: MusicMix,
         tracks: [Track]
     ) -> some View {
+        let selectedMode = player.mixRadioMode
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("Радио микса"))
                 .font(.headline)
@@ -609,10 +839,17 @@ struct MixesHubView: View {
             }
             .pickerStyle(.segmented)
 
+            Label(selectedMode.caption, systemImage: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            mixFilterChips(mix: mix)
+
             HStack(spacing: 10) {
                 Button { start(mix) } label: {
                     Label(
-                        L10n.text("Слушать"),
+                        L10n.text("Слушать всё"),
                         systemImage: "play.fill"
                     )
                     .font(.subheadline.weight(.semibold))
@@ -623,10 +860,28 @@ struct MixesHubView: View {
                 .disabled(loadingMixID != nil)
 
                 Button {
+                    shuffle(mix)
+                } label: {
+                    Label(
+                        L10n.text("Перемешать"),
+                        systemImage: "shuffle"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                }
+                .buttonStyle(.bordered)
+                .disabled(loadingMixID != nil || tracks.isEmpty)
+            }
+
+            HStack(spacing: 10) {
+                Button {
                     pin(mix: mix, tracks: tracks)
                 } label: {
                     Label(
-                        L10n.text("Слушать позже"),
+                        pinnedMixStore.pin?.mixID == mix.id
+                            ? L10n.text("Сохранено")
+                            : L10n.text("Сохранить"),
                         systemImage: pinnedMixStore.pin?.mixID == mix.id
                             ? "bookmark.fill"
                             : "bookmark"
@@ -637,21 +892,196 @@ struct MixesHubView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(tracks.isEmpty)
+
+                Menu {
+                    Button(role: .destructive) {
+                        hideFirstLoadedTrack(
+                            in: mix,
+                            tracks: tracks,
+                            includeArtist: false
+                        )
+                    } label: {
+                        Label(
+                            L10n.text("Скрыть первый трек"),
+                            systemImage: "hand.thumbsdown"
+                        )
+                    }
+                    Button(role: .destructive) {
+                        hideFirstLoadedTrack(
+                            in: mix,
+                            tracks: tracks,
+                            includeArtist: true
+                        )
+                    } label: {
+                        Label(
+                            L10n.text("Скрыть исполнителя первого трека"),
+                            systemImage: "person.badge.minus"
+                        )
+                    }
+                } label: {
+                    Label(
+                        L10n.text("Не нравится"),
+                        systemImage: "hand.thumbsdown"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                }
+                .buttonStyle(.bordered)
+                .disabled(tracks.isEmpty)
             }
 
-            NavigationLink {
-                MixFiltersSettingsView()
-            } label: {
-                Label(
-                    L10n.text("Фильтры микса"),
-                    systemImage: "line.3.horizontal.decrease.circle"
-                )
-                .font(.subheadline.weight(.semibold))
+            HStack(spacing: 10) {
+                NavigationLink {
+                    MixFiltersSettingsView()
+                } label: {
+                    Label(
+                        L10n.text("Фильтры микса"),
+                        systemImage: "line.3.horizontal.decrease.circle"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                }
+
+                NavigationLink {
+                    MixFeedbackManagerView()
+                } label: {
+                    Label(
+                        L10n.text("Скрытое"),
+                        systemImage: "eye.slash"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                }
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .premiumCard()
+    }
+
+    private func mixFilterChips(mix: MusicMix) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(L10n.text("Быстрые фильтры"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    moodFilterMenu(mix: mix)
+                    languageFilterMenu(mix: mix)
+                    familiarityFilterMenu(mix: mix)
+                }
+            }
+        }
+    }
+
+    private func moodFilterMenu(mix: MusicMix) -> some View {
+        Menu {
+            ForEach(MixMoodPreference.allCases) { mood in
+                Button {
+                    settings.mixMoodPreference = mood
+                    refilterLoadedTracks(for: mix)
+                } label: {
+                    selectedMenuRow(
+                        mood.title,
+                        isSelected: settings.mixMoodPreference == mood
+                    )
+                }
+            }
+        } label: {
+            filterChip(
+                title: settings.mixMoodPreference.title,
+                prefix: L10n.text("Вайб"),
+                isActive: settings.mixMoodPreference != .any
+            )
+        }
+    }
+
+    private func languageFilterMenu(mix: MusicMix) -> some View {
+        Menu {
+            ForEach(MixLanguagePreference.allCases) { language in
+                Button {
+                    settings.mixLanguagePreference = language
+                    refilterLoadedTracks(for: mix)
+                } label: {
+                    selectedMenuRow(
+                        language.title,
+                        isSelected: settings.mixLanguagePreference == language
+                    )
+                }
+            }
+        } label: {
+            filterChip(
+                title: settings.mixLanguagePreference.title,
+                prefix: L10n.text("Язык"),
+                isActive: settings.mixLanguagePreference != .any
+            )
+        }
+    }
+
+    private func familiarityFilterMenu(mix: MusicMix) -> some View {
+        Menu {
+            ForEach(MixFamiliarityPreference.allCases) { familiarity in
+                Button {
+                    settings.mixFamiliarityPreference = familiarity
+                    refilterLoadedTracks(for: mix)
+                } label: {
+                    selectedMenuRow(
+                        familiarity.title,
+                        isSelected: settings.mixFamiliarityPreference == familiarity
+                    )
+                }
+            }
+        } label: {
+            filterChip(
+                title: settings.mixFamiliarityPreference.title,
+                prefix: L10n.text("Узнаваемость"),
+                isActive: settings.mixFamiliarityPreference != .any
+            )
+        }
+    }
+
+    private func filterChip(
+        title: String,
+        prefix: String,
+        isActive: Bool
+    ) -> some View {
+        HStack(spacing: 5) {
+            Text(prefix)
+                .foregroundStyle(.secondary)
+            Text(title)
+                .foregroundStyle(isActive ? settings.theme.accent : .primary)
+            Image(systemName: "chevron.down")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+        }
+        .font(.caption.weight(.semibold))
+        .lineLimit(1)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            Capsule(style: .continuous)
+                .fill(
+                    isActive
+                        ? settings.theme.accent.opacity(0.14)
+                        : Color.primary.opacity(0.06)
+                )
+        )
+    }
+
+    private func selectedMenuRow(
+        _ title: String,
+        isSelected: Bool
+    ) -> some View {
+        HStack {
+            Text(title)
+            if isSelected {
+                Image(systemName: "checkmark")
+            }
+        }
     }
 
     private func tracksBlock(
@@ -660,12 +1090,23 @@ struct MixesHubView: View {
         subtitle: String,
         metrics: MixHubMetrics
     ) -> some View {
+        let preview = Array(tracks.prefix(defaultPreviewTrackLimit))
+        let remainder = Array(tracks.dropFirst(defaultPreviewTrackLimit))
+        let isExpanded = expandedTrackMixIDs.contains(mix.id)
+        let expandedList = Array(
+            remainder.prefix(
+                max(0, expandedPreviewTrackLimit - defaultPreviewTrackLimit)
+            )
+        )
         VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 12) {
-                PremiumSectionHeader("Для вас", subtitle: subtitle)
+                PremiumSectionHeader(
+                    L10n.text("Для вас"),
+                    subtitle: subtitle
+                )
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 14) {
-                        ForEach(tracks.prefix(12)) { track in
+                        ForEach(preview) { track in
                             trackCard(
                                 track,
                                 mix: mix,
@@ -677,29 +1118,51 @@ struct MixesHubView: View {
                 }
             }
 
-            let list = Array(tracks.dropFirst(12).prefix(36))
-            if !list.isEmpty {
+            if !remainder.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
-                    PremiumSectionHeader("Продолжить поток")
-                    VStack(spacing: 0) {
-                        ForEach(
-                            Array(list.enumerated()),
-                            id: \.element.id
-                        ) { index, track in
-                            TrackRow(
-                                track: track,
-                                queue: tracks,
-                                source: .mix(title: mix.title)
+                    HStack {
+                        PremiumSectionHeader(
+                            L10n.text("Продолжить поток"),
+                            subtitle: L10n.format(
+                                "%d ещё в очереди",
+                                remainder.count
                             )
-                            .padding(.vertical, 7)
-                            if index < list.count - 1 {
-                                Divider().padding(.leading, 64)
+                        )
+                        Spacer(minLength: 12)
+                        Button {
+                            toggleTrackExpansion(for: mix)
+                        } label: {
+                            Text(
+                                isExpanded
+                                    ? L10n.text("Свернуть")
+                                    : L10n.text("Показать ещё")
+                            )
+                            .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    if isExpanded {
+                        VStack(spacing: 0) {
+                            ForEach(
+                                Array(expandedList.enumerated()),
+                                id: \.element.id
+                            ) { index, track in
+                                TrackRow(
+                                    track: track,
+                                    queue: tracks,
+                                    source: .mix(title: mix.title)
+                                )
+                                .padding(.vertical, 7)
+                                if index < expandedList.count - 1 {
+                                    Divider().padding(.leading, 64)
+                                }
                             }
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .premiumCard()
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .premiumCard()
                 }
             }
         }
@@ -747,6 +1210,12 @@ struct MixesHubView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                HStack(spacing: 6) {
+                    Image(systemName: "clock")
+                    Text(track.duration.formattedDuration)
+                }
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
             }
             .frame(width: width, alignment: .leading)
         }
@@ -772,6 +1241,154 @@ struct MixesHubView: View {
                 )
             }
         }
+    }
+
+    private func selenaStationSummary(metrics: MixHubMetrics) -> some View {
+        let stats = MixListeningStats(
+            tracks: selenaTracks,
+            history: history.entries
+        )
+        let seeds = recentSeedTracks
+        return VStack(alignment: .leading, spacing: 12) {
+            PremiumSectionHeader(
+                L10n.text("Селена как личная станция"),
+                subtitle: L10n.text(
+                    "Окно слушания обновляется из истории, рекомендаций и VK микса"
+                )
+            )
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 10),
+                    GridItem(.flexible(), spacing: 10)
+                ],
+                spacing: 10
+            ) {
+                stationStatCard(
+                    title: L10n.text("В окне"),
+                    value: L10n.trackCount(selenaTracks.count),
+                    systemImage: "music.note.list"
+                )
+                stationStatCard(
+                    title: L10n.text("Длительность"),
+                    value: stats.duration.formattedDuration,
+                    systemImage: "clock"
+                )
+                stationStatCard(
+                    title: L10n.text("Новые артисты"),
+                    value: "\(stats.noveltyPercent)%",
+                    systemImage: "sparkles"
+                )
+                stationStatCard(
+                    title: L10n.text("Артисты"),
+                    value: String(stats.artistCount),
+                    systemImage: "music.mic"
+                )
+            }
+
+            if !stats.topArtists.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(stats.topArtists.prefix(6), id: \.self) {
+                            artist in
+                            metadataChip(
+                                artist,
+                                systemImage: "music.mic",
+                                compact: true
+                            )
+                        }
+                    }
+                }
+            }
+
+            if !seeds.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.text("Недавние сиды"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(seeds) { track in
+                                Button {
+                                    Task {
+                                        await environment.startMixFromTrack(
+                                            track
+                                        )
+                                    }
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        AsyncArtwork(
+                                            url: track.artworkURL,
+                                            size: 34
+                                        )
+                                        VStack(
+                                            alignment: .leading,
+                                            spacing: 1
+                                        ) {
+                                            Text(track.title)
+                                                .font(
+                                                    .caption.weight(.semibold)
+                                                )
+                                                .foregroundStyle(.primary)
+                                                .lineLimit(1)
+                                            Text(track.artist)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                    .frame(
+                                        width: max(
+                                            170,
+                                            metrics.contentWidth * 0.46
+                                        ),
+                                        alignment: .leading
+                                    )
+                                    .padding(8)
+                                    .background(
+                                        RoundedRectangle(
+                                            cornerRadius: 14,
+                                            style: .continuous
+                                        )
+                                        .fill(.primary.opacity(0.05))
+                                    )
+                                }
+                                .buttonStyle(PremiumPressStyle())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .premiumCard()
+    }
+
+    private func stationStatCard(
+        title: String,
+        value: String,
+        systemImage: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(settings.theme.accent)
+            Text(value)
+                .font(.headline.weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.primary.opacity(0.05))
+        )
     }
 
     private var selenaQuickStarts: some View {
@@ -1127,6 +1744,49 @@ struct MixesHubView: View {
         }
     }
 
+    private var recentSeedTracks: [Track] {
+        var seen = Set<String>()
+        return history.entries.compactMap { entry in
+            let track = entry.track
+            return seen.insert(track.id).inserted ? track : nil
+        }
+        .prefix(8)
+        .map { $0 }
+    }
+
+    private func mixTypeTitle(for mix: MusicMix) -> String {
+        if mix.id == MusicMix.common.id {
+            return L10n.text("Станция Селены")
+        }
+        if mix.curator?.isUsable == true {
+            return L10n.text("Кураторский")
+        }
+        if mix.isSocial {
+            return L10n.text("Социальный")
+        }
+        if mix.sectionTitle != nil {
+            return L10n.text("Полка VK")
+        }
+        return L10n.text("Алгоритмы VK")
+    }
+
+    private func mixTypeIcon(for mix: MusicMix) -> String {
+        if mix.id == MusicMix.common.id { return "sparkles" }
+        if mix.curator?.isUsable == true { return "person.crop.circle" }
+        if mix.isSocial { return "person.2" }
+        if mix.sectionTitle != nil { return "rectangle.stack" }
+        return "wand.and.stars"
+    }
+
+    private func toggleTrackExpansion(for mix: MusicMix) {
+        if expandedTrackMixIDs.contains(mix.id) {
+            expandedTrackMixIDs.remove(mix.id)
+        } else {
+            expandedTrackMixIDs.insert(mix.id)
+        }
+        Haptics.selection()
+    }
+
     private func resumePinned(_ pin: PinnedMixSnapshot) {
         let mix = pin.mix
         if mix.id == MusicMix.common.id {
@@ -1171,6 +1831,46 @@ struct MixesHubView: View {
             return live
         }
         return nil
+    }
+
+    private func shuffle(_ mix: MusicMix) {
+        let loaded = tracks(for: mix)
+        guard loaded.count > 1 else {
+            start(mix)
+            return
+        }
+        player.playShuffled(
+            in: loaded,
+            continuation: {
+                try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.mixTracksContinuation(
+                        mix,
+                        accessToken: token
+                    )
+                }
+            },
+            source: .mix(title: mix.title)
+        )
+        fillQueueInBackground(mix)
+        Haptics.selection()
+    }
+
+    private func refilterLoadedTracks(for mix: MusicMix) {
+        let loaded = tracks(for: mix)
+        guard !loaded.isEmpty else { return }
+        storeTracks(loaded, for: mix)
+        Haptics.selection()
+    }
+
+    private func hideFirstLoadedTrack(
+        in mix: MusicMix,
+        tracks: [Track],
+        includeArtist: Bool
+    ) {
+        guard let first = tracks.first else { return }
+        environment.dislike(first, includeArtist: includeArtist)
+        let cleaned = mixFeedbackStore.filtering(tracks(for: mix))
+        storeTracks(cleaned, for: mix)
     }
 
     private func load(force: Bool = false) async {
@@ -1532,6 +2232,51 @@ private struct MixHubMetrics {
     var cardHeight: CGFloat { cardWidth }
     var trackWidth: CGFloat {
         min(max(width * 0.36, 114), 148)
+    }
+}
+
+private struct MixListeningStats {
+    let duration: TimeInterval
+    let topArtists: [String]
+    let artistCount: Int
+    let noveltyPercent: Int
+
+    init(tracks: [Track], history: [ListeningHistoryEntry]) {
+        duration = tracks.reduce(0) { $0 + max(0, $1.duration) }
+
+        var displayArtists: [String: String] = [:]
+        var counts: [String: Int] = [:]
+        for track in tracks {
+            let key = MixFeedbackPolicy.normalized(track.artist)
+            guard !key.isEmpty else { continue }
+            displayArtists[key] = displayArtists[key] ?? track.artist
+            counts[key, default: 0] += 1
+        }
+
+        topArtists = counts.keys.sorted {
+            let left = counts[$0] ?? 0
+            let right = counts[$1] ?? 0
+            if left != right { return left > right }
+            return (displayArtists[$0] ?? $0) < (displayArtists[$1] ?? $1)
+        }
+        .compactMap { displayArtists[$0] }
+        artistCount = counts.count
+
+        let recentArtists = Set(
+            history.prefix(80).map { entry in
+                MixFeedbackPolicy.normalized(entry.track.artist)
+            }
+            .filter { !$0.isEmpty }
+        )
+        guard !counts.isEmpty else {
+            noveltyPercent = 0
+            return
+        }
+        let novelArtists = counts.keys.filter { !recentArtists.contains($0) }
+        noveltyPercent = Int(
+            (Double(novelArtists.count) / Double(counts.count) * 100)
+                .rounded()
+        )
     }
 }
 
