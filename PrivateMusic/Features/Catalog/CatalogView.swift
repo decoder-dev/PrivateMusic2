@@ -613,7 +613,7 @@ struct CatalogView: View {
             }
         }
         .redacted(reason: .placeholder)
-        .accessibilityLabel("Загружаем рекомендации и миксы")
+        .accessibilityLabel(L10n.text("Загружаем рекомендации и миксы"))
     }
 
     private func homeTrackCard(

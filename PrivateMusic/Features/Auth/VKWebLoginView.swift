@@ -61,7 +61,7 @@ struct VKWebLoginView: View {
                     } label: {
                         Image(systemName: "xmark")
                     }
-                    .accessibilityLabel("Закрыть")
+                    .accessibilityLabel(L10n.text("Закрыть"))
                 }
             }
         }
@@ -160,7 +160,7 @@ struct VKWebLoginView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(isCompleting || model.isLoading)
-            .accessibilityLabel("Завершить вход")
+            .accessibilityLabel(L10n.text("Завершить вход"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
