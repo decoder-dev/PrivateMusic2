@@ -3,7 +3,10 @@ import SwiftUI
 struct CatalogView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var player: AudioPlayer
+    /// Highlight only: observing `AudioPlayer` would rebuild the home rails
+    /// on every buffering / duration tick. Actions go through
+    /// `environment.player`.
+    @EnvironmentObject private var highlight: PlaybackHighlightModel
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var history: ListeningHistoryStore
     @EnvironmentObject private var homeCatalog: HomeCatalogStore
@@ -101,11 +104,9 @@ struct CatalogView: View {
         .task(id: sessionStore.resolvedOfflineAccountID) {
             await load()
         }
-        .onReceive(
-            NotificationCenter.default.publisher(for: .likedAlbumsDidChange)
-        ) { _ in
-            Task { await load(force: true) }
-        }
+        // Liked-album mutations update `LikedAlbumsStore` in place. Reloading
+        // the whole home snapshot here used to fan out recommendations /
+        // mixes / playlists / releases for a single follow tap.
         .onReceive(environment.$mixActionError) { error in
             guard let error else { return }
             actionErrorMessage = error
@@ -631,7 +632,7 @@ struct CatalogView: View {
             Text(track.title)
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(
-                    player.currentTrack?.id == track.id
+                    highlight.isCurrent(track.id)
                         ? settings.theme.accent
                         : Color.primary
                 )
@@ -680,12 +681,12 @@ struct CatalogView: View {
 
             Button {
                 Haptics.selection()
-                player.play(track, in: queue, source: source)
+                environment.player.play(track, in: queue, source: source)
             } label: {
                 Group {
-                    if player.currentTrack?.id == track.id {
+                    if highlight.isCurrent(track.id) {
                         PlaybackIndicatorView(
-                            isPlaying: player.isPlaying,
+                            isPlaying: highlight.isPlaying,
                             color: settings.theme.buttonForeground
                         )
                     } else {
@@ -830,7 +831,7 @@ struct CatalogView: View {
                 let title = Album.isUsableTitle(album.title)
                     ? album.title
                     : L10n.text("Альбом")
-                player.play(
+                environment.player.play(
                     first,
                     in: page.items,
                     source: .album(title: title)
@@ -850,13 +851,13 @@ struct CatalogView: View {
         source: QueueSource? = nil
     ) -> some View {
         Button {
-            player.playNext(track)
+            environment.player.playNext(track)
         } label: {
             Label("Играть следующим", systemImage: "text.badge.plus")
         }
         Button {
-            player.play(track, in: queue, source: source)
-            player.presentPlayer()
+            environment.player.play(track, in: queue, source: source)
+            environment.player.presentPlayer()
         } label: {
             Label("Открыть плеер", systemImage: "play.circle")
         }
@@ -969,11 +970,18 @@ private struct HomeSectionHeader: View {
 
 private struct HomeTrackArtwork: View {
     @EnvironmentObject private var settings: AppSettings
+    @Environment(\.displayScale) private var displayScale
     let url: URL?
     let size: CGFloat
 
     var body: some View {
-        CachedRemoteImage(url: url) { image in
+        CachedRemoteImage(
+            url: url,
+            maxPixelSize: ArtworkDecodePolicy.maxPixelSize(
+                displayPoints: size,
+                scale: displayScale
+            )
+        ) { image in
             image
                 .resizable()
                 .scaledToFill()

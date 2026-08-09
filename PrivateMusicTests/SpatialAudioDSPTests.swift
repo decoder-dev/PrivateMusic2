@@ -112,6 +112,20 @@ final class SpatialAudioDSPTests: XCTestCase {
         )
     }
 
+    func testSparseEqualizerSkipsFlatBands() {
+        var gains = EqualizerPreset.flat.gains
+        gains[0] = 4
+        let processor = EqualizerDSP()
+        processor.update(
+            enabled: true,
+            gains: gains,
+            preamp: 0,
+            spatialAudio: false
+        )
+        XCTAssertTrue(processor.requiresAudioTap)
+        XCTAssertEqual(processor.activeBandCountForTesting, 1)
+    }
+
     func testFlatEqualizerDoesNotInstallProcessingTap() {
         let processor = EqualizerDSP()
         processor.update(
@@ -121,6 +135,7 @@ final class SpatialAudioDSPTests: XCTestCase {
             spatialAudio: false
         )
         XCTAssertFalse(processor.requiresAudioTap)
+        XCTAssertEqual(processor.activeBandCountForTesting, 0)
         XCTAssertTrue(
             AudioProcessingRoutePolicy.allowsExternalPlayback(
                 requiresAudioTap: processor.requiresAudioTap
@@ -175,7 +190,7 @@ final class SpatialAudioDSPTests: XCTestCase {
         XCTAssertTrue(processor.requiresAudioTap)
     }
 
-    func testCabinProfileAddsClarityTapWithoutUserEQ() {
+    func testCabinProfileAloneDoesNotInstallProcessingTap() {
         let processor = EqualizerDSP()
         processor.setOutputProfile(.intimate)
         processor.update(
@@ -186,7 +201,18 @@ final class SpatialAudioDSPTests: XCTestCase {
         )
         XCTAssertFalse(processor.requiresAudioTap)
 
+        // Route-tone clarity is free to ride along when the user already
+        // enabled EQ/spatial, but must not force a tap by itself.
         processor.setOutputProfile(.cabin)
+        XCTAssertFalse(processor.requiresAudioTap)
+
+        processor.update(
+            enabled: false,
+            gains: EqualizerPreset.flat.gains,
+            preamp: 0,
+            spatialAudio: true,
+            spatialIntensity: 0.4
+        )
         XCTAssertTrue(processor.requiresAudioTap)
     }
 

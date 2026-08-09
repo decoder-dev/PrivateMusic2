@@ -95,13 +95,13 @@ struct PlayerView: View {
             if let artworkURL = player.currentTrack?.artworkURL {
                 CachedRemoteImage(
                     url: artworkURL,
-                    maxPixelSize: 1_024
+                    maxPixelSize: PlayerArtworkBackgroundPolicy.maxPixelSize
                 ) { image in
                     image
                         .resizable()
                         .scaledToFill()
                         .scaleEffect(1.28)
-                        .blur(radius: 78)
+                        .blur(radius: PlayerArtworkBackgroundPolicy.blurRadius)
                         .saturation(1.12)
                         .opacity(settings.theme == .light ? 0.18 : 1)
                 } placeholder: {
@@ -116,6 +116,7 @@ struct PlayerView: View {
                 endPoint: .bottom
             )
         }
+        .drawingGroup(opaque: true)
         .ignoresSafeArea()
     }
 
@@ -1428,6 +1429,11 @@ enum PlayerArtworkCarouselPolicy {
         }
         return NeighborIndices(previous: previous, next: next)
     }
+}
+
+enum PlayerArtworkBackgroundPolicy {
+    static let maxPixelSize: CGFloat = 320
+    static let blurRadius: CGFloat = 44
 }
 
 private struct PlayerActionsSheet: View {

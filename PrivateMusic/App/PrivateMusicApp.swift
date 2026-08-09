@@ -22,6 +22,7 @@ struct PrivateMusicApp: App {
                 .environmentObject(environment.mixFeedbackStore)
                 .environmentObject(environment.player)
                 .environmentObject(environment.player.progress)
+                .environmentObject(environment.player.highlight)
         }
     }
 }

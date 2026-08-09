@@ -3,7 +3,6 @@ import SwiftUI
 struct AlbumDetailView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
     @EnvironmentObject private var settings: AppSettings
     let album: Album
@@ -263,7 +262,7 @@ struct AlbumDetailView: View {
 
     private func playAlbum() {
         guard let first = model.tracks.first else { return }
-        player.play(
+        environment.player.play(
             first,
             in: model.tracks,
             source: .album(title: displayedTitle)
@@ -271,7 +270,7 @@ struct AlbumDetailView: View {
     }
 
     private func shuffleAlbum() {
-        player.playShuffled(
+        environment.player.playShuffled(
             in: model.tracks,
             source: .album(title: displayedTitle)
         )
