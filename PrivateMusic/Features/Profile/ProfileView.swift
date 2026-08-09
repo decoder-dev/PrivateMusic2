@@ -105,8 +105,8 @@ struct ProfileView: View {
                         ?? L10n.text("Слушатель")
                 )
                     .font(.title3.bold())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text("Private Music")
                     .foregroundStyle(.secondary)
             }
@@ -153,9 +153,13 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L10n.text(title))
                         .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(L10n.text(subtitle))
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
                 Image(systemName: "arrow.up.right")

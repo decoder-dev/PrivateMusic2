@@ -64,10 +64,13 @@ struct ConnectView: View {
             VStack(spacing: 5) {
                 Text("Private Music")
                     .font(.system(size: 34, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                 Text("Музыка из вашей медиатеки VK в одном плеере")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -82,6 +85,7 @@ struct ConnectView: View {
                 )
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -123,6 +127,7 @@ struct ConnectView: View {
         Label {
             Text(L10n.text(title))
                 .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: icon)
                 .foregroundStyle(settings.theme.accent)
@@ -144,6 +149,7 @@ struct ConnectView: View {
             )
             .font(.caption)
             .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 8)
     }

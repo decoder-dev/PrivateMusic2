@@ -69,7 +69,7 @@ struct LibraryView: View {
                             systemImage: "music.note",
                             description: "Добавленные во VK треки появятся здесь."
                         )
-                        .frame(height: 260)
+                        .frame(minHeight: 260)
                     } else {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(tracks.tracks.enumerated()), id: \.element.id) {
@@ -145,12 +145,15 @@ struct LibraryView: View {
                 NavigationLink {
                     ListeningHistoryView()
                 } label: {
-                    Image(systemName: "clock.arrow.circlepath")
+                    Label(
+                        "История прослушивания",
+                        systemImage: "clock.arrow.circlepath"
+                    )
                 }
                 Button {
                     showingEditor = true
                 } label: {
-                    Image(systemName: "plus")
+                    Label("Новый плейлист", systemImage: "plus")
                 }
             }
         }
@@ -253,7 +256,8 @@ struct LibraryView: View {
                             Text(pin.mixTitle)
                                 .font(.headline)
                                 .foregroundStyle(.primary)
-                                .lineLimit(1)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                             Text(
                                 L10n.format(
                                     "%d треков · продолжить",
@@ -330,7 +334,8 @@ struct LibraryView: View {
             : .black
     }
 
-    private var playlistShelf: some View {        VStack(alignment: .leading, spacing: 12) {
+    private var playlistShelf: some View {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Плейлисты")
                 .font(.title2.weight(.bold))
             ScrollView(.horizontal, showsIndicators: false) {
