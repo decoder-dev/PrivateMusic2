@@ -385,8 +385,14 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    @Published private(set) var queue: [Track] = []
-    @Published private(set) var currentIndex: Int?
+    /// Observers mirror track identity / play state into `highlight` so list
+    /// rows never have to observe the player itself (see `syncHighlight`).
+    @Published private(set) var queue: [Track] = [] {
+        didSet { syncHighlight() }
+    }
+    @Published private(set) var currentIndex: Int? {
+        didSet { syncHighlight() }
+    }
     @Published private(set) var queueSource: QueueSource?
     @Published private(set) var queueSeedTrackTitle: String?
     /// Active mix radio ordering. Owned here because it describes the
@@ -394,7 +400,9 @@ final class AudioPlayer: ObservableObject {
     /// sheet) reads one value instead of keeping its own `@State`, which
     /// let two pickers disagree about the current ordering.
     @Published private(set) var mixRadioMode: MixRadioMode = .balanced
-    @Published private(set) var isPlaying = false
+    @Published private(set) var isPlaying = false {
+        didSet { syncHighlight() }
+    }
     @Published private(set) var isBuffering = false
     /// Exact transport clock. Not `@Published` — UI observes `progress` so
     /// catalog/library EnvironmentObject consumers are not invalidated at 2 Hz.
@@ -412,6 +420,9 @@ final class AudioPlayer: ObservableObject {
 
     /// Scrubber / mini-player / lyrics clock (see `PlaybackProgressModel`).
     let progress = PlaybackProgressModel()
+    /// Row highlight state for catalog / library lists
+    /// (see `PlaybackHighlightModel`).
+    let highlight = PlaybackHighlightModel()
 
     private var player = AVPlayer()
     private let nowPlaying = NowPlayingController()
@@ -497,6 +508,16 @@ final class AudioPlayer: ObservableObject {
             return nil
         }
         return queue[currentIndex]
+    }
+
+    /// Single place that pushes track identity / play state to `highlight`.
+    /// Driven by the `queue`, `currentIndex` and `isPlaying` observers, so
+    /// every path (play, skip, queue edits, restore, stop) stays in sync.
+    private func syncHighlight() {
+        highlight.update(
+            currentTrackID: currentTrack?.id,
+            isPlaying: isPlaying
+        )
     }
 
     /// Human-readable label for what's currently queued, shown under

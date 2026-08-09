@@ -3,7 +3,6 @@ import SwiftUI
 struct PlaylistDetailView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var player: AudioPlayer
     @EnvironmentObject private var settings: AppSettings
     @ObservedObject private var offlinePlaylists =
         OfflinePlaylistStore.shared
@@ -208,7 +207,7 @@ struct PlaylistDetailView: View {
 
     private func playPlaylist() {
         guard let first = model.tracks.first else { return }
-        player.play(
+        environment.player.play(
             first,
             in: model.tracks,
             source: .playlist(title: playlist.title)
@@ -216,7 +215,7 @@ struct PlaylistDetailView: View {
     }
 
     private func shufflePlaylist() {
-        player.playShuffled(
+        environment.player.playShuffled(
             in: model.tracks,
             source: .playlist(title: playlist.title)
         )

@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import PrivateMusic
 
@@ -17,6 +18,91 @@ final class PlaybackProgressModelTests: XCTestCase {
         progress.update(12, force: true)
         progress.reset(to: 0)
         XCTAssertEqual(progress.elapsedTime, 0, accuracy: 0.000_1)
+    }
+}
+
+@MainActor
+final class PlaybackHighlightModelTests: XCTestCase {
+    func testUpdateStoresIdentityAndPlayState() {
+        let highlight = PlaybackHighlightModel()
+        XCTAssertNil(highlight.currentTrackID)
+        XCTAssertFalse(highlight.isPlaying)
+
+        highlight.update(currentTrackID: "42", isPlaying: true)
+        XCTAssertEqual(highlight.currentTrackID, "42")
+        XCTAssertTrue(highlight.isPlaying)
+        XCTAssertTrue(highlight.isCurrent("42"))
+        XCTAssertFalse(highlight.isCurrent("7"))
+    }
+
+    func testRepeatedUpdateDoesNotPublish() {
+        let highlight = PlaybackHighlightModel()
+        highlight.update(currentTrackID: "42", isPlaying: true)
+
+        var changes = 0
+        let token = highlight.objectWillChange.sink { _ in changes += 1 }
+        defer { token.cancel() }
+
+        highlight.update(currentTrackID: "42", isPlaying: true)
+        highlight.update(currentTrackID: "42", isPlaying: true)
+        XCTAssertEqual(changes, 0)
+    }
+
+    func testChangedValuePublishes() {
+        let highlight = PlaybackHighlightModel()
+        highlight.update(currentTrackID: "42", isPlaying: true)
+
+        var changes = 0
+        let token = highlight.objectWillChange.sink { _ in changes += 1 }
+        defer { token.cancel() }
+
+        // Only the play state moved: identity must not publish again.
+        highlight.update(currentTrackID: "42", isPlaying: false)
+        XCTAssertEqual(changes, 1)
+        XCTAssertFalse(highlight.isPlaying)
+
+        highlight.update(currentTrackID: nil, isPlaying: false)
+        XCTAssertEqual(changes, 2)
+        XCTAssertNil(highlight.currentTrackID)
+    }
+}
+
+@MainActor
+final class PlayerHighlightSyncTests: XCTestCase {
+    func testPlayerMirrorsQueueChangesIntoHighlight() {
+        let suite = "PlayerHighlightSyncTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let player = AudioPlayer(
+            settings: AppSettings(defaults: defaults),
+            historyStore: ListeningHistoryStore(defaults: defaults),
+            defaults: defaults
+        )
+        let first = track(id: 1)
+        let second = track(id: 2)
+        XCTAssertNil(player.highlight.currentTrackID)
+
+        player.play(first, in: [first, second])
+        XCTAssertEqual(player.highlight.currentTrackID, first.id)
+
+        player.next()
+        XCTAssertEqual(player.highlight.currentTrackID, second.id)
+
+        player.stop()
+        XCTAssertNil(player.highlight.currentTrackID)
+        XCTAssertFalse(player.highlight.isPlaying)
+    }
+
+    private func track(id: Int) -> Track {
+        Track(
+            trackID: id,
+            ownerID: 10,
+            title: "Track \(id)",
+            artist: "Artist",
+            duration: 180,
+            streamURL: URL(string: "https://example.com/\(id).mp3"),
+            artworkURL: nil
+        )
     }
 }
 
