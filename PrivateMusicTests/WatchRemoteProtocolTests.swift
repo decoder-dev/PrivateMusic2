@@ -105,7 +105,8 @@ final class WatchRemoteProtocolTests: XCTestCase {
         )
         XCTAssertEqual(earlier, later)
 
-        let advanced = WatchRemoteState(
+        // Fine-grained elapsed drift stays equal; Watch interpolates locally.
+        let withinBucket = WatchRemoteState(
             trackID: "1_2",
             title: "Track",
             artist: "Artist",
@@ -116,7 +117,20 @@ final class WatchRemoteProtocolTests: XCTestCase {
             duration: 20,
             snapshotDate: Date(timeIntervalSince1970: 104)
         )
-        XCTAssertNotEqual(earlier, advanced)
+        XCTAssertEqual(earlier, withinBucket)
+
+        let nextBucket = WatchRemoteState(
+            trackID: "1_2",
+            title: "Track",
+            artist: "Artist",
+            artworkURL: nil,
+            isPlaying: true,
+            isBuffering: false,
+            elapsed: 21,
+            duration: 20,
+            snapshotDate: Date(timeIntervalSince1970: 104)
+        )
+        XCTAssertNotEqual(earlier, nextBucket)
     }
 
     func testCommandEnvelopeRoundTripsThroughMessage() {

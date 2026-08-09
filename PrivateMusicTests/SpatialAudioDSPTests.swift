@@ -112,6 +112,20 @@ final class SpatialAudioDSPTests: XCTestCase {
         )
     }
 
+    func testSparseEqualizerSkipsFlatBands() {
+        var gains = EqualizerPreset.flat.gains
+        gains[0] = 4
+        let processor = EqualizerDSP()
+        processor.update(
+            enabled: true,
+            gains: gains,
+            preamp: 0,
+            spatialAudio: false
+        )
+        XCTAssertTrue(processor.requiresAudioTap)
+        XCTAssertEqual(processor.activeBandCountForTesting, 1)
+    }
+
     func testFlatEqualizerDoesNotInstallProcessingTap() {
         let processor = EqualizerDSP()
         processor.update(
@@ -121,6 +135,7 @@ final class SpatialAudioDSPTests: XCTestCase {
             spatialAudio: false
         )
         XCTAssertFalse(processor.requiresAudioTap)
+        XCTAssertEqual(processor.activeBandCountForTesting, 0)
         XCTAssertTrue(
             AudioProcessingRoutePolicy.allowsExternalPlayback(
                 requiresAudioTap: processor.requiresAudioTap

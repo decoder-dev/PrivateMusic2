@@ -274,8 +274,10 @@ final class OfflineTrackStore: ObservableObject {
         return localURL(for: track) == nil ? .remote : .available
     }
 
+    /// Cheap membership for list chrome. Does not `stat()` the filesystem —
+    /// `reconcile()` / playback lookup keep file presence honest.
     func contains(_ track: Track) -> Bool {
-        localURL(for: track) != nil
+        records[track.id] != nil
     }
 
     func localURL(for track: Track) -> URL? {
