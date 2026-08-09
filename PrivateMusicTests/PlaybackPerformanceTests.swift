@@ -54,3 +54,46 @@ final class RemoteCommandCoalescingTests: XCTestCase {
         )
     }
 }
+
+final class PlaybackArtworkPerformancePolicyTests: XCTestCase {
+    func testPlayerBackgroundUsesSmallBlurSource() {
+        XCTAssertLessThanOrEqual(
+            PlayerArtworkBackgroundPolicy.maxPixelSize,
+            320
+        )
+        XCTAssertLessThanOrEqual(
+            PlayerArtworkBackgroundPolicy.blurRadius,
+            48
+        )
+    }
+
+    func testNowPlayingArtworkIsBoundedForLockScreen() {
+        XCTAssertEqual(NowPlayingArtworkPolicy.maxPixelSize, 600)
+    }
+}
+
+final class WatchStatePushCoalescingPolicyTests: XCTestCase {
+    func testRegularBurstRemainsNonForced() {
+        XCTAssertFalse(
+            WatchStatePushCoalescingPolicy.mergedForce(
+                pending: false,
+                incoming: false
+            )
+        )
+    }
+
+    func testForceRemainsStickyAcrossBurst() {
+        XCTAssertTrue(
+            WatchStatePushCoalescingPolicy.mergedForce(
+                pending: true,
+                incoming: false
+            )
+        )
+        XCTAssertTrue(
+            WatchStatePushCoalescingPolicy.mergedForce(
+                pending: false,
+                incoming: true
+            )
+        )
+    }
+}
