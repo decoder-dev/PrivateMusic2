@@ -65,7 +65,7 @@ enum MixQueueRanker {
     ) -> [Track] {
         guard queue.indices.contains(currentIndex) else { return queue }
         let head = Array(queue.prefix(currentIndex + 1))
-        var remaining = Array(queue.suffix(from: currentIndex + 1))
+        let remaining = Array(queue.suffix(from: currentIndex + 1))
         guard remaining.count > 1 else { return queue }
 
         let seedArtist = normalized(seed.artist)

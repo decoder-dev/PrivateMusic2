@@ -17,6 +17,26 @@ final class MixRationaleTests: XCTestCase {
         )
     }
 
+    func testRecommendationOverlapNamesTheMostRepresentedArtist() {
+        let mixTracks = [
+            makeTrack(id: 1, artist: "Alpha"),
+            makeTrack(id: 2, artist: "Beta"),
+            makeTrack(id: 3, artist: "Beta"),
+            makeTrack(id: 4, artist: "Gamma")
+        ]
+        let rationale = MixRationaleBuilder.build(
+            mixTracks: mixTracks,
+            history: [],
+            recommendations: mixTracks
+        )
+        XCTAssertTrue(rationale.lines.contains { $0.hasSuffix("Beta") })
+        XCTAssertFalse(
+            rationale.lines.contains {
+                $0.hasSuffix("Alpha") || $0.hasSuffix("Gamma")
+            }
+        )
+    }
+
     private func makeTrack(id: Int, artist: String) -> Track {
         Track(
             trackID: id,
