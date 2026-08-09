@@ -57,6 +57,8 @@ struct ListeningHistoryView: View {
                                 Text(entry.playedAt, style: .relative)
                                     .font(.caption2)
                                     .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                                    .layoutPriority(1)
                             }
                         }
                         .buttonStyle(.plain)

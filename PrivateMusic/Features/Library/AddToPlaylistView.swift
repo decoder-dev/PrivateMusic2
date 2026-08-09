@@ -35,14 +35,16 @@ struct AddToPlaylistView: View {
                                 )
                                 VStack(alignment: .leading) {
                                     Text(playlist.title)
+                                        .lineLimit(2)
                                     Text(L10n.trackCount(playlist.count))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                     Text(playlist.source.title)
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
-                                Spacer()
+                                Spacer(minLength: 8)
                                 if savingPlaylistID == playlist.id {
                                     ProgressView()
                                 }

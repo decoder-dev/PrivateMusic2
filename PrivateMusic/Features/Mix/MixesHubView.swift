@@ -483,6 +483,7 @@ struct MixesHubView: View {
                                 .foregroundStyle(.white.opacity(0.78))
                                 .textCase(.uppercase)
                                 .tracking(0.55)
+                                .lineLimit(1)
                         }
                         .buttonStyle(.plain)
                     } else if mix.id == MusicMix.common.id {
