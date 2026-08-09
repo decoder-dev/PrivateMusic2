@@ -155,10 +155,13 @@ struct ArtistView: View {
             HStack {
                 Text(L10n.text("Треки исполнителя"))
                     .font(.headline)
-                Spacer()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 8)
                 Text(L10n.trackCount(tracks.count))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 if tracks.count > Self.trackPreviewLimit {
                     Button {
                         showsAllTracks = true
