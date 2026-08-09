@@ -22,7 +22,8 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
 
     /// `snapshotDate` is only used for Watch-side elapsed interpolation; it
     /// must not defeat push deduplication or every half-second player tick
-    /// would spam `WCSession.updateApplicationContext`.
+    /// would spam `WCSession.updateApplicationContext`. Elapsed is bucketed
+    /// the same way — the Watch extrapolates between coarse drift corrections.
     static func == (lhs: WatchRemoteState, rhs: WatchRemoteState) -> Bool {
         lhs.trackID == rhs.trackID
             && lhs.title == rhs.title
@@ -30,10 +31,18 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
             && lhs.artworkURL == rhs.artworkURL
             && lhs.isPlaying == rhs.isPlaying
             && lhs.isBuffering == rhs.isBuffering
-            && lhs.elapsed == rhs.elapsed
+            && Self.elapsedBucket(lhs.elapsed) == Self.elapsedBucket(rhs.elapsed)
             && lhs.duration == rhs.duration
             && lhs.isLiked == rhs.isLiked
             && lhs.isMixQueue == rhs.isMixQueue
+    }
+
+    /// Matches phone-side Watch drift correction cadence.
+    static let elapsedBucketSeconds: TimeInterval = 20
+
+    static func elapsedBucket(_ elapsed: TimeInterval) -> Int {
+        let width = max(Int(elapsedBucketSeconds), 1)
+        return Int(max(elapsed, 0).rounded(.down)) / width
     }
 
     static let empty = WatchRemoteState(

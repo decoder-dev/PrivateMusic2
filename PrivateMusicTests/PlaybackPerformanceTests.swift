@@ -242,6 +242,42 @@ final class WatchStatePushCoalescingPolicyTests: XCTestCase {
         )
     }
 
+    func testElapsedWithinBucketDoesNotBreakEquality() {
+        let early = WatchRemoteState(
+            trackID: "1",
+            title: "A",
+            artist: "B",
+            artworkURL: nil,
+            isPlaying: true,
+            isBuffering: false,
+            elapsed: 1,
+            duration: 180
+        )
+        let later = WatchRemoteState(
+            trackID: "1",
+            title: "A",
+            artist: "B",
+            artworkURL: nil,
+            isPlaying: true,
+            isBuffering: false,
+            elapsed: 19,
+            duration: 180
+        )
+        XCTAssertEqual(early, later)
+
+        let nextBucket = WatchRemoteState(
+            trackID: "1",
+            title: "A",
+            artist: "B",
+            artworkURL: nil,
+            isPlaying: true,
+            isBuffering: false,
+            elapsed: 21,
+            duration: 180
+        )
+        XCTAssertNotEqual(early, nextBucket)
+    }
+
     func testRegularBurstRemainsNonForced() {
         XCTAssertFalse(
             WatchStatePushCoalescingPolicy.mergedForce(
