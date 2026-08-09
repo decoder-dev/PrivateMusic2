@@ -29,6 +29,23 @@ enum MixRadioMode: String, CaseIterable, Identifiable, Sendable {
             return L10n.text("Новизна")
         }
     }
+
+    var caption: String {
+        switch self {
+        case .balanced:
+            return L10n.text(
+                "Перемешивает загруженные треки и держит артистов на расстоянии"
+            )
+        case .closerToSeed:
+            return L10n.text(
+                "Сначала ставит музыку ближе к текущему треку и недавней истории"
+            )
+        case .moreNovel:
+            return L10n.text(
+                "Даёт больше новых артистов и меньше повторов из недавнего"
+            )
+        }
+    }
 }
 
 enum MixQueueRanker {
