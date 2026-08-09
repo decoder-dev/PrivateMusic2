@@ -238,6 +238,9 @@ struct PlayerView: View {
 
     private func playerHeader(_ track: Track) -> some View {
         AdaptiveGlassContainer(spacing: 8) {
+            // Keep the title visually centered while reserving the wider
+            // trailing control cluster so long mix names truncate in the
+            // middle instead of drawing under the chevron / AirPlay buttons.
             ZStack {
                 VStack(spacing: 2) {
                     Text("СЕЙЧАС ИГРАЕТ")
@@ -247,9 +250,13 @@ struct PlayerView: View {
                     Text(player.queueContextTitle.uppercased())
                         .font(.system(size: 10, weight: .medium))
                         .lineLimit(1)
-                        .truncationMode(.tail)
+                        .minimumScaleFactor(0.85)
+                        .truncationMode(.middle)
                         .foregroundStyle(playerSecondary)
+                        .multilineTextAlignment(.center)
                 }
+                .padding(.horizontal, PlayerHeaderMetrics.titleHorizontalInset)
+                .frame(maxWidth: .infinity)
                 .accessibilityElement(children: .combine)
                 .accessibilitySortPriority(1)
 
@@ -261,8 +268,9 @@ struct PlayerView: View {
                         accessibilitySortPriority: 4,
                         action: closePlayer
                     )
+                    .frame(width: PlayerHeaderMetrics.sideClusterWidth)
 
-                    Spacer()
+                    Spacer(minLength: 0)
 
                     HStack(spacing: 8) {
                         AirPlayRoutePicker(
@@ -282,6 +290,7 @@ struct PlayerView: View {
                         actionMenuButton(track)
                             .accessibilitySortPriority(2)
                     }
+                    .frame(width: PlayerHeaderMetrics.sideClusterWidth)
                 }
             }
         }
@@ -598,47 +607,39 @@ struct PlayerView: View {
     private func quickActions(_ track: Track) -> some View {
         AdaptiveGlassContainer(spacing: 14) {
             HStack(spacing: 0) {
-                quickAction("quote.bubble", title: "Текст") {
-                    present(.lyrics(track))
-                }
-                quickAction("list.bullet", title: "Очередь") {
-                    present(.queue)
-                }
-                quickAction(
-                    "rectangle.stack.badge.plus",
-                    title: "Плейлист"
-                ) {
-                    present(.playlists(track))
-                }
-                quickAction(
-                    "square.and.arrow.up",
-                    title: "Поделиться файлом"
-                ) {
-                    startShare(track)
+                ForEach(PlayerQuickAction.allCases) { item in
+                    quickAction(item) {
+                        switch item {
+                        case .lyrics: present(.lyrics(track))
+                        case .queue: present(.queue)
+                        case .playlist: present(.playlists(track))
+                        case .share: startShare(track)
+                        }
+                    }
                 }
             }
         }
     }
 
     private func quickAction(
-        _ image: String,
-        title: String,
+        _ item: PlayerQuickAction,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             VStack(spacing: 5) {
-                quickActionGlyph(image)
-                Text(L10n.text(title))
+                quickActionGlyph(item.systemImage)
+                Text(L10n.text(item.title))
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.72)
+                    .padding(.horizontal, 2)
             }
             .foregroundStyle(playerForeground.opacity(0.72))
             .frame(maxWidth: .infinity)
             .frame(minHeight: 61)
         }
         .buttonStyle(PlayerControlStyle())
-        .accessibilityLabel(L10n.text(title))
+        .accessibilityLabel(L10n.text(item.accessibilityLabel))
     }
 
     @ViewBuilder
@@ -1427,6 +1428,50 @@ enum PlayerArtworkCarouselPolicy {
             next = repeatMode == .all ? 0 : nil
         }
         return NeighborIndices(previous: previous, next: next)
+    }
+}
+
+enum PlayerHeaderMetrics {
+    /// Matches the trailing AirPlay + overflow cluster so the centered
+    /// "now playing" title never draws under either side control.
+    static let sideClusterWidth: CGFloat = 96
+    static let titleHorizontalInset: CGFloat = sideClusterWidth + 8
+}
+
+enum PlayerQuickAction: String, CaseIterable, Identifiable {
+    case lyrics
+    case queue
+    case playlist
+    case share
+
+    var id: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .lyrics: "quote.bubble"
+        case .queue: "list.bullet"
+        case .playlist: "rectangle.stack.badge.plus"
+        case .share: "square.and.arrow.up"
+        }
+    }
+
+    /// Visible dock caption — keep short so four equal columns fit Russian.
+    var title: String {
+        switch self {
+        case .lyrics: "Текст"
+        case .queue: "Очередь"
+        case .playlist: "Плейлист"
+        case .share: "Поделиться"
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .lyrics, .queue, .playlist:
+            return title
+        case .share:
+            return "Поделиться файлом"
+        }
     }
 }
 

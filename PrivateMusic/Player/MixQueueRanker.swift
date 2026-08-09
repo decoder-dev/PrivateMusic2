@@ -17,6 +17,18 @@ enum MixRadioMode: String, CaseIterable, Identifiable, Sendable {
             return L10n.text("Больше новизны")
         }
     }
+
+    /// Segmented pickers clip the full titles on compact widths.
+    var compactTitle: String {
+        switch self {
+        case .balanced:
+            return L10n.text("Баланс")
+        case .closerToSeed:
+            return L10n.text("Ближе")
+        case .moreNovel:
+            return L10n.text("Новизна")
+        }
+    }
 }
 
 enum MixQueueRanker {

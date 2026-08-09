@@ -565,5 +565,7 @@
 "Баланс" = "Balanced";
 "Ближе к треку" = "Closer to Track";
 "Больше новизны" = "More Novelty";
+"Ближе" = "Closer";
+"Новизна" = "Novelty";
 "%@ · совпадение %d%%" = "%@ · %d%% match";
 "VK ещё не подготовил тематические подборки для вашего аккаунта — загляните позже или откройте Селену." = "VK has not prepared themed mixes for your account yet — check back later or open Selena.";
