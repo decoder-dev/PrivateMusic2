@@ -677,4 +677,9 @@
 "Сначала ставит музыку ближе к текущему треку и недавней истории" = "Prioritizes music closer to the current track and recent history";
 "Социальный" = "Social";
 "Станция Селены" = "Selena Station";
+"Переключить вид списка" = "Toggle list layout";
+"Сортировка" = "Sort";
+"По умолчанию" = "Default";
+"По совпадению" = "By Match";
+"По числу треков" = "By Track Count";
 "совпадение %d%%" = "%d%% match";
