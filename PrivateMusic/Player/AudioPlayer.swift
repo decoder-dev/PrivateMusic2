@@ -217,6 +217,37 @@ enum AudioProcessingAttachPolicy {
     static let postResetAdvanceSuppression: TimeInterval = 8
 }
 
+/// Exact seeks force AVFoundation to decode to a precise frame — expensive on
+/// remote / HLS streams and a common source of scrub stalls. Local files can
+/// stay frame-accurate cheaply.
+enum PlaybackSeekTolerancePolicy {
+    static let remoteToleranceSeconds: TimeInterval = 0.35
+
+    static func tolerance(isOffline: Bool) -> CMTime {
+        if isOffline { return .zero }
+        return CMTime(
+            seconds: remoteToleranceSeconds,
+            preferredTimescale: 600
+        )
+    }
+}
+
+/// Now Playing Center interpolates elapsed time from rate; writing the info
+/// dictionary every second is pure XPC churn. Correct drift occasionally.
+enum NowPlayingDriftPolicy {
+    static let correctionIntervalSeconds = 30
+
+    static func shouldPublish(
+        elapsedSeconds: Int,
+        lastPublishedSecond: Int,
+        force: Bool
+    ) -> Bool {
+        if force { return true }
+        guard elapsedSeconds != lastPublishedSecond else { return false }
+        return elapsedSeconds % correctionIntervalSeconds == 0
+    }
+}
+
 enum PlaybackPreloadPolicy {
     static let maximumAge: TimeInterval = 5 * 60
 
@@ -1097,7 +1128,16 @@ final class AudioPlayer: ObservableObject {
             seconds: targetSeconds,
             preferredTimescale: 600
         )
-        player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
+        let isOffline = loadedOfflineTrackID != nil
+            && loadedOfflineTrackID == currentTrack?.id
+        let tolerance = PlaybackSeekTolerancePolicy.tolerance(
+            isOffline: isOffline
+        )
+        player.seek(
+            to: target,
+            toleranceBefore: tolerance,
+            toleranceAfter: tolerance
+        )
         updateElapsedTime(targetSeconds, forceProgressPublish: true)
         persistPlayback()
         publishPlaybackState(force: true)
@@ -2144,7 +2184,13 @@ final class AudioPlayer: ObservableObject {
 
     private func publishPlaybackState(force: Bool = false) {
         let second = Int(elapsedTime.rounded(.down))
-        guard force || second != lastNowPlayingSecond else { return }
+        guard NowPlayingDriftPolicy.shouldPublish(
+            elapsedSeconds: second,
+            lastPublishedSecond: lastNowPlayingSecond,
+            force: force
+        ) else {
+            return
+        }
         lastNowPlayingSecond = second
         nowPlaying.updatePlayback(
             elapsedTime: elapsedTime,
