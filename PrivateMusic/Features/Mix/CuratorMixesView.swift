@@ -15,6 +15,7 @@ struct CuratorMixesView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(curator.displayName)
                             .font(.headline)
+                            .lineLimit(2)
                         Text(
                             L10n.format(
                                 "%d миксов со вкусом",
