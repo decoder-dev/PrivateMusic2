@@ -239,9 +239,10 @@ struct PlayerView: View {
 
     private func playerHeader(_ track: Track) -> some View {
         AdaptiveGlassContainer(spacing: 8) {
-            // Keep the title visually centered while reserving the wider
-            // trailing control cluster so long mix names truncate in the
-            // middle instead of drawing under the chevron / AirPlay buttons.
+            // Keep the title visually centered while reserving the trailing
+            // AirPlay + menu cluster so long mix names truncate in the
+            // middle instead of drawing under those controls. Dismiss is
+            // swipe-down / accessibility escape — no leading chevron.
             ZStack {
                 VStack(spacing: 2) {
                     Text("СЕЙЧАС ИГРАЕТ")
@@ -262,14 +263,9 @@ struct PlayerView: View {
                 .accessibilitySortPriority(1)
 
                 HStack {
-                    playerGlassIconButton(
-                        systemImage: "chevron.down",
-                        font: .system(size: 15, weight: .bold),
-                        accessibilityLabel: "Закрыть плеер",
-                        accessibilitySortPriority: 4,
-                        action: closePlayer
-                    )
-                    .frame(width: PlayerHeaderMetrics.sideClusterWidth)
+                    Color.clear
+                        .frame(width: PlayerHeaderMetrics.sideClusterWidth)
+                        .accessibilityHidden(true)
 
                     Spacer(minLength: 0)
 
@@ -1438,8 +1434,8 @@ enum PlayerArtworkBackgroundPolicy {
 }
 
 enum PlayerHeaderMetrics {
-    /// Matches the trailing AirPlay + overflow cluster so the centered
-    /// "now playing" title never draws under either side control.
+    /// Matches the trailing AirPlay + overflow cluster; leading spacer uses
+    /// the same width so the centered "now playing" title stays balanced.
     static let sideClusterWidth: CGFloat = 96
     static let titleHorizontalInset: CGFloat = sideClusterWidth + 8
 }
