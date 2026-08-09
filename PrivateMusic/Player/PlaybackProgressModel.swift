@@ -29,6 +29,35 @@ final class PlaybackProgressModel: ObservableObject {
     }
 }
 
+/// Track identity + play state for dense list rows, isolated from
+/// `AudioPlayer`'s EnvironmentObject fan-out the same way the model above
+/// isolates the clock: buffering / duration / shuffle changes on the player
+/// must not invalidate every visible row.
+@MainActor
+final class PlaybackHighlightModel: ObservableObject {
+    @Published private(set) var currentTrackID: String?
+    @Published private(set) var isPlaying = false
+
+    /// No-op when nothing changed: the player mirrors its state here on every
+    /// queue / index / transport mutation, and most of those repeat the same
+    /// pair of values.
+    func update(
+        currentTrackID: String?,
+        isPlaying: Bool
+    ) {
+        if self.currentTrackID != currentTrackID {
+            self.currentTrackID = currentTrackID
+        }
+        if self.isPlaying != isPlaying {
+            self.isPlaying = isPlaying
+        }
+    }
+
+    func isCurrent(_ trackID: String) -> Bool {
+        currentTrackID == trackID
+    }
+}
+
 /// Merges bursty lock-screen / headphone remote commands so pause+toggle
 /// does not immediately undo itself.
 enum RemoteCommandCoalescing {
