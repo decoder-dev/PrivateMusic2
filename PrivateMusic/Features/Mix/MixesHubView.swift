@@ -20,6 +20,7 @@ struct MixesHubView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
+    @EnvironmentObject private var highlight: PlaybackHighlightModel
     @EnvironmentObject private var homeCatalog: HomeCatalogStore
     @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
     @EnvironmentObject private var history: ListeningHistoryStore
@@ -712,9 +713,9 @@ struct MixesHubView: View {
                             .padding(8)
                         }
                     Group {
-                        if player.currentTrack?.id == track.id {
+                        if highlight.isCurrent(track.id) {
                             PlaybackIndicatorView(
-                                isPlaying: player.isPlaying,
+                                isPlaying: highlight.isPlaying,
                                 color: .black
                             )
                         } else {

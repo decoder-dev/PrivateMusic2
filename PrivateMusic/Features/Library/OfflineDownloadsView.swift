@@ -2,7 +2,10 @@ import SwiftUI
 
 struct OfflineDownloadsView: View {
     @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var player: AudioPlayer
+    /// Highlight only: observing `AudioPlayer` here would rebuild the whole
+    /// downloads list on every buffering / duration tick. Playback actions go
+    /// through `environment.player`.
+    @EnvironmentObject private var highlight: PlaybackHighlightModel
     @EnvironmentObject private var offlineStore: OfflineTrackStore
     @EnvironmentObject private var sessionStore: SessionStore
     @ObservedObject private var offlinePlaylists =
@@ -137,7 +140,7 @@ struct OfflineDownloadsView: View {
                 record: record,
                 localURL: offlineStore.localURL(for: record.track),
                 onPlay: {
-                    player.play(
+                    environment.player.play(
                         record.track,
                         in: validRecords.map(\.track)
                     )
@@ -452,14 +455,14 @@ struct OfflineDownloadsView: View {
     ) -> some View {
         DownloadedTrackRow(
             record: record,
-            isPlaying: player.currentTrack?.id == record.track.id,
+            isPlaying: highlight.isCurrent(record.track.id),
             isSelectionMode: selection != nil,
             isSelected: selection?.contains(record.track.id) == true,
             onPlay: {
                 if selection != nil {
                     toggleSelection(record.track)
                 } else {
-                    player.play(
+                    environment.player.play(
                         record.track,
                         in: validRecords.map(\.track)
                     )
@@ -542,7 +545,7 @@ struct OfflineDownloadsView: View {
                     offlineStore.record(for: $0)
                 },
                 onPlay: { record in
-                    player.play(
+                    environment.player.play(
                         record.track,
                         in: section.tracks
                     )
@@ -629,7 +632,7 @@ struct OfflineDownloadsView: View {
     // MARK: - Playlist detail
 
     private struct PlaylistDownloadsDetailView: View {
-        @EnvironmentObject private var player: AudioPlayer
+        @EnvironmentObject private var highlight: PlaybackHighlightModel
 
         let title: String
         let records: [OfflineTrackRecord]
@@ -657,8 +660,9 @@ struct OfflineDownloadsView: View {
                         ForEach(records) { record in
                             DownloadedTrackRow(
                                 record: record,
-                                isPlaying: player.currentTrack?.id
-                                    == record.track.id,
+                                isPlaying: highlight.isCurrent(
+                                    record.track.id
+                                ),
                                 isSelectionMode: false,
                                 isSelected: false,
                                 onPlay: { onPlay(record) },
