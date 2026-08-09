@@ -170,31 +170,39 @@ final class PlayerLayoutMetricsTests: XCTestCase {
     }
 
     func testMixRadioCompactTitlesStayShortForSegmentedPicker() throws {
-        for mode in MixRadioMode.allCases {
+        // Lookup by Russian keys — L10n may already resolve titles to English
+        // on CI, so mode.compactTitle/title are not safe dictionary keys.
+        let cases: [(mode: MixRadioMode, compactKey: String, titleKey: String)] = [
+            (.balanced, "Баланс", "Баланс"),
+            (.closerToSeed, "Ближе", "Ближе к треку"),
+            (.moreNovel, "Новизна", "Больше новизны"),
+        ]
+        for item in cases {
             for locale in Self.shippedLocales {
                 let compactTitle = try Self.localized(
-                    mode.compactTitle,
+                    item.compactKey,
                     locale: locale
                 )
-                let title = try Self.localized(mode.title, locale: locale)
+                let title = try Self.localized(item.titleKey, locale: locale)
                 XCTAssertLessThan(
                     compactTitle.count,
                     title.count + 1,
-                    "\(mode) compact title is not shorter in \(locale)"
+                    "\(item.mode) compact title is not shorter in \(locale)"
                 )
                 XCTAssertLessThanOrEqual(
                     compactTitle.count,
                     8,
-                    "\(mode) compact title is too long in \(locale)"
+                    "\(item.mode) compact title is too long in \(locale)"
                 )
             }
         }
 
         XCTAssertEqual(
-            try Self.localized(
-                MixRadioMode.balanced.compactTitle,
-                locale: "en"
-            ).count,
+            try Self.localized("Баланс", locale: "en"),
+            "Balanced"
+        )
+        XCTAssertEqual(
+            try Self.localized("Баланс", locale: "en").count,
             8,
             "Balanced must remain within the segmented picker budget"
         )
