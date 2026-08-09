@@ -16,7 +16,27 @@ final class EqualizerDSP: @unchecked Sendable {
         let a2: Float
     }
 
+    private struct BuiltCoefficients {
+        let equalizer: [Coefficients]
+        let preamp: Float
+        let loudnessGain: Float
+        let compressorThreshold: Float
+        let compressorRatio: Float
+        let compressorMakeupGain: Float
+        let boomCut: Coefficients?
+        let sideHighPass: Coefficients
+    }
+
+    private struct CoefficientConfiguration {
+        let gains: [Double]
+        let preampDB: Double
+        let loudnessNormEnabled: Bool
+        let outputProfile: PlaybackOutputToneProfile
+        let sampleRate: Double
+    }
+
     private let lock = NSLock()
+    private var coefficientRevision = 0
     private var enabled = false
     private var gains = [Double](repeating: 0, count: 10)
     private var preampDB = 0.0
@@ -71,8 +91,19 @@ final class EqualizerDSP: @unchecked Sendable {
         lock.lock()
         let changed = outputProfile != profile
         outputProfile = profile
-        if changed {
-            rebuildToneShapingCoefficients()
+        guard changed else {
+            lock.unlock()
+            return
+        }
+        coefficientRevision &+= 1
+        let revision = coefficientRevision
+        let configuration = coefficientConfiguration
+        lock.unlock()
+
+        let built = Self.buildCoefficients(configuration)
+        lock.lock()
+        if coefficientRevision == revision {
+            apply(built)
             boomCutStates = [Float](repeating: 0, count: 8)
             sideHighPassState = [Float](repeating: 0, count: 4)
         }
@@ -105,8 +136,19 @@ final class EqualizerDSP: @unchecked Sendable {
         drcEnabled = dynamicRangeCompression
         spatialAudioEnabled = spatialAudio
         spatialAudioIntensity = min(max(spatialIntensity, 0), 1)
-        if rebuildRequired {
-            rebuildCoefficients()
+        guard rebuildRequired else {
+            lock.unlock()
+            return
+        }
+        coefficientRevision &+= 1
+        let revision = coefficientRevision
+        let configuration = coefficientConfiguration
+        lock.unlock()
+
+        let built = Self.buildCoefficients(configuration)
+        lock.lock()
+        if coefficientRevision == revision {
+            apply(built)
         }
         lock.unlock()
     }
@@ -161,6 +203,7 @@ final class EqualizerDSP: @unchecked Sendable {
         )
         boomCutStates = [Float](repeating: 0, count: max(channelCount, 2) * 4)
         sideHighPassState = [Float](repeating: 0, count: 4)
+        coefficientRevision &+= 1
         rebuildCoefficients()
         lock.unlock()
     }
@@ -181,9 +224,11 @@ final class EqualizerDSP: @unchecked Sendable {
         guard frameCount > 0 else { return }
         lock.lock()
         defer { lock.unlock() }
+        let equalizerActive = hasActiveEqualizerProcessing
+        let spatialAudioActive = isSpatialAudioActive
         let clarityActive = outputProfile.needsClarityProcessing
         guard supportsProcessing,
-              enabled || isSpatialAudioActive || clarityActive else {
+              equalizerActive || spatialAudioActive || clarityActive else {
             return
         }
 
@@ -192,7 +237,7 @@ final class EqualizerDSP: @unchecked Sendable {
            !hasSignificantFilterState {
             return
         }
-        if enabled, !coefficients.isEmpty {
+        if equalizerActive, !coefficients.isEmpty {
             processEqualizer(
                 buffers: buffers,
                 frameCount: frameCount
@@ -204,7 +249,7 @@ final class EqualizerDSP: @unchecked Sendable {
                 frameCount: frameCount
             )
         }
-        if isSpatialAudioActive {
+        if spatialAudioActive {
             processSpatialAudio(
                 buffers: buffers,
                 frameCount: frameCount
@@ -476,45 +521,79 @@ final class EqualizerDSP: @unchecked Sendable {
         spatialAudioEnabled && spatialAudioIntensity > 0.000_1
     }
 
-    private func rebuildCoefficients() {
-        let headroom = max(gains.max() ?? 0, 0)
-        preamp = Float(pow(10, (preampDB - headroom) / 20))
-        coefficients = zip(Self.frequencies, gains).map {
-            peakingCoefficients(
-                frequency: $0.0,
-                gain: $0.1,
-                sampleRate: sampleRate
-            )
-        }
-        // Target: -14 LUFS (Spotify/streaming standard)
-        // Simple gain offset assuming typical VK stream at ~-10 LUFS
-        loudnessNormEnabled
-            ? { loudnessGain = Float(pow(10, -4.0 / 20)) }()
-            : { loudnessGain = 1.0 }()
-        compressorThreshold = 0.6
-        compressorRatio = 3.0
-        compressorMakeupGain = loudnessNormEnabled ? 1.5 : 1.2
-        envelope = 0
-        rebuildToneShapingCoefficients()
-    }
-
-    private func rebuildToneShapingCoefficients() {
-        if outputProfile.needsClarityProcessing {
-            boomCutCoefficients = lowShelfCoefficients(
-                frequency: 140,
-                gain: outputProfile.boomCutDB,
-                sampleRate: sampleRate
-            )
-        } else {
-            boomCutCoefficients = nil
-        }
-        sideHighPassCoefficients = highPassCoefficients(
-            frequency: SpatialAudioDSP.sideHighPassFrequency,
+    /// Access only while holding `lock`.
+    private var coefficientConfiguration: CoefficientConfiguration {
+        CoefficientConfiguration(
+            gains: gains,
+            preampDB: preampDB,
+            loudnessNormEnabled: loudnessNormEnabled,
+            outputProfile: outputProfile,
             sampleRate: sampleRate
         )
     }
 
-    private func peakingCoefficients(
+    private func rebuildCoefficients() {
+        apply(Self.buildCoefficients(coefficientConfiguration))
+    }
+
+    private static func buildCoefficients(
+        _ configuration: CoefficientConfiguration
+    ) -> BuiltCoefficients {
+        let headroom = max(configuration.gains.max() ?? 0, 0)
+        let preamp = Float(
+            pow(10, (configuration.preampDB - headroom) / 20)
+        )
+        let equalizer = zip(Self.frequencies, configuration.gains).map {
+            Self.peakingCoefficients(
+                frequency: $0.0,
+                gain: $0.1,
+                sampleRate: configuration.sampleRate
+            )
+        }
+        // Target: -14 LUFS (Spotify/streaming standard)
+        // Simple gain offset assuming typical VK stream at ~-10 LUFS
+        let loudnessGain = configuration.loudnessNormEnabled
+            ? Float(pow(10, -4.0 / 20))
+            : 1.0
+        let boomCut: Coefficients?
+        if configuration.outputProfile.needsClarityProcessing {
+            boomCut = Self.lowShelfCoefficients(
+                frequency: 140,
+                gain: configuration.outputProfile.boomCutDB,
+                sampleRate: configuration.sampleRate
+            )
+        } else {
+            boomCut = nil
+        }
+        return BuiltCoefficients(
+            equalizer: equalizer,
+            preamp: preamp,
+            loudnessGain: loudnessGain,
+            compressorThreshold: 0.6,
+            compressorRatio: 3.0,
+            compressorMakeupGain: configuration.loudnessNormEnabled ? 1.5 : 1.2,
+            boomCut: boomCut,
+            sideHighPass: Self.highPassCoefficients(
+                frequency: SpatialAudioDSP.sideHighPassFrequency,
+                sampleRate: configuration.sampleRate
+            )
+        )
+    }
+
+    /// Access only while holding `lock`.
+    private func apply(_ built: BuiltCoefficients) {
+        coefficients = built.equalizer
+        preamp = built.preamp
+        loudnessGain = built.loudnessGain
+        compressorThreshold = built.compressorThreshold
+        compressorRatio = built.compressorRatio
+        compressorMakeupGain = built.compressorMakeupGain
+        boomCutCoefficients = built.boomCut
+        sideHighPassCoefficients = built.sideHighPass
+        envelope = 0
+    }
+
+    private static func peakingCoefficients(
         frequency: Double,
         gain: Double,
         sampleRate: Double
@@ -535,7 +614,7 @@ final class EqualizerDSP: @unchecked Sendable {
         )
     }
 
-    private func lowShelfCoefficients(
+    private static func lowShelfCoefficients(
         frequency: Double,
         gain: Double,
         sampleRate: Double
@@ -589,7 +668,7 @@ final class EqualizerDSP: @unchecked Sendable {
         )
     }
 
-    private func highPassCoefficients(
+    private static func highPassCoefficients(
         frequency: Double,
         sampleRate: Double
     ) -> Coefficients {

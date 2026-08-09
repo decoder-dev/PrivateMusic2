@@ -58,7 +58,11 @@ final class NowPlayingController {
                 guard !Task.isCancelled,
                       let http = response as? HTTPURLResponse,
                       (200..<300).contains(http.statusCode),
-                      let image = UIImage(data: data) else {
+                      let image = await ArtworkImageCache.downsample(
+                        data,
+                        maxPixelSize: NowPlayingArtworkPolicy.maxPixelSize
+                      ),
+                      !Task.isCancelled else {
                     return
                 }
                 let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in
@@ -102,4 +106,8 @@ final class NowPlayingController {
         center.nowPlayingInfo = nil
         center.playbackState = .stopped
     }
+}
+
+enum NowPlayingArtworkPolicy {
+    static let maxPixelSize: CGFloat = 600
 }
