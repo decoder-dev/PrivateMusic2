@@ -337,6 +337,7 @@ struct MixesHubView: View {
                 .padding(8)
                 .disabled(loadingMixID != nil)
                 .accessibilityLabel(L10n.text("Воспроизвести микс"))
+                .accessibilityValue(mix.title)
             }
 
             Button {
@@ -348,7 +349,8 @@ struct MixesHubView: View {
                         .foregroundStyle(
                             isSelected ? settings.theme.accent : .primary
                         )
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(cardSubtitle(for: mix))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -397,7 +399,8 @@ struct MixesHubView: View {
                         Text(pin.mixTitle)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(
                             L10n.format(
                                 "%d треков · продолжить",
@@ -433,6 +436,9 @@ struct MixesHubView: View {
                 }
             }
             .accessibilityLabel(L10n.text("Слушать позже"))
+            .accessibilityValue(
+                "\(pin.mixTitle), \(L10n.trackCount(pin.tracks.count))"
+            )
         }
     }
 
@@ -542,6 +548,7 @@ struct MixesHubView: View {
         .buttonStyle(PremiumPressStyle())
         .disabled(loadingMixID != nil)
         .accessibilityLabel(L10n.text("Воспроизвести микс"))
+        .accessibilityValue(mix.title)
         .contextMenu {
             Button { start(mix) } label: {
                 Label("Воспроизвести микс", systemImage: "play.fill")
@@ -608,6 +615,8 @@ struct MixesHubView: View {
                         systemImage: "play.fill"
                     )
                     .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(loadingMixID != nil)
@@ -622,6 +631,8 @@ struct MixesHubView: View {
                             : "bookmark"
                     )
                     .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 }
                 .buttonStyle(.bordered)
                 .disabled(tracks.isEmpty)
@@ -1014,6 +1025,8 @@ struct MixesHubView: View {
                 } label: {
                     Text(L10n.text("Открыть Селену"))
                         .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 .buttonStyle(.borderedProminent)
                 Button {
@@ -1021,6 +1034,8 @@ struct MixesHubView: View {
                 } label: {
                     Text(L10n.text("Обновить"))
                         .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 .buttonStyle(.bordered)
                 .disabled(isLoading)

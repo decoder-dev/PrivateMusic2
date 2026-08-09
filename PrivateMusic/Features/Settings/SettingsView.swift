@@ -1052,7 +1052,8 @@ private struct ConnectionSettingsView: View {
                         networkTitle,
                         systemImage: networkIcon
                     )
-                    .lineLimit(1)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
                     .foregroundStyle(networkTint)
                 }
                 .padding(.vertical, 2)
