@@ -294,7 +294,7 @@ struct SearchView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Выполняется поиск")
+        .accessibilityLabel(L10n.text("Выполняется поиск"))
     }
 
     private var searchResults: some View {

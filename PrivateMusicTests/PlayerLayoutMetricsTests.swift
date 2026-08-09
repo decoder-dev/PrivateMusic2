@@ -3,6 +3,8 @@ import XCTest
 @testable import PrivateMusic
 
 final class PlayerLayoutMetricsTests: XCTestCase {
+    private static let shippedLocales = ["ru", "en"]
+
     func testPortraitMetricsFitReferencePhoneSizes() {
         let sizes = [
             CGSize(width: 320, height: 568),
@@ -145,32 +147,57 @@ final class PlayerLayoutMetricsTests: XCTestCase {
         )
     }
 
-    func testQuickActionShareCaptionFitsFourColumnDock() {
-        XCTAssertEqual(PlayerQuickAction.share.title, "Поделиться")
-        XCTAssertEqual(
-            PlayerQuickAction.share.accessibilityLabel,
-            "Поделиться файлом"
-        )
+    func testQuickActionCaptionsFitFourColumnDockInShippedLocalizations() throws {
         for action in PlayerQuickAction.allCases {
-            XCTAssertLessThanOrEqual(
-                action.title.count,
-                12,
-                "\(action) caption is too long for the player dock"
-            )
+            for locale in Self.shippedLocales {
+                let title = try Self.localized(action.title, locale: locale)
+                XCTAssertLessThanOrEqual(
+                    title.count,
+                    12,
+                    "\(action) caption is too long for the player dock in \(locale)"
+                )
+
+                let accessibilityLabel = try Self.localized(
+                    action.accessibilityLabel,
+                    locale: locale
+                )
+                XCTAssertFalse(
+                    accessibilityLabel.isEmpty,
+                    "\(action) accessibility label is empty in \(locale)"
+                )
+            }
         }
     }
 
-    func testMixRadioCompactTitlesStayShortForSegmentedPicker() {
-        XCTAssertEqual(MixRadioMode.balanced.compactTitle, "Баланс")
-        XCTAssertEqual(MixRadioMode.closerToSeed.compactTitle, "Ближе")
-        XCTAssertEqual(MixRadioMode.moreNovel.compactTitle, "Новизна")
+    func testMixRadioCompactTitlesStayShortForSegmentedPicker() throws {
         for mode in MixRadioMode.allCases {
-            XCTAssertLessThan(
-                mode.compactTitle.count,
-                mode.title.count + 1
-            )
-            XCTAssertLessThanOrEqual(mode.compactTitle.count, 8)
+            for locale in Self.shippedLocales {
+                let compactTitle = try Self.localized(
+                    mode.compactTitle,
+                    locale: locale
+                )
+                let title = try Self.localized(mode.title, locale: locale)
+                XCTAssertLessThan(
+                    compactTitle.count,
+                    title.count + 1,
+                    "\(mode) compact title is not shorter in \(locale)"
+                )
+                XCTAssertLessThanOrEqual(
+                    compactTitle.count,
+                    8,
+                    "\(mode) compact title is too long in \(locale)"
+                )
+            }
         }
+
+        XCTAssertEqual(
+            try Self.localized(
+                MixRadioMode.balanced.compactTitle,
+                locale: "en"
+            ).count,
+            8,
+            "Balanced must remain within the segmented picker budget"
+        )
     }
 
     func testPortraitMetricsDoNotJumpAtLayoutModeBoundaries() {
@@ -199,6 +226,49 @@ final class PlayerLayoutMetricsTests: XCTestCase {
                 1,
                 "Vertical spacing jumps around height \(boundary)"
             )
+        }
+    }
+
+    private static func localized(
+        _ key: String,
+        locale: String,
+        filePath: String = #filePath
+    ) throws -> String {
+        let sourceRoot = URL(fileURLWithPath: filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let url = sourceRoot
+            .appendingPathComponent("PrivateMusic")
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("\(locale).lproj")
+            .appendingPathComponent("Localizable.strings")
+        let data = try Data(contentsOf: url)
+        var format = PropertyListSerialization.PropertyListFormat.openStep
+        let plist = try PropertyListSerialization.propertyList(
+            from: data,
+            options: [],
+            format: &format
+        )
+        guard let strings = plist as? [String: String] else {
+            throw LocalizationFixtureError.invalidStringsFile(url.path)
+        }
+        guard let value = strings[key] else {
+            throw LocalizationFixtureError.missingKey(key, locale)
+        }
+        return value
+    }
+}
+
+private enum LocalizationFixtureError: Error, CustomStringConvertible {
+    case invalidStringsFile(String)
+    case missingKey(String, String)
+
+    var description: String {
+        switch self {
+        case .invalidStringsFile(let path):
+            return "Invalid strings file: \(path)"
+        case .missingKey(let key, let locale):
+            return "Missing \(locale) localization for \(key)"
         }
     }
 }
