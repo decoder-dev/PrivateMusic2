@@ -2,7 +2,9 @@ import SwiftUI
 
 struct ListeningHistoryView: View {
     @EnvironmentObject private var history: ListeningHistoryStore
-    @EnvironmentObject private var player: AudioPlayer
+    /// Playback is only triggered from here — observing `AudioPlayer` would
+    /// rebuild the whole history list on every buffering / duration tick.
+    @EnvironmentObject private var environment: AppEnvironment
     @State private var query = ""
     @State private var showingClearConfirmation = false
 
@@ -29,7 +31,7 @@ struct ListeningHistoryView: View {
                 List {
                     ForEach(filtered) { entry in
                         Button {
-                            player.play(
+                            environment.player.play(
                                 entry.track,
                                 in: history.entries.map(\.track),
                                 source: .history

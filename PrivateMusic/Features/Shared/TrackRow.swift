@@ -3,7 +3,11 @@ import Foundation
 
 struct TrackRow: View {
     @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var player: AudioPlayer
+    /// Rows deliberately do not observe `AudioPlayer`: its buffering /
+    /// duration / shuffle updates would invalidate every visible cell.
+    /// Identity + play state come from `highlight`, actions go through
+    /// `environment.player`.
+    @EnvironmentObject private var highlight: PlaybackHighlightModel
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var offlineStore: OfflineTrackStore
     @EnvironmentObject private var mixFeedbackStore: MixFeedbackStore
@@ -15,7 +19,7 @@ struct TrackRow: View {
     var body: some View {
         Button {
             Haptics.selection()
-            player.play(track, in: queue, source: source)
+            environment.player.play(track, in: queue, source: source)
         } label: {
             HStack(spacing: 12) {
                 AsyncArtwork(url: track.artworkURL, size: 48)
@@ -63,7 +67,7 @@ struct TrackRow: View {
                 Group {
                     if isCurrent {
                         PlaybackIndicatorView(
-                            isPlaying: player.isPlaying,
+                            isPlaying: highlight.isPlaying,
                             color: currentTrackColor
                         )
                     } else {
@@ -98,7 +102,7 @@ struct TrackRow: View {
         .trackShareSheet(track: $sharingTrack)
         .contextMenu {
             Button {
-                player.playNext(track)
+                environment.player.playNext(track)
             } label: {
                 Label(
                     "Играть следующим",
@@ -107,8 +111,8 @@ struct TrackRow: View {
             }
             Button {
                 Haptics.open()
-                player.play(track, in: queue, source: source)
-                player.presentPlayer()
+                environment.player.play(track, in: queue, source: source)
+                environment.player.presentPlayer()
             } label: {
                 Label("Открыть плеер", systemImage: "play.circle")
             }
@@ -150,7 +154,7 @@ struct TrackRow: View {
     }
 
     private var isCurrent: Bool {
-        player.currentTrack?.id == track.id
+        highlight.isCurrent(track.id)
     }
 
     private var currentTrackColor: Color {
@@ -191,7 +195,7 @@ struct TrackRow: View {
             } catch is CancellationError {
                 return
             } catch {
-                player.errorMessage = L10n.format(
+                environment.player.errorMessage = L10n.format(
                     "Не удалось сохранить трек офлайн: %@",
                     error.localizedDescription
                 )

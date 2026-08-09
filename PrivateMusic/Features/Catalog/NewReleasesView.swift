@@ -3,7 +3,6 @@ import SwiftUI
 struct NewReleasesView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var player: AudioPlayer
     let albums: [Album]
 
     @State private var loadingPlayAlbumID: String?
@@ -109,7 +108,7 @@ struct NewReleasesView: View {
                 let title = Album.isUsableTitle(album.title)
                     ? album.title
                     : L10n.text("Альбом")
-                player.play(
+                environment.player.play(
                     first,
                     in: page.items,
                     source: .album(title: title)
