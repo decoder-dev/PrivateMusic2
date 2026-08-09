@@ -1432,11 +1432,11 @@ enum PlayerArtworkCarouselPolicy {
     }
 }
 
-<<<<<<< HEAD
 enum PlayerArtworkBackgroundPolicy {
     static let maxPixelSize: CGFloat = 320
     static let blurRadius: CGFloat = 44
-=======
+}
+
 enum PlayerHeaderMetrics {
     /// Matches the trailing AirPlay + overflow cluster so the centered
     /// "now playing" title never draws under either side control.
@@ -1479,7 +1479,6 @@ enum PlayerQuickAction: String, CaseIterable, Identifiable {
             return "Поделиться файлом"
         }
     }
->>>>>>> origin/cursor/ui-text-overflow-bc40
 }
 
 private struct PlayerActionsSheet: View {
