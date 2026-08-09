@@ -137,6 +137,42 @@ final class PlayerLayoutMetricsTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(metrics.quickActionsHeight, 44)
     }
 
+    func testHeaderTitleInsetClearsSideControlCluster() {
+        XCTAssertEqual(PlayerHeaderMetrics.sideClusterWidth, 96)
+        XCTAssertGreaterThanOrEqual(
+            PlayerHeaderMetrics.titleHorizontalInset,
+            PlayerHeaderMetrics.sideClusterWidth
+        )
+    }
+
+    func testQuickActionShareCaptionFitsFourColumnDock() {
+        XCTAssertEqual(PlayerQuickAction.share.title, "Поделиться")
+        XCTAssertEqual(
+            PlayerQuickAction.share.accessibilityLabel,
+            "Поделиться файлом"
+        )
+        for action in PlayerQuickAction.allCases {
+            XCTAssertLessThanOrEqual(
+                action.title.count,
+                12,
+                "\(action) caption is too long for the player dock"
+            )
+        }
+    }
+
+    func testMixRadioCompactTitlesStayShortForSegmentedPicker() {
+        XCTAssertEqual(MixRadioMode.balanced.compactTitle, "Баланс")
+        XCTAssertEqual(MixRadioMode.closerToSeed.compactTitle, "Ближе")
+        XCTAssertEqual(MixRadioMode.moreNovel.compactTitle, "Новизна")
+        for mode in MixRadioMode.allCases {
+            XCTAssertLessThan(
+                mode.compactTitle.count,
+                mode.title.count + 1
+            )
+            XCTAssertLessThanOrEqual(mode.compactTitle.count, 8)
+        }
+    }
+
     func testPortraitMetricsDoNotJumpAtLayoutModeBoundaries() {
         for boundary in [720.0, 860.0] {
             let before = PlayerLayoutMetrics.resolve(

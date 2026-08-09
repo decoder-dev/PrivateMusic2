@@ -40,7 +40,7 @@ struct QueueView: View {
                                     )
                                 ) {
                                     ForEach(MixRadioMode.allCases) { mode in
-                                        Text(mode.title).tag(mode)
+                                        Text(mode.compactTitle).tag(mode)
                                     }
                                 }
                                 .pickerStyle(.segmented)

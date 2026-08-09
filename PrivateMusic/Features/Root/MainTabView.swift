@@ -420,6 +420,7 @@ private struct PlaybackTabDock: View {
                 Text(tab.title)
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.78)
             }
             .foregroundStyle(
                 selection == tab
