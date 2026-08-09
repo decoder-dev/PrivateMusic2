@@ -110,9 +110,9 @@ struct SearchView: View {
             .onSubmit {
                 submitSearch()
             }
-            .accessibilityLabel("Поисковый запрос")
+            .accessibilityLabel(L10n.text("Поисковый запрос"))
             .accessibilityHint(
-                "Введите не менее двух символов"
+                L10n.text("Введите не менее двух символов")
             )
 
             if !model.query.isEmpty {
@@ -536,7 +536,7 @@ struct SearchView: View {
             Text(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
             Button("Повторить", action: action)
                 .font(.caption.weight(.bold))
@@ -705,11 +705,14 @@ private struct SearchStatusView: View {
                 .accessibilityHidden(true)
             Text(L10n.text(title))
                 .font(.title3.weight(.bold))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
             Text(L10n.text(description))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 320)
+                .fixedSize(horizontal: false, vertical: true)
             if let actionTitle, let action {
                 Button(L10n.text(actionTitle), action: action)
                     .buttonStyle(.borderedProminent)
