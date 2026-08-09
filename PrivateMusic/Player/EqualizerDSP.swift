@@ -72,9 +72,11 @@ final class EqualizerDSP: @unchecked Sendable {
     var requiresAudioTap: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return hasActiveEqualizerProcessing
-            || isSpatialAudioActive
-            || outputProfile.needsClarityProcessing
+        // Route-tone clarity alone must not install the realtime tap: speaker /
+        // Bluetooth / car profiles would otherwise burn CPU and block AirPlay
+        // handoff even when every user effect is off. Clarity still rides
+        // along when EQ / loudness / DRC / spatial already require a tap.
+        return hasActiveEqualizerProcessing || isSpatialAudioActive
     }
 
     /// Flat EQ with zero preamp and no loudness/DRC is a no-op — skip the
@@ -85,6 +87,11 @@ final class EqualizerDSP: @unchecked Sendable {
         if loudnessNormEnabled || drcEnabled { return true }
         if abs(preampDB) > 0.000_1 { return true }
         return gains.contains { abs($0) > 0.000_1 }
+    }
+
+    /// Access only while holding `lock`.
+    private var hasUserSelectedProcessing: Bool {
+        hasActiveEqualizerProcessing || isSpatialAudioActive
     }
 
     func setOutputProfile(_ profile: PlaybackOutputToneProfile) {
@@ -226,7 +233,8 @@ final class EqualizerDSP: @unchecked Sendable {
         defer { lock.unlock() }
         let equalizerActive = hasActiveEqualizerProcessing
         let spatialAudioActive = isSpatialAudioActive
-        let clarityActive = outputProfile.needsClarityProcessing
+        let clarityActive = hasUserSelectedProcessing
+            && outputProfile.needsClarityProcessing
         guard supportsProcessing,
               equalizerActive || spatialAudioActive || clarityActive else {
             return

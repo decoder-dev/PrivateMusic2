@@ -104,11 +104,9 @@ struct CatalogView: View {
         .task(id: sessionStore.resolvedOfflineAccountID) {
             await load()
         }
-        .onReceive(
-            NotificationCenter.default.publisher(for: .likedAlbumsDidChange)
-        ) { _ in
-            Task { await load(force: true) }
-        }
+        // Liked-album mutations update `LikedAlbumsStore` in place. Reloading
+        // the whole home snapshot here used to fan out recommendations /
+        // mixes / playlists / releases for a single follow tap.
         .onReceive(environment.$mixActionError) { error in
             guard let error else { return }
             actionErrorMessage = error
@@ -972,11 +970,18 @@ private struct HomeSectionHeader: View {
 
 private struct HomeTrackArtwork: View {
     @EnvironmentObject private var settings: AppSettings
+    @Environment(\.displayScale) private var displayScale
     let url: URL?
     let size: CGFloat
 
     var body: some View {
-        CachedRemoteImage(url: url) { image in
+        CachedRemoteImage(
+            url: url,
+            maxPixelSize: ArtworkDecodePolicy.maxPixelSize(
+                displayPoints: size,
+                scale: displayScale
+            )
+        ) { image in
             image
                 .resizable()
                 .scaledToFill()
