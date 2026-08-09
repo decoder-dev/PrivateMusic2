@@ -156,6 +156,82 @@ final class PlaybackArtworkPerformancePolicyTests: XCTestCase {
     func testNowPlayingArtworkIsBoundedForLockScreen() {
         XCTAssertEqual(NowPlayingArtworkPolicy.maxPixelSize, 600)
     }
+
+    func testCatalogTilesDecodeNearRenderedPixels() {
+        XCTAssertEqual(
+            ArtworkDecodePolicy.maxPixelSize(displayPoints: 48, scale: 3),
+            144
+        )
+        XCTAssertEqual(
+            ArtworkDecodePolicy.maxPixelSize(
+                width: 142,
+                height: 142,
+                scale: 2
+            ),
+            284
+        )
+        XCTAssertEqual(
+            ArtworkDecodePolicy.maxPixelSize(displayPoints: 40, scale: 2),
+            ArtworkDecodePolicy.minimumPixelSize
+        )
+    }
+}
+
+final class NowPlayingDriftPolicyTests: XCTestCase {
+    func testForcedPublishAlwaysWins() {
+        XCTAssertTrue(
+            NowPlayingDriftPolicy.shouldPublish(
+                elapsedSeconds: 7,
+                lastPublishedSecond: 7,
+                force: true
+            )
+        )
+    }
+
+    func testOrdinarySecondsDoNotRepublish() {
+        XCTAssertFalse(
+            NowPlayingDriftPolicy.shouldPublish(
+                elapsedSeconds: 17,
+                lastPublishedSecond: 0,
+                force: false
+            )
+        )
+    }
+
+    func testDriftBoundaryPublishesOnce() {
+        XCTAssertTrue(
+            NowPlayingDriftPolicy.shouldPublish(
+                elapsedSeconds: 30,
+                lastPublishedSecond: 0,
+                force: false
+            )
+        )
+        XCTAssertFalse(
+            NowPlayingDriftPolicy.shouldPublish(
+                elapsedSeconds: 30,
+                lastPublishedSecond: 30,
+                force: false
+            )
+        )
+    }
+}
+
+final class PlaybackSeekTolerancePolicyTests: XCTestCase {
+    func testOfflineSeeksStayExact() {
+        XCTAssertEqual(
+            PlaybackSeekTolerancePolicy.tolerance(isOffline: true),
+            .zero
+        )
+    }
+
+    func testRemoteSeeksAllowSmallTolerance() {
+        let tolerance = PlaybackSeekTolerancePolicy.tolerance(isOffline: false)
+        XCTAssertEqual(
+            tolerance.seconds,
+            PlaybackSeekTolerancePolicy.remoteToleranceSeconds,
+            accuracy: 0.000_1
+        )
+    }
 }
 
 final class WatchStatePushCoalescingPolicyTests: XCTestCase {

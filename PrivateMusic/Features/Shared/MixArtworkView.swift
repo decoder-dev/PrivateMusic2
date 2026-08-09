@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MixArtworkView: View {
     @EnvironmentObject private var settings: AppSettings
+    @Environment(\.displayScale) private var displayScale
     let mix: MusicMix
     let tracks: [Track]
     let size: CGFloat
@@ -88,7 +89,14 @@ struct MixArtworkView: View {
         width: CGFloat,
         height: CGFloat
     ) -> some View {
-        CachedRemoteImage(url: url) { image in
+        CachedRemoteImage(
+            url: url,
+            maxPixelSize: ArtworkDecodePolicy.maxPixelSize(
+                width: width,
+                height: height,
+                scale: displayScale
+            )
+        ) { image in
             image
                 .resizable()
                 .scaledToFill()
