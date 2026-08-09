@@ -235,6 +235,13 @@ final class PlaybackSeekTolerancePolicyTests: XCTestCase {
 }
 
 final class WatchStatePushCoalescingPolicyTests: XCTestCase {
+    func testDriftCorrectionIsMuchSlowerThanOneHertz() {
+        XCTAssertGreaterThanOrEqual(
+            WatchStatePushCoalescingPolicy.driftCorrectionSeconds,
+            15
+        )
+    }
+
     func testRegularBurstRemainsNonForced() {
         XCTAssertFalse(
             WatchStatePushCoalescingPolicy.mergedForce(
