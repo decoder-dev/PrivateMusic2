@@ -38,18 +38,24 @@ struct MixFeedbackManagerView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(record.title)
                                     .font(.body.weight(.semibold))
+                                    .lineLimit(2)
                                 if !record.artist.isEmpty {
                                     Text(record.artist)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
                             }
-                            Spacer()
+                            Spacer(minLength: 12)
                             Button(L10n.text("Вернуть")) {
                                 mixFeedbackStore.unbanTrack(id: record.id)
                                 Haptics.selection()
                             }
                             .font(.subheadline.weight(.semibold))
+                            // Without an explicit borderless style the whole
+                            // row acts as the button, so tapping a title
+                            // silently un-hides the track.
+                            .buttonStyle(.borderless)
                         }
                     }
                 }
@@ -60,12 +66,14 @@ struct MixFeedbackManagerView: View {
                     ForEach(mixFeedbackStore.bannedArtistRecords) { record in
                         HStack {
                             Text(record.displayName)
-                            Spacer()
+                                .lineLimit(2)
+                            Spacer(minLength: 12)
                             Button(L10n.text("Вернуть")) {
                                 mixFeedbackStore.unbanArtist(key: record.key)
                                 Haptics.selection()
                             }
                             .font(.subheadline.weight(.semibold))
+                            .buttonStyle(.borderless)
                         }
                     }
                 }
