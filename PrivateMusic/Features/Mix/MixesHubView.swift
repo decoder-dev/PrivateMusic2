@@ -17,6 +17,13 @@ struct MixesHubView: View {
         }
     }
 
+    /// «Продолжить поток» can render as a scannable list or a denser grid —
+    /// user preference for how much of the expanded queue fits on screen.
+    private enum TrackListLayout {
+        case list
+        case grid
+    }
+
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var player: AudioPlayer
@@ -49,6 +56,7 @@ struct MixesHubView: View {
     @State private var sharingTrack: Track?
     @State private var selectedCurator: MixCurator?
     @State private var expandedTrackMixIDs: Set<String> = []
+    @State private var trackListLayout: TrackListLayout = .list
 
     private let defaultPreviewTrackLimit = 15
     private let expandedPreviewTrackLimit = 60
@@ -109,6 +117,7 @@ struct MixesHubView: View {
                     mixes: vkMixes.filter {
                         $0.curator?.id == selectedCurator.id
                     },
+                    trackCache: vkTrackCache,
                     onPlay: { mix in
                         self.selectedCurator = nil
                         hubTab = .vk
@@ -714,11 +723,24 @@ struct MixesHubView: View {
                 Label("Воспроизвести микс", systemImage: "play.fill")
             }
             Button {
+                shuffle(mix)
+            } label: {
+                Label("Перемешать", systemImage: "shuffle")
+            }
+            .disabled(tracks.isEmpty)
+            Button {
                 pin(mix: mix, tracks: tracks)
             } label: {
                 Label("Слушать позже", systemImage: "bookmark")
             }
             .disabled(tracks.isEmpty)
+            if let seed = tracks.first {
+                TrackMixActions.menuButtons(
+                    for: seed,
+                    environment: environment,
+                    includeDislike: false
+                )
+            }
         }
     }
 
@@ -931,25 +953,41 @@ struct MixesHubView: View {
                 .disabled(tracks.isEmpty)
             }
 
-            HStack(spacing: 10) {
-                NavigationLink {
-                    MixFiltersSettingsView()
-                } label: {
-                    Label(
-                        L10n.text("Фильтры микса"),
-                        systemImage: "line.3.horizontal.decrease.circle"
-                    )
-                    .font(.subheadline.weight(.semibold))
-                }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    NavigationLink {
+                        MixFiltersSettingsView()
+                    } label: {
+                        Label(
+                            L10n.text("Фильтры микса"),
+                            systemImage: "line.3.horizontal.decrease.circle"
+                        )
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    }
 
-                NavigationLink {
-                    MixFeedbackManagerView()
-                } label: {
-                    Label(
-                        L10n.text("Скрытое"),
-                        systemImage: "eye.slash"
-                    )
-                    .font(.subheadline.weight(.semibold))
+                    NavigationLink {
+                        MixFeedbackManagerView()
+                    } label: {
+                        Label(
+                            L10n.text("Скрытое"),
+                            systemImage: "eye.slash"
+                        )
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    }
+
+                    Button {
+                        openQueue(mix)
+                    } label: {
+                        Label(
+                            L10n.text("Очередь"),
+                            systemImage: "list.bullet"
+                        )
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    }
+                    .disabled(tracks.isEmpty)
                 }
             }
         }
@@ -1129,6 +1167,9 @@ struct MixesHubView: View {
                             )
                         )
                         Spacer(minLength: 12)
+                        if isExpanded {
+                            trackLayoutToggle
+                        }
                         Button {
                             toggleTrackExpansion(for: mix)
                         } label: {
@@ -1143,28 +1184,125 @@ struct MixesHubView: View {
                     }
 
                     if isExpanded {
-                        VStack(spacing: 0) {
-                            ForEach(
-                                Array(expandedList.enumerated()),
-                                id: \.element.id
-                            ) { index, track in
-                                TrackRow(
-                                    track: track,
-                                    queue: tracks,
-                                    source: .mix(title: mix.title)
-                                )
-                                .padding(.vertical, 7)
-                                if index < expandedList.count - 1 {
-                                    Divider().padding(.leading, 64)
+                        switch trackListLayout {
+                        case .list:
+                            VStack(spacing: 0) {
+                                ForEach(
+                                    Array(expandedList.enumerated()),
+                                    id: \.element.id
+                                ) { index, track in
+                                    TrackRow(
+                                        track: track,
+                                        queue: tracks,
+                                        source: .mix(title: mix.title)
+                                    )
+                                    .padding(.vertical, 7)
+                                    if index < expandedList.count - 1 {
+                                        Divider().padding(.leading, 64)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .premiumCard()
+                        case .grid:
+                            LazyVGrid(
+                                columns: [
+                                    GridItem(.flexible(), spacing: 10),
+                                    GridItem(.flexible(), spacing: 10)
+                                ],
+                                spacing: 10
+                            ) {
+                                ForEach(expandedList) { track in
+                                    trackGridCell(
+                                        track,
+                                        mix: mix,
+                                        queue: tracks,
+                                        width: (metrics.contentWidth - 10) / 2
+                                    )
                                 }
                             }
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                        .premiumCard()
                     }
                 }
             }
+        }
+    }
+
+    private var trackLayoutToggle: some View {
+        Button {
+            trackListLayout = trackListLayout == .list ? .grid : .list
+            Haptics.selection()
+        } label: {
+            Image(
+                systemName: trackListLayout == .list
+                    ? "square.grid.2x2"
+                    : "list.bullet"
+            )
+            .font(.caption.weight(.semibold))
+        }
+        .buttonStyle(.bordered)
+        .accessibilityLabel(L10n.text("Переключить вид списка"))
+    }
+
+    private func trackGridCell(
+        _ track: Track,
+        mix: MusicMix,
+        queue: [Track],
+        width: CGFloat
+    ) -> some View {
+        Button {
+            playTrack(track, queue: queue, mix: mix)
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    AsyncArtwork(url: track.artworkURL, size: 44)
+                        .clipShape(
+                            RoundedRectangle(
+                                cornerRadius: 10,
+                                style: .continuous
+                            )
+                        )
+                    if highlight.isCurrent(track.id) {
+                        PlaybackIndicatorView(
+                            isPlaying: highlight.isPlaying,
+                            color: .white
+                        )
+                        .frame(width: 22, height: 22)
+                        .background(.black.opacity(0.4), in: Circle())
+                    }
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(track.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(track.artist)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Text(track.duration.formattedDuration)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(8)
+            .frame(width: width, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.primary.opacity(0.05))
+            )
+        }
+        .buttonStyle(PremiumPressStyle())
+        .contextMenu {
+            Button { player.playNext(track) } label: {
+                Label("Играть следующим", systemImage: "text.badge.plus")
+            }
+            TrackMixActions.menuButtons(
+                for: track,
+                environment: environment
+            )
         }
     }
 
@@ -1853,6 +1991,15 @@ struct MixesHubView: View {
         )
         fillQueueInBackground(mix)
         Haptics.selection()
+    }
+
+    private func openQueue(_ mix: MusicMix) {
+        if case .mix = player.queueSource, !player.queue.isEmpty {
+            player.presentPlayer()
+        } else {
+            start(mix)
+            player.presentPlayer()
+        }
     }
 
     private func refilterLoadedTracks(for mix: MusicMix) {
