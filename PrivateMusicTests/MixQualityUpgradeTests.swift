@@ -228,10 +228,17 @@ final class MixRationaleEnrichmentTests: XCTestCase {
             recommendations: [],
             limit: 5
         )
+        // All 7 mix artists are absent from history, so the novelty
+        // branch fires at 100%. Compare against the localized line
+        // itself (not Russian substrings) so this passes regardless of
+        // the locale L10n resolves to in the test environment.
         XCTAssertTrue(
-            rationale.lines.contains {
-                $0.contains("новые") || $0.contains("артистов")
-            }
+            rationale.lines.contains(
+                L10n.format(
+                    "Около %d%% артистов — новые для недавней истории",
+                    100
+                )
+            )
         )
     }
 }
