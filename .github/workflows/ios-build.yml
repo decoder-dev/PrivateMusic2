@@ -129,39 +129,33 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.49-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.50-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.49-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.50-iphone-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.49"
+          test "$GITHUB_REF_NAME" = "v3.28.50"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.49 (pre-release)
+          # Private Music 3.28.50 (pre-release)
 
-          Сборка с `main`: производительность воспроизведения, правки
-          обрезанного текста и polish UI/локализации.
+          Сборка с `main`: богаче миксы Селены / VK и чище шапка плеера.
 
-          ## Производительность
-          - Списки не дёргаются на каждом тике буферизации (`PlaybackHighlightModel`)
-          - Легче blur плеера, DSP-tap только для user-эффектов, skip flat EQ bands
-          - Реже Now Playing / Watch drift-пуши; artwork из общего cache
+          ## Миксы
+          - Больше треков в окне (до 15 + «Показать ещё»), список / сетка
+          - Метаданные: длительность, новизна, артисты, статистика окна
+          - Фильтры, shuffle / play all / очередь / pin / hide
+          - VK magazine-полки; у кураторов — сортировка и статистика
 
-          ## Текст и UI
-          - Заголовок «Сейчас играет» не лезет под кнопки; «Поделиться» в доке
-          - Компактные подписи поиска / радио микса; имя в профиле не разъезжает карточку
-          - Обрезка длинных заголовков в плейлистах, артистах, истории
-
-          ## Прочее
-          - Дополнены английские строки, мелкий accessibility polish
-          - Locale-safe layout/localization tests для CI
+          ## Плеер
+          - Убран шеврон «вниз» в шапке; закрытие свайпом вниз
 
           ## Установка
           IPA не подписан.
@@ -169,19 +163,19 @@ jobs:
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.49-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.49-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.50-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.50-unsigned.ipa"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.49" \
+              --title "Private Music 3.28.50" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.49" \
+              --title "Private Music 3.28.50" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -190,9 +184,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.49-unsigned
+          name: PrivateMusic-3.28.50-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.49-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.49-unsigned.ipa
+            artifacts/PrivateMusic-3.28.50-iphone-unsigned.ipa
+            artifacts/PrivateMusic-3.28.50-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
