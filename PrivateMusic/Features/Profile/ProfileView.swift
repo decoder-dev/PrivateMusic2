@@ -105,9 +105,12 @@ struct ProfileView: View {
                         ?? L10n.text("Слушатель")
                 )
                     .font(.title3.bold())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Text("Private Music")
                     .foregroundStyle(.secondary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Spacer()
         }
         .padding()
