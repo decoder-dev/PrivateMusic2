@@ -836,7 +836,7 @@ struct MixesHubView: View {
         tracks: [Track]
     ) -> some View {
         let selectedMode = player.mixRadioMode
-        VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("Радио микса"))
                 .font(.headline)
             Text(
@@ -1136,7 +1136,7 @@ struct MixesHubView: View {
                 max(0, expandedPreviewTrackLimit - defaultPreviewTrackLimit)
             )
         )
-        VStack(alignment: .leading, spacing: 22) {
+        return VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 12) {
                 PremiumSectionHeader(
                     L10n.text("Для вас"),
@@ -2016,7 +2016,7 @@ struct MixesHubView: View {
     ) {
         guard let first = tracks.first else { return }
         environment.dislike(first, includeArtist: includeArtist)
-        let cleaned = mixFeedbackStore.filtering(tracks(for: mix))
+        let cleaned = mixFeedbackStore.filtering(self.tracks(for: mix))
         storeTracks(cleaned, for: mix)
     }
 
