@@ -7,6 +7,16 @@ struct SearchView: View {
         case albums = "Альбомы"
 
         var title: String { L10n.text(rawValue) }
+
+        /// Segmented picker clips the full artist label on compact widths.
+        var compactTitle: String {
+            switch self {
+            case .tracks, .albums:
+                return title
+            case .artists:
+                return L10n.text("Артисты")
+            }
+        }
     }
 
     @EnvironmentObject private var environment: AppEnvironment
@@ -291,7 +301,7 @@ struct SearchView: View {
         VStack(spacing: 0) {
             Picker("Тип поиска", selection: $scope) {
                 ForEach(Scope.allCases, id: \.self) {
-                    Text($0.title).tag($0)
+                    Text($0.compactTitle).tag($0)
                 }
             }
             .pickerStyle(.segmented)
