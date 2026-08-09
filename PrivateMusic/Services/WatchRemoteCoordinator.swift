@@ -42,10 +42,12 @@ final class WatchRemoteCoordinator: NSObject {
         }
         .store(in: &cancellables)
 
+        // Watch interpolates elapsed from `snapshotDate` + rate. Keep a slow
+        // drift correction only — 1 Hz context updates heat the radio link.
         player.progress.$elapsedTime
             .removeDuplicates()
             .throttle(
-                for: .seconds(1),
+                for: .seconds(WatchStatePushCoalescingPolicy.driftCorrectionSeconds),
                 scheduler: RunLoop.main,
                 latest: true
             )
@@ -189,6 +191,9 @@ final class WatchRemoteCoordinator: NSObject {
 }
 
 enum WatchStatePushCoalescingPolicy {
+    /// Progress-only pushes; transport / track changes still flush immediately.
+    static let driftCorrectionSeconds: TimeInterval = 20
+
     static func mergedForce(pending: Bool, incoming: Bool) -> Bool {
         pending || incoming
     }
