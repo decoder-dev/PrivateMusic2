@@ -35,10 +35,17 @@ enum MixRationaleBuilder {
 
         var lines: [String] = []
 
+        // Dictionary key order is not stable across launches, so every
+        // shortlist is fully ordered — otherwise the same mix explains
+        // itself with a different artist each time it is opened.
         let sharedRecent = mixArtists.keys.filter { recentArtists[$0] != nil }
             .sorted {
-                (recentArtists[$0] ?? 0, mixArtists[$0] ?? 0)
-                    > (recentArtists[$1] ?? 0, mixArtists[$1] ?? 0)
+                let left = (recentArtists[$0] ?? 0, mixArtists[$0] ?? 0)
+                let right = (recentArtists[$1] ?? 0, mixArtists[$1] ?? 0)
+                if left != right {
+                    return left > right
+                }
+                return $0 < $1
             }
         if let top = sharedRecent.first {
             let display = displayArtist(top, from: mixTracks)
@@ -59,8 +66,14 @@ enum MixRationaleBuilder {
             )
         }
 
+        let recentSet = Set(sharedRecent)
         let sharedRecommended = mixArtists.keys.filter {
-            recommendationArtists.contains($0) && !sharedRecent.contains($0)
+            recommendationArtists.contains($0) && !recentSet.contains($0)
+        }
+        .sorted {
+            let left = mixArtists[$0] ?? 0
+            let right = mixArtists[$1] ?? 0
+            return left == right ? $0 < $1 : left > right
         }
         if lines.count < limit, let top = sharedRecommended.first {
             let display = displayArtist(top, from: mixTracks)
