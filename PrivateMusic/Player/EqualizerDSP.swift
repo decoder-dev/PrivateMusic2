@@ -69,6 +69,13 @@ final class EqualizerDSP: @unchecked Sendable {
         return enabled
     }
 
+    /// Test seam: number of non-flat peaking sections currently installed.
+    var activeBandCountForTesting: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return coefficients.count
+    }
+
     var requiresAudioTap: Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -551,10 +558,14 @@ final class EqualizerDSP: @unchecked Sendable {
         let preamp = Float(
             pow(10, (configuration.preampDB - headroom) / 20)
         )
-        let equalizer = zip(Self.frequencies, configuration.gains).map {
-            Self.peakingCoefficients(
-                frequency: $0.0,
-                gain: $0.1,
+        // Skip identity peaking filters: a single bass bump must not pay for
+        // nine flat bands on every audio sample.
+        let equalizer = zip(Self.frequencies, configuration.gains).compactMap {
+            frequency, gain -> Coefficients? in
+            guard abs(gain) > 0.000_1 else { return nil }
+            return Self.peakingCoefficients(
+                frequency: frequency,
+                gain: gain,
                 sampleRate: configuration.sampleRate
             )
         }

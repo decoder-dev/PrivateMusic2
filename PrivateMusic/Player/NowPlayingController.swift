@@ -4,16 +4,7 @@ import UIKit
 @MainActor
 final class NowPlayingController {
     private let center = MPNowPlayingInfoCenter.default()
-    private let artworkSession: URLSession
     private var artworkTask: Task<Void, Never>?
-
-    init() {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 15
-        configuration.httpCookieStorage = nil
-        configuration.urlCache = nil
-        artworkSession = URLSession(configuration: configuration)
-    }
 
     func update(
         track: Track,
@@ -51,34 +42,30 @@ final class NowPlayingController {
             return
         }
         artworkTask = Task {
-            do {
-                let (data, response) = try await artworkSession.data(
-                    from: artworkURL
-                )
-                guard !Task.isCancelled,
-                      let http = response as? HTTPURLResponse,
-                      (200..<300).contains(http.statusCode),
-                      let image = await ArtworkImageCache.downsample(
-                        data,
-                        maxPixelSize: NowPlayingArtworkPolicy.maxPixelSize
-                      ),
-                      !Task.isCancelled else {
-                    return
-                }
-                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in
-                    image
-                }
-                guard center.nowPlayingInfo?[
-                    MPNowPlayingInfoPropertyExternalContentIdentifier
-                ] as? String == track.id else {
-                    return
-                }
-                var refreshed = center.nowPlayingInfo ?? info
-                refreshed[MPMediaItemPropertyArtwork] = artwork
-                center.nowPlayingInfo = refreshed
-            } catch {
+            // Prefer the shared artwork cache — neighbor prefetch usually
+            // already warmed the URL — instead of an ephemeral re-download.
+            await ArtworkImageCache.shared.prefetch(
+                url: artworkURL,
+                maxPixelSize: NowPlayingArtworkPolicy.maxPixelSize
+            )
+            guard !Task.isCancelled,
+                  let image = ArtworkImageCache.shared.image(
+                    for: artworkURL,
+                    maxPixelSize: NowPlayingArtworkPolicy.maxPixelSize
+                  ) else {
                 return
             }
+            let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in
+                image
+            }
+            guard center.nowPlayingInfo?[
+                MPNowPlayingInfoPropertyExternalContentIdentifier
+            ] as? String == track.id else {
+                return
+            }
+            var refreshed = center.nowPlayingInfo ?? info
+            refreshed[MPMediaItemPropertyArtwork] = artwork
+            center.nowPlayingInfo = refreshed
         }
     }
 
