@@ -250,7 +250,21 @@ enum NowPlayingDriftPolicy {
 
 enum PlaybackPreloadPolicy {
     static let maximumAge: TimeInterval = 5 * 60
+    /// Forward buffer while a track just sits in the preload slot — warms
+    /// roughly the first 10s of the upcoming track (streaming-service
+    /// style "warm start") without downloading, or holding in memory,
+    /// the whole file the way a full prefetch would.
     static let preferredForwardBufferDuration: TimeInterval = 10
+
+    /// Buffer duration to apply to a track's `AVPlayerItem`, depending on
+    /// whether it is merely warming up in the preload slot or has been
+    /// promoted to the actively playing item. Promoted items switch to
+    /// `StreamFailureRetryPolicy`'s larger buffer for stall resilience.
+    static func forwardBufferDuration(isActivePlayback: Bool) -> TimeInterval {
+        isActivePlayback
+            ? StreamFailureRetryPolicy.preferredForwardBufferDuration
+            : preferredForwardBufferDuration
+    }
 
     static func nextIndex(
         queueCount: Int,
@@ -408,6 +422,14 @@ final class AudioPlayer: ObservableObject {
         let trackID: String
         let url: URL
         let asset: AVURLAsset
+        /// Created eagerly — not lazily inside `takePreloadedPlayback` —
+        /// so AVFoundation starts fetching data for the upcoming track
+        /// while it still just sits in the preload slot. Its
+        /// `preferredForwardBufferDuration` is capped to
+        /// `PlaybackPreloadPolicy.preferredForwardBufferDuration`
+        /// (~10s), mirroring how streaming apps warm only the start of
+        /// the next track instead of prefetching it end-to-end.
+        let item: AVPlayerItem
         let preparedAt: Date
         var isReady = false
 
@@ -415,11 +437,13 @@ final class AudioPlayer: ObservableObject {
             trackID: String,
             url: URL,
             asset: AVURLAsset,
+            item: AVPlayerItem,
             preparedAt: Date = Date()
         ) {
             self.trackID = trackID
             self.url = url
             self.asset = asset
+            self.item = item
             self.preparedAt = preparedAt
         }
     }
@@ -1469,10 +1493,20 @@ final class AudioPlayer: ObservableObject {
             url: url,
             isOffline: offlineURL != nil
         )
+        let item = AVPlayerItem(asset: asset)
+        // Streaming-service-style preload: warm only the first ~10s of
+        // the next track so skip / auto-advance feels instant, without
+        // downloading (and holding in memory) the whole file the way a
+        // full prefetch would.
+        item.preferredForwardBufferDuration =
+            PlaybackPreloadPolicy.forwardBufferDuration(
+                isActivePlayback: false
+            )
         let slot = PreloadedPlayback(
             trackID: track.id,
             url: url,
-            asset: asset
+            asset: asset,
+            item: item
         )
         preloadedPlayback = slot
         preloadGeneration += 1
@@ -1528,9 +1562,14 @@ final class AudioPlayer: ObservableObject {
         preloadAssetTask?.cancel()
         preloadAssetTask = nil
         preloadedPlayback = nil
-        let item = AVPlayerItem(asset: slot.asset)
+        let item = slot.item
+        // Promote from the ~10s warm-up buffer to the normal streaming
+        // buffer now that this item is about to become the actively
+        // playing one (see `StreamFailureRetryPolicy` for why 30s).
         item.preferredForwardBufferDuration =
-            PlaybackPreloadPolicy.preferredForwardBufferDuration
+            PlaybackPreloadPolicy.forwardBufferDuration(
+                isActivePlayback: true
+            )
         item.preferredPeakBitRate = StreamQualityPolicy.preferredPeakBitRate(
             preferHighQuality: preferHighQuality
         )
