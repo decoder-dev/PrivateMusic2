@@ -205,12 +205,17 @@ final class PlaylistLibraryViewModel: ObservableObject {
                 playlist,
                 accessToken: accessToken
             )
-            playlists.removeAll { $0.id == playlist.id }
+            removeLocally(playlist)
             errorMessage = nil
+            MusicLibraryEvents.postPlaylistsChanged(removed: playlist)
         } catch is CancellationError {
             return
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func removeLocally(_ playlist: Playlist) {
+        playlists.removeAll { $0.id == playlist.id }
     }
 }

@@ -25,6 +25,8 @@ struct LibraryView: View {
     @State private var loadingPlayAlbumID: String?
     @State private var loadingPlayPlaylistID: Int?
     @State private var playbackErrorMessage: String?
+    @State private var playlistPendingDeletion: Playlist?
+    @State private var playlistDeleteErrorMessage: String?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -253,6 +255,63 @@ struct LibraryView: View {
                 }
             }
         }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: MusicLibraryEvents.didChangePlaylists
+            )
+        ) { notification in
+            if let playlist = notification.userInfo?[
+                MusicLibraryEvents.playlistKey
+            ] as? Playlist {
+                playlists.removeLocally(playlist)
+            }
+            Task {
+                await playlists.load(force: true) {
+                    try await environment.withAuthorizedToken { token in
+                        try await environment.musicService.playlists(
+                            accessToken: token,
+                            offset: 0,
+                            count: 100
+                        )
+                    }
+                }
+            }
+        }
+        .confirmationDialog(
+            playlistDeleteConfirmationTitle,
+            isPresented: Binding(
+                get: { playlistPendingDeletion != nil },
+                set: { if !$0 { playlistPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let playlist = playlistPendingDeletion {
+                Button(
+                    playlistDeleteActionTitle(for: playlist),
+                    role: .destructive
+                ) {
+                    Task { await deletePlaylist(playlist) }
+                }
+            }
+            Button(L10n.text("Отмена"), role: .cancel) {
+                playlistPendingDeletion = nil
+            }
+        } message: {
+            if let playlist = playlistPendingDeletion {
+                Text(playlistDeleteConfirmationMessage(for: playlist))
+            }
+        }
+        .alert(
+            L10n.text("Не удалось удалить плейлист"),
+            isPresented: Binding(
+                get: { playlistDeleteErrorMessage != nil },
+                set: { if !$0 { playlistDeleteErrorMessage = nil } }
+            )
+        ) {
+            Button(L10n.text("ОК"), role: .cancel) {}
+        } message: {
+            Text(playlistDeleteErrorMessage ?? "")
+        }
     }
 
     @ViewBuilder
@@ -443,6 +502,61 @@ struct LibraryView: View {
         }
     }
 
+    private func isOwnedPlaylist(_ playlist: Playlist) -> Bool {
+        playlist.ownerID == sessionStore.session?.userID
+    }
+
+    private var playlistDeleteConfirmationTitle: String {
+        guard let playlist = playlistPendingDeletion else {
+            return L10n.text("Удалить плейлист?")
+        }
+        return L10n.text(
+            isOwnedPlaylist(playlist)
+                ? "Удалить плейлист?"
+                : "Убрать плейлист из медиатеки?"
+        )
+    }
+
+    private func playlistDeleteActionTitle(for playlist: Playlist) -> String {
+        L10n.text(
+            isOwnedPlaylist(playlist)
+                ? "Удалить плейлист"
+                : "Убрать из медиатеки"
+        )
+    }
+
+    private func playlistDeleteConfirmationMessage(
+        for playlist: Playlist
+    ) -> String {
+        L10n.text(
+            isOwnedPlaylist(playlist)
+                ? "Плейлист будет удалён из VK. Это действие нельзя отменить."
+                : "Плейлист исчезнет из вашей медиатеки, но останется у автора."
+        )
+    }
+
+    private func deletePlaylist(_ playlist: Playlist) async {
+        playlistPendingDeletion = nil
+        guard sessionStore.accessToken != nil else { return }
+        do {
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.deletePlaylist(
+                    playlist,
+                    accessToken: token
+                )
+            }
+            offlinePlaylists.remove(playlist)
+            playlists.removeLocally(playlist)
+            MusicLibraryEvents.postPlaylistsChanged(removed: playlist)
+            Haptics.success()
+        } catch is CancellationError {
+            return
+        } catch {
+            playlistDeleteErrorMessage = error.localizedDescription
+            Haptics.error()
+        }
+    }
+
     /// Defect 12: the badge must reflect both in-flight track downloads and
     /// active playlist batches, and the counter must be file-backed.
     private var isOfflineActivityActive: Bool {
@@ -511,6 +625,30 @@ struct LibraryView: View {
                                 0.2
                             )
                         )
+                        .contextMenu {
+                            Button {
+                                performPlaylistPlaybackAction(
+                                    playlistPlaybackAction(for: playlist),
+                                    for: playlist
+                                )
+                            } label: {
+                                Label(
+                                    L10n.text("Слушать"),
+                                    systemImage: "play.fill"
+                                )
+                            }
+                            Button(
+                                role: .destructive,
+                                action: {
+                                    playlistPendingDeletion = playlist
+                                }
+                            ) {
+                                Label(
+                                    playlistDeleteActionTitle(for: playlist),
+                                    systemImage: "trash"
+                                )
+                            }
+                        }
                         .onAppear {
                             loadMorePlaylistsIfNeeded(after: playlist)
                         }
