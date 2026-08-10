@@ -938,7 +938,7 @@ struct VKMusicService: MusicService {
     ) async throws -> MusicPage<Track> {
         var parameters = [
             "owner_id": String(playlist.ownerID),
-            "album_id": String(playlist.id),
+            "album_id": String(playlist.playlistID),
             "count": String(count),
             "offset": String(offset)
         ]
@@ -1074,7 +1074,7 @@ struct VKMusicService: MusicService {
             path: "/method/audio.editPlaylist",
             form: common(accessToken).merging([
                 "owner_id": String(playlist.ownerID),
-                "playlist_id": String(playlist.id),
+                "playlist_id": String(playlist.playlistID),
                 "title": title,
                 "description": description
             ]) { _, new in new },
@@ -1091,7 +1091,7 @@ struct VKMusicService: MusicService {
             path: "/method/audio.deletePlaylist",
             form: common(accessToken).merging([
                 "owner_id": String(playlist.ownerID),
-                "playlist_id": String(playlist.id)
+                "playlist_id": String(playlist.playlistID)
             ]) { _, new in new },
             retryPolicy: .never,
             responseType: VKResponse<VKIgnored>.self
@@ -1107,7 +1107,7 @@ struct VKMusicService: MusicService {
             path: "/method/audio.addToPlaylist",
             form: common(accessToken).merging([
                 "owner_id": String(playlist.ownerID),
-                "playlist_id": String(playlist.id),
+                "playlist_id": String(playlist.playlistID),
                 "audio_ids": track.id
             ]) { _, new in new },
             retryPolicy: .never,
@@ -1124,7 +1124,7 @@ struct VKMusicService: MusicService {
             path: "/method/audio.removeFromPlaylist",
             form: common(accessToken).merging([
                 "owner_id": String(playlist.ownerID),
-                "playlist_id": String(playlist.id),
+                "playlist_id": String(playlist.playlistID),
                 "audio_ids": track.id
             ]) { _, new in new },
             retryPolicy: .never,
