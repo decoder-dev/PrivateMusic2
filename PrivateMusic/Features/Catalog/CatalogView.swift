@@ -112,6 +112,13 @@ struct CatalogView: View {
             actionErrorMessage = error
             environment.mixActionError = nil
         }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: MusicLibraryEvents.didChangePlaylists
+            )
+        ) { _ in
+            Task { await load(force: true) }
+        }
         .alert(
             "Не удалось открыть альбом",
             isPresented: Binding(
