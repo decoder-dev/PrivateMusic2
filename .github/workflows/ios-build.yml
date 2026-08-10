@@ -129,37 +129,45 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.60-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.62-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.60-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.62-iphone-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.60"
+          test "$GITHUB_REF_NAME" = "v3.28.62"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.60 (pre-release)
+          # Private Music 3.28.62 (pre-release)
 
-          Медиатека: вернули полку плейлистов с обложками.
+          Тяжёлые места переписаны на Си.
 
-          ## Медиатека
-          - Полка «Плейлисты» снова карточки с обложкой, бейджем VK Музыка
-            и чипом воспроизведения — высота полки задана явно, поэтому
-            карточки больше не схлопываются в текстовые «вкладки»
-          - Карточки идентифицируются парой владелец+id: id плейлистов VK
-            уникальны только внутри владельца, и совпадение ломало вёрстку
-          - Дубли «Мне нравится» (свой + подписка, «Мне нравится (2)»)
-            сворачиваются в одну карточку
-          - Автообложки-мозаики VK (`thumbs`) наконец читаются, плейлисты
-            без загруженного фото больше не пустые
-          - Список «Треки» снова идёт плотными строками: отступ раздела
-            больше не растягивал каждую строку и разделитель
+          ## Звук
+          - Эквалайзер больше не ходит по сэмплам из Swift: срез бубнения
+            и пространственный звук целиком считаются в C, одним проходом
+            на канал вместо ~88 000 переходов Swift↔C в секунду
+          - Расширение стерео и фильтр боковой составляющей теперь один
+            цикл, а усиление и запас по громкости считаются один раз на
+            буфер, а не на каждый сэмпл
+
+          ## Микс-радио
+          - Пересборка очереди ускорена примерно в 25 раз на очереди из
+            200 треков: исполнители и альбомы сворачиваются один раз, а
+            перебор кандидатов идёт по 64-битным хэшам
+          - «Баланс» больше не пересчитывает имена исполнителей на каждом
+            шаге разбора кластеров
+          - Порядок треков не изменился: те же правила, тот же генератор
+
+          ## Поиск
+          - Приведение регистра и диакритики для латиницы и кириллицы
+            считается в C, поиск подстроки идёт по UTF-8 без промежуточных
+            строк; остальные письменности по-прежнему обрабатывает система
 
           ## Установка
           IPA не подписан.
@@ -167,19 +175,19 @@ jobs:
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.60-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.60-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.62-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.62-unsigned.ipa"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.60" \
+              --title "Private Music 3.28.62" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.60" \
+              --title "Private Music 3.28.62" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -188,9 +196,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.60-unsigned
+          name: PrivateMusic-3.28.62-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.60-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.60-unsigned.ipa
+            artifacts/PrivateMusic-3.28.62-iphone-unsigned.ipa
+            artifacts/PrivateMusic-3.28.62-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
