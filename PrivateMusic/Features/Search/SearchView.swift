@@ -40,69 +40,81 @@ struct SearchView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            Group {
-                if #available(iOS 26.1, *) {
-                    searchLayout(showsCustomField: false)
-                        .searchable(
-                            text: $model.query,
-                            isPresented: $isSystemSearchPresented,
-                            placement: .automatic,
-                            prompt: Text(
-                                L10n.text(
-                                    "Трек, исполнитель, альбом или плейлист"
-                                )
-                            )
-                        )
-                        .onSubmit(of: .search) {
-                            submitSearch()
-                        }
-                } else {
-                    searchLayout(showsCustomField: true)
-                }
+        // Keep `.searchable` on the NavigationStack root (outside
+        // ScrollViewReader) so Tab(role: .search) + tabViewSearchActivation
+        // can bind the system search field on iOS 26.1+.
+        searchScrollRoot
+            .background(ThemeBackground())
+            .navigationTitle("Поиск")
+            .navigationBarTitleDisplayMode(.inline)
+            .modifier(SystemSearchTabModifier(
+                query: $model.query,
+                isPresented: $isSystemSearchPresented,
+                onSubmit: submitSearch
+            ))
+            .onChange(of: model.query) { _ in
+                scheduleSearch()
             }
-            .onReceive(scrollCoordinator.$request) { request in
-                guard request?.destination == .search else { return }
+            .onChange(of: scope) { _ in
+                loadAlbumsIfNeeded()
+                loadPlaylistsIfNeeded()
+            }
+            .onChange(of: isActive) { active in
+                if active {
+                    // Activate the system search field when the search tab
+                    // is selected (belt-and-suspenders with tab activation).
+                    if #available(iOS 26.1, *) {
+                        isSystemSearchPresented = true
+                    }
+                    return
+                }
                 isSearchFocused = false
                 isSystemSearchPresented = false
-                if reduceMotion {
-                    proxy.scrollTo(MainTabScrollDestination.search, anchor: .top)
-                } else {
-                    withAnimation(.easeOut(duration: 0.28)) {
+            }
+            .alert(
+                "Не удалось изменить медиатеку",
+                isPresented: Binding(
+                    get: { model.actionErrorMessage != nil },
+                    set: { if !$0 { model.actionErrorMessage = nil } }
+                )
+            ) {
+                Button("ОК", role: .cancel) {}
+            } message: {
+                Text(model.actionErrorMessage ?? "")
+            }
+    }
+
+    private var searchScrollRoot: some View {
+        ScrollViewReader { proxy in
+            searchLayout(showsCustomField: showsInlineSearchField)
+                .onReceive(scrollCoordinator.$request) { request in
+                    guard request?.destination == .search else { return }
+                    isSearchFocused = false
+                    isSystemSearchPresented = false
+                    if reduceMotion {
                         proxy.scrollTo(
                             MainTabScrollDestination.search,
                             anchor: .top
                         )
+                    } else {
+                        withAnimation(.easeOut(duration: 0.28)) {
+                            proxy.scrollTo(
+                                MainTabScrollDestination.search,
+                                anchor: .top
+                            )
+                        }
                     }
                 }
-            }
         }
-        .background(ThemeBackground())
-        .navigationTitle("Поиск")
-        .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: model.query) { _ in
-            scheduleSearch()
+    }
+
+    /// Inline field only on the pre–iOS 26.1 custom dock path. System tabs
+    /// use `.searchable` instead so the search tab is not empty.
+    private var showsInlineSearchField: Bool {
+        if #available(iOS 26.1, *) {
+            return false
         }
-        .onChange(of: scope) { _ in
-            loadAlbumsIfNeeded()
-            loadPlaylistsIfNeeded()
-        }
-        .onChange(of: isActive) { active in
-            guard !active else { return }
-            isSearchFocused = false
-            isSystemSearchPresented = false
-        }
-        .alert(
-            "Не удалось изменить медиатеку",
-            isPresented: Binding(
-                get: { model.actionErrorMessage != nil },
-                set: { if !$0 { model.actionErrorMessage = nil } }
-            )
-        ) {
-            Button("ОК", role: .cancel) {}
-        } message: {
-            Text(model.actionErrorMessage ?? "")
-        }
+        return true
     }
 
     private func searchLayout(showsCustomField: Bool) -> some View {
@@ -839,6 +851,34 @@ struct SearchView: View {
             } catch {
                 model.actionErrorMessage = error.localizedDescription
             }
+        }
+    }
+}
+
+/// Binds system search chrome for `Tab(role: .search)` on iOS 26.1+.
+/// Older OS versions keep the inline custom field in `SearchView`.
+private struct SystemSearchTabModifier: ViewModifier {
+    @Binding var query: String
+    @Binding var isPresented: Bool
+    let onSubmit: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.1, *) {
+            content
+                .searchable(
+                    text: $query,
+                    isPresented: $isPresented,
+                    placement: .automatic,
+                    prompt: Text(
+                        L10n.text(
+                            "Трек, исполнитель, альбом или плейлист"
+                        )
+                    )
+                )
+                .onSubmit(of: .search, onSubmit)
+        } else {
+            content
         }
     }
 }
