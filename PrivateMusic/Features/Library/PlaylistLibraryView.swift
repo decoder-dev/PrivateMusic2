@@ -160,7 +160,7 @@ final class PlaylistLibraryViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             let page = try await operation()
-            playlists = page.items
+            playlists = Self.deduplicated(page.items)
             nextOffset = page.nextOffset
             errorMessage = nil
         } catch is CancellationError {
@@ -182,9 +182,9 @@ final class PlaylistLibraryViewModel: ObservableObject {
         defer { isLoadingMore = false }
         do {
             let page = try await operation(offset)
-            var known = Set(playlists.map(\.id))
+            var known = Set(playlists.map(\.libraryIdentity))
             playlists.append(contentsOf: page.items.filter {
-                known.insert($0.id).inserted
+                known.insert($0.libraryIdentity).inserted
             })
             nextOffset = page.nextOffset
             errorMessage = nil
@@ -216,6 +216,18 @@ final class PlaylistLibraryViewModel: ObservableObject {
     }
 
     func removeLocally(_ playlist: Playlist) {
-        playlists.removeAll { $0.id == playlist.id }
+        playlists.removeAll { $0.libraryIdentity == playlist.libraryIdentity }
+    }
+
+    /// VK playlist ids are only unique per owner.
+    private static func deduplicated(_ items: [Playlist]) -> [Playlist] {
+        var known = Set<String>()
+        return items.filter { known.insert($0.libraryIdentity).inserted }
+    }
+}
+
+private extension Playlist {
+    var libraryIdentity: String {
+        "\(ownerID)_\(id)"
     }
 }
