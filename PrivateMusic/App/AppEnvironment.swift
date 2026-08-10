@@ -707,19 +707,23 @@ final class AppEnvironment: ObservableObject {
             where known.insert(item.id).inserted {
                 queue.append(item)
             }
+            let stream = SelenaRecommendationCursor(
+                seedTracks: [track] + queue,
+                knownTracks: queue
+            )
             let title = L10n.format("Микс по «%@»", track.title)
             player.play(
                 track,
                 in: queue,
                 continuation: { [weak self] in
                     guard let self else { return [] }
-                    return try await self.withAuthorizedToken { token in
-                        try await self.musicService.recommendations(
-                            seededBy: track,
+                    let more = try await self.withAuthorizedToken { token in
+                        try await stream.next(
                             accessToken: token,
-                            shuffle: true
+                            musicService: self.musicService
                         )
                     }
+                    return self.filteredMixTracks(more)
                 },
                 source: .mix(title: title)
             )
@@ -763,16 +767,22 @@ final class AppEnvironment: ObservableObject {
                 )
                 return
             }
+            let stream = SelenaRecommendationCursor(
+                seedTracks: page.items + recs,
+                knownTracks: blended
+            )
             player.play(
                 first,
                 in: blended,
                 continuation: { [weak self] in
                     guard let self else { return [] }
-                    return try await self.withAuthorizedToken { token in
-                        try await self.musicService.recommendations(
-                            accessToken: token
+                    let more = try await self.withAuthorizedToken { token in
+                        try await stream.next(
+                            accessToken: token,
+                            musicService: self.musicService
                         )
                     }
+                    return self.filteredMixTracks(more)
                 },
                 source: .mix(title: L10n.text("Микс по моей музыке"))
             )
@@ -798,15 +808,16 @@ final class AppEnvironment: ObservableObject {
                 mixActionError = L10n.text("Микс пока пуст")
                 return
             }
+            let cursor = MixTrackContinuationCursor(mix: mix)
             player.play(
                 first,
                 in: cleaned,
                 continuation: { [weak self] in
                     guard let self else { return [] }
                     let more = try await self.withAuthorizedToken { token in
-                        try await self.musicService.mixTracksContinuation(
-                            mix,
-                            accessToken: token
+                        try await cursor.next(
+                            accessToken: token,
+                            musicService: self.musicService
                         )
                     }
                     return self.filteredMixTracks(more)
