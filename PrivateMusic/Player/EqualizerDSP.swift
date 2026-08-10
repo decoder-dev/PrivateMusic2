@@ -318,6 +318,18 @@ final class EqualizerDSP: @unchecked Sendable {
                 guard let statesBase = statesBuffer.baseAddress else { return }
                 let bandCount = coefficientsBuffer.count
                 var localEnvelope = envelope
+                // Read the settings once: the C hot path runs per channel,
+                // and a declared closure would otherwise capture `self`.
+                let nonInterleaved = isNonInterleaved
+                let interleavedStride = frameStride
+                let channels = channelCount
+                let gain = preamp
+                let compression = drcEnabled
+                let threshold = compressorThreshold
+                let ratio = compressorRatio
+                let makeupGain = compressorMakeupGain
+                let loudnessNormalization = loudnessNormEnabled
+                let loudness = loudnessGain
 
                 let runChannels: (UnsafePointer<PMBiquadCoeffs>?) -> Void = { bandsPointer in
                     for bufferIndex in buffers.indices {
@@ -329,15 +341,15 @@ final class EqualizerDSP: @unchecked Sendable {
                             Int(buffers[bufferIndex].mNumberChannels),
                             1
                         )
-                        if isNonInterleaved, channelsInBuffer != 1 {
+                        if nonInterleaved, channelsInBuffer != 1 {
                             continue
                         }
-                        let stride = isNonInterleaved ? 1 : frameStride
+                        let stride = nonInterleaved ? 1 : interleavedStride
 
                         for localChannel in 0..<channelsInBuffer {
-                            let channel = isNonInterleaved
-                                ? min(bufferIndex, channelCount - 1)
-                                : min(localChannel, channelCount - 1)
+                            let channel = nonInterleaved
+                                ? min(bufferIndex, channels - 1)
+                                : min(localChannel, channels - 1)
                             let channelState: UnsafeMutablePointer<Float>? =
                                 bandCount > 0
                                 ? statesBase + channel * bandCount * 4
@@ -349,14 +361,14 @@ final class EqualizerDSP: @unchecked Sendable {
                                 bandsPointer,
                                 Int32(bandCount),
                                 channelState,
-                                preamp,
-                                drcEnabled,
-                                compressorThreshold,
-                                compressorRatio,
-                                compressorMakeupGain,
+                                gain,
+                                compression,
+                                threshold,
+                                ratio,
+                                makeupGain,
                                 &localEnvelope,
-                                loudnessNormEnabled,
-                                loudnessGain
+                                loudnessNormalization,
+                                loudness
                             )
                         }
                     }
