@@ -32,10 +32,15 @@ final class PlaylistLibraryViewModel: ObservableObject {
         publish(playlists)
     }
 
-    /// Loads the opening pages of the playlist list. VK mixes followed
-    /// albums into `audio.getPlaylists`, so a single page can decode into
-    /// only a handful of playlists — the shelf pulls several pages up front
-    /// and publishes each one as it lands.
+    /// Loads the whole playlist list. VK mixes followed albums into
+    /// `audio.getPlaylists`, so a single page can decode into only a handful
+    /// of playlists — the shelf walks the list to its end when the library
+    /// opens and publishes each page as it lands.
+    ///
+    /// `pages` is a runaway guard, not a target: the walk stops as soon as
+    /// VK reports no further offset. Stopping after a fixed five pages left
+    /// playlists off the shelf on libraries with hundreds of followed
+    /// albums, which is the «они не все» users kept reporting.
     func load(
         force: Bool = false,
         pages: Int = LibraryPlaylistPagePolicy.prefetchPages,
@@ -59,6 +64,8 @@ final class PlaylistLibraryViewModel: ObservableObject {
                 offset = next
                 pending = next
             }
+            // A walk stopped by the runaway guard leaves `pending` set, so
+            // the shelf's own pagination carries on from there.
             nextOffset = pending
             didFinishPrefetch = true
             errorMessage = nil

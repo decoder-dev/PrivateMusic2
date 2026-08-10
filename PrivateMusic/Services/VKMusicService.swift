@@ -931,7 +931,11 @@ struct VKMusicService: MusicService {
             form: common(accessToken).merging(parameters) { _, new in new },
             responseType: VKResponse<JSONValue>.self
         )
-        return playlistPage(envelope.response, offset: offset)
+        return playlistPage(
+            envelope.response,
+            offset: offset,
+            requested: count
+        )
     }
 
     func playlistTracks(
@@ -1236,17 +1240,19 @@ struct VKMusicService: MusicService {
     /// instead of re-requesting the same window.
     func playlistPage(
         _ value: JSONValue,
-        offset: Int
+        offset: Int,
+        requested: Int = LibraryPlaylistPagePolicy.pageSize
     ) -> MusicPage<Playlist> {
         let items = value.libraryPlaylistItems
         let received = value.libraryItemCount
         let total = value.libraryTotalCount ?? (offset + received)
         return MusicPage(
             items: items,
-            totalCount: total,
+            totalCount: max(total, offset + received),
             nextOffset: LibraryPlaylistPagePolicy.nextOffset(
                 after: offset,
                 received: received,
+                requested: requested,
                 total: total
             )
         )
