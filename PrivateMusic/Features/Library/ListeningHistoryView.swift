@@ -7,6 +7,8 @@ struct ListeningHistoryView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @State private var query = ""
     @State private var showingClearConfirmation = false
+    @State private var sharingTrack: Track?
+    @State private var playlistTarget: Track?
 
     private var filtered: [ListeningHistoryEntry] {
         let normalized = query.trimmingCharacters(
@@ -31,11 +33,7 @@ struct ListeningHistoryView: View {
                 List {
                     ForEach(filtered) { entry in
                         Button {
-                            environment.player.play(
-                                entry.track,
-                                in: history.entries.map(\.track),
-                                source: .history
-                            )
+                            play(entry)
                         } label: {
                             HStack(spacing: 12) {
                                 AsyncArtwork(
@@ -59,7 +57,65 @@ struct ListeningHistoryView: View {
                         }
                         .buttonStyle(.plain)
                         .listRowBackground(Color.clear)
+                        .contextMenu {
+                            Button {
+                                environment.player.playNext(entry.track)
+                            } label: {
+                                Label(
+                                    "Играть следующим",
+                                    systemImage:
+                                        "text.line.first.and.arrowtriangle.forward"
+                                )
+                            }
+                            Button {
+                                Haptics.open()
+                                sharingTrack = entry.track
+                            } label: {
+                                Label(
+                                    "Поделиться аудиофайлом",
+                                    systemImage: "square.and.arrow.up"
+                                )
+                            }
+                            Button {
+                                Haptics.open()
+                                playlistTarget = entry.track
+                            } label: {
+                                Label(
+                                    "Добавить в плейлист",
+                                    systemImage: "rectangle.stack.badge.plus"
+                                )
+                            }
+                        }
+                        .swipeActions(edge: .leading) {
+                            Button {
+                                environment.player.playNext(entry.track)
+                            } label: {
+                                Label(
+                                    "Играть следующим",
+                                    systemImage: "text.badge.plus"
+                                )
+                            }
+                            .tint(.indigo)
+                            Button {
+                                playlistTarget = entry.track
+                            } label: {
+                                Label(
+                                    "Добавить в плейлист",
+                                    systemImage: "rectangle.stack.badge.plus"
+                                )
+                            }
+                            .tint(.blue)
+                        }
                         .swipeActions {
+                            Button {
+                                sharingTrack = entry.track
+                            } label: {
+                                Label(
+                                    "Поделиться аудиофайлом",
+                                    systemImage: "square.and.arrow.up"
+                                )
+                            }
+                            .tint(.orange)
                             Button(role: .destructive) {
                                 history.remove(entry)
                             } label: {
@@ -75,6 +131,10 @@ struct ListeningHistoryView: View {
         .background(ThemeBackground())
         .navigationTitle("История")
         .searchable(text: $query, prompt: "Трек или исполнитель")
+        .trackShareSheet(track: $sharingTrack)
+        .sheet(item: $playlistTarget) { track in
+            AddToPlaylistView(track: track)
+        }
         .toolbar {
             if !history.entries.isEmpty {
                 Button("Очистить") { showingClearConfirmation = true }
@@ -87,5 +147,13 @@ struct ListeningHistoryView: View {
         ) {
             Button("Очистить", role: .destructive) { history.clear() }
         }
+    }
+
+    private func play(_ entry: ListeningHistoryEntry) {
+        environment.player.play(
+            entry.track,
+            in: history.entries.map(\.track),
+            source: .history
+        )
     }
 }
