@@ -371,10 +371,12 @@ struct MixesHubView: View {
                         )
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(cardSubtitle(for: mix))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                    if let subtitle = trimmedText(cardSubtitle(for: mix)) {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
                     HStack(spacing: 6) {
                         Text(mixTypeTitle(for: mix))
                         if !cachedTracks.isEmpty {
@@ -497,10 +499,12 @@ struct MixesHubView: View {
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(cardSubtitle(for: mix))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+            if let subtitle = trimmedText(cardSubtitle(for: mix)) {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
             if !cached.isEmpty {
                 Text(L10n.trackCount(cached.count))
                     .font(.caption2.weight(.semibold))
@@ -619,6 +623,7 @@ struct MixesHubView: View {
         let artSource = tracks.isEmpty
             ? homeCatalog.recommendations
             : tracks
+        let trimmedSubtitle = trimmedText(subtitle)
         return Button { start(mix) } label: {
             ZStack(alignment: .bottomLeading) {
                 MixArtworkView(
@@ -670,11 +675,13 @@ struct MixesHubView: View {
                     Text(mix.title)
                         .font(.title2.weight(.bold))
                         .lineLimit(2)
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.86))
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if let trimmedSubtitle {
+                        Text(trimmedSubtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.86))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .padding(22)
                 .padding(.trailing, 72)
@@ -1273,14 +1280,18 @@ struct MixesHubView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(track.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text(track.artist)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if let title = trimmedText(track.title) {
+                        Text(title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+                    if let artist = trimmedText(track.artist) {
+                        Text(artist)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                     Text(track.duration.formattedDuration)
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
@@ -1340,14 +1351,18 @@ struct MixesHubView: View {
                     .background(.white, in: Circle())
                     .padding(8)
                 }
-                Text(track.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(track.artist)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                if let title = trimmedText(track.title) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+                if let artist = trimmedText(track.artist) {
+                    Text(artist)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 HStack(spacing: 6) {
                     Image(systemName: "clock")
                     Text(track.duration.formattedDuration)
@@ -1463,16 +1478,24 @@ struct MixesHubView: View {
                                             alignment: .leading,
                                             spacing: 1
                                         ) {
-                                            Text(track.title)
-                                                .font(
-                                                    .caption.weight(.semibold)
-                                                )
-                                                .foregroundStyle(.primary)
-                                                .lineLimit(1)
-                                            Text(track.artist)
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                                .lineLimit(1)
+                                            if let title = trimmedText(
+                                                track.title
+                                            ) {
+                                                Text(title)
+                                                    .font(
+                                                        .caption.weight(.semibold)
+                                                    )
+                                                    .foregroundStyle(.primary)
+                                                    .lineLimit(1)
+                                            }
+                                            if let artist = trimmedText(
+                                                track.artist
+                                            ) {
+                                                Text(artist)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .lineLimit(1)
+                                            }
                                         }
                                     }
                                     .frame(
@@ -1739,6 +1762,11 @@ struct MixesHubView: View {
         return mix.subtitle
     }
 
+    private func trimmedText(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     private func vkTracksSubtitle(for mix: MusicMix) -> String {
         if mix.isSocial {
             return L10n.text("Подобрано по пересечению вкусов")
@@ -1994,6 +2022,7 @@ struct MixesHubView: View {
     }
 
     private func openQueue(_ mix: MusicMix) {
+        // TODO: Use AudioPlayer.presentQueue() when that presentation API lands.
         if case .mix = player.queueSource, !player.queue.isEmpty {
             player.presentPlayer()
         } else {

@@ -213,10 +213,14 @@ struct PlaylistDetailView: View {
                                 ProgressView(value: progress)
                                     .frame(width: 120)
                             }
-                            Text(status.localizedText ?? "")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                            if let statusText = status.localizedText?
+                                .trimmingCharacters(in: .whitespacesAndNewlines),
+                               !statusText.isEmpty {
+                                Text(statusText)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
                         }
                         .padding(.top, 2)
                     }
