@@ -354,25 +354,67 @@ enum JSONValue: Codable, Sendable {
     }
 }
 
+private enum LibraryPlaylistEntryMarkers {
+    /// `album_type` values VK uses for a release. `main_only` is what a
+    /// plain studio release reports.
+    static let release: Set<String> = [
+        "album", "single", "ep", "compilation", "main_only"
+    ]
+
+    /// `album_type` values VK uses for something a person assembled.
+    static let playlist: Set<String> = ["playlist", "collection"]
+}
+
 private extension Dictionary where Key == String, Value == JSONValue {
-    /// A followed album returned by `audio.getPlaylists`. VK marks those
-    /// with `type == 1` and ships release metadata (`main_artists`, an
-    /// `album_type` other than `playlist`) that a user playlist never has.
-    /// The test is deliberately narrow: a false positive here deletes a
-    /// real playlist from the shelf.
+    /// A followed album returned by `audio.getPlaylists`, which the Albums
+    /// shelf already covers via `filters=followed,albums`.
+    ///
+    /// Telling releases apart from playlists has to be conservative:
+    /// dropping a real playlist is the regression users reported, while an
+    /// album that slips through still renders a working card. So a single
+    /// marker is never enough — VK stamps `type: 1` on playlists saved from
+    /// another owner and attaches `main_artists` to playlists generated off
+    /// an artist page, and either one alone used to delete those playlists
+    /// from Медиатека. A genuine release always carries several markers at
+    /// once, and never the saved-playlist ones.
     var looksLikeFollowedAlbum: Bool {
-        if case let .array(artists)? = self["main_artists"], !artists.isEmpty {
-            return true
-        }
-        if let type = self["type"]?.numberValue, Int(type.rounded()) == 1 {
-            return true
-        }
-        let albumTypes: Set<String> = ["album", "single", "ep", "compilation"]
+        guard !hasPlaylistMarker else { return false }
+        return releaseMarkerCount >= 2
+    }
+
+    /// Markers only a person-made list carries. `original` is the pointer VK
+    /// attaches to the copy you saved from another owner.
+    var hasPlaylistMarker: Bool {
+        if case .object? = self["original"] { return true }
         if let albumType = self["album_type"]?.stringValue,
-           albumTypes.contains(albumType.lowercased()) {
+           LibraryPlaylistEntryMarkers.playlist.contains(
+            albumType.lowercased()
+           ) {
             return true
         }
         return false
+    }
+
+    /// How many independent release markers the entry carries.
+    var releaseMarkerCount: Int {
+        var markers = 0
+        if case let .array(artists)? = self["main_artists"], !artists.isEmpty {
+            markers += 1
+        }
+        if self["year"]?.numberValue != nil
+            || self["original_year"]?.numberValue != nil {
+            markers += 1
+        }
+        if let albumType = self["album_type"]?.stringValue,
+           LibraryPlaylistEntryMarkers.release.contains(
+            albumType.lowercased()
+           ) {
+            markers += 1
+        }
+        if let type = self["type"]?.numberValue, Int(type.rounded()) == 1 {
+            markers += 1
+        }
+        return markers
     }
 
     var mixMatchPercent: Int? {

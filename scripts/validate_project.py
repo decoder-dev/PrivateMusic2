@@ -378,12 +378,22 @@ for required_playlist_identity_symbol in (
             f"covers: {required_playlist_identity_symbol}"
         )
 playlist_library_source = (
-    SOURCE / "Features/Library/PlaylistLibraryView.swift"
+    SOURCE / "Features/Library/PlaylistLibraryViewModel.swift"
 ).read_text(encoding="utf-8")
 if "LibraryPlaylistShelfPolicy.normalized(" not in playlist_library_source:
     fail(
         "playlist loads must collapse duplicated system playlists "
         "(owned + followed «Мне нравится»)"
+    )
+if "didFinishPrefetch" not in playlist_library_source:
+    fail(
+        "a cancelled playlist prefetch must not count as loaded: the shelf "
+        "would stay stuck on whichever page landed first"
+    )
+if "followedAlbumIdentities" not in playlist_library_source:
+    fail(
+        "the playlist shelf must drop followed albums by id, not by "
+        "guessing at the shape of a VK entry"
     )
 shelf_policy_source = (
     SOURCE / "Models/LibraryPlaylistShelfPolicy.swift"
@@ -412,6 +422,19 @@ if "libraryPlaylistItems" not in all_source:
         "audio.getPlaylists must decode item by item: a strict page decode "
         "hides every playlist behind one bad entry"
     )
+json_value_source = (SOURCE / "Core/Networking/JSONValue.swift").read_text(
+    encoding="utf-8"
+)
+for required_album_filter_symbol in (
+    "var hasPlaylistMarker: Bool",
+    "var releaseMarkerCount: Int",
+    "return releaseMarkerCount >= 2",
+):
+    if required_album_filter_symbol not in json_value_source:
+        fail(
+            "one ambiguous VK marker must not drop a playlist from the "
+            f"shelf: {required_album_filter_symbol}"
+        )
 if "VKItems<Playlist>" in all_source:
     fail("playlist pages must not use the strict all-or-nothing decode")
 if '"filters": "owned,followed"' in all_source:

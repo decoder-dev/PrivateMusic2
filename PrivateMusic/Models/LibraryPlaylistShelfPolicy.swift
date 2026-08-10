@@ -23,14 +23,21 @@ enum LibraryPlaylistShelfPolicy {
         "liked songs"
     ]
 
+    /// - Parameter followedAlbumIdentities: owner-scoped ids of the albums
+    ///   the Albums shelf already loaded through `filters=followed,albums`.
+    ///   VK reports those albums in the unfiltered playlist list too, and
+    ///   this is the only way to recognise them that cannot mistake a real
+    ///   playlist for a release.
     static func normalized(
         _ items: [Playlist],
-        ownerID: Int? = nil
+        ownerID: Int? = nil,
+        followedAlbumIdentities: Set<String> = []
     ) -> [Playlist] {
         var seenIdentities = Set<String>()
         var unique: [Playlist] = []
         for item in items {
-            guard seenIdentities.insert(item.libraryIdentity).inserted else {
+            guard !followedAlbumIdentities.contains(item.libraryIdentity),
+                  seenIdentities.insert(item.libraryIdentity).inserted else {
                 continue
             }
             unique.append(item)
