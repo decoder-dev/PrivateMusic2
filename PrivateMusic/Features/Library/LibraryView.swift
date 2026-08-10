@@ -22,6 +22,9 @@ struct LibraryView: View {
     @State private var showingEditor = false
     @State private var pendingCellularDownload: Track?
     @State private var sharingTrack: Track?
+    @State private var loadingPlayAlbumID: String?
+    @State private var loadingPlayPlaylistID: Int?
+    @State private var playbackErrorMessage: String?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -186,6 +189,17 @@ struct LibraryView: View {
                 )
             )
         }
+        .alert(
+            "Не удалось начать воспроизведение",
+            isPresented: Binding(
+                get: { playbackErrorMessage != nil },
+                set: { if !$0 { playbackErrorMessage = nil } }
+            )
+        ) {
+            Button("ОК", role: .cancel) {}
+        } message: {
+            Text(playbackErrorMessage ?? "")
+        }
         .task(id: sessionStore.accessToken) {
             await load(force: true)
         }
@@ -313,6 +327,122 @@ struct LibraryView: View {
         highlight.isCurrent(track.id)
     }
 
+    private func albumQueueSource(for album: Album) -> QueueSource {
+        .album(title: albumPlaybackTitle(album))
+    }
+
+    private func albumPlaybackTitle(_ album: Album) -> String {
+        Album.isUsableTitle(album.title) ? album.title : L10n.text("Альбом")
+    }
+
+    private func albumPlaybackAction(
+        for album: Album
+    ) -> QueueSourcePlaybackAction {
+        QueueSourcePlaybackAction.resolve(
+            target: albumQueueSource(for: album),
+            isPlaying: highlight.isPlaying,
+            queueSource: highlight.queueSource
+        )
+    }
+
+    private func performAlbumPlaybackAction(
+        _ action: QueueSourcePlaybackAction,
+        for album: Album
+    ) {
+        switch action {
+        case .start:
+            playAlbum(album)
+        case .resume:
+            environment.player.resume()
+        case .pause:
+            environment.player.pause()
+        }
+    }
+
+    private func playAlbum(_ album: Album) {
+        guard sessionStore.accessToken != nil else { return }
+        loadingPlayAlbumID = album.id
+        Task {
+            defer { loadingPlayAlbumID = nil }
+            do {
+                let page = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.albumTracks(
+                        album,
+                        accessToken: token,
+                        offset: 0,
+                        count: 50
+                    )
+                }
+                guard let first = page.items.first else { return }
+                environment.player.play(
+                    first,
+                    in: page.items,
+                    source: albumQueueSource(for: album)
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                playbackErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func playlistQueueSource(for playlist: Playlist) -> QueueSource {
+        .playlist(title: playlist.title)
+    }
+
+    private func playlistPlaybackAction(
+        for playlist: Playlist
+    ) -> QueueSourcePlaybackAction {
+        QueueSourcePlaybackAction.resolve(
+            target: playlistQueueSource(for: playlist),
+            isPlaying: highlight.isPlaying,
+            queueSource: highlight.queueSource
+        )
+    }
+
+    private func performPlaylistPlaybackAction(
+        _ action: QueueSourcePlaybackAction,
+        for playlist: Playlist
+    ) {
+        switch action {
+        case .start:
+            playPlaylist(playlist)
+        case .resume:
+            environment.player.resume()
+        case .pause:
+            environment.player.pause()
+        }
+    }
+
+    private func playPlaylist(_ playlist: Playlist) {
+        guard sessionStore.accessToken != nil else { return }
+        loadingPlayPlaylistID = playlist.id
+        Task {
+            defer { loadingPlayPlaylistID = nil }
+            do {
+                let page = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.playlistTracks(
+                        playlist,
+                        accessToken: token,
+                        offset: 0,
+                        count: 50
+                    )
+                }
+                guard let first = page.items.first else { return }
+                environment.player.play(
+                    first,
+                    in: page.items,
+                    source: playlistQueueSource(for: playlist)
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                playbackErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
     /// Defect 12: the badge must reflect both in-flight track downloads and
     /// active playlist batches, and the counter must be file-backed.
     private var isOfflineActivityActive: Bool {
@@ -341,35 +471,46 @@ struct LibraryView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 14) {
                     ForEach(playlists.playlists) { playlist in
-                        NavigationLink {
-                            PlaylistDetailView(playlist: playlist)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 8) {
-                                PlaylistArtworkView(
-                                    playlist: playlist,
-                                    size: 136
-                                )
-                                Text(playlist.title)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                Text(L10n.trackCount(playlist.count))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 8) {
+                            ZStack(alignment: .bottomTrailing) {
+                                NavigationLink {
+                                    PlaylistDetailView(playlist: playlist)
+                                } label: {
+                                    PlaylistArtworkView(
+                                        playlist: playlist,
+                                        size: 136
+                                    )
+                                }
+                                .buttonStyle(PremiumPressStyle())
+
+                                playlistPlayChip(playlist)
                             }
-                            .frame(width: 136, alignment: .leading)
-                            .premiumAppear(
-                                delay: min(
-                                    Double(
-                                        playlists.playlists.firstIndex(
-                                            of: playlist
-                                        ) ?? 0
-                                    ) * 0.025,
-                                    0.2
-                                )
-                            )
+                            NavigationLink {
+                                PlaylistDetailView(playlist: playlist)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(playlist.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                    Text(L10n.trackCount(playlist.count))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(PremiumPressStyle())
+                        .frame(width: 136, alignment: .leading)
+                        .premiumAppear(
+                            delay: min(
+                                Double(
+                                    playlists.playlists.firstIndex(
+                                        of: playlist
+                                    ) ?? 0
+                                ) * 0.025,
+                                0.2
+                            )
+                        )
                         .onAppear {
                             loadMorePlaylistsIfNeeded(after: playlist)
                         }
@@ -379,6 +520,37 @@ struct LibraryView: View {
         }
     }
 
+    private func playlistPlayChip(_ playlist: Playlist) -> some View {
+        let action = playlistPlaybackAction(for: playlist)
+        return Button {
+            performPlaylistPlaybackAction(action, for: playlist)
+        } label: {
+            Group {
+                if loadingPlayPlaylistID == playlist.id {
+                    ProgressView()
+                        .tint(.black)
+                } else {
+                    Image(systemName: action.systemImage)
+                }
+            }
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.black)
+            .frame(width: 32, height: 32)
+            .background(.white, in: Circle())
+        }
+        .buttonStyle(PremiumPressStyle())
+        .padding(8)
+        .disabled(
+            loadingPlayPlaylistID != nil
+                && loadingPlayPlaylistID != playlist.id
+        )
+        .accessibilityLabel(
+            L10n.text(
+                action.accessibilityLabelKey(playKey: "Воспроизвести плейлист")
+            )
+        )
+    }
+
     private var albumShelf: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Альбомы")
@@ -386,31 +558,75 @@ struct LibraryView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 14) {
                     ForEach(likedAlbumsStore.albums) { album in
-                        NavigationLink {
-                            AlbumDetailView(album: album)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 8) {
-                                AsyncArtwork(url: album.artworkURL, size: 136)
-                                Text(
-                                    Album.isUsableTitle(album.title)
-                                        ? album.title
-                                        : L10n.text("Альбом")
-                                )
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                Text(album.artistText)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 8) {
+                            ZStack(alignment: .bottomTrailing) {
+                                NavigationLink {
+                                    AlbumDetailView(album: album)
+                                } label: {
+                                    AsyncArtwork(
+                                        url: album.artworkURL,
+                                        size: 136
+                                    )
+                                }
+                                .buttonStyle(PremiumPressStyle())
+
+                                albumPlayChip(album)
                             }
-                            .frame(width: 136, alignment: .leading)
+                            NavigationLink {
+                                AlbumDetailView(album: album)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(
+                                        Album.isUsableTitle(album.title)
+                                            ? album.title
+                                            : L10n.text("Альбом")
+                                    )
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                    Text(album.artistText)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(PremiumPressStyle())
+                        .frame(width: 136, alignment: .leading)
                     }
                 }
             }
         }
+    }
+
+    private func albumPlayChip(_ album: Album) -> some View {
+        let action = albumPlaybackAction(for: album)
+        return Button {
+            performAlbumPlaybackAction(action, for: album)
+        } label: {
+            Group {
+                if loadingPlayAlbumID == album.id {
+                    ProgressView()
+                        .tint(.black)
+                } else {
+                    Image(systemName: action.systemImage)
+                }
+            }
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.black)
+            .frame(width: 32, height: 32)
+            .background(.white, in: Circle())
+        }
+        .buttonStyle(PremiumPressStyle())
+        .padding(8)
+        .disabled(
+            loadingPlayAlbumID != nil && loadingPlayAlbumID != album.id
+        )
+        .accessibilityLabel(
+            L10n.text(
+                action.accessibilityLabelKey(playKey: "Воспроизвести альбом")
+            )
+        )
     }
 
     private func libraryRow(_ track: Track) -> some View {
