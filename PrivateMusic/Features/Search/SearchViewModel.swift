@@ -541,7 +541,7 @@ final class SearchViewModel: ObservableObject {
     }
 
     private static func playlistIdentity(_ playlist: Playlist) -> String {
-        "\(playlist.ownerID)_\(playlist.id)"
+        playlist.libraryIdentity
     }
 
     private static func isCancellation(_ error: Error) -> Bool {

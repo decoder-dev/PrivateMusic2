@@ -17,13 +17,21 @@ enum PlaylistSource: String, Codable, Hashable, Sendable {
 }
 
 struct Playlist: Codable, Hashable, Identifiable, Sendable {
-    let id: Int
+    let playlistID: Int
     let ownerID: Int
     let title: String
     let description: String?
     let count: Int
     let artworkURL: URL?
     let accessKey: String?
+
+    /// VK playlist ids are only unique per owner: `audio.getPlaylists`
+    /// with `filters=owned,followed` returns other people's playlists whose
+    /// numeric id can collide with one of yours. Identifying a list row by
+    /// the bare id hands SwiftUI duplicate `ForEach` ids, which renders the
+    /// library shelf as undefined, collapsed cards.
+    var id: String { libraryIdentity }
+    var libraryIdentity: String { "\(ownerID)_\(playlistID)" }
 
     var source: PlaylistSource { .vk }
 
@@ -32,7 +40,7 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
     /// never keeps a stale `count == 0`.
     func updatingCount(_ newCount: Int) -> Playlist {
         Playlist(
-            id: id,
+            id: playlistID,
             ownerID: ownerID,
             title: title,
             description: description,
@@ -54,7 +62,7 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
         artworkURL: URL? = nil,
         accessKey: String? = nil
     ) {
-        self.id = id
+        self.playlistID = id
         self.ownerID = ownerID
         self.title = title
         self.description = description
@@ -64,27 +72,42 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id
+        case playlistID = "id"
         case ownerID = "owner_id"
         case title
         case description
         case count
-        case photo600 = "photo_600"
-        case photo300 = "photo_300"
-        case photo
-        case thumb
-        case accessKey = "access_key"
-    }
-
-    private enum ThumbKeys: String, CodingKey {
+        case photo1200 = "photo_1200"
         case photo600 = "photo_600"
         case photo300 = "photo_300"
         case photo270 = "photo_270"
+        case photo
+        case thumb
+        case thumbs
+        case accessKey = "access_key"
+    }
+
+    private struct Thumb: Decodable {
+        let photo1200: String?
+        let photo600: String?
+        let photo300: String?
+        let photo270: String?
+
+        var bestPhoto: String? {
+            photo1200 ?? photo600 ?? photo300 ?? photo270
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case photo1200 = "photo_1200"
+            case photo600 = "photo_600"
+            case photo300 = "photo_300"
+            case photo270 = "photo_270"
+        }
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(Int.self, forKey: .id)
+        playlistID = try container.decode(Int.self, forKey: .playlistID)
         ownerID = try container.decode(Int.self, forKey: .ownerID)
         title = try container.decode(String.self, forKey: .title)
         description = try container.decodeIfPresent(
@@ -96,31 +119,38 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
             String.self,
             forKey: .accessKey
         )
-        var rawArtwork = try container.decodeIfPresent(
-            String.self,
-            forKey: .photo600
-        ) ?? container.decodeIfPresent(String.self, forKey: .photo300)
+        var rawArtwork: String?
+        for key in [
+            CodingKeys.photo1200, .photo600, .photo300, .photo270
+        ] {
+            rawArtwork = try? container.decode(String.self, forKey: key)
+            if rawArtwork != nil { break }
+        }
         if rawArtwork == nil {
             for key in [CodingKeys.thumb, .photo] {
-                guard let thumb = try? container.nestedContainer(
-                    keyedBy: ThumbKeys.self,
+                let thumb: Thumb? = try? container.decode(
+                    Thumb.self,
                     forKey: key
-                ) else { continue }
-                rawArtwork = try thumb.decodeIfPresent(
-                    String.self,
-                    forKey: .photo600
                 )
-                    ?? thumb.decodeIfPresent(String.self, forKey: .photo300)
-                    ?? thumb.decodeIfPresent(String.self, forKey: .photo270)
+                rawArtwork = thumb?.bestPhoto
                 if rawArtwork != nil { break }
             }
+        }
+        if rawArtwork == nil {
+            // Playlists without an uploaded cover (including the system
+            // «Мне нравится») ship a generated mosaic under `thumbs`, not
+            // `photo_*`. Missing it left those cards as bare text.
+            let thumbs: [Thumb] = (
+                try? container.decode([Thumb].self, forKey: .thumbs)
+            ) ?? []
+            rawArtwork = thumbs.lazy.compactMap(\.bestPhoto).first
         }
         artworkURL = rawArtwork.flatMap(URL.secureRemoteURL)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
+        try container.encode(playlistID, forKey: .playlistID)
         try container.encode(ownerID, forKey: .ownerID)
         try container.encode(title, forKey: .title)
         try container.encodeIfPresent(description, forKey: .description)

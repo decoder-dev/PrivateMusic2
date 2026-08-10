@@ -101,8 +101,10 @@ struct OfflinePlaylistRecord: Codable, Identifiable, Equatable, Sendable {
         }
     }
 
+    /// Same `ownerID_playlistID` shape as `Playlist.libraryIdentity`, kept
+    /// verbatim because it keys already-persisted download records.
     static func identifier(for playlist: Playlist) -> String {
-        "\(playlist.ownerID)_\(playlist.id)"
+        playlist.libraryIdentity
     }
 
     enum CodingKeys: String, CodingKey {
