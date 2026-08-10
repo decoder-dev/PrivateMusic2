@@ -32,6 +32,82 @@ final class PlaybackQueueBuilderTests: XCTestCase {
         )
     }
 
+    func testStaleMixRadioRefillIsRejected() {
+        XCTAssertFalse(
+            MixRadioRefillPolicy.shouldApplyRefill(
+                taskGeneration: 1,
+                currentGeneration: 2,
+                expectedMode: .closerToSeed,
+                currentMode: .closerToSeed,
+                expectedSeedID: "a",
+                currentTrackID: "a",
+                isMixQueue: true
+            )
+        )
+        XCTAssertFalse(
+            MixRadioRefillPolicy.shouldApplyRefill(
+                taskGeneration: 1,
+                currentGeneration: 1,
+                expectedMode: .closerToSeed,
+                currentMode: .moreNovel,
+                expectedSeedID: "a",
+                currentTrackID: "a",
+                isMixQueue: true
+            )
+        )
+        XCTAssertFalse(
+            MixRadioRefillPolicy.shouldApplyRefill(
+                taskGeneration: 1,
+                currentGeneration: 1,
+                expectedMode: .closerToSeed,
+                currentMode: .closerToSeed,
+                expectedSeedID: "a",
+                currentTrackID: "b",
+                isMixQueue: true
+            )
+        )
+        XCTAssertFalse(
+            MixRadioRefillPolicy.shouldApplyRefill(
+                taskGeneration: 1,
+                currentGeneration: 1,
+                expectedMode: .closerToSeed,
+                currentMode: .closerToSeed,
+                expectedSeedID: "a",
+                currentTrackID: "a",
+                isMixQueue: false
+            )
+        )
+        XCTAssertTrue(
+            MixRadioRefillPolicy.shouldApplyRefill(
+                taskGeneration: 3,
+                currentGeneration: 3,
+                expectedMode: .moreNovel,
+                currentMode: .moreNovel,
+                expectedSeedID: "seed",
+                currentTrackID: "seed",
+                isMixQueue: true
+            )
+        )
+    }
+
+    func testPlayNextPinsSurviveRadioUpcomingMerge() {
+        let head = [track(id: 1, title: "Now")]
+        let pinned = track(id: 99, title: "Play Next")
+        let existing = [pinned, track(id: 2), track(id: 3)]
+        let replacement = [track(id: 4), track(id: 5), track(id: 99, title: "Dup")]
+        let merged = MixRadioUpcomingMergePolicy.merge(
+            head: head,
+            existingUpcoming: existing,
+            replacement: replacement,
+            pinnedIDs: [pinned.id],
+            limit: 10
+        )
+        XCTAssertEqual(
+            merged.map(\.id),
+            [head[0].id, pinned.id, "10_4", "10_5"]
+        )
+    }
+
     func testSelectedTrackIsInsertedWhenMissing() {
         let selected = track(id: 7, title: "Selected")
         let result = PlaybackQueueBuilder.normalized(

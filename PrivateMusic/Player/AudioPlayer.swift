@@ -551,6 +551,9 @@ final class AudioPlayer: ObservableObject {
     private var mixRadioRefillProvider:
         ((Track, MixRadioMode) async throws -> [Track])?
     private var mixRadioRefillTask: Task<Void, Never>?
+    private var mixRadioRefillGeneration = 0
+    /// Track IDs inserted via `playNext` — preserved across radio refills.
+    private var pinnedPlayNextIDs = Set<String>()
     private var lastNowPlayingSecond = -1
     private var playbackIntended = false
     private var pausedForMinimumVolume = false
@@ -828,6 +831,8 @@ final class AudioPlayer: ObservableObject {
         routeDisconnectPending = false
         playbackIntended = true
         cancelContinuation()
+        cancelMixRadioRefill()
+        pinnedPlayNextIDs.removeAll()
         cancelStreamRefresh()
         cancelStreamRecovery()
         requiresStreamRefresh = false
@@ -917,6 +922,7 @@ final class AudioPlayer: ObservableObject {
         }
         guard track.id != currentTrack.id else { return }
         cancelContinuation()
+        cancelMixRadioRefill()
         queue.removeAll { $0.id == track.id }
         let adjustedCurrentIndex = queue.firstIndex {
             $0.id == currentTrack.id
@@ -926,6 +932,7 @@ final class AudioPlayer: ObservableObject {
             track,
             at: min(adjustedCurrentIndex + 1, queue.count)
         )
+        pinnedPlayNextIDs.insert(track.id)
         persistPlayback()
         publishNowPlayingQueue()
         scheduleNeighborPreloads()
@@ -938,11 +945,13 @@ final class AudioPlayer: ObservableObject {
             return
         }
         cancelContinuation()
+        cancelMixRadioRefill()
         let removesCurrentTrack = index == currentIndex
         let shouldResume = isPlaying
         let removedTrack = queue[index]
         queue.remove(at: index)
         restoredTrackIDs.remove(removedTrack.id)
+        pinnedPlayNextIDs.remove(removedTrack.id)
 
         guard !queue.isEmpty else {
             stop()
@@ -975,10 +984,12 @@ final class AudioPlayer: ObservableObject {
         routeDisconnectPending = false
         playbackIntended = true
         cancelContinuation()
+        cancelMixRadioRefill()
         cancelStreamRefresh()
         requiresStreamRefresh = false
         didAttemptStreamRefresh = false
         currentIndex = index
+        prunePinnedPlayNextIDs()
         resetProgressForTrackTransition()
         persistPlayback()
         loadCurrentAndPlay()
@@ -986,6 +997,7 @@ final class AudioPlayer: ObservableObject {
 
     func toggleShuffle() {
         cancelContinuation()
+        cancelMixRadioRefill()
         shuffleEnabled.toggle()
         defaults.set(shuffleEnabled, forKey: "player.shuffle")
         guard let currentTrack else { return }
@@ -993,6 +1005,7 @@ final class AudioPlayer: ObservableObject {
         queue = [currentTrack]
             + (shuffleEnabled ? remaining.shuffled() : remaining)
         currentIndex = 0
+        pinnedPlayNextIDs.removeAll()
         persistPlayback()
         publishNowPlayingQueue()
         scheduleNeighborPreloads()
@@ -1152,10 +1165,12 @@ final class AudioPlayer: ObservableObject {
             return
         }
         cancelContinuation()
+        cancelMixRadioRefill()
         cancelStreamRefresh()
         requiresStreamRefresh = false
         didAttemptStreamRefresh = false
         self.currentIndex = nextIndex < queue.endIndex ? nextIndex : 0
+        prunePinnedPlayNextIDs()
         resetProgressForTrackTransition()
         persistPlayback()
         loadCurrentAndPlay()
@@ -1168,6 +1183,7 @@ final class AudioPlayer: ObservableObject {
         }
         guard let currentIndex, !queue.isEmpty else { return }
         cancelContinuation()
+        cancelMixRadioRefill()
         cancelStreamRefresh()
         requiresStreamRefresh = false
         didAttemptStreamRefresh = false
@@ -1176,6 +1192,7 @@ final class AudioPlayer: ObservableObject {
         } else {
             self.currentIndex = repeatMode == .all ? queue.count - 1 : 0
         }
+        prunePinnedPlayNextIDs()
         resetProgressForTrackTransition()
         persistPlayback()
         loadCurrentAndPlay()
@@ -1218,6 +1235,8 @@ final class AudioPlayer: ObservableObject {
         sleepTimerEndDate = nil
         sleepTimerMode = nil
         cancelContinuation()
+        cancelMixRadioRefill()
+        pinnedPlayNextIDs.removeAll()
         cancelStreamRefresh()
         cancelPreloading()
         player.pause()
@@ -2404,6 +2423,7 @@ final class AudioPlayer: ObservableObject {
 
         if currentIndex + 1 < queue.count {
             cancelContinuation()
+            cancelMixRadioRefill()
             cancelStreamRefresh()
             cancelStreamRecovery()
             requiresStreamRefresh = false
@@ -2411,6 +2431,7 @@ final class AudioPlayer: ObservableObject {
             streamRecoveryAttempts = 0
             stallStartedAt = nil
             self.currentIndex = currentIndex + 1
+            prunePinnedPlayNextIDs()
             errorMessage = nil
             resetProgressForTrackTransition()
             persistPlayback()
@@ -2513,6 +2534,21 @@ final class AudioPlayer: ObservableObject {
                 currentIndex: currentIndex,
                 queueCount: queue.count
             )
+    }
+
+    private func cancelMixRadioRefill() {
+        mixRadioRefillGeneration += 1
+        mixRadioRefillTask?.cancel()
+        mixRadioRefillTask = nil
+    }
+
+    private func prunePinnedPlayNextIDs() {
+        let liveIDs = Set(queue.map(\.id))
+        pinnedPlayNextIDs = pinnedPlayNextIDs.intersection(liveIDs)
+        if let currentIndex, queue.indices.contains(currentIndex) {
+            let played = Set(queue.prefix(currentIndex + 1).map(\.id))
+            pinnedPlayNextIDs.subtract(played)
+        }
     }
 
     private func cancelStreamRefresh() {
@@ -2654,18 +2690,18 @@ final class AudioPlayer: ObservableObject {
             return
         }
         let head = Array(queue.prefix(currentIndex + 1))
+        let existingUpcoming = Array(queue.suffix(from: currentIndex + 1))
         let filtered = mixTrackFilter?(tracks) ?? tracks
-        var known = Set(head.map(\.id))
-        var upcoming: [Track] = []
-        for track in filtered where known.insert(track.id).inserted {
-            upcoming.append(track)
-            if upcoming.count >= MixTrackRequestPolicy.queueLimit {
-                break
-            }
-        }
-        let next = head + upcoming
+        let next = MixRadioUpcomingMergePolicy.merge(
+            head: head,
+            existingUpcoming: existingUpcoming,
+            replacement: filtered,
+            pinnedIDs: pinnedPlayNextIDs,
+            limit: MixTrackRequestPolicy.queueLimit
+        )
         guard next.map(\.id) != queue.map(\.id) else { return }
         queue = next
+        prunePinnedPlayNextIDs()
         invalidatePreloadedPlayback()
         persistPlayback()
         publishNowPlayingQueue()
@@ -2684,9 +2720,11 @@ final class AudioPlayer: ObservableObject {
         nextQueue.remove(at: currentIndex)
         nextQueue.removeAll { $0.id == droppedID }
         cancelContinuation()
+        cancelMixRadioRefill()
         cancelStreamRefresh()
         requiresStreamRefresh = false
         didAttemptStreamRefresh = false
+        pinnedPlayNextIDs.remove(droppedID)
         guard !nextQueue.isEmpty else {
             queue = []
             self.currentIndex = nil
@@ -2698,6 +2736,7 @@ final class AudioPlayer: ObservableObject {
         let nextIndex = min(currentIndex, nextQueue.count - 1)
         queue = nextQueue
         self.currentIndex = nextIndex
+        prunePinnedPlayNextIDs()
         resetProgressForTrackTransition()
         persistPlayback()
         loadCurrentAndPlay()
@@ -2743,20 +2782,36 @@ final class AudioPlayer: ObservableObject {
         ) {
             startMixRadioRefill(seed: seedTrack, mode: mode)
         } else {
-            mixRadioRefillTask?.cancel()
-            mixRadioRefillTask = nil
+            cancelMixRadioRefill()
         }
     }
 
     private func startMixRadioRefill(seed: Track, mode: MixRadioMode) {
         guard let provider = mixRadioRefillProvider else { return }
-        mixRadioRefillTask?.cancel()
+        cancelMixRadioRefill()
+        let generation = mixRadioRefillGeneration
+        let seedID = seed.id
         mixRadioRefillTask = Task { [weak self] in
             do {
                 let remote = try await provider(seed, mode)
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     guard let self else { return }
+                    let isMixQueue: Bool = {
+                        if case .mix = self.queueSource { return true }
+                        return false
+                    }()
+                    guard MixRadioRefillPolicy.shouldApplyRefill(
+                        taskGeneration: generation,
+                        currentGeneration: self.mixRadioRefillGeneration,
+                        expectedMode: mode,
+                        currentMode: self.mixRadioMode,
+                        expectedSeedID: seedID,
+                        currentTrackID: self.currentTrack?.id,
+                        isMixQueue: isMixQueue
+                    ) else {
+                        return
+                    }
                     let filtered = self.mixTrackFilter?(remote) ?? remote
                     let ranked = MixQueueRanker.rerank(
                         queue: [seed] + filtered,

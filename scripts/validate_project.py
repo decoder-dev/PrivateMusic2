@@ -160,6 +160,19 @@ if "isSystemSearchPresented = true" not in search_view_source:
     fail("Search tab activation must present the system search field")
 if "func presentQueue()" not in audio_player_source:
     fail("AudioPlayer must expose presentQueue for Mix hub queue button")
+if "cancelMixRadioRefill()" not in audio_player_source:
+    fail("AudioPlayer must cancel stale mix-radio refill on queue changes")
+if "shouldApplyRefill(" not in audio_player_source:
+    fail("mix-radio refill must guard against stale async apply")
+if "MixRadioUpcomingMergePolicy.merge(" not in audio_player_source:
+    fail("replaceUpcoming must preserve Play Next pins during radio refill")
+queue_view_source = (SOURCE / "Features/Player/QueueView.swift").read_text(
+    encoding="utf-8"
+)
+if "id: \\.offset" in queue_view_source:
+    fail("QueueView must use stable track identity, not list offset")
+if "id: \\.element.id" not in queue_view_source:
+    fail("QueueView must identify rows by track id")
 append_fn = audio_player_source.split("func appendToQueue(", 1)
 if len(append_fn) < 2:
     fail("AudioPlayer must expose appendToQueue")

@@ -2347,10 +2347,10 @@ struct MixesHubView: View {
     }
 
     private func applyRadio(_ mode: MixRadioMode, mix: MusicMix) {
-        // Radio describes the live queue. When this mix is not playing yet,
-        // picking a mode used to change nothing at all — start the mix in
-        // that ordering instead of leaving an inert control.
-        guard case .mix = player.queueSource,
+        // Radio describes the live queue for THIS mix only. A mode change on
+        // another card must not reshuffle a different mix that is playing.
+        guard case .mix(let playingTitle) = player.queueSource,
+              playingTitle == mix.title,
               !player.queue.isEmpty else {
             start(mix, applying: mode)
             return

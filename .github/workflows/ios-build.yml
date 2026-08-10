@@ -129,33 +129,35 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.54-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.55-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.54-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.55-iphone-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.54"
+          test "$GITHUB_REF_NAME" = "v3.28.55"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.54 (pre-release)
+          # Private Music 3.28.55 (pre-release)
 
-          Фикс дока/стекла и прыгающей очереди микса.
-
-          ## Дизайн
-          - Док больше не рвётся Liquid Glass на «орбы» (отдельный мини-плеер / гигантский поиск)
-          - Мини-плеер в system accessory без второго стеклянного слоя
-          - История/плюс в медиатеке без ложной синей подсветки
+          Дожим прыжков очереди: stale radio-refill больше не переписывает очередь.
 
           ## Очередь
-          - Фоновая догрузка микса больше не перемешивает upcoming на каждый append
-          - Ранжирование радио детерминировано для одного и того же снимка очереди
+          - Отмена in-flight mix-radio refill на play / next / jump / stop / Play Next
+          - Guard: refill применяется только к тому же миксу, режиму и текущему треку
+          - «Играть следующим» сохраняется при server refill
+          - Режим радио на карточке микса не трогает чужой играющий микс
+          - Стабильные id строк в QueueView
+
+          ## Уже в 3.28.54
+          - Док без Liquid Glass «орбов»
+          - Append микса больше не shuffle’ит upcoming
 
           ## Установка
           IPA не подписан.
@@ -163,19 +165,19 @@ jobs:
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.54-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.54-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.55-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.55-unsigned.ipa"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.54" \
+              --title "Private Music 3.28.55" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.54" \
+              --title "Private Music 3.28.55" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -184,9 +186,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.54-unsigned
+          name: PrivateMusic-3.28.55-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.54-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.54-unsigned.ipa
+            artifacts/PrivateMusic-3.28.55-iphone-unsigned.ipa
+            artifacts/PrivateMusic-3.28.55-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
