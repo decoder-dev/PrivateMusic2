@@ -113,6 +113,8 @@ final class TrackCollectionViewModelTests: XCTestCase {
 
         model.insertAdded(track(id: 1))
         let loaded = await model.load(force: true) {
+            // Server already placed track 1 in its real slot — reload must
+            // keep that page order, not hoist the optimistic id to index 0.
             MusicPage(
                 items: [
                     track(id: 2),
@@ -128,9 +130,36 @@ final class TrackCollectionViewModelTests: XCTestCase {
         XCTAssertTrue(loaded)
         XCTAssertEqual(
             model.tracks.map(\.id),
-            ["1_1", "1_2", "1_3", "1_4"]
+            ["1_2", "1_1", "1_3", "1_4"]
         )
         XCTAssertEqual(model.totalCount, 4)
+    }
+
+    func testReloadKeepsMissingOptimisticAdditionAtFront() async {
+        let model = TrackCollectionViewModel(source: .library)
+        await model.load {
+            MusicPage(
+                items: [track(id: 2), track(id: 3)],
+                totalCount: 2,
+                nextOffset: nil
+            )
+        }
+
+        model.insertAdded(track(id: 1))
+        let loaded = await model.load(force: true) {
+            MusicPage(
+                items: [track(id: 2), track(id: 3)],
+                totalCount: 2,
+                nextOffset: nil
+            )
+        }
+
+        XCTAssertTrue(loaded)
+        XCTAssertEqual(
+            model.tracks.map(\.id),
+            ["1_1", "1_2", "1_3"]
+        )
+        XCTAssertEqual(model.totalCount, 3)
     }
 
     func testLoadMorePreservesExistingAndIncomingPageOrder() async {
