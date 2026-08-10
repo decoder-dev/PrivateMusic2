@@ -77,6 +77,9 @@ mini_player_source = (
 main_tab_source = (
     SOURCE / "Features" / "Root" / "MainTabView.swift"
 ).read_text(encoding="utf-8")
+search_view_source = (
+    SOURCE / "Features" / "Search" / "SearchView.swift"
+).read_text(encoding="utf-8")
 cached_image_source = (
     SOURCE / "Features" / "Shared" / "CachedRemoteImage.swift"
 ).read_text(encoding="utf-8")
@@ -149,6 +152,12 @@ for required_system_tab_symbol in (
             "iOS 26+ must use system Liquid Glass TabView like Apple Music: "
             f"{required_system_tab_symbol}"
         )
+if ".searchable(" not in search_view_source:
+    fail("SearchView must bind system .searchable for the search tab role")
+if "refillFromServer: false" not in audio_player_source:
+    fail("appendToQueue must rerank locally without server mix-radio refill")
+if "func presentQueue()" not in audio_player_source:
+    fail("AudioPlayer must expose presentQueue for Mix hub queue button")
 for required_dock_glass_symbol in (
     "AdaptiveGlassContainer(spacing: 10)",
     "tint: settings.theme.accent.opacity(0.06)",

@@ -71,7 +71,7 @@ struct QueueView: View {
                         }
                         ForEach(
                             Array(player.queue.enumerated()),
-                            id: \.element.id
+                            id: \.offset
                         ) { index, track in
                             Button {
                                 player.jump(to: index)
