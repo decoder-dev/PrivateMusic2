@@ -998,10 +998,7 @@ struct LibraryView: View {
 
     private func performLibraryTrackPrimaryAction(_ track: Track) {
         guard isCurrent(track) else {
-            environment.player.play(
-                track,
-                in: filteredTracks.isEmpty ? tracks.tracks : filteredTracks
-            )
+            playLibraryTrack(track)
             return
         }
 
@@ -1009,6 +1006,44 @@ struct LibraryView: View {
             environment.player.pause()
         } else {
             environment.player.resume()
+        }
+    }
+
+    /// Plays the library the way it is on screen: the queue is the visible
+    /// list, in the visible order, positioned on the tapped track. Nothing
+    /// here reorders or reseeds it — «они играют в разнобой» was this path
+    /// inheriting a shuffle another screen had turned on, and then
+    /// continuing into recommendations instead of the next library page.
+    private func playLibraryTrack(_ track: Track) {
+        let queue = filteredTracks.isEmpty ? tracks.tracks : filteredTracks
+        environment.player.play(
+            track,
+            in: queue,
+            continuation: libraryContinuation(after: queue)
+        )
+    }
+
+    /// Continues in VK library order once the loaded window runs out. Nil
+    /// while a search filter is active: the rest of the library does not
+    /// belong behind a filtered list.
+    private func libraryContinuation(
+        after queue: [Track]
+    ) -> (() async throws -> [Track])? {
+        guard queue.count == tracks.tracks.count,
+              let offset = tracks.nextPageOffset else {
+            return nil
+        }
+        let cursor = LibraryTrackContinuationCursor(
+            startingOffset: offset,
+            knownTracks: queue
+        )
+        return {
+            try await environment.withAuthorizedToken { token in
+                try await cursor.next(
+                    accessToken: token,
+                    musicService: environment.musicService
+                )
+            }
         }
     }
 
