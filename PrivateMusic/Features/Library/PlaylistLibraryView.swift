@@ -118,6 +118,7 @@ struct PlaylistLibraryView: View {
 
     private func load(force: Bool = false) async {
         guard sessionStore.accessToken != nil else { return }
+        model.configure(ownerID: sessionStore.session?.userID)
         await model.load(force: force) {
             try await environment.withAuthorizedToken { token in
                 try await environment.musicService.playlists(
@@ -150,6 +151,13 @@ final class PlaylistLibraryViewModel: ObservableObject {
     @Published private(set) var isLoadingMore = false
     @Published var errorMessage: String?
     private var nextOffset: Int?
+    private var ownerID: Int?
+
+    /// Lets the shelf prefer the copy of a duplicated system playlist that
+    /// the signed-in user actually owns.
+    func configure(ownerID: Int?) {
+        self.ownerID = ownerID
+    }
 
     func load(
         force: Bool = false,
@@ -160,7 +168,10 @@ final class PlaylistLibraryViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             let page = try await operation()
-            playlists = Self.deduplicated(page.items)
+            playlists = LibraryPlaylistShelfPolicy.normalized(
+                page.items,
+                ownerID: ownerID
+            )
             nextOffset = page.nextOffset
             errorMessage = nil
         } catch is CancellationError {
@@ -182,10 +193,10 @@ final class PlaylistLibraryViewModel: ObservableObject {
         defer { isLoadingMore = false }
         do {
             let page = try await operation(offset)
-            var known = Set(playlists.map(\.libraryIdentity))
-            playlists.append(contentsOf: page.items.filter {
-                known.insert($0.libraryIdentity).inserted
-            })
+            playlists = LibraryPlaylistShelfPolicy.normalized(
+                playlists + page.items,
+                ownerID: ownerID
+            )
             nextOffset = page.nextOffset
             errorMessage = nil
         } catch is CancellationError {
@@ -217,17 +228,5 @@ final class PlaylistLibraryViewModel: ObservableObject {
 
     func removeLocally(_ playlist: Playlist) {
         playlists.removeAll { $0.libraryIdentity == playlist.libraryIdentity }
-    }
-
-    /// VK playlist ids are only unique per owner.
-    private static func deduplicated(_ items: [Playlist]) -> [Playlist] {
-        var known = Set<String>()
-        return items.filter { known.insert($0.libraryIdentity).inserted }
-    }
-}
-
-private extension Playlist {
-    var libraryIdentity: String {
-        "\(ownerID)_\(id)"
     }
 }
