@@ -278,6 +278,7 @@ final class MiniPlayerAccessoryPolicyTests: XCTestCase {
         )
         XCTAssertTrue(MiniPlayerAccessoryPolicy.showsArtist(.expanded))
         XCTAssertTrue(MiniPlayerAccessoryPolicy.showsNextButton(.expanded))
+        XCTAssertTrue(MiniPlayerAccessoryPolicy.showsPreviousButton(.expanded))
         XCTAssertTrue(MiniPlayerAccessoryPolicy.showsProgress(.expanded))
         XCTAssertTrue(MiniPlayerAccessoryPolicy.showsOwnGlassChrome(.expanded))
     }

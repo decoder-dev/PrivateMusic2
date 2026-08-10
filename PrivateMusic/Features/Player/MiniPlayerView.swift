@@ -92,6 +92,18 @@ struct MiniPlayerView: View {
             cornerRadius: MiniPlayerLayoutMetrics.artworkCornerRadius,
             showsShadow: true
         )
+        .id(track.id)
+        .transition(
+            reduceMotion
+                ? .opacity
+                : .opacity.combined(with: .scale(scale: 0.92))
+        )
+        .animation(
+            reduceMotion
+                ? .easeOut(duration: 0.12)
+                : .spring(response: 0.34, dampingFraction: 0.84),
+            value: track.id
+        )
     }
 
     private func trackMetadata(_ track: Track) -> some View {
@@ -115,9 +127,27 @@ struct MiniPlayerView: View {
 
     private var transportControls: some View {
         HStack(spacing: MiniPlayerLayoutMetrics.controlSpacing) {
+            previousControl
             playPauseControl
             nextControl
         }
+    }
+
+    private var previousControl: some View {
+        Button {
+            Haptics.trackChange()
+            player.previous()
+        } label: {
+            Image(systemName: "backward.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .frame(
+                    width: MiniPlayerLayoutMetrics.tapTarget,
+                    height: MiniPlayerLayoutMetrics.tapTarget
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PremiumPressStyle())
+        .accessibilityLabel(L10n.text("Предыдущий трек"))
     }
 
     @ViewBuilder
