@@ -1037,11 +1037,15 @@ struct LibraryView: View {
             startingOffset: offset,
             knownTracks: queue
         )
+        // The player outlives this view, so the closure holds the
+        // environment itself rather than reading the EnvironmentObject
+        // wrapper later.
+        let appEnvironment = environment
         return {
-            try await environment.withAuthorizedToken { token in
+            try await appEnvironment.withAuthorizedToken { token in
                 try await cursor.next(
                     accessToken: token,
-                    musicService: environment.musicService
+                    musicService: appEnvironment.musicService
                 )
             }
         }
