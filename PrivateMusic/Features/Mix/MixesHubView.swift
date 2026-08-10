@@ -2022,12 +2022,11 @@ struct MixesHubView: View {
     }
 
     private func openQueue(_ mix: MusicMix) {
-        // TODO: Use AudioPlayer.presentQueue() when that presentation API lands.
         if case .mix = player.queueSource, !player.queue.isEmpty {
-            player.presentPlayer()
+            player.presentQueue()
         } else {
             start(mix)
-            player.presentPlayer()
+            player.presentQueue()
         }
     }
 

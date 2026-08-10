@@ -2,6 +2,36 @@ import XCTest
 @testable import PrivateMusic
 
 final class PlaybackQueueBuilderTests: XCTestCase {
+    func testMixRadioAppendNeverRequestsServerRefill() {
+        for mode in MixRadioMode.allCases {
+            XCTAssertFalse(
+                MixRadioRefillPolicy.shouldRefillFromServer(
+                    triggeredByAppend: true,
+                    mode: mode
+                ),
+                "\(mode) append must not wipe the queue via replaceUpcoming"
+            )
+        }
+        XCTAssertTrue(
+            MixRadioRefillPolicy.shouldRefillFromServer(
+                triggeredByAppend: false,
+                mode: .closerToSeed
+            )
+        )
+        XCTAssertTrue(
+            MixRadioRefillPolicy.shouldRefillFromServer(
+                triggeredByAppend: false,
+                mode: .moreNovel
+            )
+        )
+        XCTAssertFalse(
+            MixRadioRefillPolicy.shouldRefillFromServer(
+                triggeredByAppend: false,
+                mode: .balanced
+            )
+        )
+    }
+
     func testSelectedTrackIsInsertedWhenMissing() {
         let selected = track(id: 7, title: "Selected")
         let result = PlaybackQueueBuilder.normalized(

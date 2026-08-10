@@ -42,6 +42,10 @@ enum QueueSource: Equatable {
     case history
 }
 
+enum PendingPlayerSheet: Equatable, Sendable {
+    case queue
+}
+
 enum QueueSourceTitle {
     static func isUsable(_ value: String) -> Bool {
         !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -487,6 +491,8 @@ final class AudioPlayer: ObservableObject {
     /// leave the date nil.
     @Published private(set) var sleepTimerMode: SleepTimerMode?
     @Published var isPlayerPresented = false
+    /// One-shot sheet request honored by `PlayerView` after presentation.
+    @Published var pendingPlayerSheet: PendingPlayerSheet?
     @Published var errorMessage: String?
 
     /// Scrubber / mini-player / lyrics clock (see `PlaybackProgressModel`).
@@ -620,9 +626,22 @@ final class AudioPlayer: ObservableObject {
         isPlayerPresented = true
     }
 
+    /// Present the full-screen player and open the queue sheet.
+    func presentQueue() {
+        pendingPlayerSheet = .queue
+        isPlayerPresented = true
+    }
+
+    func consumePendingPlayerSheet() -> PendingPlayerSheet? {
+        let sheet = pendingPlayerSheet
+        pendingPlayerSheet = nil
+        return sheet
+    }
+
     func dismissPlayer() {
         guard isPlayerPresented else { return }
         isPlayerPresented = false
+        pendingPlayerSheet = nil
     }
 
     init(
@@ -2623,13 +2642,15 @@ final class AudioPlayer: ObservableObject {
         publishNowPlayingQueue()
         scheduleNeighborPreloads()
         // Newly fetched mix pages arrive in VK order — weave them into the
-        // active radio ranking instead of leaving a clustered tail.
+        // active radio ranking locally. Never kick a server refill here:
+        // replaceUpcoming would wipe the continuation-filled suffix.
         if case .mix = queueSource, !shuffleEnabled {
             rerankUpcomingMix(
                 mode: mixRadioMode,
                 historyArtists: Set(
                     historyStore.entries.prefix(40).map(\.track.artist)
-                )
+                ),
+                refillFromServer: false
             )
         }
     }
@@ -2694,10 +2715,14 @@ final class AudioPlayer: ObservableObject {
 
     /// Mix radio: reorder upcoming tracks locally, then optionally refill
     /// from VK recommendations when the mode asks for a new candidate pool.
+    ///
+    /// Pass `refillFromServer: false` for background queue appends so a
+    /// continuation fill is never wiped by `replaceUpcoming`.
     func rerankUpcomingMix(
         mode: MixRadioMode,
         seed: Track? = nil,
-        historyArtists: Set<String> = []
+        historyArtists: Set<String> = [],
+        refillFromServer: Bool = true
     ) {
         mixRadioMode = mode
         guard let currentIndex,
@@ -2719,7 +2744,11 @@ final class AudioPlayer: ObservableObject {
             publishNowPlayingQueue()
             scheduleNeighborPreloads()
         }
-        if mode == .closerToSeed || mode == .moreNovel {
+        guard refillFromServer else { return }
+        if MixRadioRefillPolicy.shouldRefillFromServer(
+            triggeredByAppend: false,
+            mode: mode
+        ) {
             startMixRadioRefill(seed: seedTrack, mode: mode)
         } else {
             mixRadioRefillTask?.cancel()
