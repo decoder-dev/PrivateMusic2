@@ -394,6 +394,9 @@ final class EqualizerDSP: @unchecked Sendable {
         frameCount: Int
     ) {
         guard let coefficient = boomCutCoefficients else { return }
+        // Per-channel loop lives in PrivateMusicDSP.c: the Swift version paid a
+        // coefficient copy and a call for every frame.
+        var coeffs = coefficient.cCoeffs
         boomCutStates.withUnsafeMutableBufferPointer { statesBuffer in
             guard let statesBase = statesBuffer.baseAddress else { return }
             for bufferIndex in buffers.indices {
@@ -417,17 +420,14 @@ final class EqualizerDSP: @unchecked Sendable {
                     let stateIndex =
                         min(channel, statesBuffer.count / 4 - 1) * 4
                     let state = statesBase + stateIndex
-                    var sampleIndex = localChannel
-                    for _ in 0..<frameCount {
-                        let input = samples[sampleIndex]
-                        let output = applyBiquad(
-                            input: input,
-                            coefficient: coefficient,
-                            state: state
-                        )
-                        samples[sampleIndex] = min(max(output, -1), 1)
-                        sampleIndex += stride
-                    }
+                    pm_biquad_process_channel(
+                        samples + localChannel,
+                        Int32(frameCount),
+                        Int32(stride),
+                        &coeffs,
+                        state,
+                        true
+                    )
                 }
             }
         }
@@ -444,8 +444,16 @@ final class EqualizerDSP: @unchecked Sendable {
         )
         guard intensity > 0.000_1 else { return }
 
+        // Widen + side high-pass run per frame in PrivateMusicDSP.c
+        // (`pm_spatial_process_*`) so the tap does not cross into Swift, copy
+        // coefficients and build a tuple for every sample.
+        let sideHighPass = sideHighPassCoefficients
+        var sideCoeffs = sideHighPass?.cCoeffs
+            ?? PMBiquadCoeffs(b0: 1, b1: 0, b2: 0, a1: 0, a2: 0)
+        let filtersSide = sideHighPass != nil
         sideHighPassState.withUnsafeMutableBufferPointer { stateBuffer in
             guard let sideState = stateBuffer.baseAddress else { return }
+            let widenIntensity = Float(intensity)
 
             if isNonInterleaved {
                 guard buffers.count >= 2,
@@ -457,18 +465,15 @@ final class EqualizerDSP: @unchecked Sendable {
                 }
                 let left = leftData.assumingMemoryBound(to: Float.self)
                 let right = rightData.assumingMemoryBound(to: Float.self)
-                for frame in 0..<frameCount {
-                    let side = (left[frame] - right[frame]) * 0.5
-                    let filteredSide = highPassSide(side, state: sideState)
-                    let widened = SpatialAudioDSP.process(
-                        left: left[frame],
-                        right: right[frame],
-                        intensity: intensity,
-                        processedSide: filteredSide
-                    )
-                    left[frame] = widened.left
-                    right[frame] = widened.right
-                }
+                pm_spatial_process_planar(
+                    left,
+                    right,
+                    Int32(frameCount),
+                    widenIntensity,
+                    &sideCoeffs,
+                    filtersSide,
+                    sideState
+                )
                 return
             }
 
@@ -478,39 +483,16 @@ final class EqualizerDSP: @unchecked Sendable {
                 return
             }
             let samples = rawData.assumingMemoryBound(to: Float.self)
-            for frame in 0..<frameCount {
-                let index = frame * frameStride
-                let side = (samples[index] - samples[index + 1]) * 0.5
-                let filteredSide = highPassSide(side, state: sideState)
-                let widened = SpatialAudioDSP.process(
-                    left: samples[index],
-                    right: samples[index + 1],
-                    intensity: intensity,
-                    processedSide: filteredSide
-                )
-                samples[index] = widened.left
-                samples[index + 1] = widened.right
-            }
+            pm_spatial_process_interleaved(
+                samples,
+                Int32(frameCount),
+                Int32(frameStride),
+                widenIntensity,
+                &sideCoeffs,
+                filtersSide,
+                sideState
+            )
         }
-    }
-
-    private func highPassSide(
-        _ side: Float,
-        state: UnsafeMutablePointer<Float>
-    ) -> Float {
-        guard let coefficient = sideHighPassCoefficients else {
-            return side
-        }
-        return applyBiquad(input: side, coefficient: coefficient, state: state)
-    }
-
-    private func applyBiquad(
-        input: Float,
-        coefficient: Coefficients,
-        state: UnsafeMutablePointer<Float>
-    ) -> Float {
-        var coeffs = coefficient.cCoeffs
-        return pm_biquad_process(input, &coeffs, state)
     }
 
     private var isSpatialAudioActive: Bool {
