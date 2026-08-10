@@ -764,14 +764,11 @@ struct SearchView: View {
                 count: count
             )
         }
-        let normalized = query.folding(
-            options: [.caseInsensitive, .diacriticInsensitive],
-            locale: .current
-        )
-        .lowercased()
+        // Folded once here; matching itself runs in PrivateMusicCore.c.
+        let needle = FoldedSearchQuery(query)
         let filtered = page.items.filter { playlist in
-            playlist.title.searchMatches(normalized)
-                || (playlist.description?.searchMatches(normalized) ?? false)
+            needle.matches(playlist.title)
+                || (playlist.description.map(needle.matches) ?? false)
         }
         return MusicPage(
             items: filtered,
@@ -880,17 +877,6 @@ private struct SystemSearchTabModifier: ViewModifier {
         } else {
             content
         }
-    }
-}
-
-private extension String {
-    func searchMatches(_ normalizedQuery: String) -> Bool {
-        folding(
-            options: [.caseInsensitive, .diacriticInsensitive],
-            locale: .current
-        )
-        .lowercased()
-        .contains(normalizedQuery)
     }
 }
 
