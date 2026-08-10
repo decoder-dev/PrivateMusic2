@@ -34,6 +34,12 @@ final class AppEnvironment: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var automaticCacheTask: Task<Void, Never>?
     private var pendingAutomaticCacheTrack: Track?
+    /// The library-wide walks that more than one screen can ask for.
+    private enum RefreshSlot: Hashable {
+        case libraryIndex
+        case likedAlbums
+    }
+    private var refreshTasks: [RefreshSlot: Task<Void, Never>] = [:]
 
     init(
         configuration: AppConfiguration = .current,
@@ -237,6 +243,93 @@ final class AppEnvironment: ObservableObject {
         OfflinePlaylistStore.shared.configure(accountID: accountID)
         pinnedMixStore.configure(accountID: accountID)
         mixFeedbackStore.configure(accountID: accountID)
+    }
+
+    /// Walks the whole personal library and rebuilds the liked-track index.
+    ///
+    /// Both the tab shell and Медиатека used to run this on the same
+    /// token-change trigger, so opening the library fired the walk twice and
+    /// the shorter of the two overwrote the index. Concurrent callers now
+    /// await one shared walk.
+    func refreshLibraryIndex() async {
+        await coalesced(.libraryIndex) { [self] in
+            guard sessionStore.accessToken != nil else { return }
+            let refreshID = libraryStore.beginRefresh()
+            var collected: [Track] = []
+            var offset = 0
+            do {
+                for _ in 0..<10 {
+                    let page = try await withAuthorizedToken { token in
+                        try await musicService.library(
+                            accessToken: token,
+                            offset: offset,
+                            count: 100
+                        )
+                    }
+                    collected.append(contentsOf: page.items)
+                    guard let next = page.nextOffset, next > offset else {
+                        break
+                    }
+                    offset = next
+                }
+                libraryStore.replace(with: collected, refreshID: refreshID)
+            } catch {
+                return
+            }
+        }
+    }
+
+    /// Loads every followed album for the Albums shelf. Shared for the same
+    /// reason as `refreshLibraryIndex()`.
+    func refreshLikedAlbums() async {
+        await coalesced(.likedAlbums) { [self] in
+            likedAlbumsStore.prepare(
+                accountID: sessionStore.resolvedOfflineAccountID
+            )
+            guard sessionStore.accessToken != nil else { return }
+            let refreshID = likedAlbumsStore.beginRefresh()
+            var collected: [Album] = []
+            var offset = 0
+            do {
+                for _ in 0..<10 {
+                    let page = try await withAuthorizedToken { token in
+                        try await musicService.likedAlbums(
+                            accessToken: token,
+                            offset: offset,
+                            count: 100
+                        )
+                    }
+                    collected.append(contentsOf: page.items)
+                    guard let next = page.nextOffset, next > offset else {
+                        break
+                    }
+                    offset = next
+                }
+                likedAlbumsStore.replace(with: collected, refreshID: refreshID)
+            } catch {
+                return
+            }
+        }
+    }
+
+    /// Runs `operation` once for every caller that asks while it is in
+    /// flight. A caller that goes away cannot cancel the shared work — the
+    /// stores it fills are shared too, so the second caller adopts the walk
+    /// the first one started instead of racing it.
+    private func coalesced(
+        _ slot: RefreshSlot,
+        _ operation: @escaping @MainActor () async -> Void
+    ) async {
+        if let inFlight = refreshTasks[slot] {
+            await inFlight.value
+            return
+        }
+        let task = Task { @MainActor in await operation() }
+        refreshTasks[slot] = task
+        await task.value
+        if refreshTasks[slot] == task {
+            refreshTasks[slot] = nil
+        }
     }
 
     func refreshHomeCatalog(force: Bool = false) async {
