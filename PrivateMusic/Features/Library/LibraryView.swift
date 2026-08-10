@@ -603,9 +603,7 @@ struct LibraryView: View {
     }
 
     private var currentTrackColor: Color {
-        settings.theme == .dark
-            ? settings.theme.accent
-            : .black
+        .accentColor
     }
 
     private var playlistShelf: some View {
@@ -803,10 +801,7 @@ struct LibraryView: View {
         HStack(spacing: 12) {
             Button {
                 Haptics.selection()
-                environment.player.play(
-                    track,
-                    in: filteredTracks.isEmpty ? tracks.tracks : filteredTracks
-                )
+                performLibraryTrackPrimaryAction(track)
             } label: {
                 HStack(spacing: 12) {
                     AsyncArtwork(url: track.artworkURL, size: 48)
@@ -839,13 +834,14 @@ struct LibraryView: View {
                             .foregroundStyle(.secondary)
                             .frame(minWidth: 36, alignment: .trailing)
                         if isCurrent(track) {
-                            PlaybackIndicatorView(
-                                isPlaying: highlight.isPlaying,
-                                color: currentTrackColor
+                            Image(
+                                systemName: highlight.isPlaying
+                                    ? "pause.fill"
+                                    : "play.fill"
                             )
-                            .font(.caption)
-                            .foregroundStyle(currentTrackColor)
-                            .frame(width: 14, alignment: .center)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(currentTrackColor)
+                                .frame(width: 14, alignment: .center)
                         }
                     }
                     .fixedSize(horizontal: true, vertical: false)
@@ -855,7 +851,7 @@ struct LibraryView: View {
             .buttonStyle(.plain)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(libraryRowAccessibilityLabel(track))
-            .accessibilityHint(L10n.text("Воспроизвести трек"))
+            .accessibilityHint(libraryRowAccessibilityHint(track))
 
             Menu {
                 Button {
@@ -916,6 +912,22 @@ struct LibraryView: View {
         .padding(.vertical, 6)
     }
 
+    private func performLibraryTrackPrimaryAction(_ track: Track) {
+        guard isCurrent(track) else {
+            environment.player.play(
+                track,
+                in: filteredTracks.isEmpty ? tracks.tracks : filteredTracks
+            )
+            return
+        }
+
+        if highlight.isPlaying {
+            environment.player.pause()
+        } else {
+            environment.player.resume()
+        }
+    }
+
     private func libraryUsableMetadata(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
@@ -931,6 +943,15 @@ struct LibraryView: View {
         let duration = track.duration.formattedDuration
         guard !metadata.isEmpty else { return duration }
         return "\(metadata), \(duration)"
+    }
+
+    private func libraryRowAccessibilityHint(_ track: Track) -> String {
+        guard isCurrent(track) else {
+            return L10n.text("Воспроизвести трек")
+        }
+        return L10n.text(
+            highlight.isPlaying ? "Поставить на паузу" : "Продолжить"
+        )
     }
 
     private func toggleOffline(_ track: Track) {
