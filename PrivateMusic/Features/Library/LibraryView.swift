@@ -19,6 +19,7 @@ struct LibraryView: View {
         OfflinePlaylistStore.shared
     @StateObject private var tracks = TrackCollectionViewModel(source: .library)
     @StateObject private var playlists = PlaylistLibraryViewModel()
+    @State private var trackSearchQuery = ""
     @State private var showingEditor = false
     @State private var pendingCellularDownload: Track?
     @State private var sharingTrack: Track?
@@ -75,21 +76,29 @@ struct LibraryView: View {
                             description: "Добавленные во VK треки появятся здесь."
                         )
                         .frame(minHeight: 260)
+                    } else if filteredTracks.isEmpty {
+                        EmptyStateView(
+                            title: "Ничего не найдено",
+                            systemImage: "magnifyingglass",
+                            description: "Попробуйте изменить запрос."
+                        )
+                        .frame(minHeight: 220)
+                        .premiumAppear()
                     } else {
                         LazyVStack(spacing: 0) {
-                            ForEach(Array(tracks.tracks.enumerated()), id: \.element.id) {
+                            ForEach(Array(filteredTracks.enumerated()), id: \.element.id) {
                                 index, track in
                                 libraryRow(track)
                                     .transition(.opacity.combined(with: .move(edge: .top)))
                                     .onAppear {
                                         loadMoreIfNeeded(after: track)
                                     }
-                                if index < tracks.tracks.count - 1 {
+                                if index < filteredTracks.count - 1 {
                                     Divider().padding(.leading, 66)
                                 }
                             }
                         }
-                        .animation(.easeInOut(duration: 0.3), value: tracks.tracks.map(\.id))
+                        .animation(.easeInOut(duration: 0.3), value: filteredTracks.map(\.id))
                     }
                 }
                 .id(MainTabScrollDestination.library)
@@ -113,6 +122,7 @@ struct LibraryView: View {
         .navigationTitle("Медиатека")
         .navigationBarTitleDisplayMode(.inline)
         .dynamicTypeSize(...DynamicTypeSize.large)
+        .searchable(text: $trackSearchQuery, prompt: "Трек или исполнитель")
         .trackShareSheet(track: $sharingTrack)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -379,6 +389,19 @@ struct LibraryView: View {
                     accessToken: token
                 )
             }
+        }
+    }
+
+    /// Filters the loaded tracks list only — playlist and album shelves stay
+    /// untouched so they remain usable while searching.
+    private var filteredTracks: [Track] {
+        let normalized = trackSearchQuery.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !normalized.isEmpty else { return tracks.tracks }
+        return tracks.tracks.filter {
+            $0.title.localizedCaseInsensitiveContains(normalized)
+                || $0.artist.localizedCaseInsensitiveContains(normalized)
         }
     }
 
