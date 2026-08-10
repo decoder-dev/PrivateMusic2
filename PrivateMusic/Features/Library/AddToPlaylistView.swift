@@ -8,7 +8,7 @@ struct AddToPlaylistView: View {
 
     @State private var playlists: [Playlist] = []
     @State private var isLoading = true
-    @State private var savingPlaylistID: Int?
+    @State private var savingPlaylistID: Playlist.ID?
     @State private var errorMessage: String?
 
     var body: some View {
@@ -96,7 +96,10 @@ struct AddToPlaylistView: View {
                     count: 100
                 )
             }
-            playlists = page.items.filter { $0.ownerID == userID }
+            playlists = LibraryPlaylistShelfPolicy.normalized(
+                page.items.filter { $0.ownerID == userID },
+                ownerID: userID
+            )
         } catch is CancellationError {
             return
         } catch {
