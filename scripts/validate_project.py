@@ -325,12 +325,67 @@ for required_playlist_identity_symbol in (
             "Playlist must expose an owner-scoped identity and mosaic "
             f"covers: {required_playlist_identity_symbol}"
         )
-if "LibraryPlaylistShelfPolicy.normalized(" not in (
+playlist_library_source = (
     SOURCE / "Features/Library/PlaylistLibraryView.swift"
-).read_text(encoding="utf-8"):
+).read_text(encoding="utf-8")
+if "LibraryPlaylistShelfPolicy.normalized(" not in playlist_library_source:
     fail(
         "playlist loads must collapse duplicated system playlists "
         "(owned + followed «Мне нравится»)"
+    )
+shelf_policy_source = (
+    SOURCE / "Models/LibraryPlaylistShelfPolicy.swift"
+).read_text(encoding="utf-8")
+for forbidden_liked_title in (
+    '"любимое"',
+    '"любимые"',
+    '"любимые треки"',
+    '"избранное"',
+    '"favorites"',
+    '"favourites"',
+):
+    if forbidden_liked_title in shelf_policy_source:
+        fail(
+            "only the VK system liked playlist may collapse by title: "
+            f"{forbidden_liked_title} is a user playlist name and "
+            "collapsing it hides real playlists"
+        )
+if '"мне нравится"' not in shelf_policy_source:
+    fail("the VK system liked playlist must still collapse its clones")
+playlist_paging_source_path = SOURCE / "Models/LibraryPlaylistPagePolicy.swift"
+if not playlist_paging_source_path.is_file():
+    fail("LibraryPlaylistPagePolicy must define the playlist paging contract")
+if "libraryPlaylistItems" not in all_source:
+    fail(
+        "audio.getPlaylists must decode item by item: a strict page decode "
+        "hides every playlist behind one bad entry"
+    )
+if "VKItems<Playlist>" in all_source:
+    fail("playlist pages must not use the strict all-or-nothing decode")
+if '"filters": "owned,followed"' in all_source:
+    fail(
+        "audio.getPlaylists must not narrow the filter: followed albums are "
+        "excluded per item instead, so no playlist is left out"
+    )
+for required_playlist_paging_symbol in (
+    "LibraryPlaylistPagePolicy.pageSize",
+    "LibraryPlaylistPagePolicy.prefetchPages",
+):
+    if required_playlist_paging_symbol not in all_source:
+        fail(
+            "playlist shelf must prefetch several pages: "
+            f"{required_playlist_paging_symbol}"
+        )
+playlist_shelf_body = library_view_source.split(
+    "private var playlistShelf: some View {", 1
+)
+if len(playlist_shelf_body) < 2:
+    fail("LibraryView must keep the playlist shelf")
+elif "LazyHStack" in playlist_shelf_body[1].split("\n    private func", 1)[0]:
+    fail(
+        "the playlist shelf must use a non-lazy HStack: nested in the "
+        "library LazyVStack a lazy row leaves off-screen cards "
+        "unmaterialized and never paginates"
     )
 append_fn = audio_player_source.split("func appendToQueue(", 1)
 if len(append_fn) < 2:
