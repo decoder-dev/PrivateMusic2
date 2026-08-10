@@ -78,29 +78,51 @@ enum MixQueueRanker {
     }
 
     /// Stable seed so the same upcoming set ranks the same way.
+    ///
+    /// The FNV-1a rounds run in PrivateMusicCore.c: the Swift version walked
+    /// every track id one byte at a time through a closure, which is the whole
+    /// queue's worth of UTF-8 on every rerank.
+    ///
+    /// The native rounds also use the real FNV-1a prime; the Swift constant had
+    /// an extra zero. Seeds therefore shift once, which only changes which
+    /// deterministic order a queue lands on — the seed is never persisted and
+    /// the same queue still always ranks the same way.
     static func stableSeed(
         queue: [Track],
         currentIndex: Int,
         mode: MixRadioMode
     ) -> UInt64 {
-        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
-        let mix: (UInt64, UInt64) -> UInt64 = { value, byte in
-            var next = value
-            next ^= byte
-            next &*= 0x1000_0000_01b3
-            return next
-        }
+        var hash = pm_hash_fnv1a64_basis
         for (index, track) in queue.enumerated() {
-            hash = mix(hash, UInt64(index &+ 1))
-            for byte in track.id.utf8 {
-                hash = mix(hash, UInt64(byte))
-            }
+            hash = pm_hash_fnv1a64_value(hash, UInt64(index &+ 1))
+            hash = hashingBytes(of: track.id, into: hash)
         }
-        hash = mix(hash, UInt64(currentIndex &+ 1))
-        for byte in mode.rawValue.utf8 {
-            hash = mix(hash, UInt64(byte))
-        }
+        hash = pm_hash_fnv1a64_value(hash, UInt64(currentIndex &+ 1))
+        hash = hashingBytes(of: mode.rawValue, into: hash)
         return hash == 0 ? 0x9e37_79b9_7f4a_7c15 : hash
+    }
+
+    private static func hashingBytes(
+        of text: String,
+        into hash: UInt64
+    ) -> UInt64 {
+        var text = text
+        return text.withUTF8 { buffer in
+            pm_hash_fnv1a64_bytes(
+                hash,
+                buffer.baseAddress,
+                Int32(buffer.count)
+            )
+        }
+    }
+
+    /// Identity of a normalized artist / album name in the ranking hash space.
+    /// Empty names hash to 0, which the C scorer reads as "no artist".
+    private static func identity(of normalizedValue: String) -> UInt64 {
+        var value = normalizedValue
+        return value.withUTF8 { buffer in
+            pm_text_identity_hash(buffer.baseAddress, Int32(buffer.count))
+        }
     }
 
     static func rerank<G: RandomNumberGenerator>(
@@ -141,6 +163,10 @@ enum MixQueueRanker {
 
     /// Shuffle then repair adjacent same-artist pairs so VK clusters do
     /// not survive as a no-op «Баланс» ordering.
+    ///
+    /// Artists are folded once into hash identities up front; the repair sweep
+    /// then compares integers, where it used to re-fold neighbouring names on
+    /// every step and again for every candidate it scanned for a swap.
     private static func diversifyBalanced<G: RandomNumberGenerator>(
         _ upcoming: [Track],
         rng: inout G
@@ -149,20 +175,24 @@ enum MixQueueRanker {
         items.shuffle(using: &rng)
         guard items.count > 1 else { return items }
 
+        var artists = items.map { identity(of: normalized($0.artist)) }
         for index in 1..<items.count {
-            let prev = normalized(items[index - 1].artist)
-            let current = normalized(items[index].artist)
-            guard !prev.isEmpty, prev == current else { continue }
+            let prev = artists[index - 1]
+            guard prev != 0, prev == artists[index] else { continue }
             if let swapIndex = (index + 1..<items.count).first(where: {
-                let artist = normalized(items[$0].artist)
-                return artist != prev
+                artists[$0] != prev
             }) {
                 items.swapAt(index, swapIndex)
+                artists.swapAt(index, swapIndex)
             }
         }
         return items
     }
 
+    /// Greedy selection runs in PrivateMusicCore.c (`pm_mix_select_best`).
+    /// Every artist and album is folded and hashed once here instead of once
+    /// per candidate per pick, so the O(n²) sweep compares 64-bit identities
+    /// rather than re-normalizing strings.
     private static func greedilyRank<G: RandomNumberGenerator>(
         _ upcoming: [Track],
         seedArtist: String,
@@ -173,31 +203,49 @@ enum MixQueueRanker {
         rng: inout G
     ) -> [Track] {
         var remaining = upcoming
-        var recentArtists = head.suffix(4).map { normalized($0.artist) }
+        var candidates = upcoming.map { track in
+            PMMixCandidate(
+                artist_hash: identity(of: normalized(track.artist)),
+                album_hash: identity(
+                    of: track.albumTitle.map(normalized) ?? ""
+                )
+            )
+        }
+        var recentArtists = head.suffix(4).map {
+            identity(of: normalized($0.artist))
+        }
+        let historyArtists = Set(history.map(identity(of:))).sorted()
+        let seedArtistHash = identity(of: seedArtist)
+        let seedAlbumHash = identity(of: seedAlbum)
+        let nativeMode: Int32 = mode == .closerToSeed
+            ? Int32(PM_MIX_MODE_CLOSER_TO_SEED)
+            : Int32(PM_MIX_MODE_MORE_NOVEL)
+        // Tie-breaker range per mode, drawn here so the caller's generator
+        // still owns the sequence and ranking stays reproducible.
+        let jitterRange: Double = mode == .closerToSeed ? 3 : 10
+        var jitter = [Double](repeating: 0, count: remaining.count)
         var built: [Track] = []
         built.reserveCapacity(remaining.count)
 
         while !remaining.isEmpty {
-            var bestIndex = 0
-            var bestScore = -Double.greatestFiniteMagnitude
-            for (index, track) in remaining.enumerated() {
-                let value = score(
-                    track,
-                    seedArtist: seedArtist,
-                    seedAlbum: seedAlbum,
-                    history: history,
-                    recentArtists: recentArtists,
-                    mode: mode,
-                    rng: &rng
-                )
-                if value > bestScore {
-                    bestScore = value
-                    bestIndex = index
-                }
+            let count = remaining.count
+            for index in 0..<count {
+                jitter[index] = Double.random(in: 0..<jitterRange, using: &rng)
             }
+            let bestIndex = selectBest(
+                candidates: candidates,
+                jitter: jitter,
+                count: count,
+                mode: nativeMode,
+                seedArtist: seedArtistHash,
+                seedAlbum: seedAlbumHash,
+                history: historyArtists,
+                recent: recentArtists
+            )
             let picked = remaining.remove(at: bestIndex)
+            let pickedArtist = candidates.remove(at: bestIndex).artist_hash
             built.append(picked)
-            recentArtists.append(normalized(picked.artist))
+            recentArtists.append(pickedArtist)
             if recentArtists.count > 5 {
                 recentArtists.removeFirst(recentArtists.count - 5)
             }
@@ -205,75 +253,41 @@ enum MixQueueRanker {
         return built
     }
 
-    private static func score<G: RandomNumberGenerator>(
-        _ track: Track,
-        seedArtist: String,
-        seedAlbum: String,
-        history: Set<String>,
-        recentArtists: [String],
-        mode: MixRadioMode,
-        rng: inout G
-    ) -> Double {
-        let artist = normalized(track.artist)
-        let album = track.albumTitle.map(normalized) ?? ""
-        var value = 0.0
-
-        switch mode {
-        case .balanced:
-            break
-        case .closerToSeed:
-            if !seedArtist.isEmpty, artist == seedArtist { value += 42 }
-            if !seedAlbum.isEmpty, album == seedAlbum { value += 18 }
-            if history.contains(artist) { value += 6 }
-            if !seedArtist.isEmpty, artist != seedArtist { value += 4 }
-            // Mild spacing only — affinity to the seed artist must still win
-            // the first pick after the current track.
-            value += spacingBonus(
-                artist: artist,
-                recent: recentArtists,
-                immediate: -16,
-                near: -8,
-                window: -3,
-                fresh: 0
-            )
-            value += Double.random(in: 0..<3, using: &rng)
-
-        case .moreNovel:
-            if !seedArtist.isEmpty, artist != seedArtist { value += 32 }
-            if !seedArtist.isEmpty, artist == seedArtist { value -= 18 }
-            if !history.contains(artist) { value += 26 }
-            if history.contains(artist) { value -= 16 }
-            if !seedAlbum.isEmpty, album != seedAlbum { value += 8 }
-            value += spacingBonus(
-                artist: artist,
-                recent: recentArtists,
-                immediate: -55,
-                near: -28,
-                window: -12,
-                fresh: 12
-            )
-            value += Double.random(in: 0..<10, using: &rng)
+    private static func selectBest(
+        candidates: [PMMixCandidate],
+        jitter: [Double],
+        count: Int,
+        mode: Int32,
+        seedArtist: UInt64,
+        seedAlbum: UInt64,
+        history: [UInt64],
+        recent: [UInt64]
+    ) -> Int {
+        history.withUnsafeBufferPointer { historyBuffer in
+            recent.withUnsafeBufferPointer { recentBuffer in
+                candidates.withUnsafeBufferPointer { candidateBuffer in
+                    jitter.withUnsafeBufferPointer { jitterBuffer in
+                        var context = PMMixRankContext(
+                            mode: mode,
+                            seed_artist_hash: seedArtist,
+                            seed_album_hash: seedAlbum,
+                            history_hashes: historyBuffer.baseAddress,
+                            history_count: Int32(historyBuffer.count)
+                        )
+                        return Int(
+                            pm_mix_select_best(
+                                candidateBuffer.baseAddress,
+                                jitterBuffer.baseAddress,
+                                Int32(count),
+                                &context,
+                                recentBuffer.baseAddress,
+                                Int32(recentBuffer.count)
+                            )
+                        )
+                    }
+                }
+            }
         }
-
-        return value
-    }
-
-    /// Penalize repeating an artist that just played — the main reason
-    /// mix radio felt like the same handful of picks on loop.
-    private static func spacingBonus(
-        artist: String,
-        recent: [String],
-        immediate: Double,
-        near: Double,
-        window: Double,
-        fresh: Double
-    ) -> Double {
-        guard !artist.isEmpty else { return 0 }
-        guard !recent.isEmpty else { return fresh }
-        if recent.last == artist { return immediate }
-        if recent.suffix(2).contains(artist) { return near }
-        if recent.contains(artist) { return window }
-        return fresh
     }
 
     private static func normalized(_ value: String) -> String {
