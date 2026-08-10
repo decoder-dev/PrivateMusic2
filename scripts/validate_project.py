@@ -166,8 +166,10 @@ if "LikedTrackBadge(track: track)" in mini_player_source:
     fail("mini-player must not overlay a liked-track badge on artwork")
 if ".buttonStyle(.glassProminent)" in mini_player_source:
     fail("mini-player must use plain transport controls like Apple Music")
-if "backward.fill" in mini_player_source:
-    fail("mini-player must hide previous in the primary chrome (swipe / a11y only)")
+if "backward.fill" not in mini_player_source:
+    fail("mini-player must expose previous next to play/pause")
+if "previousControl" not in mini_player_source:
+    fail("mini-player must keep a dedicated previousControl")
 for required_mini_player_symbol in (
     "MiniPlayerProgressPolicy",
     "MiniPlayerGesturePolicy",
