@@ -52,6 +52,75 @@ final class MusicLibraryStoreTests: XCTestCase {
         XCTAssertEqual(store.signatures.count, 1)
     }
 
+    // Медиатека shows the opening pages of the same audio.get walk. It used
+    // to `replace` the index from there, so a 1000-track index shrank to 100
+    // and every track below that lost its heart.
+    func testIncludingAPageNeverShrinksTheIndex() {
+        let store = MusicLibraryStore()
+        let full = (1...4).map { track(id: $0, owner: 42, title: "T\($0)") }
+        let refreshID = store.beginRefresh()
+        store.replace(with: full, refreshID: refreshID)
+
+        store.include([track(id: 1, owner: 42, title: "T1")])
+
+        XCTAssertEqual(store.signatures.count, 4)
+        XCTAssertTrue(store.contains(track(id: 4, owner: 42, title: "T4")))
+    }
+
+    func testIncludingAPageAddsTracksTheIndexHasNotSeen() {
+        let store = MusicLibraryStore()
+        let refreshID = store.beginRefresh()
+        store.replace(
+            with: [track(id: 1, owner: 42, title: "Known")],
+            refreshID: refreshID
+        )
+        let fresh = track(id: 2, owner: 42, title: "New")
+
+        store.include([fresh])
+
+        XCTAssertTrue(store.contains(fresh))
+        XCTAssertEqual(store.storedTrack(for: fresh)?.id, fresh.id)
+    }
+
+    // VK keeps serving an unliked track for a moment, so the page that was
+    // already in flight when the user tapped the heart still contains it.
+    func testIncludingDoesNotResurrectARemovedTrack() {
+        let store = MusicLibraryStore()
+        let removed = track(id: 1, owner: 42, title: "Gone")
+        store.include([removed])
+        store.markRemoved(removed)
+
+        store.include([removed, track(id: 2, owner: 42, title: "Kept")])
+
+        XCTAssertFalse(store.contains(removed))
+        XCTAssertTrue(store.contains(track(id: 2, owner: 42, title: "Kept")))
+    }
+
+    func testALaterFullWalkCanBringBackARemovedTrack() {
+        let store = MusicLibraryStore()
+        let value = track(id: 1, owner: 42, title: "Gone")
+        store.markRemoved(value)
+
+        // Liking it again elsewhere makes the next authoritative walk the
+        // truth — the tombstone must not outlive it.
+        let refreshID = store.beginRefresh()
+        store.replace(with: [value], refreshID: refreshID)
+        store.include([value])
+
+        XCTAssertTrue(store.contains(value))
+    }
+
+    func testLikingATrackAgainClearsItsTombstone() {
+        let store = MusicLibraryStore()
+        let value = track(id: 1, owner: 42, title: "Again")
+        store.markRemoved(value)
+
+        store.markAdded(source: value, stored: value)
+        store.include([value])
+
+        XCTAssertTrue(store.contains(value))
+    }
+
     private func track(
         id: Int,
         owner: Int,
@@ -191,6 +260,52 @@ final class TrackCollectionViewModelTests: XCTestCase {
             ["1_3", "1_1", "1_2", "1_4"]
         )
         XCTAssertEqual(model.totalCount, 4)
+    }
+
+    // Unliking a track shifts every audio.get offset below it, so the page
+    // that was already in flight describes a window that no longer exists.
+    // Appending it interleaved old rows into the fresh list, which is the
+    // «очереди в медиатеке все равно не по очереди» report.
+    func testAStalePageIsDiscardedWhenALocalEditLandsFirst() async {
+        let model = TrackCollectionViewModel(source: .library)
+        await model.load {
+            MusicPage(
+                items: [track(id: 1), track(id: 2)],
+                totalCount: 4,
+                nextOffset: 2
+            )
+        }
+
+        let loaded = await model.loadMore { _ in
+            model.removeLocally(self.track(id: 1))
+            return MusicPage(
+                items: [track(id: 3), track(id: 4)],
+                totalCount: 4,
+                nextOffset: nil
+            )
+        }
+
+        XCTAssertFalse(loaded)
+        XCTAssertEqual(model.tracks.map(\.id), ["1_2"])
+    }
+
+    func testAStalePageFailureDoesNotSurfaceAnError() async {
+        let model = TrackCollectionViewModel(source: .library)
+        await model.load {
+            MusicPage(
+                items: [track(id: 1)],
+                totalCount: 2,
+                nextOffset: 1
+            )
+        }
+
+        let loaded = await model.loadMore { _ in
+            model.removeLocally(self.track(id: 1))
+            throw APIError.server(code: 1, message: "boom")
+        }
+
+        XCTAssertFalse(loaded)
+        XCTAssertNil(model.errorMessage)
     }
 
     private func track(id: Int) -> Track {
