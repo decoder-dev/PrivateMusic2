@@ -62,6 +62,13 @@ struct PlayerView: View {
             presentedSheetContent(sheet)
         }
         .trackShareSheet(track: $sharingTrack)
+        .onAppear {
+            honorPendingPlayerSheet()
+        }
+        .onChange(of: player.pendingPlayerSheet) { sheet in
+            guard sheet != nil else { return }
+            honorPendingPlayerSheet()
+        }
         .onChange(of: player.currentTrack?.id) { _ in
             deferredPlayerAction = nil
             scrubPosition = nil
@@ -918,6 +925,21 @@ struct PlayerView: View {
         guard presentedSheet == nil else { return false }
         presentedSheet = sheet
         return true
+    }
+
+    private func honorPendingPlayerSheet() {
+        guard let pending = player.consumePendingPlayerSheet() else {
+            return
+        }
+        // Yield so a just-presented fullScreenCover can finish mounting
+        // before we open the queue sheet on top.
+        Task { @MainActor in
+            await Task.yield()
+            switch pending {
+            case .queue:
+                _ = present(.queue)
+            }
+        }
     }
 
     private func deferFromActionSheet(_ action: DeferredPlayerAction) {
