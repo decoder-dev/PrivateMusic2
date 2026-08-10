@@ -85,20 +85,21 @@ struct LibraryView: View {
                         .frame(minHeight: 220)
                         .premiumAppear()
                     } else {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(filteredTracks.enumerated()), id: \.element.id) {
-                                index, track in
-                                libraryRow(track)
-                                    .transition(.opacity.combined(with: .move(edge: .top)))
-                                    .onAppear {
-                                        loadMoreIfNeeded(after: track)
-                                    }
-                                if index < filteredTracks.count - 1 {
-                                    Divider().padding(.leading, 66)
+                        // Keep tracks in the same LazyVStack as the shelves —
+                        // a nested LazyVStack inside ScrollView recycles rows
+                        // out of order and looks like a scrambled library.
+                        ForEach(
+                            Array(filteredTracks.enumerated()),
+                            id: \.element.id
+                        ) { index, track in
+                            libraryRow(track)
+                                .onAppear {
+                                    loadMoreIfNeeded(after: track)
                                 }
+                            if index < filteredTracks.count - 1 {
+                                Divider().padding(.leading, 66)
                             }
                         }
-                        .animation(.easeInOut(duration: 0.3), value: filteredTracks.map(\.id))
                     }
                 }
                 .id(MainTabScrollDestination.library)
