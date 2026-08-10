@@ -7,7 +7,6 @@ struct LibraryView: View {
     /// list on every buffering / duration tick. Actions go through
     /// `environment.player`.
     @EnvironmentObject private var highlight: PlaybackHighlightModel
-    @EnvironmentObject private var libraryStore: MusicLibraryStore
     @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
     @EnvironmentObject private var offlineStore: OfflineTrackStore
     @EnvironmentObject private var settings: AppSettings
@@ -28,6 +27,11 @@ struct LibraryView: View {
     @State private var playbackErrorMessage: String?
     @State private var playlistPendingDeletion: Playlist?
     @State private var playlistDeleteErrorMessage: String?
+    /// Row `onAppear` fires in bursts while scrolling. Holding the in-flight
+    /// page request keeps a burst from queueing a dozen identical loads.
+    @State private var paginationTask: Task<Void, Never>?
+    @State private var playlistPaginationTask: Task<Void, Never>?
+    @State private var addedTrackReloadTask: Task<Void, Never>?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -247,7 +251,10 @@ struct LibraryView: View {
             }
             tracks.insertAdded(track)
             libraryStore.markAdded(source: track, stored: track)
-            Task {
+            // Adding several tracks in a row posts several notifications.
+            // Coalesce them into one reload instead of one per track.
+            addedTrackReloadTask?.cancel()
+            addedTrackReloadTask = Task {
                 try? await Task.sleep(for: .milliseconds(500))
                 guard !Task.isCancelled else { return }
                 await loadTracks(force: true)
@@ -266,15 +273,18 @@ struct LibraryView: View {
             tracks.removeLocally(track)
             libraryStore.markRemoved(track)
         }
+        .onReceive(likedAlbumsStore.$albums) { albums in
+            // Liked albums leak into the playlist shelf via unfiltered
+            // getPlaylists. Re-filter as soon as the Albums shelf knows
+            // their ids — no second playlist round-trip needed.
+            playlists.excludeFollowedAlbums(
+                Set(albums.map(\.compositeID))
+            )
+        }
         .onReceive(
             NotificationCenter.default.publisher(for: .likedAlbumsDidChange)
         ) { _ in
-            Task {
-                await loadAlbums()
-                // Liked albums used to leak into the playlist shelf via
-                // unfiltered getPlaylists — reload so the shelves stay split.
-                await reloadPlaylists(force: true)
-            }
+            Task { await loadAlbums() }
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -422,6 +432,11 @@ struct LibraryView: View {
                 || $0.artist.localizedCaseInsensitiveContains(normalized)
         }
     }
+
+    /// Reached through `AppEnvironment` on purpose. Observing the index
+    /// directly rebuilt the whole list every time a page folded into it —
+    /// the heart badge on each row observes it and refreshes on its own.
+    private var libraryStore: MusicLibraryStore { environment.libraryStore }
 
     private func isCurrent(_ track: Track) -> Bool {
         highlight.isCurrent(track.id)
@@ -638,7 +653,11 @@ struct LibraryView: View {
                         Array(playlists.playlists.enumerated()),
                         id: \.element.libraryIdentity
                     ) { index, playlist in
-                        playlistCard(playlist, index: index)
+                        playlistCard(
+                            playlist,
+                            index: index,
+                            isLast: index == playlists.playlists.count - 1
+                        )
                     }
                 }
                 .padding(.vertical, LibraryShelfMetrics.shelfPadding)
@@ -651,7 +670,8 @@ struct LibraryView: View {
 
     private func playlistCard(
         _ playlist: Playlist,
-        index: Int
+        index: Int,
+        isLast: Bool
     ) -> some View {
         VStack(
             alignment: .leading,
@@ -723,7 +743,8 @@ struct LibraryView: View {
             }
         }
         .onAppear {
-            loadMorePlaylistsIfNeeded(after: playlist)
+            guard isLast else { return }
+            loadMorePlaylistsIfNeeded()
         }
     }
 
@@ -1107,28 +1128,28 @@ struct LibraryView: View {
         .redacted(reason: .placeholder)
     }
 
+    /// Tracks, playlists and albums are independent VK lists. Loading them
+    /// one after the other left the shelves empty until a 100-track page had
+    /// finished, which is most of the stall people notice on Медиатека.
     private func load(force: Bool = false) async {
         guard sessionStore.accessToken != nil else { return }
-        tracks.configure(service: environment.musicService)
-        let refreshID = libraryStore.beginRefresh()
-        let loaded = await tracks.load(force: force) {
-            try await environment.withAuthorizedToken { token in
-                try await environment.musicService.library(
-                    accessToken: token,
-                    offset: 0,
-                    count: 100
-                )
-            }
-        }
-        if loaded {
-            libraryStore.replace(with: tracks.tracks, refreshID: refreshID)
-        }
-        await reloadPlaylists(force: force)
-        await loadAlbums()
+        async let loadedTracks: Void = loadTracks(force: force)
+        async let loadedPlaylists: Void = reloadPlaylists(force: force)
+        async let loadedAlbums: Void = loadAlbums()
+        _ = await (loadedTracks, loadedPlaylists, loadedAlbums)
     }
 
     private func reloadPlaylists(force: Bool) async {
-        playlists.configure(ownerID: sessionStore.session?.userID)
+        playlists.configure(
+            ownerID: sessionStore.session?.userID,
+            // VK reports followed albums in the unfiltered playlist list.
+            // The Albums shelf already knows exactly which ids those are,
+            // so the shelf drops them by id instead of guessing from the
+            // entry's shape.
+            followedAlbumIdentities: Set(
+                likedAlbumsStore.albums.map(\.compositeID)
+            )
+        )
         await playlists.load(force: force) { offset in
             try await playlistPage(offset: offset)
         }
@@ -1144,38 +1165,16 @@ struct LibraryView: View {
         }
     }
 
+    /// The Albums shelf is filled by the shared refresh the tab shell also
+    /// runs, so opening Медиатека no longer repeats a ten-page walk that the
+    /// app just finished.
     private func loadAlbums() async {
-        likedAlbumsStore.prepare(
-            accountID: sessionStore.resolvedOfflineAccountID
-        )
-        guard sessionStore.accessToken != nil else { return }
-        let refreshID = likedAlbumsStore.beginRefresh()
-        do {
-            var albums: [Album] = []
-            var offset = 0
-            for _ in 0..<10 {
-                let page = try await environment.withAuthorizedToken { token in
-                    try await environment.musicService.likedAlbums(
-                        accessToken: token,
-                        offset: offset,
-                        count: 100
-                    )
-                }
-                albums.append(contentsOf: page.items)
-                guard let next = page.nextOffset, next > offset else { break }
-                offset = next
-            }
-            guard !Task.isCancelled else { return }
-            likedAlbumsStore.replace(with: albums, refreshID: refreshID)
-        } catch {
-            return
-        }
+        await environment.refreshLikedAlbums()
     }
 
     private func loadTracks(force: Bool) async {
         guard sessionStore.accessToken != nil else { return }
         tracks.configure(service: environment.musicService)
-        let refreshID = libraryStore.beginRefresh()
         let loaded = await tracks.load(force: force) {
             try await environment.withAuthorizedToken { token in
                 try await environment.musicService.library(
@@ -1186,17 +1185,22 @@ struct LibraryView: View {
             }
         }
         if loaded {
-            libraryStore.replace(with: tracks.tracks, refreshID: refreshID)
+            // Only fold this page in. The authoritative index comes from
+            // `AppEnvironment.refreshLibraryIndex()`, which walks every
+            // page — replacing it from here blanked the heart on every
+            // track past the first hundred.
+            libraryStore.include(tracks.tracks)
         }
     }
 
     private func loadMoreIfNeeded(after track: Track) {
         guard track.id == tracks.tracks.last?.id,
-              sessionStore.accessToken != nil else {
+              sessionStore.accessToken != nil,
+              paginationTask == nil else {
             return
         }
-        Task {
-            let refreshID = libraryStore.beginRefresh()
+        paginationTask = Task {
+            defer { paginationTask = nil }
             let loaded = await tracks.loadMore { offset in
                 try await environment.withAuthorizedToken { token in
                     try await environment.musicService.library(
@@ -1207,20 +1211,18 @@ struct LibraryView: View {
                 }
             }
             if loaded {
-                libraryStore.replace(
-                    with: tracks.tracks,
-                    refreshID: refreshID
-                )
+                libraryStore.include(tracks.tracks)
             }
         }
     }
 
-    private func loadMorePlaylistsIfNeeded(after playlist: Playlist) {
-        guard playlist.id == playlists.playlists.last?.id,
-              sessionStore.accessToken != nil else {
+    private func loadMorePlaylistsIfNeeded() {
+        guard sessionStore.accessToken != nil,
+              playlistPaginationTask == nil else {
             return
         }
-        Task {
+        playlistPaginationTask = Task {
+            defer { playlistPaginationTask = nil }
             await playlists.loadMore { offset in
                 try await playlistPage(offset: offset)
             }

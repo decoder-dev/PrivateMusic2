@@ -86,6 +86,12 @@ cached_image_source = (
 library_view_source = (
     SOURCE / "Features" / "Library" / "LibraryView.swift"
 ).read_text(encoding="utf-8")
+app_environment_source = (
+    SOURCE / "App" / "AppEnvironment.swift"
+).read_text(encoding="utf-8")
+track_collection_source = (
+    SOURCE / "Features" / "Library" / "TrackCollectionViewModel.swift"
+).read_text(encoding="utf-8")
 mixes_hub_source = (
     SOURCE / "Features" / "Mix" / "MixesHubView.swift"
 ).read_text(encoding="utf-8")
@@ -484,6 +490,67 @@ elif 'forKey: "player.shuffle"' in play_shuffled_body[1].split(
         "per-collection «Перемешать» must not persist global shuffle: it "
         "latched every later queue, including Медиатека, into shuffle"
     )
+library_store_source = (SOURCE / "Models/MusicLibraryStore.swift").read_text(
+    encoding="utf-8"
+)
+for required_library_index_symbol in (
+    "func include(",
+    "removedSignatures",
+):
+    if required_library_index_symbol not in library_store_source:
+        fail(
+            "Медиатека shows the opening pages of the same audio.get walk, "
+            "so it must fold them into the liked index instead of replacing "
+            f"it: {required_library_index_symbol}"
+        )
+if "libraryStore.replace(" in library_view_source:
+    fail(
+        "LibraryView must not replace the liked index from a partial page: "
+        "a 1000-track index shrank to 100 and blanked the heart below it"
+    )
+if "@EnvironmentObject private var libraryStore" in library_view_source:
+    fail(
+        "LibraryView must not observe MusicLibraryStore: folding in each "
+        "page rebuilt the whole track list (the per-row LikedTrackBadge "
+        "observes it already)"
+    )
+for required_shared_refresh_symbol in (
+    "func refreshLibraryIndex() async",
+    "func refreshLikedAlbums() async",
+):
+    if required_shared_refresh_symbol not in app_environment_source:
+        fail(
+            "the library walks must live on AppEnvironment so the tab shell "
+            "and Медиатека share one request: "
+            f"{required_shared_refresh_symbol}"
+        )
+if "musicService.likedAlbums(" in library_view_source:
+    fail(
+        "LibraryView must reach the Albums shelf through "
+        "AppEnvironment.refreshLikedAlbums(): opening Медиатека otherwise "
+        "repeated the ten-page walk the tab shell had just finished"
+    )
+load_more_body = track_collection_source.split("func loadMore(", 1)
+if len(load_more_body) < 2:
+    fail("TrackCollectionViewModel must expose loadMore")
+elif "guard generation == loadGeneration" not in load_more_body[1].split(
+    "appendUnique(", 1
+)[0]:
+    fail(
+        "a page that lands after a reload or a like/unlike describes a "
+        "window whose offsets have shifted: appending it interleaves the "
+        "list, which reads as a scrambled Медиатека"
+    )
+for required_coalescing_symbol in (
+    "paginationTask",
+    "playlistPaginationTask",
+    "addedTrackReloadTask",
+):
+    if required_coalescing_symbol not in library_view_source:
+        fail(
+            "library onAppear and notification bursts must be coalesced "
+            f"into one in-flight task: {required_coalescing_symbol}"
+        )
 append_fn = audio_player_source.split("func appendToQueue(", 1)
 if len(append_fn) < 2:
     fail("AudioPlayer must expose appendToQueue")

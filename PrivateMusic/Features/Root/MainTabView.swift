@@ -55,8 +55,6 @@ private struct PlaybackDockHeightKey: PreferenceKey {
 struct MainTabView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var libraryStore: MusicLibraryStore
-    @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: MainTab = .home
     @StateObject private var scrollCoordinator = MainTabScrollCoordinator()
@@ -76,8 +74,8 @@ struct MainTabView: View {
         }
         .environmentObject(scrollCoordinator)
         .task(id: sessionStore.accessToken) {
-            async let library: Void = refreshLibraryIndex()
-            async let albums: Void = refreshLikedAlbums()
+            async let library: Void = environment.refreshLibraryIndex()
+            async let albums: Void = environment.refreshLikedAlbums()
             async let home: Void = environment.refreshHomeCatalog()
             _ = await (library, albums, home)
         }
@@ -154,64 +152,6 @@ struct MainTabView: View {
                 reduceMotion ? nil : .easeInOut(duration: 0.18),
                 value: selectedTab
             )
-    }
-
-    private func refreshLibraryIndex() async {
-        guard sessionStore.accessToken != nil else { return }
-        let refreshID = libraryStore.beginRefresh()
-        var collected: [Track] = []
-        var offset = 0
-        var pageCount = 0
-        do {
-            while pageCount < 10 {
-                let page = try await environment.withAuthorizedToken {
-                    token in
-                    try await environment.musicService.library(
-                        accessToken: token,
-                        offset: offset,
-                        count: 100
-                    )
-                }
-                collected.append(contentsOf: page.items)
-                pageCount += 1
-                guard let next = page.nextOffset, next > offset else { break }
-                offset = next
-            }
-            guard !Task.isCancelled else { return }
-            libraryStore.replace(with: collected, refreshID: refreshID)
-        } catch is CancellationError {
-            return
-        } catch {
-            return
-        }
-    }
-
-    private func refreshLikedAlbums() async {
-        likedAlbumsStore.prepare(
-            accountID: sessionStore.resolvedOfflineAccountID
-        )
-        guard sessionStore.accessToken != nil else { return }
-        let refreshID = likedAlbumsStore.beginRefresh()
-        var collected: [Album] = []
-        var offset = 0
-        do {
-            for _ in 0..<10 {
-                let page = try await environment.withAuthorizedToken { token in
-                    try await environment.musicService.likedAlbums(
-                        accessToken: token,
-                        offset: offset,
-                        count: 100
-                    )
-                }
-                collected.append(contentsOf: page.items)
-                guard let next = page.nextOffset, next > offset else { break }
-                offset = next
-            }
-            guard !Task.isCancelled else { return }
-            likedAlbumsStore.replace(with: collected, refreshID: refreshID)
-        } catch {
-            return
-        }
     }
 }
 
