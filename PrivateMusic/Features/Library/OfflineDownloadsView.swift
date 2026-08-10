@@ -102,7 +102,7 @@ struct OfflineDownloadsView: View {
         .navigationBarBackButtonHidden(selection != nil)
         .searchable(
             text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .automatic),
+            placement: .navigationBarDrawer(displayMode: .always),
             prompt: L10n.text("Название или исполнитель")
         )
         .toolbar {

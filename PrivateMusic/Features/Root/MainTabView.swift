@@ -65,7 +65,7 @@ struct MainTabView: View {
 
     var body: some View {
         Group {
-            if #available(iOS 26.1, *) {
+            if #available(iOS 26.0, *) {
                 SystemLiquidGlassTabView(
                     selection: $selectedTab,
                     playerNamespace: playerNamespace
@@ -83,7 +83,7 @@ struct MainTabView: View {
         }
     }
 
-    /// Custom floating dock for iOS 16–26.0. iOS 26.1+ uses the system
+    /// Custom floating dock for iOS 16–25. iOS 26.0+ uses the system
     /// `TabView` + `tabViewBottomAccessory` path above.
     private var legacyTabStack: some View {
         ZStack {
@@ -215,9 +215,9 @@ struct MainTabView: View {
     }
 }
 
-// MARK: - System Liquid Glass tabs (iOS 26.1+)
+// MARK: - System Liquid Glass tabs (iOS 26.0+)
 
-@available(iOS 26.1, *)
+@available(iOS 26.0, *)
 private struct SystemLiquidGlassTabView: View {
     @EnvironmentObject private var player: AudioPlayer
     @Binding var selection: MainTab
@@ -270,15 +270,39 @@ private struct SystemLiquidGlassTabView: View {
         }
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewSearchActivation(.searchTabSelection)
-        .tabViewBottomAccessory(
-            isEnabled: player.currentTrack != nil
-        ) {
-            SystemPlaybackAccessory(playerNamespace: playerNamespace)
+        .modifier(
+            PlaybackAccessoryModifier(
+                isEnabled: player.currentTrack != nil,
+                playerNamespace: playerNamespace
+            )
+        )
+    }
+}
+
+/// `tabViewBottomAccessory(isEnabled:)` is iOS 26.1+; on 26.0 fall back to
+/// the content-only overload and hide with `EmptyView`.
+@available(iOS 26.0, *)
+private struct PlaybackAccessoryModifier: ViewModifier {
+    let isEnabled: Bool
+    let playerNamespace: Namespace.ID
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.1, *) {
+            content.tabViewBottomAccessory(isEnabled: isEnabled) {
+                SystemPlaybackAccessory(playerNamespace: playerNamespace)
+            }
+        } else {
+            content.tabViewBottomAccessory {
+                if isEnabled {
+                    SystemPlaybackAccessory(playerNamespace: playerNamespace)
+                }
+            }
         }
     }
 }
 
-@available(iOS 26.1, *)
+@available(iOS 26.0, *)
 private struct SystemPlaybackAccessory: View {
     @EnvironmentObject private var player: AudioPlayer
     @Environment(\.tabViewBottomAccessoryPlacement) private var accessoryPlacement
@@ -306,7 +330,7 @@ private struct SystemPlaybackAccessory: View {
     }
 }
 
-@available(iOS 26.1, *)
+@available(iOS 26.0, *)
 private extension MiniPlayerAccessoryMode {
     init(placement: TabViewBottomAccessoryPlacement?) {
         switch placement {
