@@ -140,11 +140,12 @@ for forbidden_legacy_all_tabs_symbol in (
     "ForEach(MainTab.allCases",
 ):
     if forbidden_legacy_all_tabs_symbol in main_tab_source:
-        fail("tab dock must keep search as a separate circular control")
+        fail("pre-iOS 26 dock must keep search as a separate circular control")
 for required_system_tab_symbol in (
     "SystemLiquidGlassTabView",
     "tabViewBottomAccessory",
-    "role: .search",
+    "MainTab.search.title",
+    "value: MainTab.search",
     "SystemPlaybackAccessory",
 ):
     if required_system_tab_symbol not in main_tab_source:
@@ -152,8 +153,18 @@ for required_system_tab_symbol in (
             "iOS 26+ must use system Liquid Glass TabView like Apple Music: "
             f"{required_system_tab_symbol}"
         )
+for forbidden_system_tab_search_chrome in (
+    "role: .search",
+    "tabViewSearchActivation",
+):
+    if forbidden_system_tab_search_chrome in main_tab_source:
+        fail(
+            "iOS 26+ Search must be a regular fifth labeled tab, "
+            "not detached search chrome: "
+            f"{forbidden_system_tab_search_chrome}"
+        )
 if ".searchable(" not in search_view_source:
-    fail("SearchView must bind system .searchable for the search tab role")
+    fail("SearchView must bind system .searchable for the Search tab")
 if "SystemSearchTabModifier" not in search_view_source:
     fail("SearchView must apply SystemSearchTabModifier outside ScrollViewReader")
 if "isSystemSearchPresented = true" not in search_view_source:

@@ -41,8 +41,8 @@ struct SearchView: View {
 
     var body: some View {
         // Keep `.searchable` on the NavigationStack root (outside
-        // ScrollViewReader) so Tab(role: .search) + tabViewSearchActivation
-        // can bind the system search field on iOS 26.0+.
+        // ScrollViewReader) so the regular Search tab still has a native
+        // search field on iOS 26.0+ without detached tab-bar chrome.
         searchScrollRoot
             .background(ThemeBackground())
             .navigationTitle("Поиск")
@@ -855,7 +855,7 @@ struct SearchView: View {
     }
 }
 
-/// Binds system search chrome for `Tab(role: .search)` on iOS 26.0+.
+/// Binds system search chrome for the regular Search tab on iOS 26.0+.
 /// Older OS versions keep the inline custom field in `SearchView`.
 private struct SystemSearchTabModifier: ViewModifier {
     @Binding var query: String
