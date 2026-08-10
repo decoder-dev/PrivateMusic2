@@ -276,17 +276,26 @@ final class AppEnvironment: ObservableObject {
                 return .failure(error)
             }
         }()
+        // «Ваши плейлисты» on the home screen is the same list as the
+        // library shelf, so it asks for a full page and collapses the
+        // duplicated system playlist the same way.
+        let playlistOwnerID = sessionStore.session?.userID
         async let playlistsResult: Result<[Playlist], Error> = {
             do {
                 let value = try await withAuthorizedToken { token in
                     let page = try await musicService.playlists(
                         accessToken: token,
                         offset: 0,
-                        count: 30
+                        count: LibraryPlaylistPagePolicy.pageSize
                     )
                     return page.items
                 }
-                return .success(value)
+                return .success(
+                    LibraryPlaylistShelfPolicy.normalized(
+                        value,
+                        ownerID: playlistOwnerID
+                    )
+                )
             } catch {
                 return .failure(error)
             }
