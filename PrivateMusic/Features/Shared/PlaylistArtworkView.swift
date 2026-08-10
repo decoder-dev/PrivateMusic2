@@ -52,15 +52,27 @@ struct PlaylistArtworkView: View {
         }
     }
 
+    /// A coverless playlist still has to read as a card. A flat
+    /// `secondarySystemBackground` fill disappeared into the dark theme
+    /// background and left the shelf looking like floating text.
     private var artworkPlaceholder: some View {
-        Rectangle()
-            .fill(Color(uiColor: .secondarySystemBackground))
-            .overlay {
-                Image(systemName: "music.note.list")
-                    .font(.system(size: size * 0.28, weight: .medium))
-                    .foregroundStyle(.secondary.opacity(0.85))
-                    .offset(y: showsSource ? size * 0.04 : 0)
-            }
+        LinearGradient(
+            colors: [
+                Color(uiColor: .secondarySystemBackground),
+                Color(uiColor: .tertiarySystemBackground)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .overlay {
+            Image(systemName: "music.note.list")
+                .font(.system(size: size * 0.28, weight: .medium))
+                .foregroundStyle(.secondary.opacity(0.85))
+                .offset(y: showsSource ? size * 0.04 : 0)
+        }
+        .overlay {
+            artworkShape.stroke(.primary.opacity(0.12), lineWidth: 0.75)
+        }
     }
 
     private var artworkShape: RoundedRectangle {
