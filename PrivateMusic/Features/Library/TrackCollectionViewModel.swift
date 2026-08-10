@@ -157,14 +157,15 @@ final class TrackCollectionViewModel: ObservableObject {
               !optimisticAdditions.isEmpty else {
             return pageItems
         }
-        var merged: [Track] = []
-        var known = Set<String>()
-        for track in optimisticAdditions + pageItems
-            where known.insert(track.id).inserted {
-            merged.append(track)
-        }
+        // Keep the server page order intact. Only prepend optimistic
+        // additions that have not propagated into `audio.get` yet — never
+        // yank an already-present track to the front (that scrambled the
+        // library list after every like/add + reload).
+        let pageIDs = Set(pageItems.map(\.id))
+        let missing = optimisticAdditions.filter { !pageIDs.contains($0.id) }
         optimisticAdditions.removeAll()
-        return merged
+        guard !missing.isEmpty else { return pageItems }
+        return missing + pageItems
     }
 
     private func missingOptimisticAdditions(from pageItems: [Track]) -> Int {
