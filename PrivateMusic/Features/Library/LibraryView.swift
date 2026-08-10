@@ -161,16 +161,17 @@ struct LibraryView: View {
                 NavigationLink {
                     ListeningHistoryView()
                 } label: {
-                    Label(
-                        "История прослушивания",
-                        systemImage: "clock.arrow.circlepath"
-                    )
+                    Image(systemName: "clock.arrow.circlepath")
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.text("История прослушивания"))
                 Button {
                     showingEditor = true
                 } label: {
-                    Label("Новый плейлист", systemImage: "plus")
+                    Image(systemName: "plus")
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.text("Новый плейлист"))
             }
         }
         .sheet(isPresented: $showingEditor) {
