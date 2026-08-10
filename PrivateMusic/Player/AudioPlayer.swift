@@ -2641,18 +2641,9 @@ final class AudioPlayer: ObservableObject {
         persistPlayback()
         publishNowPlayingQueue()
         scheduleNeighborPreloads()
-        // Newly fetched mix pages arrive in VK order — weave them into the
-        // active radio ranking locally. Never kick a server refill here:
-        // replaceUpcoming would wipe the continuation-filled suffix.
-        if case .mix = queueSource, !shuffleEnabled {
-            rerankUpcomingMix(
-                mode: mixRadioMode,
-                historyArtists: Set(
-                    historyStore.entries.prefix(40).map(\.track.artist)
-                ),
-                refillFromServer: false
-            )
-        }
+        // Do not call rerankUpcomingMix here. MixQueueRanker shuffles with
+        // SystemRandomNumberGenerator — re-ranking on every background fill
+        // made the upcoming queue jump around mid-listen.
     }
 
     /// Replace only the unplayed suffix — used when radio mode pulls a
