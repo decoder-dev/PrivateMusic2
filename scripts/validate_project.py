@@ -431,15 +431,24 @@ if "libraryPlaylistItems" not in all_source:
 json_value_source = (SOURCE / "Core/Networking/JSONValue.swift").read_text(
     encoding="utf-8"
 )
-for required_album_filter_symbol in (
-    "var hasPlaylistMarker: Bool",
-    "var releaseMarkerCount: Int",
-    "return releaseMarkerCount >= 2",
+if "LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(" not in json_value_source:
+    fail(
+        "audio.getPlaylists entries must be classified by "
+        "LibraryPlaylistEntryPolicy, not by an ad-hoc marker count"
+    )
+entry_policy_path = SOURCE / "Models/LibraryPlaylistEntryPolicy.swift"
+if not entry_policy_path.is_file():
+    fail("LibraryPlaylistEntryPolicy must define the playlist/release test")
+entry_policy_source = entry_policy_path.read_text(encoding="utf-8")
+for required_entry_policy_symbol in (
+    "static func hasPlaylistMarker(",
+    "static func hasReleaseAlbumType(",
+    "guard !hasPlaylistMarker(entry), hasReleaseAlbumType(entry) else {",
 ):
-    if required_album_filter_symbol not in json_value_source:
+    if required_entry_policy_symbol not in entry_policy_source:
         fail(
-            "one ambiguous VK marker must not drop a playlist from the "
-            f"shelf: {required_album_filter_symbol}"
+            "inferred VK markers must never drop a playlist on their own: "
+            f"{required_entry_policy_symbol}"
         )
 if "VKItems<Playlist>" in all_source:
     fail("playlist pages must not use the strict all-or-nothing decode")
@@ -474,21 +483,60 @@ if not shuffle_order_path.is_file():
 for required_shuffle_symbol in (
     "sourceOrderedQueue = prepared",
     "PlaybackShuffleOrder.restored(",
+    "shuffleEnabled = intent == .shuffleCollection || shufflePreference",
 ):
     if required_shuffle_symbol not in audio_player_source:
         fail(
             "turning shuffle off must restore the source order of the "
             f"queue: {required_shuffle_symbol}"
         )
+shuffle_preference_path = SOURCE / "Player" / "PlaybackShufflePreference.swift"
+if not shuffle_preference_path.is_file():
+    fail(
+        "the persisted shuffle preference must be separate from the shuffle "
+        "mode of the playing queue"
+    )
+shuffle_preference_source = shuffle_preference_path.read_text(encoding="utf-8")
+for required_shuffle_preference_symbol in (
+    "case followPreference",
+    "case shuffleCollection",
+    "collectionLatchClearedKey",
+):
+    if required_shuffle_preference_symbol not in shuffle_preference_source:
+        fail(
+            "installs upgraded from the latched «Перемешать» must start in "
+            f"list order: {required_shuffle_preference_symbol}"
+        )
 play_shuffled_body = audio_player_source.split("func playShuffled(", 1)
 if len(play_shuffled_body) < 2:
     fail("AudioPlayer must expose playShuffled")
-elif 'forKey: "player.shuffle"' in play_shuffled_body[1].split(
-    "\n    func ", 1
-)[0]:
+else:
+    play_shuffled_body = play_shuffled_body[1].split("\n    func ", 1)[0]
+    if 'forKey: "player.shuffle"' in play_shuffled_body:
+        fail(
+            "per-collection «Перемешать» must not persist global shuffle: it "
+            "latched every later queue, including Медиатека, into shuffle"
+        )
+    if "shuffleEnabled = true" in play_shuffled_body:
+        fail(
+            "per-collection «Перемешать» must not latch the player-wide "
+            "shuffle for the session either: the next Медиатека tap built a "
+            "shuffled queue from it"
+        )
+library_play_body = library_view_source.split(
+    "private func playLibraryTrack(", 1
+)
+if len(library_play_body) < 2:
     fail(
-        "per-collection «Перемешать» must not persist global shuffle: it "
-        "latched every later queue, including Медиатека, into shuffle"
+        "Медиатека must play a track through one ordered entry point so the "
+        "queue is the visible list"
+    )
+elif "playShuffled(" in library_play_body[1].split("\n    private func", 1)[0]:
+    fail("library playback must never start through playShuffled")
+if "LibraryTrackContinuationCursor(" not in library_view_source:
+    fail(
+        "a queue started from Медиатека must continue with the next library "
+        "page, in VK order, before it reaches recommendations"
     )
 library_store_source = (SOURCE / "Models/MusicLibraryStore.swift").read_text(
     encoding="utf-8"
