@@ -280,7 +280,7 @@ final class MiniPlayerAccessoryPolicyTests: XCTestCase {
         XCTAssertTrue(MiniPlayerAccessoryPolicy.showsNextButton(.expanded))
         XCTAssertTrue(MiniPlayerAccessoryPolicy.showsPreviousButton(.expanded))
         XCTAssertTrue(MiniPlayerAccessoryPolicy.showsProgress(.expanded))
-        XCTAssertTrue(MiniPlayerAccessoryPolicy.showsOwnGlassChrome(.expanded))
+        XCTAssertFalse(MiniPlayerAccessoryPolicy.showsOwnGlassChrome(.expanded))
     }
 
     func testInlineShowsMinimalChrome() {
