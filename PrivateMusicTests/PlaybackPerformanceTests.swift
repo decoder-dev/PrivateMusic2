@@ -27,24 +27,42 @@ final class PlaybackHighlightModelTests: XCTestCase {
         let highlight = PlaybackHighlightModel()
         XCTAssertNil(highlight.currentTrackID)
         XCTAssertFalse(highlight.isPlaying)
+        XCTAssertNil(highlight.queueSource)
 
-        highlight.update(currentTrackID: "42", isPlaying: true)
+        highlight.update(
+            currentTrackID: "42",
+            isPlaying: true,
+            queueSource: .album(title: "Album")
+        )
         XCTAssertEqual(highlight.currentTrackID, "42")
         XCTAssertTrue(highlight.isPlaying)
+        XCTAssertEqual(highlight.queueSource, .album(title: "Album"))
         XCTAssertTrue(highlight.isCurrent("42"))
         XCTAssertFalse(highlight.isCurrent("7"))
     }
 
     func testRepeatedUpdateDoesNotPublish() {
         let highlight = PlaybackHighlightModel()
-        highlight.update(currentTrackID: "42", isPlaying: true)
+        highlight.update(
+            currentTrackID: "42",
+            isPlaying: true,
+            queueSource: .album(title: "Album")
+        )
 
         var changes = 0
         let token = highlight.objectWillChange.sink { _ in changes += 1 }
         defer { token.cancel() }
 
-        highlight.update(currentTrackID: "42", isPlaying: true)
-        highlight.update(currentTrackID: "42", isPlaying: true)
+        highlight.update(
+            currentTrackID: "42",
+            isPlaying: true,
+            queueSource: .album(title: "Album")
+        )
+        highlight.update(
+            currentTrackID: "42",
+            isPlaying: true,
+            queueSource: .album(title: "Album")
+        )
         XCTAssertEqual(changes, 0)
     }
 
@@ -65,6 +83,73 @@ final class PlaybackHighlightModelTests: XCTestCase {
         XCTAssertEqual(changes, 2)
         XCTAssertNil(highlight.currentTrackID)
     }
+
+    func testSourceChangePublishes() {
+        let highlight = PlaybackHighlightModel()
+        highlight.update(
+            currentTrackID: "42",
+            isPlaying: true,
+            queueSource: .album(title: "Album")
+        )
+
+        var changes = 0
+        let token = highlight.objectWillChange.sink { _ in changes += 1 }
+        defer { token.cancel() }
+
+        highlight.update(
+            currentTrackID: "42",
+            isPlaying: true,
+            queueSource: .playlist(title: "Playlist")
+        )
+
+        XCTAssertEqual(changes, 1)
+        XCTAssertEqual(highlight.queueSource, .playlist(title: "Playlist"))
+    }
+}
+
+final class QueueSourcePlaybackActionTests: XCTestCase {
+    func testActivePlayingSourcePauses() {
+        XCTAssertEqual(
+            QueueSourcePlaybackAction.resolve(
+                target: .album(title: "Album"),
+                isPlaying: true,
+                queueSource: .album(title: "Album")
+            ),
+            .pause
+        )
+    }
+
+    func testActivePausedSourceResumesWithPlayPresentation() {
+        let action = QueueSourcePlaybackAction.resolve(
+            target: .album(title: "Album"),
+            isPlaying: false,
+            queueSource: .album(title: "Album")
+        )
+
+        XCTAssertEqual(action, .resume)
+        XCTAssertEqual(action.systemImage, "play.fill")
+        XCTAssertEqual(action.labelKey, "Воспроизвести")
+    }
+
+    func testDifferentSourceStartsNewQueue() {
+        XCTAssertEqual(
+            QueueSourcePlaybackAction.resolve(
+                target: .album(title: "Album"),
+                isPlaying: true,
+                queueSource: .album(title: "Other")
+            ),
+            .start
+        )
+    }
+
+    func testPauseUsesLocalizedAccessibilityKey() {
+        XCTAssertEqual(
+            QueueSourcePlaybackAction.pause.accessibilityLabelKey(
+                playKey: "Воспроизвести альбом"
+            ),
+            "Приостановить"
+        )
+    }
 }
 
 @MainActor
@@ -82,8 +167,13 @@ final class PlayerHighlightSyncTests: XCTestCase {
         let second = track(id: 2)
         XCTAssertNil(player.highlight.currentTrackID)
 
-        player.play(first, in: [first, second])
+        player.play(
+            first,
+            in: [first, second],
+            source: .album(title: "Album")
+        )
         XCTAssertEqual(player.highlight.currentTrackID, first.id)
+        XCTAssertEqual(player.highlight.queueSource, .album(title: "Album"))
 
         player.next()
         XCTAssertEqual(player.highlight.currentTrackID, second.id)
@@ -91,6 +181,7 @@ final class PlayerHighlightSyncTests: XCTestCase {
         player.stop()
         XCTAssertNil(player.highlight.currentTrackID)
         XCTAssertFalse(player.highlight.isPlaying)
+        XCTAssertNil(player.highlight.queueSource)
     }
 
     private func track(id: Int) -> Track {

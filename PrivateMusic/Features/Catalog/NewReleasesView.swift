@@ -3,6 +3,7 @@ import SwiftUI
 struct NewReleasesView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
+    @EnvironmentObject private var highlight: PlaybackHighlightModel
     let albums: [Album]
 
     @State private var loadingPlayAlbumID: String?
@@ -25,13 +26,22 @@ struct NewReleasesView: View {
                             }
                             .buttonStyle(PremiumPressStyle())
 
-                            Button { playAlbum(album) } label: {
+                            let playbackAction = playbackAction(for: album)
+                            Button {
+                                performPlaybackAction(
+                                    playbackAction,
+                                    for: album
+                                )
+                            } label: {
                                 Group {
                                     if loadingPlayAlbumID == album.id {
                                         ProgressView()
                                             .tint(.black)
                                     } else {
-                                        Image(systemName: "play.fill")
+                                        Image(
+                                            systemName:
+                                                playbackAction.systemImage
+                                        )
                                     }
                                 }
                                 .font(.caption.weight(.bold))
@@ -41,8 +51,17 @@ struct NewReleasesView: View {
                             }
                             .buttonStyle(PremiumPressStyle())
                             .padding(8)
-                            .disabled(loadingPlayAlbumID != nil)
-                            .accessibilityLabel(L10n.text("Воспроизвести альбом"))
+                            .disabled(
+                                loadingPlayAlbumID != nil
+                                    && loadingPlayAlbumID != album.id
+                            )
+                            .accessibilityLabel(
+                                L10n.text(
+                                    playbackAction.accessibilityLabelKey(
+                                        playKey: "Воспроизвести альбом"
+                                    )
+                                )
+                            )
                         }
                         NavigationLink {
                             AlbumDetailView(album: album)
@@ -90,6 +109,36 @@ struct NewReleasesView: View {
         }
     }
 
+    private func playbackAction(for album: Album) -> QueueSourcePlaybackAction {
+        QueueSourcePlaybackAction.resolve(
+            target: albumQueueSource(for: album),
+            isPlaying: highlight.isPlaying,
+            queueSource: highlight.queueSource
+        )
+    }
+
+    private func performPlaybackAction(
+        _ action: QueueSourcePlaybackAction,
+        for album: Album
+    ) {
+        switch action {
+        case .start:
+            playAlbum(album)
+        case .resume:
+            environment.player.resume()
+        case .pause:
+            environment.player.pause()
+        }
+    }
+
+    private func albumQueueSource(for album: Album) -> QueueSource {
+        .album(title: albumPlaybackTitle(album))
+    }
+
+    private func albumPlaybackTitle(_ album: Album) -> String {
+        Album.isUsableTitle(album.title) ? album.title : L10n.text("Альбом")
+    }
+
     private func playAlbum(_ album: Album) {
         guard sessionStore.accessToken != nil else { return }
         loadingPlayAlbumID = album.id
@@ -105,13 +154,10 @@ struct NewReleasesView: View {
                     )
                 }
                 guard let first = page.items.first else { return }
-                let title = Album.isUsableTitle(album.title)
-                    ? album.title
-                    : L10n.text("Альбом")
                 environment.player.play(
                     first,
                     in: page.items,
-                    source: .album(title: title)
+                    source: albumQueueSource(for: album)
                 )
             } catch is CancellationError {
                 return

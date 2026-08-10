@@ -416,15 +416,18 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    /// Observers mirror track identity / play state into `highlight` so list
-    /// rows never have to observe the player itself (see `syncHighlight`).
+    /// Observers mirror track identity / source / play state into `highlight`
+    /// so list rows never have to observe the player itself (see
+    /// `syncHighlight`).
     @Published private(set) var queue: [Track] = [] {
         didSet { syncHighlight() }
     }
     @Published private(set) var currentIndex: Int? {
         didSet { syncHighlight() }
     }
-    @Published private(set) var queueSource: QueueSource?
+    @Published private(set) var queueSource: QueueSource? {
+        didSet { syncHighlight() }
+    }
     @Published private(set) var queueSeedTrackTitle: String?
     /// Active mix radio ordering. Owned here because it describes the
     /// live queue: every surface offering the control (mix hub, queue
@@ -541,13 +544,15 @@ final class AudioPlayer: ObservableObject {
         return queue[currentIndex]
     }
 
-    /// Single place that pushes track identity / play state to `highlight`.
-    /// Driven by the `queue`, `currentIndex` and `isPlaying` observers, so
-    /// every path (play, skip, queue edits, restore, stop) stays in sync.
+    /// Single place that pushes track identity / source / play state to
+    /// `highlight`. Driven by the `queue`, `currentIndex`, `queueSource` and
+    /// `isPlaying` observers, so every path (play, skip, queue edits, restore,
+    /// stop) stays in sync.
     private func syncHighlight() {
         highlight.update(
             currentTrackID: currentTrack?.id,
-            isPlaying: isPlaying
+            isPlaying: isPlaying,
+            queueSource: queueSource
         )
     }
 
