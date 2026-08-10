@@ -454,13 +454,22 @@ struct CatalogView: View {
                                 }
                                 .buttonStyle(PremiumPressStyle())
 
-                                Button { playAlbum(album) } label: {
+                                let playbackAction = playbackAction(for: album)
+                                Button {
+                                    performPlaybackAction(
+                                        playbackAction,
+                                        for: album
+                                    )
+                                } label: {
                                     Group {
                                         if loadingPlayAlbumID == album.id {
                                             ProgressView()
                                                 .tint(.black)
                                         } else {
-                                            Image(systemName: "play.fill")
+                                            Image(
+                                                systemName:
+                                                    playbackAction.systemImage
+                                            )
                                         }
                                     }
                                     .font(.caption.weight(.bold))
@@ -470,8 +479,17 @@ struct CatalogView: View {
                                 }
                                 .buttonStyle(PremiumPressStyle())
                                 .padding(6)
-                                .disabled(loadingPlayAlbumID != nil)
-                                .accessibilityLabel(L10n.text("Воспроизвести альбом"))
+                                .disabled(
+                                    loadingPlayAlbumID != nil
+                                        && loadingPlayAlbumID != album.id
+                                )
+                                .accessibilityLabel(
+                                    L10n.text(
+                                        playbackAction.accessibilityLabelKey(
+                                            playKey: "Воспроизвести альбом"
+                                        )
+                                    )
+                                )
                             }
                             Button { selectedAlbum = album } label: {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -828,13 +846,10 @@ struct CatalogView: View {
                     )
                 }
                 guard let first = page.items.first else { return }
-                let title = Album.isUsableTitle(album.title)
-                    ? album.title
-                    : L10n.text("Альбом")
                 environment.player.play(
                     first,
                     in: page.items,
-                    source: .album(title: title)
+                    source: albumQueueSource(for: album)
                 )
             } catch is CancellationError {
                 return
@@ -842,6 +857,36 @@ struct CatalogView: View {
                 actionErrorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func playbackAction(for album: Album) -> QueueSourcePlaybackAction {
+        QueueSourcePlaybackAction.resolve(
+            target: albumQueueSource(for: album),
+            isPlaying: highlight.isPlaying,
+            queueSource: highlight.queueSource
+        )
+    }
+
+    private func performPlaybackAction(
+        _ action: QueueSourcePlaybackAction,
+        for album: Album
+    ) {
+        switch action {
+        case .start:
+            playAlbum(album)
+        case .resume:
+            environment.player.resume()
+        case .pause:
+            environment.player.pause()
+        }
+    }
+
+    private func albumQueueSource(for album: Album) -> QueueSource {
+        .album(title: albumPlaybackTitle(album))
+    }
+
+    private func albumPlaybackTitle(_ album: Album) -> String {
+        Album.isUsableTitle(album.title) ? album.title : L10n.text("Альбом")
     }
 
     @ViewBuilder
