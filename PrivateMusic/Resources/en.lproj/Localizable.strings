@@ -17,7 +17,7 @@
 "Персональная подборка VK" = "Personalized VK selection";
 "Бесконечная персональная подборка VK" = "Continuous personalized selection from VK";
 "Составлено Селеной" = "Curated by Selena";
-"Селена подбирает музыку под ваш вкус" = "Selena picks music to match your taste";
+"Селена подбирает музыку под ваш вкус" = "Selena is Decoder Dev's neural network for music that matches your taste";
 "Экспериментальная функция" = "Experimental Feature";
 "Персональный микс" = "Personal Mix";
 "Селена подготовила подборку для %@" = "Selena prepared a selection for %@";
@@ -113,7 +113,7 @@
 "Слушать VK Микс" = "Play VK Mix";
 "Персональный поток VK" = "Personalized VK selection";
 "Ваши VK Миксы" = "Your VK Mixes";
-"Подобрано по вашим прослушиваниям VK" = "Selected using VK data";
+"Подобрано по вашим прослушиваниям VK" = "Selected by Decoder Dev's neural network from your VK listening";
 "Продолжить поток" = "Continue Selection";
 
 "Загружаем исполнителя…" = "Loading artist…";
@@ -645,7 +645,7 @@
 "Разбавляет очередь; «Ближе к треку» и «Больше новизны» подтягивают рекомендации VK" = "Diversifies the queue; Closer to Track and More Novelty pull VK recommendations";
 "Русский" = "Russian";
 "Сглаживает скачки громкости между треками. Работает на прогрессивных потоках; для HLS обработка на устройстве недоступна." = "Smooths volume jumps between tracks. Works on progressive streams; on-device processing is unavailable for HLS.";
-"Селена, социальные и алгоритмические подборки" = "Selena, social and algorithmic selections";
+"Селена, социальные и алгоритмические подборки" = "Selena, Decoder Dev's neural network, plus social and algorithmic selections";
 "Сказки, колыбельные и семейные миксы" = "Tales, lullabies and family mixes";
 "Скачать" = "Download";
 "Скрытое в миксах" = "Hidden in Mixes";
@@ -677,13 +677,13 @@
 "Кураторский" = "Curated";
 "Недавние сиды" = "Recent Seeds";
 "Новые артисты" = "New Artists";
-"Окно слушания обновляется из истории, рекомендаций и VK микса" = "The listening window refreshes from history, recommendations, and VK Mix";
+"Окно слушания обновляется из истории, рекомендаций и VK микса" = "Decoder Dev's neural network refreshes the window from history, recommendations, and VK Mix";
 "Перемешивает загруженные треки и держит артистов на расстоянии" = "Shuffles loaded tracks and keeps artists spaced out";
 "Показать ещё" = "Show More";
 "Полка VK" = "VK Shelf";
 "Полки каталога с быстрым запуском и превью треков" = "Catalog shelves with quick launch and track previews";
 "Свернуть" = "Collapse";
-"Селена как личная станция" = "Selena as a Personal Station";
+"Селена как личная станция" = "Selena — Decoder Dev's neural network";
 "Скрыть исполнителя первого трека" = "Hide First Track Artist";
 "Скрыть первый трек" = "Hide First Track";
 "Скрытое" = "Hidden";
