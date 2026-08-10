@@ -82,6 +82,25 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    func testPreloadBufferPromotesToStreamingDurationOnceActive() {
+        XCTAssertEqual(
+            PlaybackPreloadPolicy.forwardBufferDuration(
+                isActivePlayback: false
+            ),
+            PlaybackPreloadPolicy.preferredForwardBufferDuration,
+            accuracy: 0.001,
+            "A track that only sits in the preload slot should keep its ~10s warm-up buffer"
+        )
+        XCTAssertEqual(
+            PlaybackPreloadPolicy.forwardBufferDuration(
+                isActivePlayback: true
+            ),
+            StreamFailureRetryPolicy.preferredForwardBufferDuration,
+            accuracy: 0.001,
+            "Promoting a preloaded item to active playback must widen its buffer for stall resilience"
+        )
+    }
+
     func testAudioTapSupportedForProgressiveAndOfflineButNotHLS() {
         let progressive = URL(string: "https://example.com/audio.mp3")!
         let hls = URL(string: "https://example.com/index.m3u8")!
