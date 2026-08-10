@@ -179,9 +179,13 @@ if "MixRadioUpcomingMergePolicy.merge(" not in audio_player_source:
     fail("replaceUpcoming must preserve Play Next pins during radio refill")
 native_dsp_header = SOURCE / "Native" / "PrivateMusicDSP.h"
 native_dsp_source = SOURCE / "Native" / "PrivateMusicDSP.c"
+native_core_header = SOURCE / "Native" / "PrivateMusicCore.h"
+native_core_source = SOURCE / "Native" / "PrivateMusicCore.c"
 bridging_header = SOURCE / "Native" / "PrivateMusic-Bridging-Header.h"
 if not native_dsp_header.is_file() or not native_dsp_source.is_file():
     fail("PrivateMusicDSP C module (header + source) must exist under Native/")
+if not native_core_header.is_file() or not native_core_source.is_file():
+    fail("PrivateMusicCore C module (header + source) must exist under Native/")
 if not bridging_header.is_file():
     fail("PrivateMusic Native bridging header must exist")
 native_dsp_header_text = native_dsp_header.read_text(encoding="utf-8")
@@ -195,8 +199,22 @@ for symbol in (
 ):
     if symbol not in native_dsp_header_text:
         fail(f"PrivateMusicDSP.h must expose {symbol}")
-if "PrivateMusicDSP.h" not in bridging_header.read_text(encoding="utf-8"):
-    fail("bridging header must import PrivateMusicDSP.h")
+native_core_header_text = native_core_header.read_text(encoding="utf-8")
+for symbol in (
+    "pm_hash_fnv1a64_bytes",
+    "pm_hash_fnv1a64_value",
+    "pm_text_identity_hash",
+    "pm_text_fold_utf8",
+    "pm_text_find",
+    "pm_mix_select_best",
+    "pm_mix_score_candidate",
+):
+    if symbol not in native_core_header_text:
+        fail(f"PrivateMusicCore.h must expose {symbol}")
+bridging_header_text = bridging_header.read_text(encoding="utf-8")
+for header in ("PrivateMusicDSP.h", "PrivateMusicCore.h"):
+    if header not in bridging_header_text:
+        fail(f"bridging header must import {header}")
 equalizer_source = (SOURCE / "Player" / "EqualizerDSP.swift").read_text(
     encoding="utf-8"
 )
@@ -217,6 +235,25 @@ spatial_source = (SOURCE / "Player" / "SpatialAudioDSP.swift").read_text(
 )
 if "pm_spatial_widen(" not in spatial_source:
     fail("SpatialAudioDSP must call pm_spatial_widen")
+mix_ranker_source = (SOURCE / "Player" / "MixQueueRanker.swift").read_text(
+    encoding="utf-8"
+)
+if "pm_mix_select_best(" not in mix_ranker_source:
+    fail("MixQueueRanker must pick candidates through pm_mix_select_best")
+for symbol in ("pm_hash_fnv1a64_bytes(", "pm_text_identity_hash("):
+    if symbol not in mix_ranker_source:
+        fail(f"MixQueueRanker must hash through {symbol[:-1]}")
+native_text_source_path = SOURCE / "Core" / "Text" / "NativeTextSearch.swift"
+if not native_text_source_path.is_file():
+    fail("NativeTextSearch must live under Core/Text/")
+native_text_source = native_text_source_path.read_text(encoding="utf-8")
+for symbol in ("pm_text_fold_utf8(", "pm_text_find("):
+    if symbol not in native_text_source:
+        fail(f"NativeTextSearch must call {symbol[:-1]}")
+if "FoldedSearchQuery" not in native_text_source:
+    fail("NativeTextSearch must expose FoldedSearchQuery for reused needles")
+if "FoldedSearchQuery(" not in search_view_source:
+    fail("SearchView playlist filtering must fold the needle once via C")
 project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
 if "SWIFT_OBJC_BRIDGING_HEADER: PrivateMusic/Native/PrivateMusic-Bridging-Header.h" not in project_yml:
     fail("project.yml must set SWIFT_OBJC_BRIDGING_HEADER for the C DSP module")
