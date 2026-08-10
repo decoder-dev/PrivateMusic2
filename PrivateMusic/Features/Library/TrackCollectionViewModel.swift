@@ -79,10 +79,16 @@ final class TrackCollectionViewModel: ObservableObject {
               let offset = nextOffset else {
             return false
         }
+        let generation = loadGeneration
         isLoadingMore = true
         defer { isLoadingMore = false }
         do {
             let page = try await operation(offset)
+            // A reload or a local add/remove that landed while this page was
+            // in flight shifted every server offset under it. Appending the
+            // stale window would interleave it with the fresh list, which
+            // reads as a scrambled Медиатека.
+            guard generation == loadGeneration else { return false }
             appendUnique(page.items)
             totalCount = page.totalCount
             nextOffset = page.nextOffset
@@ -91,6 +97,7 @@ final class TrackCollectionViewModel: ObservableObject {
         } catch is CancellationError {
             return false
         } catch {
+            guard generation == loadGeneration else { return false }
             errorMessage = error.localizedDescription
             return false
         }
