@@ -322,10 +322,10 @@ final class AudioPlayerTransitionTests: XCTestCase {
         let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
         let second = track(id: 2, duration: 245, streamURL: silentWAVURL)
         var requestCount = 0
-        context.player.configureContinuation {
+        context.player.configureContinuation { [self] in
             requestCount += 1
             try await Task.sleep(for: .milliseconds(120))
-            return [second]
+            return [second] + refillPadding()
         }
         context.player.play(first, in: [first])
         context.player.seek(to: 73)
@@ -352,15 +352,15 @@ final class AudioPlayerTransitionTests: XCTestCase {
         let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
         let second = track(id: 2, duration: 245, streamURL: silentWAVURL)
         var requestCount = 0
-        context.player.configureContinuation {
+        context.player.configureContinuation { [self] in
             requestCount += 1
-            return [second]
+            return [second] + refillPadding()
         }
 
         context.player.play(first, in: [first])
 
         await waitUntil {
-            context.player.queue.map(\.id) == [first.id, second.id]
+            context.player.queue.prefix(2).map(\.id) == [first.id, second.id]
         }
         XCTAssertEqual(requestCount, 1)
         XCTAssertEqual(context.player.currentTrack?.id, first.id)
@@ -405,12 +405,12 @@ final class AudioPlayerTransitionTests: XCTestCase {
         let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
         let second = track(id: 2, duration: 245, streamURL: silentWAVURL)
         var requestCount = 0
-        context.player.configureContinuation {
+        context.player.configureContinuation { [self] in
             requestCount += 1
             if requestCount == 1 {
                 throw APIError.timedOut
             }
-            return [second]
+            return [second] + refillPadding()
         }
         context.player.play(first, in: [first])
         context.player.errorMessage = nil
@@ -433,9 +433,11 @@ final class AudioPlayerTransitionTests: XCTestCase {
         let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
         let second = track(id: 2, duration: 245, streamURL: silentWAVURL)
         var requestCount = 0
-        context.player.configureContinuation {
+        context.player.configureContinuation { [self] in
             requestCount += 1
-            return requestCount == 1 ? [first, first] : [first, second]
+            return requestCount == 1
+                ? [first, first]
+                : [first, second] + refillPadding()
         }
         context.player.play(first, in: [first])
 
@@ -445,7 +447,10 @@ final class AudioPlayerTransitionTests: XCTestCase {
             context.player.currentTrack?.id == second.id
         }
         XCTAssertEqual(requestCount, 2)
-        XCTAssertEqual(context.player.queue.map(\.id), [first.id, second.id])
+        XCTAssertEqual(
+            context.player.queue.prefix(2).map(\.id),
+            [first.id, second.id]
+        )
         XCTAssertNil(context.player.errorMessage)
     }
 
@@ -503,10 +508,16 @@ final class AudioPlayerTransitionTests: XCTestCase {
         let second = track(id: 2, duration: 245, streamURL: silentWAVURL)
         let continuation = track(id: 3, duration: 210, streamURL: silentWAVURL)
         var requestCount = 0
-        context.player.configureContinuation {
+        context.player.configureContinuation { [self] in
             requestCount += 1
+            let fresh = track(
+                id: 400 + requestCount,
+                duration: 210,
+                streamURL: silentWAVURL
+            )
+            let batch = requestCount == 1 ? [continuation] : [fresh]
             try await Task.sleep(for: .milliseconds(500))
-            return [continuation]
+            return batch
         }
         context.player.play(second, in: [first, second])
         context.player.errorMessage = nil
@@ -517,6 +528,8 @@ final class AudioPlayerTransitionTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(600))
 
         XCTAssertEqual(context.player.currentTrack?.id, first.id)
+        // Stepping back is allowed to start a fresh refill — what must not
+        // land is the batch that was already in flight when it happened.
         XCTAssertFalse(context.player.queue.contains {
             $0.id == continuation.id
         })
@@ -532,10 +545,16 @@ final class AudioPlayerTransitionTests: XCTestCase {
         let second = track(id: 2, duration: 245, streamURL: silentWAVURL)
         let continuation = track(id: 3, duration: 210, streamURL: silentWAVURL)
         var requestCount = 0
-        context.player.configureContinuation {
+        context.player.configureContinuation { [self] in
             requestCount += 1
+            let fresh = track(
+                id: 500 + requestCount,
+                duration: 210,
+                streamURL: silentWAVURL
+            )
+            let batch = requestCount == 1 ? [continuation] : [fresh]
             try await Task.sleep(for: .milliseconds(500))
-            return [continuation]
+            return batch
         }
         context.player.play(second, in: [first, second])
         context.player.errorMessage = nil
@@ -546,6 +565,8 @@ final class AudioPlayerTransitionTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(600))
 
         XCTAssertEqual(context.player.currentTrack?.id, first.id)
+        // As with `previous()`: the shorter queue may start a fresh refill,
+        // but the batch that was in flight must not land.
         XCTAssertFalse(context.player.queue.contains {
             $0.id == continuation.id
         })
@@ -730,6 +751,19 @@ final class AudioPlayerTransitionTests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition(), Date() < deadline {
             try? await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
+    /// Filler that carries the upcoming window past
+    /// `continuationRemainingThreshold`.
+    ///
+    /// Radio refills chain while the queue is still short, so a provider that
+    /// hands back a single track is asked again immediately and no exact
+    /// request count is stable. Tests that count requests want one batch that
+    /// actually satisfies the window.
+    private func refillPadding() -> [Track] {
+        (1...MixTrackRequestPolicy.continuationRemainingThreshold).map {
+            track(id: 900 + $0, duration: 200, streamURL: silentWAVURL)
         }
     }
 
