@@ -52,13 +52,9 @@ struct ListeningHistoryView: View {
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
-                                Spacer()
+                                Spacer(minLength: 8)
                                 LikedTrackBadge(track: entry.track)
-                                Text(entry.playedAt, style: .relative)
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                                    .lineLimit(1)
-                                    .layoutPriority(1)
+                                    .frame(width: 18, alignment: .trailing)
                             }
                         }
                         .buttonStyle(.plain)

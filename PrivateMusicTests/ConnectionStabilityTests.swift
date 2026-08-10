@@ -74,6 +74,14 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    func testPlaybackPreloadPolicyUsesShortForwardBuffer() {
+        XCTAssertEqual(
+            PlaybackPreloadPolicy.preferredForwardBufferDuration,
+            10,
+            accuracy: 0.001
+        )
+    }
+
     func testAudioTapSupportedForProgressiveAndOfflineButNotHLS() {
         let progressive = URL(string: "https://example.com/audio.mp3")!
         let hls = URL(string: "https://example.com/index.m3u8")!
