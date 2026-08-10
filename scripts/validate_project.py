@@ -177,6 +177,30 @@ if "shouldApplyRefill(" not in audio_player_source:
     fail("mix-radio refill must guard against stale async apply")
 if "MixRadioUpcomingMergePolicy.merge(" not in audio_player_source:
     fail("replaceUpcoming must preserve Play Next pins during radio refill")
+native_dsp_header = SOURCE / "Native" / "PrivateMusicDSP.h"
+native_dsp_source = SOURCE / "Native" / "PrivateMusicDSP.c"
+bridging_header = SOURCE / "Native" / "PrivateMusic-Bridging-Header.h"
+if not native_dsp_header.is_file() or not native_dsp_source.is_file():
+    fail("PrivateMusicDSP C module (header + source) must exist under Native/")
+if not bridging_header.is_file():
+    fail("PrivateMusic Native bridging header must exist")
+if "pm_eq_process_channel" not in native_dsp_header.read_text(encoding="utf-8"):
+    fail("PrivateMusicDSP.h must expose pm_eq_process_channel")
+if "pm_spatial_widen" not in native_dsp_header.read_text(encoding="utf-8"):
+    fail("PrivateMusicDSP.h must expose pm_spatial_widen")
+equalizer_source = (SOURCE / "Player" / "EqualizerDSP.swift").read_text(
+    encoding="utf-8"
+)
+if "pm_eq_process_channel(" not in equalizer_source:
+    fail("EqualizerDSP must call pm_eq_process_channel for the tap hot path")
+spatial_source = (SOURCE / "Player" / "SpatialAudioDSP.swift").read_text(
+    encoding="utf-8"
+)
+if "pm_spatial_widen(" not in spatial_source:
+    fail("SpatialAudioDSP must call pm_spatial_widen")
+project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
+if "SWIFT_OBJC_BRIDGING_HEADER: PrivateMusic/Native/PrivateMusic-Bridging-Header.h" not in project_yml:
+    fail("project.yml must set SWIFT_OBJC_BRIDGING_HEADER for the C DSP module")
 queue_view_source = (SOURCE / "Features/Player/QueueView.swift").read_text(
     encoding="utf-8"
 )
