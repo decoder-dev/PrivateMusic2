@@ -37,55 +37,50 @@ struct TrackRow: View {
                     }
                     if let artist = usableMetadata(track.artist) {
                         Text(artist)
-                            .font(.subheadline)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
 
-                Spacer()
-
-                if OfflineDownloadsFeature.showsControls,
-                   !environment.isShareSessionActive {
-                    if offlineStore.contains(track) {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel(
-                                L10n.text("Доступно офлайн")
-                            )
-                    } else if offlineStore.downloadingTrackIDs
-                        .contains(track.id) {
-                        ProgressView()
-                            .controlSize(.small)
-                            .accessibilityLabel(L10n.text("Загрузка"))
+                HStack(spacing: 8) {
+                    if OfflineDownloadsFeature.showsControls,
+                       !environment.isShareSessionActive {
+                        if offlineStore.contains(track) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel(
+                                    L10n.text("Доступно офлайн")
+                                )
+                        } else if offlineStore.downloadingTrackIDs
+                            .contains(track.id) {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityLabel(L10n.text("Загрузка"))
+                        }
                     }
-                }
 
-                LikedTrackBadge(track: track)
+                    LikedTrackBadge(track: track)
 
-                Text(track.duration.formattedDuration)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    Text(track.duration.formattedDuration)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 36, alignment: .trailing)
 
-                Group {
                     if isCurrent {
                         PlaybackIndicatorView(
                             isPlaying: highlight.isPlaying,
                             color: currentTrackColor
                         )
-                    } else {
-                        Image(systemName: "play.fill")
+                        .font(.caption)
+                        .foregroundStyle(currentTrackColor)
+                        .frame(width: 14, alignment: .center)
                     }
                 }
-                    .font(.caption)
-                    .foregroundStyle(
-                        isCurrent
-                            ? currentTrackColor
-                            : Color.secondary
-                    )
-                    .frame(width: 22, height: 22)
-                    .adaptiveGlass(in: Circle())
+                .fixedSize(horizontal: true, vertical: false)
             }
             .contentShape(Rectangle())
         }
