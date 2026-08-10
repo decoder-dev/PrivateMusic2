@@ -101,6 +101,69 @@ final class TrackCollectionViewModelTests: XCTestCase {
         XCTAssertEqual(model.totalCount, 1)
     }
 
+    func testReloadReconcilesOptimisticAdditionWithoutResortingPage() async {
+        let model = TrackCollectionViewModel(source: .library)
+        await model.load {
+            MusicPage(
+                items: [track(id: 2), track(id: 3)],
+                totalCount: 2,
+                nextOffset: nil
+            )
+        }
+
+        model.insertAdded(track(id: 1))
+        let loaded = await model.load(force: true) {
+            MusicPage(
+                items: [
+                    track(id: 2),
+                    track(id: 1),
+                    track(id: 3),
+                    track(id: 4)
+                ],
+                totalCount: 4,
+                nextOffset: nil
+            )
+        }
+
+        XCTAssertTrue(loaded)
+        XCTAssertEqual(
+            model.tracks.map(\.id),
+            ["1_1", "1_2", "1_3", "1_4"]
+        )
+        XCTAssertEqual(model.totalCount, 4)
+    }
+
+    func testLoadMorePreservesExistingAndIncomingPageOrder() async {
+        let model = TrackCollectionViewModel(source: .library)
+        await model.load {
+            MusicPage(
+                items: [track(id: 3), track(id: 1)],
+                totalCount: 4,
+                nextOffset: 2
+            )
+        }
+
+        let loaded = await model.loadMore { offset in
+            XCTAssertEqual(offset, 2)
+            return MusicPage(
+                items: [
+                    track(id: 1),
+                    track(id: 2),
+                    track(id: 4)
+                ],
+                totalCount: 4,
+                nextOffset: nil
+            )
+        }
+
+        XCTAssertTrue(loaded)
+        XCTAssertEqual(
+            model.tracks.map(\.id),
+            ["1_3", "1_1", "1_2", "1_4"]
+        )
+        XCTAssertEqual(model.totalCount, 4)
+    }
+
     private func track(id: Int) -> Track {
         Track(
             trackID: id,
