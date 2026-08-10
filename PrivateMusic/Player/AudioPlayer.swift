@@ -2707,8 +2707,9 @@ final class AudioPlayer: ObservableObject {
     /// Mix radio: reorder upcoming tracks locally, then optionally refill
     /// from VK recommendations when the mode asks for a new candidate pool.
     ///
-    /// Pass `refillFromServer: false` for background queue appends so a
-    /// continuation fill is never wiped by `replaceUpcoming`.
+    /// Pass `refillFromServer: false` when only a local reorder is needed.
+    /// Background `appendToQueue` must never call this — random reranks
+    /// made the upcoming list jump mid-listen.
     func rerankUpcomingMix(
         mode: MixRadioMode,
         seed: Track? = nil,
