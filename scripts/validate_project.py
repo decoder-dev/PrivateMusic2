@@ -210,6 +210,8 @@ if "StreamFailureRetryPolicy.shouldRetrySameTrack" not in audio_player_source:
     fail("flaky networks must retry the current track before auto-skip")
 if "StreamFailureRetryPolicy.preferredForwardBufferDuration" not in audio_player_source:
     fail("playback must request a longer forward buffer on weak networks")
+if "PlaybackPreloadPolicy.preferredForwardBufferDuration" not in audio_player_source:
+    fail("next-track preload must request a short forward buffer")
 if "AudioProcessingAttachPolicy.supportsAudioTap" not in audio_player_source:
     fail("HLS sources must not attach unsupported audio taps")
 if "AVMutableAudioMixInputParameters(track:" not in audio_player_source:
@@ -327,6 +329,7 @@ for required_player_symbol in (
 # Mini-player uses plain controls; full-screen player keeps glassProminent.
 for required_preload_symbol in (
     "PlaybackPreloadPolicy.nextIndex",
+    "PlaybackPreloadPolicy.preferredForwardBufferDuration",
     "asset.load(.isPlayable)",
     "takePreloadedPlayback",
     "invalidatePreloadedPlayback",
