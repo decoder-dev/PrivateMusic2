@@ -158,23 +158,40 @@ if "SystemSearchTabModifier" not in search_view_source:
     fail("SearchView must apply SystemSearchTabModifier outside ScrollViewReader")
 if "isSystemSearchPresented = true" not in search_view_source:
     fail("Search tab activation must present the system search field")
-if "refillFromServer: false" not in audio_player_source:
-    fail("appendToQueue must rerank locally without server mix-radio refill")
 if "func presentQueue()" not in audio_player_source:
     fail("AudioPlayer must expose presentQueue for Mix hub queue button")
+append_fn = audio_player_source.split("func appendToQueue(", 1)
+if len(append_fn) < 2:
+    fail("AudioPlayer must expose appendToQueue")
+else:
+    append_body = append_fn[1].split("\n    func ", 1)[0]
+    if "rerankUpcomingMix(" in append_body:
+        fail(
+            "appendToQueue must not reshuffle the upcoming mix queue "
+            "(causes mid-listen jumps)"
+        )
 for required_dock_glass_symbol in (
-    "AdaptiveGlassContainer(spacing: 10)",
     "tint: settings.theme.accent.opacity(0.06)",
     "searchTabButton",
     "Capsule(style: .continuous)",
     ".safeAreaInset(edge: .bottom, spacing: 0)",
     "legacyTabStack",
+    "Do NOT wrap mini-player",
 ):
     if required_dock_glass_symbol not in main_tab_source:
         fail(
             "pre-iOS 26 fallback dock must retain Liquid Glass + safe inset: "
             f"{required_dock_glass_symbol}"
         )
+if "AdaptiveGlassContainer(spacing: 10)" in main_tab_source:
+    fail(
+        "PlaybackTabDock must not wrap chrome in GlassEffectContainer "
+        "(morphs into floating orbs)"
+    )
+if "showsOwnGlassChrome: false" not in main_tab_source:
+    fail(
+        "system tab accessory mini player must disable stacked glass chrome"
+    )
 if "LikedTrackBadge(track: track)" in mini_player_source:
     fail("mini-player must not overlay a liked-track badge on artwork")
 if ".buttonStyle(.glassProminent)" in mini_player_source:
