@@ -70,6 +70,44 @@ enum JSONValue: Codable, Sendable {
         return result
     }
 
+    /// Top-level `audio.getPlaylists` items, decoded one by one so a single
+    /// undecodable entry cannot hide the rest of the page the way a strict
+    /// whole-page decode did. Followed albums ride along in the same list
+    /// and belong on the Albums shelf, so they are skipped here.
+    var libraryPlaylistItems: [Playlist] {
+        guard case let .object(object) = self,
+              case let .array(values)? = object["items"] else {
+            return []
+        }
+        var result: [Playlist] = []
+        for value in values {
+            guard case let .object(item) = value,
+                  item["id"] != nil,
+                  item["owner_id"] != nil,
+                  item["title"] != nil,
+                  !item.looksLikeFollowedAlbum,
+                  let data = try? JSONEncoder().encode(value),
+                  let playlist = try? JSONDecoder().decode(
+                    Playlist.self,
+                    from: data
+                  ) else {
+                continue
+            }
+            result.append(playlist)
+        }
+        return result
+    }
+
+    /// Raw entries in the top-level `items` array — what the next offset has
+    /// to advance by, whether or not every entry decoded.
+    var libraryItemCount: Int {
+        guard case let .object(object) = self,
+              case let .array(values)? = object["items"] else {
+            return 0
+        }
+        return values.count
+    }
+
     var libraryTotalCount: Int? {
         guard case let .object(object) = self,
               case let .number(value)? = object["count"] else {
@@ -317,6 +355,26 @@ enum JSONValue: Codable, Sendable {
 }
 
 private extension Dictionary where Key == String, Value == JSONValue {
+    /// A followed album returned by `audio.getPlaylists`. VK marks those
+    /// with `type == 1` and ships release metadata (`main_artists`, an
+    /// `album_type` other than `playlist`) that a user playlist never has.
+    /// The test is deliberately narrow: a false positive here deletes a
+    /// real playlist from the shelf.
+    var looksLikeFollowedAlbum: Bool {
+        if case let .array(artists)? = self["main_artists"], !artists.isEmpty {
+            return true
+        }
+        if let type = self["type"]?.numberValue, Int(type.rounded()) == 1 {
+            return true
+        }
+        let albumTypes: Set<String> = ["album", "single", "ep", "compilation"]
+        if let albumType = self["album_type"]?.stringValue,
+           albumTypes.contains(albumType.lowercased()) {
+            return true
+        }
+        return false
+    }
+
     var mixMatchPercent: Int? {
         let keys = [
             "percent", "match_percent", "match", "compatibility",

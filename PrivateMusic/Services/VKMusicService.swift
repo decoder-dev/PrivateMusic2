@@ -101,9 +101,12 @@ struct VKMusicService: MusicService {
         let items = envelope.response.libraryAudioItems.map {
             $0.resolvingStreamURL(userID: userID)
         }
-        let total = envelope.response.libraryTotalCount ?? (offset + items.count)
-        let consumed = offset + items.count
-        let hasNext = !items.isEmpty && consumed < total
+        // Advance by the raw entry count: skipping an ad object must not
+        // make the next request replay this window.
+        let received = max(envelope.response.libraryItemCount, items.count)
+        let total = envelope.response.libraryTotalCount ?? (offset + received)
+        let consumed = offset + received
+        let hasNext = received > 0 && consumed < total
         return MusicPage(
             items: items,
             totalCount: total,
@@ -910,24 +913,25 @@ struct VKMusicService: MusicService {
         count: Int
     ) async throws -> MusicPage<Playlist> {
         let userID = try await resolvedUserID(accessToken: accessToken)
-        // Exclude album follow-objects: VK returns followed albums inside
-        // the default `all` playlists filter, which made liked albums show
-        // up under «Ваши плейлисты». Albums stay on the Albums shelf via
-        // `likedAlbums` (`followed,albums`).
+        // No `filters`: the narrowed `owned,followed` list dropped playlists
+        // that VK only reports under the default `all` filter. Followed
+        // albums come back in that list too — they are excluded per item
+        // below and stay on the Albums shelf via `likedAlbums`.
         var parameters = [
             "count": String(count),
-            "offset": String(offset),
-            "filters": "owned,followed"
+            "offset": String(offset)
         ]
         if let userID {
             parameters["owner_id"] = String(userID)
         }
-        let envelope: VKResponse<VKItems<Playlist>> = try await client.post(
+        // Lossy item decode: one undecodable playlist / ad object must not
+        // fail the whole page, the way the strict page decode did.
+        let envelope: VKResponse<JSONValue> = try await client.post(
             path: "/method/audio.getPlaylists",
             form: common(accessToken).merging(parameters) { _, new in new },
-            responseType: VKResponse<VKItems<Playlist>>.self
+            responseType: VKResponse<JSONValue>.self
         )
-        return page(envelope.response, offset: offset, requested: count)
+        return playlistPage(envelope.response, offset: offset)
     }
 
     func playlistTracks(
@@ -1223,6 +1227,29 @@ struct VKMusicService: MusicService {
             result.append(album)
         }
         return result
+    }
+
+    /// Assembles an `audio.getPlaylists` page from a lossily decoded
+    /// payload. The offset advances by the number of raw entries VK
+    /// returned rather than by the number that survived decoding and the
+    /// album filter, so a page full of followed albums still moves on
+    /// instead of re-requesting the same window.
+    func playlistPage(
+        _ value: JSONValue,
+        offset: Int
+    ) -> MusicPage<Playlist> {
+        let items = value.libraryPlaylistItems
+        let received = value.libraryItemCount
+        let total = value.libraryTotalCount ?? (offset + received)
+        return MusicPage(
+            items: items,
+            totalCount: total,
+            nextOffset: LibraryPlaylistPagePolicy.nextOffset(
+                after: offset,
+                received: received,
+                total: total
+            )
+        )
     }
 
     func page<Item: Decodable & Sendable>(

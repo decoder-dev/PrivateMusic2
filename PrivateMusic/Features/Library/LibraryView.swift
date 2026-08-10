@@ -606,7 +606,12 @@ struct LibraryView: View {
             Text("Плейлисты")
                 .font(.title2.weight(.bold))
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(
+                // Deliberately not lazy: nested inside the library's
+                // LazyVStack, a lazy row left off-screen cards
+                // unmaterialized, so playlists past the first screenful
+                // never appeared and the trailing card's onAppear never
+                // asked for the next page.
+                HStack(
                     alignment: .top,
                     spacing: LibraryShelfMetrics.cardSpacing
                 ) {
@@ -1108,14 +1113,18 @@ struct LibraryView: View {
 
     private func reloadPlaylists(force: Bool) async {
         playlists.configure(ownerID: sessionStore.session?.userID)
-        await playlists.load(force: force) {
-            try await environment.withAuthorizedToken { token in
-                try await environment.musicService.playlists(
-                    accessToken: token,
-                    offset: 0,
-                    count: 100
-                )
-            }
+        await playlists.load(force: force) { offset in
+            try await playlistPage(offset: offset)
+        }
+    }
+
+    private func playlistPage(offset: Int) async throws -> MusicPage<Playlist> {
+        try await environment.withAuthorizedToken { token in
+            try await environment.musicService.playlists(
+                accessToken: token,
+                offset: offset,
+                count: LibraryPlaylistPagePolicy.pageSize
+            )
         }
     }
 
@@ -1197,13 +1206,7 @@ struct LibraryView: View {
         }
         Task {
             await playlists.loadMore { offset in
-                try await environment.withAuthorizedToken { token in
-                    try await environment.musicService.playlists(
-                        accessToken: token,
-                        offset: offset,
-                        count: 100
-                    )
-                }
+                try await playlistPage(offset: offset)
             }
         }
     }
