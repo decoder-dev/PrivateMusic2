@@ -119,27 +119,25 @@ struct PlaylistLibraryView: View {
     private func load(force: Bool = false) async {
         guard sessionStore.accessToken != nil else { return }
         model.configure(ownerID: sessionStore.session?.userID)
-        await model.load(force: force) {
-            try await environment.withAuthorizedToken { token in
-                try await environment.musicService.playlists(
-                    accessToken: token,
-                    offset: 0,
-                    count: 100
-                )
-            }
+        await model.load(force: force) { offset in
+            try await fetchPage(offset: offset)
         }
     }
 
     private func loadMore() async {
         guard sessionStore.accessToken != nil else { return }
         await model.loadMore { offset in
-            try await environment.withAuthorizedToken { token in
-                try await environment.musicService.playlists(
-                    accessToken: token,
-                    offset: offset,
-                    count: 100
-                )
-            }
+            try await fetchPage(offset: offset)
+        }
+    }
+
+    private func fetchPage(offset: Int) async throws -> MusicPage<Playlist> {
+        try await environment.withAuthorizedToken { token in
+            try await environment.musicService.playlists(
+                accessToken: token,
+                offset: offset,
+                count: LibraryPlaylistPagePolicy.pageSize
+            )
         }
     }
 }
@@ -159,25 +157,48 @@ final class PlaylistLibraryViewModel: ObservableObject {
         self.ownerID = ownerID
     }
 
+    /// Loads the opening pages of the playlist list. VK mixes followed
+    /// albums into `audio.getPlaylists`, so a single page can decode into
+    /// only a handful of playlists — the shelf pulls several pages up front
+    /// and publishes each one as it lands.
     func load(
         force: Bool = false,
-        operation: () async throws -> MusicPage<Playlist>
+        pages: Int = LibraryPlaylistPagePolicy.prefetchPages,
+        operation: (Int) async throws -> MusicPage<Playlist>
     ) async {
         guard !isLoading, force || playlists.isEmpty else { return }
         isLoading = true
         defer { isLoading = false }
+        var collected: [Playlist] = []
+        var offset = 0
+        var pending: Int?
         do {
-            let page = try await operation()
-            playlists = LibraryPlaylistShelfPolicy.normalized(
-                page.items,
-                ownerID: ownerID
-            )
-            nextOffset = page.nextOffset
+            for _ in 0..<max(pages, 1) {
+                let page = try await operation(offset)
+                collected.append(contentsOf: page.items)
+                playlists = LibraryPlaylistShelfPolicy.normalized(
+                    collected,
+                    ownerID: ownerID
+                )
+                guard let next = page.nextOffset, next > offset else {
+                    pending = nil
+                    break
+                }
+                offset = next
+                pending = next
+            }
+            nextOffset = pending
             errorMessage = nil
         } catch is CancellationError {
             return
         } catch {
-            errorMessage = error.localizedDescription
+            // A failed later page must not throw away the playlists that
+            // already loaded: keep them and leave the offset for the
+            // shelf's own pagination to retry.
+            nextOffset = pending
+            errorMessage = collected.isEmpty
+                ? error.localizedDescription
+                : nil
         }
     }
 
