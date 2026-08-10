@@ -501,6 +501,10 @@ final class AudioPlayer: ObservableObject {
     /// (see `PlaybackHighlightModel`).
     let highlight = PlaybackHighlightModel()
 
+    /// The queue as its source handed it over, before shuffle reordered it.
+    /// Turning shuffle off replays this order (see `PlaybackShuffleOrder`).
+    private var sourceOrderedQueue: [Track] = []
+
     private var player = AVPlayer()
     private let nowPlaying = NowPlayingController()
     private let equalizer = EqualizerDSP()
@@ -854,9 +858,11 @@ final class AudioPlayer: ObservableObject {
             selected: track,
             tracks: tracks
         )
+        // Snapshot the order the collection arrived in before anything
+        // reorders it, so switching shuffle off restores «по очереди».
+        sourceOrderedQueue = prepared
         if shuffleEnabled {
-            queue = [track]
-                + prepared.filter { $0.id != track.id }.shuffled()
+            queue = PlaybackShuffleOrder.shuffled(prepared, keeping: track)
             currentIndex = 0
         } else {
             queue = prepared
@@ -901,6 +907,12 @@ final class AudioPlayer: ObservableObject {
 
     /// Starts a collection with shuffle on — for album/playlist detail
     /// «Перемешать» without opening the full-screen player first.
+    ///
+    /// Deliberately does not write `player.shuffle`: this is a per-collection
+    /// entry point, and persisting it latched shuffle on for every later
+    /// queue, including Медиатека, across app launches. The control still
+    /// reads `shuffleEnabled`, so the shuffled queue reports itself
+    /// correctly and one tap turns it off.
     func playShuffled(
         in tracks: [Track],
         continuation: (() async throws -> [Track])? = nil,
@@ -909,10 +921,7 @@ final class AudioPlayer: ObservableObject {
         guard let seed = tracks.randomElement() ?? tracks.first else {
             return
         }
-        if !shuffleEnabled {
-            shuffleEnabled = true
-            defaults.set(true, forKey: "player.shuffle")
-        }
+        shuffleEnabled = true
         play(seed, in: tracks, continuation: continuation, source: source)
     }
 
@@ -1002,10 +1011,23 @@ final class AudioPlayer: ObservableObject {
         shuffleEnabled.toggle()
         defaults.set(shuffleEnabled, forKey: "player.shuffle")
         guard let currentTrack else { return }
-        let remaining = queue.filter { $0.id != currentTrack.id }
-        queue = [currentTrack]
-            + (shuffleEnabled ? remaining.shuffled() : remaining)
-        currentIndex = 0
+        if shuffleEnabled {
+            // Remember what the queue looked like before this shuffle, not
+            // just what `play()` started with: turning shuffle off has to
+            // undo exactly this reorder.
+            sourceOrderedQueue = queue
+            queue = PlaybackShuffleOrder.shuffled(
+                queue,
+                keeping: currentTrack
+            )
+            currentIndex = 0
+        } else {
+            queue = PlaybackShuffleOrder.restored(
+                queue: queue,
+                sourceOrder: sourceOrderedQueue
+            )
+            currentIndex = queue.firstIndex { $0.id == currentTrack.id } ?? 0
+        }
         pinnedPlayNextIDs.removeAll()
         persistPlayback()
         publishNowPlayingQueue()
@@ -1245,6 +1267,7 @@ final class AudioPlayer: ObservableObject {
         itemStatusObservation?.invalidate()
         itemStatusObservation = nil
         queue = []
+        sourceOrderedQueue = []
         currentIndex = nil
         queueSource = nil
         queueSeedTrackTitle = nil
@@ -2625,6 +2648,7 @@ final class AudioPlayer: ObservableObject {
             }
             if !additions.isEmpty {
                 self.queue.append(contentsOf: additions)
+                self.sourceOrderedQueue.append(contentsOf: additions)
                 self.persistPlayback()
                 self.publishNowPlayingQueue()
                 self.scheduleNeighborPreloads()
@@ -2682,6 +2706,9 @@ final class AudioPlayer: ObservableObject {
         )
         guard !capped.isEmpty else { return }
         queue.append(contentsOf: capped)
+        // Continuation fills arrive in source order too, so record them:
+        // turning shuffle off must not strand a refilled tail at the back.
+        sourceOrderedQueue.append(contentsOf: capped)
         persistPlayback()
         publishNowPlayingQueue()
         scheduleNeighborPreloads()
@@ -2897,6 +2924,7 @@ final class AudioPlayer: ObservableObject {
                 return
             }
             queue.append(contentsOf: additions)
+            sourceOrderedQueue.append(contentsOf: additions)
             if let currentIndex {
                 self.currentIndex = currentIndex + 1
             }
@@ -3020,6 +3048,7 @@ final class AudioPlayer: ObservableObject {
             return
         }
         queue = snapshot.queue
+        sourceOrderedQueue = snapshot.queue
         restoredTrackIDs = Set(snapshot.queue.map(\.id))
         currentIndex = snapshot.currentIndex
         loadedTrackID = nil

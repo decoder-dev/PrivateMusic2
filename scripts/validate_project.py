@@ -439,6 +439,28 @@ elif "LazyHStack" in playlist_shelf_body[1].split("\n    private func", 1)[0]:
         "library LazyVStack a lazy row leaves off-screen cards "
         "unmaterialized and never paginates"
     )
+shuffle_order_path = SOURCE / "Player" / "PlaybackShuffleOrder.swift"
+if not shuffle_order_path.is_file():
+    fail("PlaybackShuffleOrder must define the reversible shuffle contract")
+for required_shuffle_symbol in (
+    "sourceOrderedQueue = prepared",
+    "PlaybackShuffleOrder.restored(",
+):
+    if required_shuffle_symbol not in audio_player_source:
+        fail(
+            "turning shuffle off must restore the source order of the "
+            f"queue: {required_shuffle_symbol}"
+        )
+play_shuffled_body = audio_player_source.split("func playShuffled(", 1)
+if len(play_shuffled_body) < 2:
+    fail("AudioPlayer must expose playShuffled")
+elif 'forKey: "player.shuffle"' in play_shuffled_body[1].split(
+    "\n    func ", 1
+)[0]:
+    fail(
+        "per-collection «Перемешать» must not persist global shuffle: it "
+        "latched every later queue, including Медиатека, into shuffle"
+    )
 append_fn = audio_player_source.split("func appendToQueue(", 1)
 if len(append_fn) < 2:
     fail("AudioPlayer must expose appendToQueue")
