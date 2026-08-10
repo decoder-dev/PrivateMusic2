@@ -24,7 +24,7 @@ struct LibraryView: View {
     @State private var pendingCellularDownload: Track?
     @State private var sharingTrack: Track?
     @State private var loadingPlayAlbumID: String?
-    @State private var loadingPlayPlaylistID: Int?
+    @State private var loadingPlayPlaylistID: Playlist.ID?
     @State private var playbackErrorMessage: String?
     @State private var playlistPendingDeletion: Playlist?
     @State private var playlistDeleteErrorMessage: String?
@@ -32,16 +32,23 @@ struct LibraryView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 24) {
+                // Section gaps are per-section padding rather than stack
+                // spacing: the track rows share this stack (a nested lazy
+                // stack recycles them out of order), so stack spacing would
+                // also push every row and divider 24pt apart.
+                LazyVStack(alignment: .leading, spacing: 0) {
                     listenLaterSection
 
                     if playlists.isLoading && playlists.playlists.isEmpty {
                         playlistSkeleton
+                            .librarySectionSpacing()
                     } else if !playlists.playlists.isEmpty {
                         playlistShelf
+                            .librarySectionSpacing()
                     }
                     if !likedAlbumsStore.albums.isEmpty {
                         albumShelf
+                            .librarySectionSpacing()
                     }
 
                     HStack {
@@ -52,6 +59,7 @@ struct LibraryView: View {
                             .font(.subheadline.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
+                    .padding(.bottom, LibraryShelfMetrics.headerSpacing)
 
                     if tracks.isLoading && tracks.tracks.isEmpty {
                         trackSkeleton
@@ -104,6 +112,10 @@ struct LibraryView: View {
                 }
                 .id(MainTabScrollDestination.library)
                 .padding(.horizontal, 16)
+                // The always-visible search drawer sits directly above the
+                // first section — without this the playlist shelf is jammed
+                // under the header.
+                .padding(.top, LibraryShelfMetrics.contentTopPadding)
             }
             .onReceive(scrollCoordinator.$request) { request in
                 guard request?.destination == .library else { return }
@@ -261,15 +273,7 @@ struct LibraryView: View {
                 await loadAlbums()
                 // Liked albums used to leak into the playlist shelf via
                 // unfiltered getPlaylists — reload so the shelves stay split.
-                await playlists.load(force: true) {
-                    try await environment.withAuthorizedToken { token in
-                        try await environment.musicService.playlists(
-                            accessToken: token,
-                            offset: 0,
-                            count: 100
-                        )
-                    }
-                }
+                await reloadPlaylists(force: true)
             }
         }
         .onReceive(
@@ -282,17 +286,7 @@ struct LibraryView: View {
             ] as? Playlist {
                 playlists.removeLocally(playlist)
             }
-            Task {
-                await playlists.load(force: true) {
-                    try await environment.withAuthorizedToken { token in
-                        try await environment.musicService.playlists(
-                            accessToken: token,
-                            offset: 0,
-                            count: 100
-                        )
-                    }
-                }
-            }
+            Task { await reloadPlaylists(force: true) }
         }
         .confirmationDialog(
             playlistDeleteConfirmationTitle,
@@ -384,6 +378,7 @@ struct LibraryView: View {
                     }
                 }
             }
+            .librarySectionSpacing()
         }
     }
 
@@ -611,78 +606,103 @@ struct LibraryView: View {
             Text("Плейлисты")
                 .font(.title2.weight(.bold))
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 14) {
-                    ForEach(playlists.playlists) { playlist in
-                        VStack(alignment: .leading, spacing: 8) {
-                            ZStack(alignment: .bottomTrailing) {
-                                NavigationLink {
-                                    PlaylistDetailView(playlist: playlist)
-                                } label: {
-                                    PlaylistArtworkView(
-                                        playlist: playlist,
-                                        size: 136
-                                    )
-                                }
-                                .buttonStyle(PremiumPressStyle())
-
-                                playlistPlayChip(playlist)
-                            }
-                            NavigationLink {
-                                PlaylistDetailView(playlist: playlist)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(playlist.title)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                    Text(L10n.trackCount(playlist.count))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .frame(width: 136, alignment: .leading)
-                        .premiumAppear(
-                            delay: min(
-                                Double(
-                                    playlists.playlists.firstIndex(
-                                        of: playlist
-                                    ) ?? 0
-                                ) * 0.025,
-                                0.2
-                            )
-                        )
-                        .contextMenu {
-                            Button {
-                                performPlaylistPlaybackAction(
-                                    playlistPlaybackAction(for: playlist),
-                                    for: playlist
-                                )
-                            } label: {
-                                Label(
-                                    L10n.text("Слушать"),
-                                    systemImage: "play.fill"
-                                )
-                            }
-                            Button(
-                                role: .destructive,
-                                action: {
-                                    playlistPendingDeletion = playlist
-                                }
-                            ) {
-                                Label(
-                                    playlistDeleteActionTitle(for: playlist),
-                                    systemImage: "trash"
-                                )
-                            }
-                        }
-                        .onAppear {
-                            loadMorePlaylistsIfNeeded(after: playlist)
-                        }
+                LazyHStack(
+                    alignment: .top,
+                    spacing: LibraryShelfMetrics.cardSpacing
+                ) {
+                    // VK playlist ids repeat across owners, so identify cards
+                    // by owner+id. Colliding ForEach ids let SwiftUI reuse one
+                    // card for several playlists and drop their artwork.
+                    ForEach(
+                        Array(playlists.playlists.enumerated()),
+                        id: \.element.libraryIdentity
+                    ) { index, playlist in
+                        playlistCard(playlist, index: index)
                     }
                 }
+                .padding(.vertical, LibraryShelfMetrics.shelfPadding)
             }
+            // A lazy row has no intrinsic height: pin it so the cards keep
+            // their artwork instead of collapsing to caption-only chips.
+            .frame(height: LibraryShelfMetrics.shelfHeight)
+        }
+    }
+
+    private func playlistCard(
+        _ playlist: Playlist,
+        index: Int
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: LibraryShelfMetrics.captionSpacing
+        ) {
+            ZStack(alignment: .bottomTrailing) {
+                NavigationLink {
+                    PlaylistDetailView(playlist: playlist)
+                } label: {
+                    PlaylistArtworkView(
+                        playlist: playlist,
+                        size: LibraryShelfMetrics.artworkSize
+                    )
+                }
+                .buttonStyle(PremiumPressStyle())
+
+                playlistPlayChip(playlist)
+            }
+            NavigationLink {
+                PlaylistDetailView(playlist: playlist)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(playlist.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(L10n.trackCount(playlist.count))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: LibraryShelfMetrics.captionHeight,
+                    maxHeight: LibraryShelfMetrics.captionHeight,
+                    alignment: .topLeading
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(
+            width: LibraryShelfMetrics.cardWidth,
+            height: LibraryShelfMetrics.cardHeight,
+            alignment: .topLeading
+        )
+        .premiumAppear(delay: min(Double(index) * 0.025, 0.2))
+        .contextMenu {
+            Button {
+                performPlaylistPlaybackAction(
+                    playlistPlaybackAction(for: playlist),
+                    for: playlist
+                )
+            } label: {
+                Label(
+                    L10n.text("Слушать"),
+                    systemImage: "play.fill"
+                )
+            }
+            Button(
+                role: .destructive,
+                action: {
+                    playlistPendingDeletion = playlist
+                }
+            ) {
+                Label(
+                    playlistDeleteActionTitle(for: playlist),
+                    systemImage: "trash"
+                )
+            }
+        }
+        .onAppear {
+            loadMorePlaylistsIfNeeded(after: playlist)
         }
     }
 
@@ -722,47 +742,69 @@ struct LibraryView: View {
             Text("Альбомы")
                 .font(.title2.weight(.bold))
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 14) {
+                LazyHStack(
+                    alignment: .top,
+                    spacing: LibraryShelfMetrics.cardSpacing
+                ) {
                     ForEach(likedAlbumsStore.albums) { album in
-                        VStack(alignment: .leading, spacing: 8) {
-                            ZStack(alignment: .bottomTrailing) {
-                                NavigationLink {
-                                    AlbumDetailView(album: album)
-                                } label: {
-                                    AsyncArtwork(
-                                        url: album.artworkURL,
-                                        size: 136
-                                    )
-                                }
-                                .buttonStyle(PremiumPressStyle())
-
-                                albumPlayChip(album)
-                            }
-                            NavigationLink {
-                                AlbumDetailView(album: album)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(
-                                        Album.isUsableTitle(album.title)
-                                            ? album.title
-                                            : L10n.text("Альбом")
-                                    )
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                    Text(album.artistText)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .frame(width: 136, alignment: .leading)
+                        albumCard(album)
                     }
                 }
+                .padding(.vertical, LibraryShelfMetrics.shelfPadding)
             }
+            .frame(height: LibraryShelfMetrics.shelfHeight)
         }
+    }
+
+    private func albumCard(_ album: Album) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: LibraryShelfMetrics.captionSpacing
+        ) {
+            ZStack(alignment: .bottomTrailing) {
+                NavigationLink {
+                    AlbumDetailView(album: album)
+                } label: {
+                    AsyncArtwork(
+                        url: album.artworkURL,
+                        size: LibraryShelfMetrics.artworkSize
+                    )
+                }
+                .buttonStyle(PremiumPressStyle())
+
+                albumPlayChip(album)
+            }
+            NavigationLink {
+                AlbumDetailView(album: album)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(
+                        Album.isUsableTitle(album.title)
+                            ? album.title
+                            : L10n.text("Альбом")
+                    )
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(album.artistText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: LibraryShelfMetrics.captionHeight,
+                    maxHeight: LibraryShelfMetrics.captionHeight,
+                    alignment: .topLeading
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(
+            width: LibraryShelfMetrics.cardWidth,
+            height: LibraryShelfMetrics.cardHeight,
+            alignment: .topLeading
+        )
     }
 
     private func albumPlayChip(_ album: Album) -> some View {
@@ -991,17 +1033,29 @@ struct LibraryView: View {
     }
 
     private var playlistSkeleton: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
-                ForEach(0..<3, id: \.self) { _ in
-                    RoundedRectangle(
-                        cornerRadius: PremiumLayout.cardRadius,
-                        style: .continuous
-                    )
-                        .fill(.primary.opacity(0.08))
-                        .frame(width: 136, height: 168)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Плейлисты")
+                .font(.title2.weight(.bold))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(
+                    alignment: .top,
+                    spacing: LibraryShelfMetrics.cardSpacing
+                ) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        RoundedRectangle(
+                            cornerRadius: PremiumLayout.cardRadius,
+                            style: .continuous
+                        )
+                            .fill(.primary.opacity(0.08))
+                            .frame(
+                                width: LibraryShelfMetrics.cardWidth,
+                                height: LibraryShelfMetrics.cardHeight
+                            )
+                    }
                 }
+                .padding(.vertical, LibraryShelfMetrics.shelfPadding)
             }
+            .frame(height: LibraryShelfMetrics.shelfHeight)
         }
         .redacted(reason: .placeholder)
     }
@@ -1048,6 +1102,12 @@ struct LibraryView: View {
         if loaded {
             libraryStore.replace(with: tracks.tracks, refreshID: refreshID)
         }
+        await reloadPlaylists(force: force)
+        await loadAlbums()
+    }
+
+    private func reloadPlaylists(force: Bool) async {
+        playlists.configure(ownerID: sessionStore.session?.userID)
         await playlists.load(force: force) {
             try await environment.withAuthorizedToken { token in
                 try await environment.musicService.playlists(
@@ -1057,7 +1117,6 @@ struct LibraryView: View {
                 )
             }
         }
-        await loadAlbums()
     }
 
     private func loadAlbums() async {
