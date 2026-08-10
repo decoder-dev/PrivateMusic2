@@ -11,6 +11,7 @@ struct InlineMiniPlayerView: View {
         if let track = player.currentTrack {
             HStack(spacing: MiniPlayerLayoutMetrics.inlineContentSpacing) {
                 openPlayerArea(track)
+                previousControl
                 playPauseControl
             }
             .padding(.horizontal, MiniPlayerLayoutMetrics.inlineHorizontalPadding)
@@ -64,6 +65,23 @@ struct InlineMiniPlayerView: View {
         }
     }
 
+    private var previousControl: some View {
+        Button {
+            Haptics.trackChange()
+            player.previous()
+        } label: {
+            Image(systemName: "backward.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .frame(
+                    width: MiniPlayerLayoutMetrics.tapTarget,
+                    height: MiniPlayerLayoutMetrics.tapTarget
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PremiumPressStyle())
+        .accessibilityLabel(L10n.text("Предыдущий трек"))
+    }
+
     @ViewBuilder
     private var playPauseControl: some View {
         if MiniPlayerAccessoryPolicy.showsBufferingIndicator(
@@ -93,7 +111,7 @@ struct InlineMiniPlayerView: View {
                 )
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PremiumPressStyle())
             .accessibilityLabel(
                 L10n.text(
                     player.isPlaying
