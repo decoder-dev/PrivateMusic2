@@ -25,18 +25,22 @@ struct TrackRow: View {
                 AsyncArtwork(url: track.artworkURL, size: 48)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(track.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(
-                            isCurrent
-                                ? currentTrackColor
-                                : Color.primary
-                        )
-                        .lineLimit(1)
-                    Text(track.artist)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if let title = usableMetadata(track.title) {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(
+                                isCurrent
+                                    ? currentTrackColor
+                                    : Color.primary
+                            )
+                            .lineLimit(1)
+                    }
+                    if let artist = usableMetadata(track.artist) {
+                        Text(artist)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
 
                 Spacer()
@@ -87,17 +91,8 @@ struct TrackRow: View {
         }
         .buttonStyle(PremiumPressStyle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            L10n.format(
-                "%@ — %@, %@",
-                track.title,
-                track.artist,
-                spokenDuration
-            )
-        )
-        .accessibilityValue(
-            isCurrent ? L10n.text("Сейчас играет") : ""
-        )
+        .accessibilityLabel(accessibilityLabel)
+        .modifier(CurrentTrackAccessibilityValueModifier(isCurrent: isCurrent))
         .accessibilityHint(L10n.text("Воспроизвести трек"))
         .trackShareSheet(track: $sharingTrack)
         .contextMenu {
@@ -163,6 +158,17 @@ struct TrackRow: View {
             : .black
     }
 
+    private var accessibilityLabel: String {
+        let metadata = [
+            usableMetadata(track.title),
+            usableMetadata(track.artist)
+        ]
+            .compactMap { $0 }
+            .joined(separator: " — ")
+        guard !metadata.isEmpty else { return spokenDuration }
+        return L10n.format("%@, %@", metadata, spokenDuration)
+    }
+
     private var spokenDuration: String {
         guard track.duration.isFinite, track.duration >= 0 else {
             return L10n.seconds(0)
@@ -200,6 +206,24 @@ struct TrackRow: View {
                     error.localizedDescription
                 )
             }
+        }
+    }
+
+    private func usableMetadata(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private struct CurrentTrackAccessibilityValueModifier: ViewModifier {
+    let isCurrent: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isCurrent {
+            content.accessibilityValue(L10n.text("Сейчас играет"))
+        } else {
+            content
         }
     }
 }
