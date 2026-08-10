@@ -528,8 +528,9 @@ final class AudioPlayer: ObservableObject {
     private var continuationTask: Task<Void, Never>?
     private var continuationPrefetchTask: Task<Void, Never>?
     private var advanceAfterContinuationPrefetch = false
-    /// Latches while the queue is inside the near-end window so we only
-    /// fire one prefetch per entry into that window (not after every fill).
+    /// Tracks whether the queue is inside the near-end window for cancellation
+    /// bookkeeping. Refills are allowed to chain while the upcoming window is
+    /// still short so tiny VK pages do not leave radio dry.
     private var continuationPrefetchInThreshold = false
     private var streamRefreshTask: Task<Void, Never>?
     private var lastPersistedSecond = -1
@@ -2641,8 +2642,9 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    /// Prefetch continuation only when entering the near-end window —
-    /// avoids an immediate second mix fan-out after every successful fill.
+    /// Prefetch while the upcoming window is short. A successful tiny page may
+    /// still leave us under the threshold, so `scheduleNeighborPreloads` is
+    /// allowed to chain another request after the current one completes.
     private func maybeStartContinuationPrefetch() {
         guard activeContinuationProvider != nil,
               continuationPrefetchTask == nil,
@@ -2653,9 +2655,8 @@ final class AudioPlayer: ObservableObject {
             currentIndex: currentIndex,
             queueCount: queue.count
         )
-        let enteredThreshold = should && !continuationPrefetchInThreshold
         continuationPrefetchInThreshold = should
-        guard enteredThreshold else { return }
+        guard should else { return }
         startContinuationPrefetch()
     }
 
@@ -2667,9 +2668,16 @@ final class AudioPlayer: ObservableObject {
             candidates: filtered
         )
         guard !additions.isEmpty else { return }
+        let upcomingCount: Int = {
+            guard let currentIndex,
+                  queue.indices.contains(currentIndex) else {
+                return queue.count
+            }
+            return max(queue.count - currentIndex - 1, 0)
+        }()
         let capped = Array(
             additions.prefix(
-                max(MixTrackRequestPolicy.queueLimit - queue.count, 0)
+                max(MixTrackRequestPolicy.queueLimit - upcomingCount, 0)
             )
         )
         guard !capped.isEmpty else { return }

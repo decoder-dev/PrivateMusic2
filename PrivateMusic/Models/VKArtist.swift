@@ -201,6 +201,8 @@ enum MixTrackRequestPolicy {
     static let pageCount = 4
     /// First page only — start playback before the rest arrive.
     static let bootstrapPages = 1
+    /// Pages requested for each radio refill after the bootstrap page.
+    static let continuationPages = max(pageCount - bootstrapPages, 1)
     /// Cap kept for the player queue (was 30 after fetching 10 pages).
     static let queueLimit = 80
     /// Prefetch the next mix batch when this many tracks remain after current.

@@ -1970,14 +1970,11 @@ struct MixesHubView: View {
                 tracks: pin.tracks
             )
         }
-        player.resumePinned(pin) {
-            try await environment.withAuthorizedToken { token in
-                try await environment.musicService.mixTracksContinuation(
-                    mix,
-                    accessToken: token
-                )
-            }
-        }
+        let continuation = mixContinuationProvider(
+            for: mix,
+            knownTracks: pin.tracks
+        )
+        player.resumePinned(pin, continuation: continuation)
         // `resumePinned` replays through `play`, which resets the ordering,
         // so re-apply the pinned mode afterwards. Previously this only
         // restored the picker's appearance while the queue stayed unranked.
@@ -2007,17 +2004,12 @@ struct MixesHubView: View {
         }
         player.playShuffled(
             in: loaded,
-            continuation: {
-                try await environment.withAuthorizedToken { token in
-                    try await environment.musicService.mixTracksContinuation(
-                        mix,
-                        accessToken: token
-                    )
-                }
-            },
+            continuation: mixContinuationProvider(
+                for: mix,
+                knownTracks: loaded
+            ),
             source: .mix(title: mix.title)
         )
-        fillQueueInBackground(mix)
         Haptics.selection()
     }
 
@@ -2070,12 +2062,13 @@ struct MixesHubView: View {
     }
 
     private func loadSelenaTracks() async {
+        let stream = selenaRecommendationStream(knownTracks: [])
         do {
             let bootstrap = try await environment.withAuthorizedToken {
                 token in
-                try await environment.musicService.mixTracksBootstrap(
-                    .common,
-                    accessToken: token
+                try await stream.next(
+                    accessToken: token,
+                    musicService: environment.musicService
                 )
             }
             selenaTracks = bootstrap
@@ -2090,11 +2083,10 @@ struct MixesHubView: View {
                 do {
                     let more = try await environment.withAuthorizedToken {
                         token in
-                        try await environment.musicService
-                            .mixTracksContinuation(
-                                .common,
-                                accessToken: token
-                            )
+                        try await stream.next(
+                            accessToken: token,
+                            musicService: environment.musicService
+                        )
                     }
                     guard !Task.isCancelled else { return }
                     await MainActor.run {
@@ -2183,6 +2175,7 @@ struct MixesHubView: View {
     private func loadVKTracks(_ mix: MusicMix) {
         trackLoadTask?.cancel()
         loadingMixID = mix.id
+        let cursor = MixTrackContinuationCursor(mix: mix)
         trackLoadTask = Task {
             defer {
                 if loadingMixID == mix.id {
@@ -2202,11 +2195,10 @@ struct MixesHubView: View {
                     storeTracks(bootstrap, for: mix)
                     MixBootstrapPrefetch.artwork(for: bootstrap)
                 }
-                let more = try await environment.withAuthorizedToken {
-                    token in
-                    try await environment.musicService.mixTracksContinuation(
-                        mix,
-                        accessToken: token
+                let more = try await environment.withAuthorizedToken { token in
+                    try await cursor.next(
+                        accessToken: token,
+                        musicService: environment.musicService
                     )
                 }
                 guard !Task.isCancelled else { return }
@@ -2237,7 +2229,6 @@ struct MixesHubView: View {
         let loaded = tracks(for: mix)
         if let first = loaded.first {
             playTrack(first, queue: loaded, mix: mix, applying: mode)
-            fillQueueInBackground(mix)
             return
         }
         loadingMixID = mix.id
@@ -2245,23 +2236,34 @@ struct MixesHubView: View {
         Task {
             defer { loadingMixID = nil }
             do {
-                let bootstrap = try await environment.withAuthorizedToken {
-                    token in
-                    try await environment.musicService.mixTracksBootstrap(
-                        mix,
-                        accessToken: token
-                    )
-                }
+                let bootstrap = try await bootstrapTracks(for: mix)
                 guard let first = bootstrap.first else { return }
                 MixBootstrapPrefetch.artwork(for: bootstrap)
                 storeTracks(bootstrap, for: mix)
                 playTrack(first, queue: bootstrap, mix: mix, applying: mode)
-                fillQueueInBackground(mix)
             } catch is CancellationError {
                 return
             } catch {
                 actionError = error.localizedDescription
             }
+        }
+    }
+
+    private func bootstrapTracks(for mix: MusicMix) async throws -> [Track] {
+        if mix.id == MusicMix.common.id {
+            let stream = selenaRecommendationStream(knownTracks: [])
+            return try await environment.withAuthorizedToken { token in
+                try await stream.next(
+                    accessToken: token,
+                    musicService: environment.musicService
+                )
+            }
+        }
+        return try await environment.withAuthorizedToken { token in
+            try await environment.musicService.mixTracksBootstrap(
+                mix,
+                accessToken: token
+            )
         }
     }
 
@@ -2274,14 +2276,10 @@ struct MixesHubView: View {
         player.play(
             track,
             in: queue,
-            continuation: {
-                try await environment.withAuthorizedToken { token in
-                    try await environment.musicService.mixTracksContinuation(
-                        mix,
-                        accessToken: token
-                    )
-                }
-            },
+            continuation: mixContinuationProvider(
+                for: mix,
+                knownTracks: queue
+            ),
             source: .mix(title: mix.title)
         )
         // `play` resets the ordering for the fresh queue; re-apply when the
@@ -2293,15 +2291,13 @@ struct MixesHubView: View {
 
     private func fillQueueInBackground(_ mix: MusicMix) {
         queueFillTask?.cancel()
+        let continuation = mixContinuationProvider(
+            for: mix,
+            knownTracks: tracks(for: mix)
+        )
         queueFillTask = Task {
             do {
-                let more = try await environment.withAuthorizedToken {
-                    token in
-                    try await environment.musicService.mixTracksContinuation(
-                        mix,
-                        accessToken: token
-                    )
-                }
+                let more = try await continuation()
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     player.appendToQueue(more)
@@ -2312,6 +2308,48 @@ struct MixesHubView: View {
                 }
             } catch {}
         }
+    }
+
+    private func mixContinuationProvider(
+        for mix: MusicMix,
+        knownTracks: [Track]
+    ) -> () async throws -> [Track] {
+        if mix.id == MusicMix.common.id {
+            let stream = selenaRecommendationStream(knownTracks: knownTracks)
+            return {
+                let more = try await environment.withAuthorizedToken { token in
+                    try await stream.next(
+                        accessToken: token,
+                        musicService: environment.musicService
+                    )
+                }
+                return environment.filteredMixTracks(more)
+            }
+        }
+
+        let cursor = MixTrackContinuationCursor(mix: mix)
+        return {
+            let more = try await environment.withAuthorizedToken { token in
+                try await cursor.next(
+                    accessToken: token,
+                    musicService: environment.musicService
+                )
+            }
+            return environment.filteredMixTracks(more)
+        }
+    }
+
+    private func selenaRecommendationStream(
+        knownTracks: [Track]
+    ) -> SelenaRecommendationCursor {
+        SelenaRecommendationCursor(
+            seedTracks: SelenaRecommendationComposer.seedTracks(
+                history: history.entries,
+                recommendations: homeCatalog.recommendations,
+                loaded: knownTracks.isEmpty ? selenaTracks : knownTracks
+            ),
+            knownTracks: knownTracks
+        )
     }
 
     private func storeTracks(_ tracks: [Track], for mix: MusicMix) {

@@ -367,6 +367,36 @@ final class AudioPlayerTransitionTests: XCTestCase {
         XCTAssertEqual(context.player.currentIndex, 0)
     }
 
+    func testContinuationPrefetchChainsWhileUpcomingWindowIsStillShort()
+        async {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        var requestCount = 0
+        context.player.configureContinuation {
+            requestCount += 1
+            return [
+                track(
+                    id: 100 + requestCount,
+                    duration: 200,
+                    streamURL: silentWAVURL
+                )
+            ]
+        }
+
+        context.player.play(first, in: [first])
+
+        await waitUntil {
+            context.player.queue.count
+                > MixTrackRequestPolicy.continuationRemainingThreshold + 1
+        }
+        XCTAssertGreaterThan(requestCount, 1)
+        XCTAssertEqual(context.player.currentTrack?.id, first.id)
+        XCTAssertEqual(context.player.currentIndex, 0)
+    }
+
     func testContinuationRetriesProviderOnceWithoutPresentingError() async {
         let context = makePlayer()
         defer {
@@ -626,6 +656,29 @@ final class AudioPlayerTransitionTests: XCTestCase {
         XCTAssertNil(context.player.currentIndex)
         XCTAssertNil(context.player.currentTrack)
         XCTAssertFalse(context.player.isPlaying)
+    }
+
+    func testAppendCapacityUsesUpcomingWindowNotPlayedHistory() {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        let tracks = (1...75).map {
+            track(id: $0, duration: 180, streamURL: silentWAVURL)
+        }
+        let selected = tracks[70]
+        let additions = (100...109).map {
+            track(id: $0, duration: 180, streamURL: silentWAVURL)
+        }
+
+        context.player.play(selected, in: tracks)
+        context.player.appendToQueue(additions)
+
+        for addition in additions {
+            XCTAssertTrue(context.player.queue.contains(addition))
+        }
+        XCTAssertEqual(context.player.currentTrack?.id, selected.id)
+        XCTAssertEqual(context.player.currentIndex, 70)
     }
 
     func testFailedContinuationDoesNotExposeModalError() async {

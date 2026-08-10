@@ -191,6 +191,366 @@ final class MixQueueRankerTests: XCTestCase {
     }
 }
 
+final class SelenaRecommendationComposerTests: XCTestCase {
+    func testComposeInterleavesPersonalAndSimilarRecommendations() {
+        let seed = makeTrack(id: 1, artist: "Seed")
+        let personal = [
+            makeTrack(id: 2, artist: "Personal"),
+            makeTrack(id: 3, artist: "Personal")
+        ]
+        let similar = [
+            makeTrack(id: 4, artist: "Similar"),
+            makeTrack(id: 5, artist: "Similar")
+        ]
+
+        let result = SelenaRecommendationComposer.compose(
+            seedTracks: [seed],
+            personalRecommendations: personal,
+            similarRecommendations: similar,
+            limit: 6
+        )
+
+        XCTAssertEqual(
+            result.map(\.id),
+            ["1_2", "1_4", "1_3", "1_5", seed.id]
+        )
+    }
+
+    func testSeedTracksDeduplicateHistoryLoadedAndRecommendations() {
+        let duplicate = makeTrack(id: 7, artist: "Dup")
+        let history = [
+            ListeningHistoryEntry(track: duplicate, playedAt: Date()),
+            ListeningHistoryEntry(
+                track: makeTrack(id: 8, artist: "History"),
+                playedAt: Date()
+            )
+        ]
+
+        let seeds = SelenaRecommendationComposer.seedTracks(
+            history: history,
+            recommendations: [
+                duplicate,
+                makeTrack(id: 10, artist: "Recommendation")
+            ],
+            loaded: [
+                makeTrack(id: 9, artist: "Loaded"),
+                duplicate
+            ]
+        )
+
+        XCTAssertEqual(
+            seeds.map(\.id),
+            ["1_7", "1_8", "1_9", "1_10"]
+        )
+    }
+
+    func testMixContinuationCursorAdvancesOffsetsForInfiniteStream()
+        async throws {
+        let service = CursorMusicService()
+        let cursor = MixTrackContinuationCursor(mix: .common)
+
+        _ = try await cursor.next(
+            accessToken: "token",
+            musicService: service
+        )
+        _ = try await cursor.next(
+            accessToken: "token",
+            musicService: service
+        )
+
+        let expectedStart = MixTrackRequestPolicy.bootstrapPages
+            * MixTrackRequestPolicy.pageSize
+        let expectedNext = expectedStart
+            + MixTrackRequestPolicy.continuationPages
+            * MixTrackRequestPolicy.pageSize
+        let offsets = await service.mixOffsets
+        let pages = await service.mixPages
+        XCTAssertEqual(offsets, [expectedStart, expectedNext])
+        XCTAssertEqual(
+            pages,
+            Array(repeating: MixTrackRequestPolicy.continuationPages, count: 2)
+        )
+    }
+
+    func testSelenaCursorKeepsRequestingSeededRecommendations()
+        async throws {
+        let service = CursorMusicService()
+        let seeds = (1...4).map { makeTrack(id: $0, artist: "Seed \($0)") }
+        let cursor = SelenaRecommendationCursor(
+            seedTracks: seeds,
+            knownTracks: [seeds[0]]
+        )
+
+        let firstPage = try await cursor.next(
+            accessToken: "token",
+            musicService: service
+        )
+        let secondPage = try await cursor.next(
+            accessToken: "token",
+            musicService: service
+        )
+
+        let recommendationTargets = await service.recommendationTargets
+        let seededTargets = recommendationTargets.compactMap {
+            $0
+        }
+        XCTAssertFalse(firstPage.isEmpty)
+        XCTAssertFalse(secondPage.isEmpty)
+        XCTAssertEqual(Array(seededTargets.prefix(3)), seeds.prefix(3).map(\.id))
+        XCTAssertGreaterThanOrEqual(seededTargets.count, 6)
+        XCTAssertEqual(
+            Set((firstPage + secondPage).map(\.id)).count,
+            firstPage.count + secondPage.count
+        )
+    }
+
+    private func makeTrack(id: Int, artist: String) -> Track {
+        Track(
+            trackID: id,
+            ownerID: 1,
+            title: "Song \(id)",
+            artist: artist,
+            duration: 100,
+            streamURL: nil,
+            artworkURL: nil
+        )
+    }
+}
+
+private actor CursorMusicService: MusicService {
+    private(set) var mixOffsets: [Int] = []
+    private(set) var mixPages: [Int] = []
+    private(set) var recommendationTargets: [String?] = []
+    private var recommendationSerial = 0
+
+    func configure(userAgent: String?) async {}
+
+    func profile(accessToken: String) async throws -> UserProfile {
+        throw APIError.invalidResponse
+    }
+
+    func library(
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Track> {
+        throw APIError.invalidResponse
+    }
+
+    func recommendations(
+        accessToken: String,
+        targetAudio: String?,
+        shuffle: Bool
+    ) async throws -> [Track] {
+        recommendationTargets.append(targetAudio)
+        guard targetAudio != nil else { return [] }
+        recommendationSerial += 1
+        let base = 1_000 + recommendationSerial * 10
+        return [
+            makeTrack(id: base + 1, artist: "Similar"),
+            makeTrack(id: base + 2, artist: "Similar")
+        ]
+    }
+
+    func refreshedTrack(
+        _ track: Track,
+        accessToken: String
+    ) async throws -> Track {
+        track
+    }
+
+    func mixes(accessToken: String) async throws -> [MusicMix] {
+        [.common]
+    }
+
+    func catalogSnapshot(accessToken: String) async throws -> VKCatalogSnapshot {
+        throw APIError.invalidResponse
+    }
+
+    func newReleases(accessToken: String) async throws -> [Album] {
+        throw APIError.invalidResponse
+    }
+
+    func mixTracks(
+        _ mix: MusicMix,
+        accessToken: String,
+        startingOffset: Int,
+        pages: Int
+    ) async throws -> [Track] {
+        mixOffsets.append(startingOffset)
+        mixPages.append(pages)
+        return [makeTrack(id: startingOffset + 1, artist: mix.title)]
+    }
+
+    func search(
+        query: String,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Track> {
+        throw APIError.invalidResponse
+    }
+
+    func searchArtists(
+        query: String,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> [VKArtist] {
+        throw APIError.invalidResponse
+    }
+
+    func artistTracks(
+        artistID: String,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Track> {
+        throw APIError.invalidResponse
+    }
+
+    func artistAlbums(
+        artistID: String,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Album> {
+        throw APIError.invalidResponse
+    }
+
+    func searchAlbums(
+        query: String,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Album> {
+        throw APIError.invalidResponse
+    }
+
+    func likedAlbums(
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Album> {
+        throw APIError.invalidResponse
+    }
+
+    func albumTracks(
+        _ album: Album,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Track> {
+        throw APIError.invalidResponse
+    }
+
+    func resolvedAlbum(
+        _ album: Album,
+        accessToken: String
+    ) async throws -> Album {
+        throw APIError.invalidResponse
+    }
+
+    func toggleAlbumFollow(
+        _ album: Album,
+        follow: Bool,
+        accessToken: String
+    ) async throws {
+        throw APIError.invalidResponse
+    }
+
+    func playlists(
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Playlist> {
+        throw APIError.invalidResponse
+    }
+
+    func playlistTracks(
+        _ playlist: Playlist,
+        accessToken: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Track> {
+        throw APIError.invalidResponse
+    }
+
+    func addToLibrary(
+        _ track: Track,
+        accessToken: String
+    ) async throws -> Track {
+        throw APIError.invalidResponse
+    }
+
+    func removeFromLibrary(
+        _ track: Track,
+        accessToken: String
+    ) async throws {
+        throw APIError.invalidResponse
+    }
+
+    func lyrics(
+        for track: Track,
+        accessToken: String
+    ) async throws -> Lyrics {
+        throw APIError.invalidResponse
+    }
+
+    func createPlaylist(
+        title: String,
+        description: String,
+        ownerID: Int,
+        accessToken: String
+    ) async throws -> Playlist {
+        throw APIError.invalidResponse
+    }
+
+    func editPlaylist(
+        _ playlist: Playlist,
+        title: String,
+        description: String,
+        accessToken: String
+    ) async throws {
+        throw APIError.invalidResponse
+    }
+
+    func deletePlaylist(
+        _ playlist: Playlist,
+        accessToken: String
+    ) async throws {
+        throw APIError.invalidResponse
+    }
+
+    func add(
+        _ track: Track,
+        to playlist: Playlist,
+        accessToken: String
+    ) async throws {
+        throw APIError.invalidResponse
+    }
+
+    func remove(
+        _ track: Track,
+        from playlist: Playlist,
+        accessToken: String
+    ) async throws {
+        throw APIError.invalidResponse
+    }
+
+    private func makeTrack(id: Int, artist: String) -> Track {
+        Track(
+            trackID: id,
+            ownerID: 1,
+            title: "Song \(id)",
+            artist: artist,
+            duration: 100,
+            streamURL: nil,
+            artworkURL: nil
+        )
+    }
+}
+
 /// Deterministic RNG for ranker tests (SplitMix64).
 private struct SeededGenerator: RandomNumberGenerator {
     private var state: UInt64

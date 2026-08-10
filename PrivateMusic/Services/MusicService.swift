@@ -181,17 +181,25 @@ extension MusicService {
         _ mix: MusicMix,
         accessToken: String
     ) async throws -> [Track] {
-        let pageSize = MixTrackRequestPolicy.pageSize
-        let bootstrap = MixTrackRequestPolicy.bootstrapPages
-        let remaining = max(
-            MixTrackRequestPolicy.pageCount - bootstrap,
-            1
+        try await mixTracksContinuation(
+            mix,
+            accessToken: accessToken,
+            startingOffset: MixTrackRequestPolicy.bootstrapPages
+                * MixTrackRequestPolicy.pageSize
         )
+    }
+
+    /// Advancing continuation page used by live radio cursors.
+    func mixTracksContinuation(
+        _ mix: MusicMix,
+        accessToken: String,
+        startingOffset: Int
+    ) async throws -> [Track] {
         return try await mixTracks(
             mix,
             accessToken: accessToken,
-            startingOffset: bootstrap * pageSize,
-            pages: remaining
+            startingOffset: startingOffset,
+            pages: MixTrackRequestPolicy.continuationPages
         )
     }
 }

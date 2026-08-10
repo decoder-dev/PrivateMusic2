@@ -86,6 +86,9 @@ cached_image_source = (
 library_view_source = (
     SOURCE / "Features" / "Library" / "LibraryView.swift"
 ).read_text(encoding="utf-8")
+mixes_hub_source = (
+    SOURCE / "Features" / "Mix" / "MixesHubView.swift"
+).read_text(encoding="utf-8")
 glass_source = (
     SOURCE / "Features" / "Shared" / "AdaptiveGlass.swift"
 ).read_text(encoding="utf-8")
@@ -177,6 +180,55 @@ if "shouldApplyRefill(" not in audio_player_source:
     fail("mix-radio refill must guard against stale async apply")
 if "MixRadioUpcomingMergePolicy.merge(" not in audio_player_source:
     fail("replaceUpcoming must preserve Play Next pins during radio refill")
+mix_stream_source_path = SOURCE / "Models" / "MixContinuationStream.swift"
+if not mix_stream_source_path.is_file():
+    fail("mixes and Selena must use stateful continuation cursors")
+mix_stream_source = mix_stream_source_path.read_text(encoding="utf-8")
+for required_mix_stream_symbol in (
+    "actor MixTrackContinuationCursor",
+    "nextOffset += MixTrackRequestPolicy.continuationPages",
+    "actor SelenaRecommendationCursor",
+    "musicService.recommendations(\n                    seededBy: seed",
+    "knownIDs.insert($0.id).inserted",
+    "commonMixOffset += MixTrackRequestPolicy.pageSize",
+):
+    if required_mix_stream_symbol not in mix_stream_source:
+        fail(
+            "infinite mix/Selena continuation invariant is missing: "
+            f"{required_mix_stream_symbol}"
+        )
+for required_mix_hub_stream_symbol in (
+    "mixContinuationProvider(",
+    "SelenaRecommendationCursor(",
+    "MixTrackContinuationCursor(mix: mix)",
+):
+    if required_mix_hub_stream_symbol not in mixes_hub_source:
+        fail(
+            "MixesHub must attach infinite continuation providers: "
+            f"{required_mix_hub_stream_symbol}"
+        )
+if "SelenaRecommendationCursor(" not in library_view_source:
+    fail("pinned Selena resume must keep the recommendation cursor")
+for required_audio_stream_symbol in (
+    "ContinuationPrefetchPolicy.shouldPrefetch",
+    "guard should else { return }",
+    "queueLimit - upcomingCount",
+):
+    if required_audio_stream_symbol not in audio_player_source:
+        fail(
+            "AudioPlayer must keep continuous near-end refill behavior: "
+            f"{required_audio_stream_symbol}"
+        )
+ru_strings = (
+    SOURCE / "Resources" / "ru.lproj" / "Localizable.strings"
+).read_text(encoding="utf-8")
+en_strings = (
+    SOURCE / "Resources" / "en.lproj" / "Localizable.strings"
+).read_text(encoding="utf-8")
+if "нейросеть Decoder Dev" not in ru_strings:
+    fail("Selena Russian copy must brand it as Decoder Dev's neural network")
+if "Decoder Dev's neural network" not in en_strings:
+    fail("Selena English copy must brand it as Decoder Dev's neural network")
 native_dsp_header = SOURCE / "Native" / "PrivateMusicDSP.h"
 native_dsp_source = SOURCE / "Native" / "PrivateMusicDSP.c"
 native_core_header = SOURCE / "Native" / "PrivateMusicCore.h"
