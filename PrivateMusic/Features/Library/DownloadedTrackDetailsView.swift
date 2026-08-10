@@ -47,11 +47,13 @@ struct DownloadedTrackDetailsView: View {
                             title: "Формат",
                             value: formatDescription
                         )
-                        if record.track.albumTitle != nil {
+                        if let albumTitle = record.track.albumTitle?
+                            .trimmingCharacters(in: .whitespacesAndNewlines),
+                           Album.isUsableTitle(albumTitle) {
                             Divider()
                             detailRow(
                                 title: "Альбом",
-                                value: record.track.albumTitle ?? ""
+                                value: albumTitle
                             )
                         }
                         Divider()

@@ -508,10 +508,14 @@ struct OfflineDownloadsView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    Text(status.localizedText ?? "")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if let statusText = status.localizedText?
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                       !statusText.isEmpty {
+                        Text(statusText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer()
                 Button {

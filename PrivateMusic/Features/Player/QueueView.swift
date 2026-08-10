@@ -83,13 +83,19 @@ struct QueueView: View {
                                         size: 48
                                     )
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(track.title)
-                                            .font(.subheadline.weight(.semibold))
-                                            .lineLimit(1)
-                                        Text(track.artist)
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
+                                        if let title = usableMetadata(track.title) {
+                                            Text(title)
+                                                .font(
+                                                    .subheadline.weight(.semibold)
+                                                )
+                                                .lineLimit(1)
+                                        }
+                                        if let artist = usableMetadata(track.artist) {
+                                            Text(artist)
+                                                .font(.subheadline)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
                                     }
                                     Spacer()
                                     LikedTrackBadge(track: track)
@@ -102,17 +108,11 @@ struct QueueView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(
-                                L10n.format(
-                                    "%@ — %@",
-                                    track.title,
-                                    track.artist
+                            .accessibilityLabel(accessibilityLabel(for: track))
+                            .modifier(
+                                CurrentQueueItemAccessibilityValueModifier(
+                                    isCurrent: index == player.currentIndex
                                 )
-                            )
-                            .accessibilityValue(
-                                index == player.currentIndex
-                                    ? L10n.text("Сейчас играет")
-                                    : ""
                             )
                             .accessibilityHint(
                                 L10n.text("Воспроизвести из очереди")
@@ -162,6 +162,34 @@ struct QueueView: View {
         player.removeFromQueue(at: index)
         if player.queue.isEmpty {
             dismiss()
+        }
+    }
+
+    private func accessibilityLabel(for track: Track) -> String {
+        let metadata = [
+            usableMetadata(track.title),
+            usableMetadata(track.artist)
+        ]
+            .compactMap { $0 }
+            .joined(separator: " — ")
+        return metadata.isEmpty ? L10n.text("Трек") : metadata
+    }
+
+    private func usableMetadata(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private struct CurrentQueueItemAccessibilityValueModifier: ViewModifier {
+    let isCurrent: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isCurrent {
+            content.accessibilityValue(L10n.text("Сейчас играет"))
+        } else {
+            content
         }
     }
 }
