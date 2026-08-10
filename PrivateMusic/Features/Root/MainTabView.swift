@@ -250,26 +250,24 @@ private struct SystemLiquidGlassTabView: View {
             }
 
             Tab(
-                MainTab.search.title,
-                systemImage: MainTab.search.image,
-                value: MainTab.search,
-                role: .search
-            ) {
-                NavigationStack {
-                    SearchView(isActive: selection == .search)
-                }
-            }
-
-            Tab(
                 MainTab.profile.title,
                 systemImage: MainTab.profile.image,
                 value: MainTab.profile
             ) {
                 NavigationStack { ProfileView() }
             }
+
+            Tab(
+                MainTab.search.title,
+                systemImage: MainTab.search.image,
+                value: MainTab.search
+            ) {
+                NavigationStack {
+                    SearchView(isActive: selection == .search)
+                }
+            }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
-        .tabViewSearchActivation(.searchTabSelection)
         .modifier(
             PlaybackAccessoryModifier(
                 isEnabled: player.currentTrack != nil,
@@ -349,7 +347,7 @@ private extension MiniPlayerAccessoryMode {
     }
 }
 
-// MARK: - Legacy custom dock (iOS 16–26.0)
+// MARK: - Legacy custom dock (iOS 16–25)
 
 private struct PlaybackTabDock: View {
     @EnvironmentObject private var player: AudioPlayer
