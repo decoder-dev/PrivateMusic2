@@ -2,27 +2,25 @@ import Foundation
 
 /// Normalizes the playlist collection behind the library shelf.
 ///
-/// `audio.getPlaylists` runs with `filters=owned,followed`, so the same
-/// logical playlist can arrive twice: once as the copy you own and once as
-/// the copy you follow. VK also hands back a numbered clone («Мне нравится
-/// (2)») when the liked playlist is saved again. Both land in the shelf as
-/// duplicate cards, so the shelf collapses them here instead of asking
-/// SwiftUI to render two cards for one playlist.
+/// The same logical playlist can arrive twice from `audio.getPlaylists`:
+/// once as the copy you own and once as the copy you follow. VK also hands
+/// back a numbered clone («Мне нравится (2)») when the liked playlist is
+/// saved again. Both land in the shelf as duplicate cards, so the shelf
+/// collapses them here instead of asking SwiftUI to render two cards for
+/// one playlist.
+///
+/// Title collapsing is deliberately limited to the VK system liked
+/// playlist. Broad favourite wording — «любимое», «избранное», Favorites —
+/// is what people call their own hand-made playlists, and collapsing those
+/// wiped real playlists off Медиатека.
 enum LibraryPlaylistShelfPolicy {
-    /// Titles VK uses for the automatic "liked" playlist. Only playlists
-    /// matching one of these collapse by title — a user's own «Рок (2)»
-    /// stays a separate card.
+    /// Titles VK gives the automatic liked playlist, in every locale the
+    /// app has seen. Nothing else collapses by title — «Избранное» or
+    /// «Рок (2)» stay separate cards.
     private static let likedTitles: Set<String> = [
         "мне нравится",
         "мне нравятся",
-        "любимое",
-        "любимые",
-        "любимые треки",
-        "избранное",
-        "liked",
-        "liked songs",
-        "favorites",
-        "favourites"
+        "liked songs"
     ]
 
     static func normalized(

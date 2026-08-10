@@ -87,6 +87,45 @@ final class LibraryPlaylistShelfTests: XCTestCase {
         XCTAssertEqual(shelf.map(\.id), [rock.id, rockTwo.id])
     }
 
+    func testShelfKeepsPlaylistsPeopleNameLikeFavourites() throws {
+        // Regression: collapsing every "favourites" wording wiped real
+        // playlists off Медиатека. Only the VK system liked playlist
+        // collapses by title.
+        let mine = try makePlaylist(id: 11, ownerID: 100, title: "Избранное")
+        let theirs = try makePlaylist(id: 12, ownerID: 700, title: "Избранное")
+        let loved = try makePlaylist(id: 13, ownerID: 100, title: "Любимое")
+        let favorites = try makePlaylist(
+            id: 14,
+            ownerID: 800,
+            title: "Favorites"
+        )
+
+        let shelf = LibraryPlaylistShelfPolicy.normalized(
+            [mine, theirs, loved, favorites],
+            ownerID: 100
+        )
+
+        XCTAssertEqual(
+            shelf.map(\.id),
+            [mine.id, theirs.id, loved.id, favorites.id]
+        )
+    }
+
+    func testFavouriteWordingIsNotTreatedAsTheSystemLikedPlaylist() {
+        for title in [
+            "Избранное",
+            "Любимое",
+            "Любимые треки",
+            "Favorites",
+            "Favourites"
+        ] {
+            XCTAssertNil(
+                LibraryPlaylistShelfPolicy.likedKey(for: title),
+                "\(title) is a user playlist name, not the VK liked playlist"
+            )
+        }
+    }
+
     func testShelfPreservesOrderOfUntouchedPlaylists() throws {
         let first = try makePlaylist(id: 4, ownerID: 100, title: "Рок")
         let liked = try makePlaylist(
