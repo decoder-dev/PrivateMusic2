@@ -474,6 +474,12 @@
 "M4A (из HLS)" = "M4A (from HLS)";
 "Удалить плейлист?" = "Delete playlist?";
 "Удалить плейлист и аудиофайлы" = "Delete playlist and audio files";
+"Убрать из медиатеки" = "Remove from Library";
+"Убрать плейлист из медиатеки?" = "Remove playlist from library?";
+"Плейлист будет удалён из VK. Это действие нельзя отменить." = "The playlist will be deleted from VK. This can’t be undone.";
+"Плейлист исчезнет из вашей медиатеки, но останется у автора." = "The playlist will leave your library, but stay with its owner.";
+"Не удалось удалить плейлист" = "Couldn’t delete playlist";
+"Действия с плейлистом" = "Playlist Actions";
 
 "Не удалось создать временный файл." = "Could not create a temporary file.";
 

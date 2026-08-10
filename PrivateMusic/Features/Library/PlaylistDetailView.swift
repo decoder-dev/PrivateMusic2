@@ -5,11 +5,15 @@ struct PlaylistDetailView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var player: AudioPlayer
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject private var offlinePlaylists =
         OfflinePlaylistStore.shared
     let playlist: Playlist
     @StateObject private var model = PlaylistDetailViewModel()
     @State private var showsNavTitle = false
+    @State private var showsDeleteConfirmation = false
+    @State private var isDeletingPlaylist = false
+    @State private var deleteErrorMessage: String?
 
     var body: some View {
         Group {
@@ -39,12 +43,52 @@ struct PlaylistDetailView: View {
             isVisible: $showsNavTitle
         )
         .toolbar {
-            if OfflineDownloadsFeature.showsControls,
-               !model.tracks.isEmpty {
-                ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if OfflineDownloadsFeature.showsControls,
+                   !model.tracks.isEmpty {
                     offlineButton
                 }
+                if canManagePlaylist {
+                    Menu {
+                        Button(
+                            role: .destructive,
+                            action: { showsDeleteConfirmation = true }
+                        ) {
+                            Label(
+                                deleteActionTitle,
+                                systemImage: "trash"
+                            )
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .disabled(isDeletingPlaylist)
+                    .accessibilityLabel(L10n.text("Действия с плейлистом"))
+                }
             }
+        }
+        .confirmationDialog(
+            deleteConfirmationTitle,
+            isPresented: $showsDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(deleteActionTitle, role: .destructive) {
+                Task { await deletePlaylist() }
+            }
+            Button(L10n.text("Отмена"), role: .cancel) {}
+        } message: {
+            Text(deleteConfirmationMessage)
+        }
+        .alert(
+            L10n.text("Не удалось удалить плейлист"),
+            isPresented: Binding(
+                get: { deleteErrorMessage != nil },
+                set: { if !$0 { deleteErrorMessage = nil } }
+            )
+        ) {
+            Button(L10n.text("ОК"), role: .cancel) {}
+        } message: {
+            Text(deleteErrorMessage ?? "")
         }
         .task { await load() }
         .task(id: sessionStore.resolvedOfflineAccountID) {
@@ -53,6 +97,40 @@ struct PlaylistDetailView: View {
             )
         }
         .refreshable { await load(force: true) }
+    }
+
+    private var isOwnedPlaylist: Bool {
+        playlist.ownerID == sessionStore.session?.userID
+    }
+
+    /// Owned playlists can be deleted; followed ones use the same VK method
+    /// to leave the library.
+    private var canManagePlaylist: Bool {
+        sessionStore.accessToken != nil
+    }
+
+    private var deleteActionTitle: String {
+        L10n.text(
+            isOwnedPlaylist
+                ? "Удалить плейлист"
+                : "Убрать из медиатеки"
+        )
+    }
+
+    private var deleteConfirmationTitle: String {
+        L10n.text(
+            isOwnedPlaylist
+                ? "Удалить плейлист?"
+                : "Убрать плейлист из медиатеки?"
+        )
+    }
+
+    private var deleteConfirmationMessage: String {
+        L10n.text(
+            isOwnedPlaylist
+                ? "Плейлист будет удалён из VK. Это действие нельзя отменить."
+                : "Плейлист исчезнет из вашей медиатеки, но останется у автора."
+        )
     }
 
     private var playlistList: some View {
@@ -327,6 +405,30 @@ struct PlaylistDetailView: View {
             service: environment.musicService,
             accessToken: token
         )
+    }
+
+    private func deletePlaylist() async {
+        guard !isDeletingPlaylist,
+              sessionStore.accessToken != nil else { return }
+        isDeletingPlaylist = true
+        defer { isDeletingPlaylist = false }
+        do {
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.deletePlaylist(
+                    playlist,
+                    accessToken: token
+                )
+            }
+            offlinePlaylists.remove(playlist)
+            MusicLibraryEvents.postPlaylistsChanged(removed: playlist)
+            Haptics.success()
+            dismiss()
+        } catch is CancellationError {
+            return
+        } catch {
+            deleteErrorMessage = error.localizedDescription
+            Haptics.error()
+        }
     }
 
     private func load(force: Bool = false) async {
