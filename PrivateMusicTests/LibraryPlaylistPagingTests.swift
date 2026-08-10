@@ -54,7 +54,11 @@ final class LibraryPlaylistPagingTests: XCTestCase {
         XCTAssertEqual(page.items.map(\.playlistID), [2])
     }
 
-    func testFollowedAlbumsStayOffThePlaylistShelf() throws {
+    // Only an entry VK explicitly typed as a release, and backed up with a
+    // second release marker, is dropped here. Anything less certain stays a
+    // playlist and is dropped by identity instead, against the ids the
+    // Albums shelf loaded (`LibraryPlaylistShelfPolicy`).
+    func testUnmistakableReleasesStayOffThePlaylistShelf() throws {
         let value = try payload(
             """
             {
@@ -67,6 +71,7 @@ final class LibraryPlaylistPagingTests: XCTestCase {
                   "title": "Release",
                   "type": 1,
                   "year": 2019,
+                  "album_type": "album",
                   "main_artists": [{"name": "Artist"}],
                   "count": 10
                 },
@@ -94,6 +99,91 @@ final class LibraryPlaylistPagingTests: XCTestCase {
         let page = makeService().playlistPage(value, offset: 0)
 
         XCTAssertEqual(page.items.map(\.playlistID), [1])
+    }
+
+    // The reported defect, third time round: «ОНИ НЕ ВСЕ». Every entry here
+    // carries two of the markers the old heuristic counted, so it kept
+    // exactly one of the eight playlists. None of those markers is a
+    // release type, so all eight must survive.
+    func testAmbiguousMarkerPairsNeverDropPlaylists() throws {
+        let value = try payload(
+            """
+            {
+              "count": 8,
+              "items": [
+                {"id": 1, "owner_id": 100, "title": "Дорога", "count": 12},
+                {
+                  "id": 2,
+                  "owner_id": 100,
+                  "title": "Сохранённый 2019",
+                  "type": 1,
+                  "year": 2019,
+                  "count": 30
+                },
+                {
+                  "id": 3,
+                  "owner_id": 100,
+                  "title": "С артиста",
+                  "type": 1,
+                  "main_artists": [{"name": "Artist"}],
+                  "count": 24
+                },
+                {
+                  "id": 4,
+                  "owner_id": 100,
+                  "title": "Итоги года",
+                  "year": 2021,
+                  "main_artists": [{"name": "Artist"}],
+                  "count": 40
+                },
+                {
+                  "id": 5,
+                  "owner_id": 100,
+                  "title": "Все маркеры сразу",
+                  "type": 1,
+                  "year": 2020,
+                  "main_artists": [{"name": "Artist"}],
+                  "count": 18
+                },
+                {
+                  "id": 6,
+                  "owner_id": 100,
+                  "title": "Старое",
+                  "type": 1,
+                  "original_year": 1998,
+                  "count": 7
+                },
+                {
+                  "id": 7,
+                  "owner_id": 100,
+                  "title": "Сборник",
+                  "original_year": 2005,
+                  "main_artists": [{"name": "Artist"}],
+                  "count": 11
+                },
+                {
+                  "id": 8,
+                  "owner_id": 100,
+                  "title": "Дубль",
+                  "type": 1,
+                  "year": 2015,
+                  "main_artists": [
+                    {"name": "Artist"},
+                    {"name": "Feature"}
+                  ],
+                  "count": 9
+                }
+              ]
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0)
+
+        XCTAssertEqual(
+            page.items.map(\.playlistID),
+            [1, 2, 3, 4, 5, 6, 7, 8]
+        )
     }
 
     // The reported defect: the shelf showed one playlist out of eight. Any
@@ -218,6 +308,7 @@ final class LibraryPlaylistPagingTests: XCTestCase {
                   "title": "A",
                   "type": 1,
                   "year": 2021,
+                  "album_type": "album",
                   "main_artists": [{"name": "Artist"}]
                 },
                 {
@@ -226,6 +317,7 @@ final class LibraryPlaylistPagingTests: XCTestCase {
                   "title": "B",
                   "type": 1,
                   "year": 2022,
+                  "album_type": "album",
                   "main_artists": [{"name": "Artist"}]
                 }
               ]
@@ -238,6 +330,43 @@ final class LibraryPlaylistPagingTests: XCTestCase {
         XCTAssertEqual(page.items.count, 1)
         XCTAssertEqual(page.totalCount, 250)
         XCTAssertEqual(page.nextOffset, 103)
+    }
+
+    // VK's `count` for the unfiltered list does not always describe the same
+    // set as `items`. Trusting it alone stopped the walk on the first page
+    // and hid every playlist behind it.
+    func testAFullPageContinuesEvenWhenTheTotalUnderreports() throws {
+        let entries = (1...4).map {
+            "{\"id\": \($0), \"owner_id\": 100, \"title\": \"P\($0)\"}"
+        }
+        let value = try payload(
+            "{\"count\": 2, \"items\": [\(entries.joined(separator: ","))]}"
+        )
+
+        let page = makeService().playlistPage(value, offset: 0, requested: 4)
+
+        XCTAssertEqual(page.items.count, 4)
+        XCTAssertEqual(page.nextOffset, 4)
+        XCTAssertEqual(page.totalCount, 4)
+    }
+
+    // A short page still continues while VK says there is more, so a
+    // trimmed window cannot end the walk early either.
+    func testAShortPageStillContinuesWhileTheTotalPromisesMore() throws {
+        let value = try payload(
+            """
+            {
+              "count": 900,
+              "items": [
+                {"id": 1, "owner_id": 100, "title": "Дорога", "count": 12}
+              ]
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0, requested: 100)
+
+        XCTAssertEqual(page.nextOffset, 1)
     }
 
     func testPagingStopsOnTheLastPage() throws {
@@ -269,12 +398,84 @@ final class LibraryPlaylistPagingTests: XCTestCase {
         XCTAssertEqual(LibraryPlaylistPagePolicy.pageSize, 100)
         XCTAssertGreaterThanOrEqual(
             LibraryPlaylistPagePolicy.prefetchPages,
-            3,
-            "one page can decode into a handful of playlists"
+            20,
+            "the walk must reach playlists behind hundreds of albums"
         )
         XCTAssertGreaterThanOrEqual(
             LibraryPlaylistPagePolicy.prefetchCapacity,
-            300
+            2_000
+        )
+    }
+}
+
+final class LibraryPlaylistEntryPolicyTests: XCTestCase {
+    func testNoInferredMarkerCombinationDropsAPlaylist() {
+        let ambiguous: [LibraryPlaylistEntry] = [
+            LibraryPlaylistEntry(vkType: 1),
+            LibraryPlaylistEntry(hasMainArtists: true),
+            LibraryPlaylistEntry(hasReleaseYear: true),
+            LibraryPlaylistEntry(hasReleaseYear: true, vkType: 1),
+            LibraryPlaylistEntry(hasMainArtists: true, vkType: 1),
+            LibraryPlaylistEntry(hasMainArtists: true, hasReleaseYear: true),
+            LibraryPlaylistEntry(
+                hasMainArtists: true,
+                hasReleaseYear: true,
+                vkType: 1
+            )
+        ]
+
+        for entry in ambiguous {
+            XCTAssertFalse(
+                LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(entry),
+                "\(entry) is not evidence of a release"
+            )
+        }
+    }
+
+    func testAnExplicitReleaseTypeAloneIsNotEnough() {
+        XCTAssertFalse(
+            LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(
+                LibraryPlaylistEntry(albumType: "single")
+            )
+        )
+    }
+
+    func testAnExplicitReleaseTypeWithASecondMarkerIsARelease() {
+        XCTAssertTrue(
+            LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(
+                LibraryPlaylistEntry(albumType: "single", vkType: 1)
+            )
+        )
+        XCTAssertTrue(
+            LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(
+                LibraryPlaylistEntry(
+                    albumType: "MAIN_ONLY",
+                    hasMainArtists: true
+                )
+            )
+        )
+    }
+
+    func testAPlaylistMarkerOutweighsEveryReleaseMarker() {
+        let saved = LibraryPlaylistEntry(
+            albumType: "album",
+            hasMainArtists: true,
+            hasReleaseYear: true,
+            vkType: 1,
+            hasOriginalPlaylist: true
+        )
+        XCTAssertTrue(LibraryPlaylistEntryPolicy.hasPlaylistMarker(saved))
+        XCTAssertFalse(
+            LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(saved)
+        )
+
+        let collection = LibraryPlaylistEntry(
+            albumType: "playlist",
+            hasMainArtists: true,
+            vkType: 1
+        )
+        XCTAssertFalse(
+            LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(collection)
         )
     }
 }
@@ -305,6 +506,31 @@ final class PlaylistLibraryViewModelTests: XCTestCase {
 
         XCTAssertEqual(recorder.offsets, [0, 2, 4])
         XCTAssertEqual(model.playlists.count, 6)
+    }
+
+    // «ОНИ НЕ ВСЕ»: a fixed five-page prefetch left playlists unloaded on a
+    // library whose first pages are followed albums. The opening walk now
+    // runs until VK reports no further offset.
+    func testInitialLoadWalksUntilVKRunsOut() async {
+        let model = PlaylistLibraryViewModel()
+        model.configure(ownerID: 100)
+        let recorder = OffsetRecorder()
+        let pages = 12
+
+        await model.load { offset in
+            recorder.offsets.append(offset)
+            let index = offset / 100
+            return MusicPage(
+                items: [
+                    makePlaylist(id: index + 1, title: "P\(index)")
+                ],
+                totalCount: pages * 100,
+                nextOffset: index + 1 < pages ? offset + 100 : nil
+            )
+        }
+
+        XCTAssertEqual(recorder.offsets.count, pages)
+        XCTAssertEqual(model.playlists.count, pages)
     }
 
     func testInitialLoadStopsAtThePrefetchCapAndKeepsPaginating() async {
