@@ -215,12 +215,66 @@ if "PlaybackAccessoryModifier" not in main_tab_source:
     )
 if "if #available(iOS 26.0, *)" not in main_tab_source:
     fail("system Liquid Glass TabView must activate on iOS 26.0, not only 26.1")
-if "navigationBarDrawer(displayMode: .always)" not in (
-    SOURCE / "Features/Library/LibraryView.swift"
-).read_text(encoding="utf-8"):
+if "navigationBarDrawer(displayMode: .always)" not in library_view_source:
     fail(
         "Library searchable must stay in the navigation drawer, "
         "not compete with bottom tab chrome"
+    )
+shelf_metrics_source = (
+    SOURCE / "Features/Library/LibraryShelfMetrics.swift"
+).read_text(encoding="utf-8")
+for required_shelf_symbol in (
+    "enum LibraryShelfMetrics",
+    "static let artworkSize",
+    "static var shelfHeight",
+    "func librarySectionSpacing()",
+):
+    if required_shelf_symbol not in shelf_metrics_source:
+        fail(
+            "library shelf geometry must stay resolved up front: "
+            f"{required_shelf_symbol}"
+        )
+for required_shelf_card_symbol in (
+    "func playlistCard(",
+    "func albumCard(",
+    "PlaylistArtworkView(",
+    "size: LibraryShelfMetrics.artworkSize",
+    ".frame(height: LibraryShelfMetrics.shelfHeight)",
+):
+    if required_shelf_card_symbol not in library_view_source:
+        fail(
+            "library shelves must render pinned artwork cards, not text "
+            f"chips: {required_shelf_card_symbol}"
+        )
+if "id: \\.element.libraryIdentity" not in library_view_source:
+    fail(
+        "playlist shelf must identify cards by owner+id: VK playlist ids "
+        "repeat across owners and duplicate ForEach ids break the shelf"
+    )
+if "LazyVStack(alignment: .leading, spacing: 24)" in library_view_source:
+    fail(
+        "library track rows share the section LazyVStack, so section "
+        "spacing must be per-section padding, not stack spacing"
+    )
+playlist_model_source = (SOURCE / "Models/Playlist.swift").read_text(
+    encoding="utf-8"
+)
+for required_playlist_identity_symbol in (
+    "let playlistID: Int",
+    "var id: String { libraryIdentity }",
+    'case thumbs',
+):
+    if required_playlist_identity_symbol not in playlist_model_source:
+        fail(
+            "Playlist must expose an owner-scoped identity and mosaic "
+            f"covers: {required_playlist_identity_symbol}"
+        )
+if "LibraryPlaylistShelfPolicy.normalized(" not in (
+    SOURCE / "Features/Library/PlaylistLibraryView.swift"
+).read_text(encoding="utf-8"):
+    fail(
+        "playlist loads must collapse duplicated system playlists "
+        "(owned + followed «Мне нравится»)"
     )
 append_fn = audio_player_source.split("func appendToQueue(", 1)
 if len(append_fn) < 2:
