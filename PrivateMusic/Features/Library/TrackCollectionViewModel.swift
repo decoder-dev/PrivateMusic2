@@ -13,6 +13,11 @@ final class TrackCollectionViewModel: ObservableObject {
     @Published private(set) var totalCount = 0
     @Published var errorMessage: String?
 
+    /// Offset of the first page the list has not loaded yet, for the
+    /// playback continuation that keeps a queue going in list order past the
+    /// loaded window.
+    var nextPageOffset: Int? { nextOffset }
+
     private let source: Source
     private var service: (any MusicService)?
     private var nextOffset: Int?
