@@ -265,6 +265,12 @@ final class AppSettings: ObservableObject {
             )
         }
     }
+    @Published var hapticsEnabled: Bool {
+        didSet {
+            defaults.set(hapticsEnabled, forKey: Keys.hapticsEnabled)
+            Haptics.isEnabled = hapticsEnabled
+        }
+    }
 
     private let defaults: UserDefaults
 
@@ -361,6 +367,10 @@ final class AppSettings: ObservableObject {
         automaticOfflineCacheEnabled = defaults.object(
             forKey: Keys.automaticOfflineCacheEnabled
         ) as? Bool ?? false
+        hapticsEnabled = defaults.object(
+            forKey: Keys.hapticsEnabled
+        ) as? Bool ?? true
+        Haptics.isEnabled = hapticsEnabled
     }
 
     func selectPreset(_ preset: EqualizerPreset) {
@@ -418,6 +428,7 @@ final class AppSettings: ObservableObject {
             "offline.storage.limitGB"
         static let automaticOfflineCacheEnabled =
             "offline.cache.automatic.enabled"
+        static let hapticsEnabled = "feedback.haptics.enabled"
         static let preferHighQuality = "audio.playback.preferHighQuality"
         static let mixMoodPreference = "mix.filters.mood"
         static let mixLanguagePreference = "mix.filters.language"
