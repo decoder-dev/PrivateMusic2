@@ -23,6 +23,20 @@ float pm_biquad_process(
     float *state
 );
 
+/// Run one biquad across a whole channel of interleaved or planar float PCM.
+/// Hot path for the route-tone boom cut: keeps the per-sample filter, the
+/// clamp and the stride walk inside C instead of paying a Swift call plus a
+/// coefficient copy for every frame.
+/// `state` is exactly 4 floats: x1,x2,y1,y2.
+void pm_biquad_process_channel(
+    float *samples,
+    int frame_count,
+    int stride,
+    const PMBiquadCoeffs *coeffs,
+    float *state,
+    bool clamp_output
+);
+
 /// Apply a cascade of peaking EQ bands (+ optional DRC / loudness) to one
 /// channel of interleaved or planar float PCM. Hot path for MTAudioProcessingTap.
 void pm_eq_process_channel(
@@ -53,6 +67,33 @@ void pm_spatial_widen(
     bool has_processed_side,
     float *out_left,
     float *out_right
+);
+
+/// Widen a planar stereo pair in place, high-passing the side channel first so
+/// bass stays centred. Pass `has_side_high_pass` false to widen without
+/// filtering, which also leaves `side_state` untouched. `side_state` is
+/// exactly 4 floats and carries over between callbacks. Intensity is clamped
+/// to [0, 1]; values at or below zero leave the buffers untouched.
+void pm_spatial_process_planar(
+    float *left,
+    float *right,
+    int frame_count,
+    float intensity,
+    const PMBiquadCoeffs *side_high_pass,
+    bool has_side_high_pass,
+    float *side_state
+);
+
+/// Interleaved counterpart of `pm_spatial_process_planar`. `stride` is the
+/// frame stride in floats; left/right are the first two channels of a frame.
+void pm_spatial_process_interleaved(
+    float *samples,
+    int frame_count,
+    int stride,
+    float intensity,
+    const PMBiquadCoeffs *side_high_pass,
+    bool has_side_high_pass,
+    float *side_state
 );
 
 #ifdef __cplusplus

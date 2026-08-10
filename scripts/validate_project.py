@@ -184,15 +184,34 @@ if not native_dsp_header.is_file() or not native_dsp_source.is_file():
     fail("PrivateMusicDSP C module (header + source) must exist under Native/")
 if not bridging_header.is_file():
     fail("PrivateMusic Native bridging header must exist")
-if "pm_eq_process_channel" not in native_dsp_header.read_text(encoding="utf-8"):
-    fail("PrivateMusicDSP.h must expose pm_eq_process_channel")
-if "pm_spatial_widen" not in native_dsp_header.read_text(encoding="utf-8"):
-    fail("PrivateMusicDSP.h must expose pm_spatial_widen")
+native_dsp_header_text = native_dsp_header.read_text(encoding="utf-8")
+for symbol in (
+    "pm_eq_process_channel",
+    "pm_spatial_widen",
+    # Per-buffer entry points: the tap must not walk samples from Swift.
+    "pm_biquad_process_channel",
+    "pm_spatial_process_planar",
+    "pm_spatial_process_interleaved",
+):
+    if symbol not in native_dsp_header_text:
+        fail(f"PrivateMusicDSP.h must expose {symbol}")
+if "PrivateMusicDSP.h" not in bridging_header.read_text(encoding="utf-8"):
+    fail("bridging header must import PrivateMusicDSP.h")
 equalizer_source = (SOURCE / "Player" / "EqualizerDSP.swift").read_text(
     encoding="utf-8"
 )
 if "pm_eq_process_channel(" not in equalizer_source:
     fail("EqualizerDSP must call pm_eq_process_channel for the tap hot path")
+if "pm_biquad_process_channel(" not in equalizer_source:
+    fail("EqualizerDSP boom cut must run the C per-channel biquad loop")
+for symbol in ("pm_spatial_process_planar(", "pm_spatial_process_interleaved("):
+    if symbol not in equalizer_source:
+        fail(f"EqualizerDSP spatial pass must call {symbol[:-1]}")
+if "for frame in 0..<frameCount" in equalizer_source:
+    fail(
+        "EqualizerDSP must not walk audio frames from Swift: the realtime tap "
+        "hot paths live in PrivateMusicDSP.c"
+    )
 spatial_source = (SOURCE / "Player" / "SpatialAudioDSP.swift").read_text(
     encoding="utf-8"
 )
