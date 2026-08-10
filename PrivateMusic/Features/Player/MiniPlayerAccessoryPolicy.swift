@@ -40,6 +40,12 @@ enum MiniPlayerAccessoryPolicy {
         mode == .expanded
     }
 
+    static func showsPreviousButton(_ mode: MiniPlayerAccessoryMode) -> Bool {
+        // Expanded glass pill exposes both skips; inline keeps previous only
+        // (space is tight — next stays swipe / a11y).
+        true
+    }
+
     static func showsProgress(_ mode: MiniPlayerAccessoryMode) -> Bool {
         mode == .expanded
     }
