@@ -697,3 +697,6 @@
 "По совпадению" = "By Match";
 "По числу треков" = "By Track Count";
 "совпадение %d%%" = "%d%% match";
+"Отклик" = "Feedback";
+"Тактильный отклик" = "Haptic Feedback";
+"Лёгкая вибрация при переключении треков, действиях в медиатеке и других жестах." = "A light vibration when switching tracks, acting on your library, and other gestures.";

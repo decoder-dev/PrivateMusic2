@@ -245,6 +245,34 @@ private struct AppearanceSettingsView: View {
                     }
                 }
             }
+
+            Section("Отклик") {
+                Toggle(
+                    isOn: Binding(
+                        get: { settings.hapticsEnabled },
+                        set: { newValue in
+                            withAnimation(
+                                .spring(response: 0.3, dampingFraction: 0.8)
+                            ) {
+                                settings.hapticsEnabled = newValue
+                            }
+                        }
+                    )
+                ) {
+                    Label(
+                        "Тактильный отклик",
+                        systemImage: "hand.tap"
+                    )
+                }
+                Text(
+                    L10n.text(
+                        "Лёгкая вибрация при переключении треков, "
+                            + "действиях в медиатеке и других жестах."
+                    )
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
         }
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())

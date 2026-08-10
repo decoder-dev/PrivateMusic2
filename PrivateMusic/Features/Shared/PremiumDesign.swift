@@ -135,24 +135,33 @@ struct PremiumSectionHeader: View {
 
 @MainActor
 enum Haptics {
+    /// Kept in sync with `AppSettings.hapticsEnabled` so every call site
+    /// stays gated without threading the setting through each fire site.
+    static var isEnabled = true
+
     static func selection() {
+        guard isEnabled else { return }
         UISelectionFeedbackGenerator().selectionChanged()
     }
 
     static func trackChange() {
+        guard isEnabled else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
     static func open() {
+        guard isEnabled else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     static func success() {
+        guard isEnabled else { return }
         UINotificationFeedbackGenerator()
             .notificationOccurred(.success)
     }
 
     static func error() {
+        guard isEnabled else { return }
         UINotificationFeedbackGenerator().notificationOccurred(.error)
     }
 }
