@@ -17,6 +17,7 @@ final class TrackCollectionViewModel: ObservableObject {
     private var service: (any MusicService)?
     private var nextOffset: Int?
     private var loadGeneration = 0
+    private var optimisticAdditions: [Track] = []
 
     init(source: Source) {
         self.source = source
@@ -52,8 +53,11 @@ final class TrackCollectionViewModel: ObservableObject {
         do {
             let page = try await operation()
             guard generation == loadGeneration else { return false }
-            tracks = page.items
-            totalCount = page.totalCount
+            let missingOptimisticCount = missingOptimisticAdditions(
+                from: page.items
+            )
+            tracks = mergedFirstPage(page.items)
+            totalCount = page.totalCount + missingOptimisticCount
             nextOffset = page.nextOffset
             errorMessage = nil
             return true
@@ -99,6 +103,8 @@ final class TrackCollectionViewModel: ObservableObject {
                 track,
                 accessToken: accessToken
             )
+            invalidateLoadsForLocalMutation()
+            optimisticAdditions.removeAll { $0.id == track.id }
             tracks.removeAll { $0.id == track.id }
             totalCount = max(totalCount - 1, 0)
             errorMessage = nil
@@ -113,6 +119,9 @@ final class TrackCollectionViewModel: ObservableObject {
 
     func insertAdded(_ track: Track) {
         guard source == .library else { return }
+        invalidateLoadsForLocalMutation()
+        optimisticAdditions.removeAll { $0.id == track.id }
+        optimisticAdditions.insert(track, at: 0)
         let existed = tracks.contains { $0.id == track.id }
         tracks.removeAll { $0.id == track.id }
         tracks.insert(track, at: 0)
@@ -124,6 +133,8 @@ final class TrackCollectionViewModel: ObservableObject {
 
     func removeLocally(_ track: Track) {
         guard source == .library else { return }
+        invalidateLoadsForLocalMutation()
+        optimisticAdditions.removeAll { $0.id == track.id }
         tracks.removeAll { $0.id == track.id }
         totalCount = max(totalCount - 1, 0)
         errorMessage = nil
@@ -134,5 +145,34 @@ final class TrackCollectionViewModel: ObservableObject {
         tracks.append(contentsOf: additions.filter {
             known.insert($0.id).inserted
         })
+    }
+
+    private func invalidateLoadsForLocalMutation() {
+        loadGeneration += 1
+        isLoading = false
+    }
+
+    private func mergedFirstPage(_ pageItems: [Track]) -> [Track] {
+        guard source == .library,
+              !optimisticAdditions.isEmpty else {
+            return pageItems
+        }
+        var merged: [Track] = []
+        var known = Set<String>()
+        for track in optimisticAdditions + pageItems
+            where known.insert(track.id).inserted {
+            merged.append(track)
+        }
+        optimisticAdditions.removeAll()
+        return merged
+    }
+
+    private func missingOptimisticAdditions(from pageItems: [Track]) -> Int {
+        guard source == .library,
+              !optimisticAdditions.isEmpty else {
+            return 0
+        }
+        let pageIDs = Set(pageItems.map(\.id))
+        return optimisticAdditions.filter { !pageIDs.contains($0.id) }.count
     }
 }
