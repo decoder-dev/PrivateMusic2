@@ -13,6 +13,7 @@ struct PlaylistArtworkView: View {
                 if showsSource {
                     sourceBadge
                         .padding(max(6, size * 0.065))
+                        .allowsHitTesting(false)
                 }
             }
             .accessibilityElement(children: .ignore)
