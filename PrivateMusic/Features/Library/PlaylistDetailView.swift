@@ -4,6 +4,7 @@ struct PlaylistDetailView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var player: AudioPlayer
     @ObservedObject private var offlinePlaylists =
         OfflinePlaylistStore.shared
     let playlist: Playlist
@@ -159,10 +160,10 @@ struct PlaylistDetailView: View {
     /// regardless of button width.
     private var listenButtonLabel: some View {
         ZStack {
-            Text(L10n.text("Слушать"))
+            Text(L10n.text(listenAction == .pause ? "Пауза" : "Слушать"))
                 .font(.headline)
             HStack {
-                Image(systemName: "play.fill")
+                Image(systemName: listenAction.systemImage)
                     .accessibilityHidden(true)
                 Spacer()
             }
@@ -175,14 +176,14 @@ struct PlaylistDetailView: View {
     @ViewBuilder
     private var listenButton: some View {
         if #available(iOS 26.0, *) {
-            Button(action: playPlaylist) {
+            Button(action: toggleListen) {
                 listenButtonLabel
             }
             .buttonStyle(.glassProminent)
             .tint(settings.theme.accent)
             .disabled(model.tracks.isEmpty)
         } else {
-            Button(action: playPlaylist) {
+            Button(action: toggleListen) {
                 listenButtonLabel
             }
             .buttonStyle(.borderedProminent)
@@ -205,12 +206,35 @@ struct PlaylistDetailView: View {
         .accessibilityLabel(L10n.text("Перемешать"))
     }
 
+    private var currentSource: QueueSource {
+        .playlist(title: playlist.title)
+    }
+
+    private var listenAction: QueueSourcePlaybackAction {
+        QueueSourcePlaybackAction.resolve(
+            target: currentSource,
+            isPlaying: player.isPlaying,
+            queueSource: player.queueSource
+        )
+    }
+
+    private func toggleListen() {
+        switch listenAction {
+        case .start:
+            playPlaylist()
+        case .resume:
+            environment.player.resume()
+        case .pause:
+            environment.player.pause()
+        }
+    }
+
     private func playPlaylist() {
         guard let first = model.tracks.first else { return }
         environment.player.play(
             first,
             in: model.tracks,
-            source: .playlist(title: playlist.title)
+            source: currentSource
         )
     }
 

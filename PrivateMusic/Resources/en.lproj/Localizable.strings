@@ -133,7 +133,9 @@
 "Сейчас играет" = "Current Track";
 "Воспроизвести трек" = "Play Track";
 "Воспроизвести альбом" = "Play Album";
+"Воспроизвести плейлист" = "Play Playlist";
 "Не удалось воспроизвести альбом" = "Could Not Play Album";
+"Не удалось начать воспроизведение" = "Could Not Start Playback";
 "Воспроизвести из очереди" = "Play from Queue";
 "Перейти к этой строке" = "Seek to This Line";
 "Скопировать строку" = "Copy Line";
@@ -543,6 +545,7 @@
 "Раздел миксов" = "Mix sections";
 "Все миксы" = "All Mixes";
 "Слушать" = "Listen";
+"Пауза" = "Pause";
 "Открыть здесь" = "Open Here";
 "Открыть Селену" = "Open Selena";
 "Другие миксы" = "Other Mixes";

@@ -5,6 +5,7 @@ struct AlbumDetailView: View {
     @EnvironmentObject private var sessionStore: SessionStore
     @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var player: AudioPlayer
     let album: Album
     @StateObject private var model = AlbumDetailViewModel()
     @State private var resolvedAlbum: Album?
@@ -192,10 +193,10 @@ struct AlbumDetailView: View {
     /// regardless of button width.
     private var listenButtonLabel: some View {
         ZStack {
-            Text(L10n.text("Слушать"))
+            Text(L10n.text(listenAction == .pause ? "Пауза" : "Слушать"))
                 .font(.headline)
             HStack {
-                Image(systemName: "play.fill")
+                Image(systemName: listenAction.systemImage)
                     .accessibilityHidden(true)
                 Spacer()
             }
@@ -208,14 +209,14 @@ struct AlbumDetailView: View {
     @ViewBuilder
     private var listenButton: some View {
         if #available(iOS 26.0, *) {
-            Button(action: playAlbum) {
+            Button(action: toggleListen) {
                 listenButtonLabel
             }
             .buttonStyle(.glassProminent)
             .tint(settings.theme.accent)
             .disabled(model.tracks.isEmpty)
         } else {
-            Button(action: playAlbum) {
+            Button(action: toggleListen) {
                 listenButtonLabel
             }
             .buttonStyle(.borderedProminent)
@@ -260,12 +261,35 @@ struct AlbumDetailView: View {
             : L10n.text("Альбом")
     }
 
+    private var currentSource: QueueSource {
+        .album(title: displayedTitle)
+    }
+
+    private var listenAction: QueueSourcePlaybackAction {
+        QueueSourcePlaybackAction.resolve(
+            target: currentSource,
+            isPlaying: player.isPlaying,
+            queueSource: player.queueSource
+        )
+    }
+
+    private func toggleListen() {
+        switch listenAction {
+        case .start:
+            playAlbum()
+        case .resume:
+            environment.player.resume()
+        case .pause:
+            environment.player.pause()
+        }
+    }
+
     private func playAlbum() {
         guard let first = model.tracks.first else { return }
         environment.player.play(
             first,
             in: model.tracks,
-            source: .album(title: displayedTitle)
+            source: currentSource
         )
     }
 
