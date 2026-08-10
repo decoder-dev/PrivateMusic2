@@ -66,6 +66,8 @@ final class LibraryPlaylistPagingTests: XCTestCase {
                   "owner_id": -5,
                   "title": "Release",
                   "type": 1,
+                  "year": 2019,
+                  "main_artists": [{"name": "Artist"}],
                   "count": 10
                 },
                 {
@@ -73,6 +75,7 @@ final class LibraryPlaylistPagingTests: XCTestCase {
                   "owner_id": -6,
                   "title": "Signed",
                   "main_artists": [{"name": "Artist"}],
+                  "album_type": "main_only",
                   "count": 9
                 },
                 {
@@ -80,6 +83,7 @@ final class LibraryPlaylistPagingTests: XCTestCase {
                   "owner_id": -7,
                   "title": "Single",
                   "album_type": "single",
+                  "type": 1,
                   "count": 1
                 }
               ]
@@ -90,6 +94,53 @@ final class LibraryPlaylistPagingTests: XCTestCase {
         let page = makeService().playlistPage(value, offset: 0)
 
         XCTAssertEqual(page.items.map(\.playlistID), [1])
+    }
+
+    // The reported defect: the shelf showed one playlist out of eight. Any
+    // one of these markers on its own used to delete a real playlist, and VK
+    // stamps them on ordinary playlists all the time.
+    func testASingleAmbiguousMarkerNeverDropsAPlaylist() throws {
+        let value = try payload(
+            """
+            {
+              "count": 4,
+              "items": [
+                {
+                  "id": 1,
+                  "owner_id": 100,
+                  "title": "Сохранённый плейлист",
+                  "type": 1,
+                  "count": 12
+                },
+                {
+                  "id": 2,
+                  "owner_id": 100,
+                  "title": "С артиста",
+                  "main_artists": [{"name": "Artist"}],
+                  "count": 30
+                },
+                {
+                  "id": 3,
+                  "owner_id": 100,
+                  "title": "Итоги 2019",
+                  "year": 2019,
+                  "count": 40
+                },
+                {
+                  "id": 4,
+                  "owner_id": 100,
+                  "title": "Сингловый вечер",
+                  "album_type": "single",
+                  "count": 7
+                }
+              ]
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0)
+
+        XCTAssertEqual(page.items.map(\.playlistID), [1, 2, 3, 4])
     }
 
     func testPlaylistTypedEntriesAreNeverMistakenForAlbums() throws {
@@ -124,6 +175,34 @@ final class LibraryPlaylistPagingTests: XCTestCase {
         XCTAssertEqual(page.items.map(\.playlistID), [1, 2])
     }
 
+    // A playlist saved from another owner carries `original`, and VK types
+    // some of them as `1`. It is still a playlist.
+    func testASavedPlaylistSurvivesEveryReleaseMarker() throws {
+        let value = try payload(
+            """
+            {
+              "count": 1,
+              "items": [
+                {
+                  "id": 7,
+                  "owner_id": 300,
+                  "title": "Сборник друга",
+                  "type": 1,
+                  "year": 2020,
+                  "main_artists": [{"name": "Artist"}],
+                  "original": {"playlist_id": 9, "owner_id": 300},
+                  "count": 3
+                }
+              ]
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0)
+
+        XCTAssertEqual(page.items.map(\.playlistID), [7])
+    }
+
     // Advancing by the number of decoded playlists would re-request this
     // window forever whenever VK filled a page with followed albums.
     func testOffsetAdvancesByRawEntriesNotByDecodedPlaylists() throws {
@@ -133,8 +212,22 @@ final class LibraryPlaylistPagingTests: XCTestCase {
               "count": 250,
               "items": [
                 {"id": 1, "owner_id": 100, "title": "Дорога", "count": 12},
-                {"id": 2, "owner_id": -5, "title": "A", "type": 1},
-                {"id": 3, "owner_id": -6, "title": "B", "type": 1}
+                {
+                  "id": 2,
+                  "owner_id": -5,
+                  "title": "A",
+                  "type": 1,
+                  "year": 2021,
+                  "main_artists": [{"name": "Artist"}]
+                },
+                {
+                  "id": 3,
+                  "owner_id": -6,
+                  "title": "B",
+                  "type": 1,
+                  "year": 2022,
+                  "main_artists": [{"name": "Artist"}]
+                }
               ]
             }
             """
@@ -264,6 +357,99 @@ final class PlaylistLibraryViewModelTests: XCTestCase {
 
         XCTAssertTrue(model.playlists.isEmpty)
         XCTAssertNotNil(model.errorMessage)
+    }
+
+    // The library task is cancelled on every tab switch and token change. A
+    // prefetch cut short there used to count as done, so the shelf stayed on
+    // whichever page happened to land first.
+    func testACancelledPrefetchIsResumedByTheNextLoad() async {
+        let model = PlaylistLibraryViewModel()
+        model.configure(ownerID: 100)
+
+        await model.load(pages: 5) { offset in
+            guard offset == 0 else { throw CancellationError() }
+            return MusicPage(
+                items: [makePlaylist(id: 1, title: "Дорога")],
+                totalCount: 8,
+                nextOffset: 1
+            )
+        }
+        XCTAssertEqual(model.playlists.count, 1)
+
+        await model.load(pages: 5) { offset in
+            MusicPage(
+                items: [makePlaylist(id: offset + 1, title: "P\(offset)")],
+                totalCount: 8,
+                nextOffset: offset + 1 < 8 ? offset + 1 : nil
+            )
+        }
+
+        XCTAssertEqual(model.playlists.count, 5)
+    }
+
+    func testACompletedPrefetchIsNotRepeated() async {
+        let model = PlaylistLibraryViewModel()
+        model.configure(ownerID: 100)
+        let recorder = OffsetRecorder()
+
+        for _ in 0..<3 {
+            await model.load { offset in
+                recorder.offsets.append(offset)
+                return MusicPage(
+                    items: [makePlaylist(id: 1, title: "Дорога")],
+                    totalCount: 1,
+                    nextOffset: nil
+                )
+            }
+        }
+
+        XCTAssertEqual(recorder.offsets, [0])
+    }
+
+    // Albums ride along in the unfiltered playlist list. The Albums shelf
+    // knows their exact ids, so the playlist shelf drops them by id rather
+    // than guessing from the shape of the entry.
+    func testFollowedAlbumIdentitiesAreDroppedFromTheShelf() async {
+        let model = PlaylistLibraryViewModel()
+        model.configure(
+            ownerID: 100,
+            followedAlbumIdentities: ["-5_2"]
+        )
+
+        await model.load { _ in
+            MusicPage(
+                items: [
+                    makePlaylist(id: 1, title: "Дорога"),
+                    Playlist(id: 2, ownerID: -5, title: "Release", count: 10),
+                    makePlaylist(id: 3, title: "Джаз")
+                ],
+                totalCount: 3,
+                nextOffset: nil
+            )
+        }
+
+        XCTAssertEqual(model.playlists.map(\.title), ["Дорога", "Джаз"])
+    }
+
+    func testAlbumsThatLandAfterThePrefetchAreFilteredWithoutARefetch() async {
+        let model = PlaylistLibraryViewModel()
+        model.configure(ownerID: 100)
+
+        await model.load { _ in
+            MusicPage(
+                items: [
+                    makePlaylist(id: 1, title: "Дорога"),
+                    Playlist(id: 2, ownerID: -5, title: "Release", count: 10)
+                ],
+                totalCount: 2,
+                nextOffset: nil
+            )
+        }
+        XCTAssertEqual(model.playlists.count, 2)
+
+        model.excludeFollowedAlbums(["-5_2"])
+
+        XCTAssertEqual(model.playlists.map(\.title), ["Дорога"])
     }
 
     private func makePlaylist(id: Int, title: String) -> Playlist {
