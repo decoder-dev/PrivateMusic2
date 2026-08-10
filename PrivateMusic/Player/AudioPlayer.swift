@@ -483,6 +483,7 @@ final class AudioPlayer: ObservableObject {
     /// catalog/library EnvironmentObject consumers are not invalidated at 2 Hz.
     private(set) var elapsedTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
+    /// Shuffle mode of the queue that is playing right now.
     @Published private(set) var shuffleEnabled: Bool
     @Published private(set) var repeatMode: RepeatMode
     @Published private(set) var sleepTimerEndDate: Date?
@@ -504,6 +505,12 @@ final class AudioPlayer: ObservableObject {
     /// The queue as its source handed it over, before shuffle reordered it.
     /// Turning shuffle off replays this order (see `PlaybackShuffleOrder`).
     private var sourceOrderedQueue: [Track] = []
+
+    /// What the player's shuffle control is set to, which is not the same
+    /// thing as `shuffleEnabled`: per-collection «Перемешать» shuffles the
+    /// queue it starts without changing the preference, so the next queue
+    /// built from a visible list still plays in that list's order.
+    private var shufflePreference: Bool
 
     private var player = AVPlayer()
     private let nowPlaying = NowPlayingController()
@@ -667,7 +674,10 @@ final class AudioPlayer: ObservableObject {
         // unity so the system volume slider is the only attenuation.
         advanceOnPlaybackError = settings.advanceOnPlaybackError
         preferHighQuality = settings.preferHighQuality
-        shuffleEnabled = defaults.bool(forKey: "player.shuffle")
+        shufflePreference = PlaybackShufflePreference.resolve(
+            defaults: defaults
+        )
+        shuffleEnabled = shufflePreference
         repeatMode = RepeatMode(
             rawValue: defaults.string(forKey: "player.repeat") ?? ""
         ) ?? .off
@@ -826,11 +836,17 @@ final class AudioPlayer: ObservableObject {
         scheduleNeighborPreloads()
     }
 
+    /// Starts `tracks` at `track`.
+    ///
+    /// With shuffle off the queue *is* the collection, in the order it was
+    /// handed over, positioned on the tapped track — that is the contract
+    /// Медиатека depends on.
     func play(
         _ track: Track,
         in tracks: [Track],
         continuation: (() async throws -> [Track])? = nil,
-        source: QueueSource? = nil
+        source: QueueSource? = nil,
+        shuffle intent: PlaybackShuffleIntent = .followPreference
     ) {
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
@@ -858,6 +874,10 @@ final class AudioPlayer: ObservableObject {
             selected: track,
             tracks: tracks
         )
+        // A new queue starts in the mode its caller asked for. Without this
+        // one «Перемешать» on an album left every later library tap
+        // shuffled for the rest of the session.
+        shuffleEnabled = intent == .shuffleCollection || shufflePreference
         // Snapshot the order the collection arrived in before anything
         // reorders it, so switching shuffle off restores «по очереди».
         sourceOrderedQueue = prepared
@@ -908,11 +928,11 @@ final class AudioPlayer: ObservableObject {
     /// Starts a collection with shuffle on — for album/playlist detail
     /// «Перемешать» without opening the full-screen player first.
     ///
-    /// Deliberately does not write `player.shuffle`: this is a per-collection
-    /// entry point, and persisting it latched shuffle on for every later
-    /// queue, including Медиатека, across app launches. The control still
-    /// reads `shuffleEnabled`, so the shuffled queue reports itself
-    /// correctly and one tap turns it off.
+    /// Deliberately touches neither `player.shuffle` nor the in-memory
+    /// preference: this is a per-collection entry point, and letting it set
+    /// the preference latched shuffle on for every later queue, including
+    /// Медиатека. The queue it starts still reports itself as shuffled, so
+    /// the control is honest and one tap turns it off.
     func playShuffled(
         in tracks: [Track],
         continuation: (() async throws -> [Track])? = nil,
@@ -921,8 +941,13 @@ final class AudioPlayer: ObservableObject {
         guard let seed = tracks.randomElement() ?? tracks.first else {
             return
         }
-        shuffleEnabled = true
-        play(seed, in: tracks, continuation: continuation, source: source)
+        play(
+            seed,
+            in: tracks,
+            continuation: continuation,
+            source: source,
+            shuffle: .shuffleCollection
+        )
     }
 
     func playNext(_ track: Track) {
@@ -1009,7 +1034,9 @@ final class AudioPlayer: ObservableObject {
         cancelContinuation()
         cancelMixRadioRefill()
         shuffleEnabled.toggle()
-        defaults.set(shuffleEnabled, forKey: "player.shuffle")
+        // The control is the only thing that may change the preference.
+        shufflePreference = shuffleEnabled
+        PlaybackShufflePreference.store(shuffleEnabled, in: defaults)
         guard let currentTrack else { return }
         if shuffleEnabled {
             // Remember what the queue looked like before this shuffle, not
