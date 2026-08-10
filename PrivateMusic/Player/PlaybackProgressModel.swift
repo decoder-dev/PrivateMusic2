@@ -29,7 +29,7 @@ final class PlaybackProgressModel: ObservableObject {
     }
 }
 
-/// Track identity + play state for dense list rows, isolated from
+/// Track identity, queue source + play state for dense list rows, isolated from
 /// `AudioPlayer`'s EnvironmentObject fan-out the same way the model above
 /// isolates the clock: buffering / duration / shuffle changes on the player
 /// must not invalidate every visible row.
@@ -37,13 +37,18 @@ final class PlaybackProgressModel: ObservableObject {
 final class PlaybackHighlightModel: ObservableObject {
     @Published private(set) var currentTrackID: String?
     @Published private(set) var isPlaying = false
+    /// What started the current queue, so shelves (library/catalog cards)
+    /// can flip their play chip to a pause chip without observing the full
+    /// `AudioPlayer` and rebuilding on every buffering / duration tick.
+    @Published private(set) var queueSource: QueueSource?
 
     /// No-op when nothing changed: the player mirrors its state here on every
     /// queue / index / transport mutation, and most of those repeat the same
-    /// pair of values.
+    /// values.
     func update(
         currentTrackID: String?,
-        isPlaying: Bool
+        isPlaying: Bool,
+        queueSource: QueueSource? = nil
     ) {
         if self.currentTrackID != currentTrackID {
             self.currentTrackID = currentTrackID
@@ -51,10 +56,25 @@ final class PlaybackHighlightModel: ObservableObject {
         if self.isPlaying != isPlaying {
             self.isPlaying = isPlaying
         }
+        if self.queueSource != queueSource {
+            self.queueSource = queueSource
+        }
     }
 
     func isCurrent(_ trackID: String) -> Bool {
         currentTrackID == trackID
+    }
+
+    /// Whether `source` is the collection currently loaded into the queue
+    /// (regardless of transport state) — used to decide play-vs-resume.
+    func isCurrentSource(_ source: QueueSource) -> Bool {
+        queueSource == source
+    }
+
+    /// Whether `source` is the collection currently loaded into the queue
+    /// AND actively playing — used to decide play-vs-pause.
+    func isPlayingSource(_ source: QueueSource) -> Bool {
+        isPlaying && isCurrentSource(source)
     }
 }
 
