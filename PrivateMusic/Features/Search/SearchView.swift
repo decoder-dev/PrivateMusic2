@@ -5,13 +5,14 @@ struct SearchView: View {
         case tracks = "Треки"
         case artists = "Исполнители"
         case albums = "Альбомы"
+        case playlists = "Плейлисты"
 
         var title: String { L10n.text(rawValue) }
 
         /// Segmented picker clips the full artist label on compact widths.
         var compactTitle: String {
             switch self {
-            case .tracks, .albums:
+            case .tracks, .albums, .playlists:
                 return title
             case .artists:
                 return L10n.text("Артисты")
@@ -63,6 +64,7 @@ struct SearchView: View {
         }
         .onChange(of: scope) { _ in
             loadAlbumsIfNeeded()
+            loadPlaylistsIfNeeded()
         }
         .onChange(of: isActive) { active in
             guard !active else { return }
@@ -100,7 +102,7 @@ struct SearchView: View {
                 .accessibilityHidden(true)
 
             TextField(
-                L10n.text("Трек, исполнитель или альбом"),
+                L10n.text("Трек, исполнитель, альбом или плейлист"),
                 text: $model.query
             )
             .focused($isSearchFocused)
@@ -161,14 +163,7 @@ struct SearchView: View {
         case .results:
             searchResults
         case .empty:
-            SearchStatusView(
-                title: "Ничего не найдено",
-                systemImage: "magnifyingglass",
-                description: L10n.format(
-                    "По запросу «%@» нет результатов.",
-                    model.normalizedQuery
-                )
-            )
+            searchResults
         case let .failure(message):
             SearchStatusView(
                 title: "Ошибка поиска",
@@ -319,7 +314,8 @@ struct SearchView: View {
                     SearchStatusView(
                         title: "Треки не найдены",
                         systemImage: "music.note",
-                        description: "Попробуйте вкладку альбомов или исполнителей."
+                        description:
+                            "Попробуйте вкладку альбомов, исполнителей или плейлистов."
                     )
                 } else {
                     trackResults
@@ -334,7 +330,7 @@ struct SearchView: View {
                 } else {
                     artistResults
                 }
-            } else {
+            } else if scope == .albums {
                 if model.isLoadingAlbums && model.albums.isEmpty {
                     searchLoading
                 } else if let error = model.albumErrorMessage,
@@ -354,6 +350,27 @@ struct SearchView: View {
                     )
                 } else {
                     albumResults
+                }
+            } else {
+                if model.isLoadingPlaylists && model.playlists.isEmpty {
+                    searchLoading
+                } else if let error = model.playlistErrorMessage,
+                          model.playlists.isEmpty {
+                    SearchStatusView(
+                        title: "Ошибка поиска плейлистов",
+                        systemImage: "wifi.exclamationmark",
+                        description: error,
+                        actionTitle: "Повторить",
+                        action: submitSearch
+                    )
+                } else if model.playlists.isEmpty {
+                    SearchStatusView(
+                        title: "Плейлисты не найдены",
+                        systemImage: "rectangle.stack",
+                        description: "Попробуйте изменить запрос."
+                    )
+                } else {
+                    playlistResults
                 }
             }
         }
@@ -526,6 +543,73 @@ struct SearchView: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
+    private var playlistResults: some View {
+        List {
+            searchTopAnchor
+            ForEach(
+                Array(model.playlists.enumerated()),
+                id: \.element.searchIdentity
+            ) { index, playlist in
+                NavigationLink {
+                    PlaylistDetailView(playlist: playlist)
+                } label: {
+                    HStack(spacing: 12) {
+                        PlaylistArtworkView(
+                            playlist: playlist,
+                            size: 56,
+                            showsSource: false
+                        )
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(playlist.title)
+                                .font(.headline)
+                                .lineLimit(2)
+                            Text(L10n.trackCount(playlist.count))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(
+                                L10n.format(
+                                    "Из %@",
+                                    playlist.source.title
+                                )
+                            )
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PremiumPressStyle())
+                .listRowBackground(Color.clear)
+                .premiumAppear(delay: min(Double(index) * 0.025, 0.2))
+                .onAppear {
+                    if playlist.searchIdentity
+                        == model.playlists.last?.searchIdentity {
+                        loadMorePlaylists()
+                    }
+                }
+            }
+            if model.isLoadingMorePlaylists {
+                HStack {
+                    Spacer()
+                    ProgressView("Загружаем ещё…")
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+            } else if let message = model.playlistErrorMessage {
+                inlineRetry(message: message, action: loadMorePlaylists)
+                    .listRowBackground(Color.clear)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+    }
+
     private func inlineRetry(
         message: String,
         action: @escaping () -> Void
@@ -576,6 +660,8 @@ struct SearchView: View {
         model.schedule(operation: search)
         if scope == .albums {
             model.scheduleAlbums(operation: searchAlbums)
+        } else if scope == .playlists {
+            model.schedulePlaylists(operation: searchPlaylists)
         }
     }
 
@@ -584,12 +670,20 @@ struct SearchView: View {
         model.submit(operation: search)
         if scope == .albums {
             model.submitAlbums(operation: searchAlbums)
+        } else if scope == .playlists {
+            model.submitPlaylists(operation: searchPlaylists)
         }
     }
 
     private func loadAlbumsIfNeeded() {
         guard sessionStore.accessToken != nil, scope == .albums else { return }
         model.submitAlbums(operation: searchAlbums)
+    }
+
+    private func loadPlaylistsIfNeeded() {
+        guard sessionStore.accessToken != nil,
+              scope == .playlists else { return }
+        model.submitPlaylists(operation: searchPlaylists)
     }
 
     private func search(
@@ -620,6 +714,34 @@ struct SearchView: View {
                 count: count
             )
         }
+    }
+
+    private func searchPlaylists(
+        query: String,
+        offset: Int,
+        count: Int
+    ) async throws -> MusicPage<Playlist> {
+        let page = try await environment.withAuthorizedToken { token in
+            try await environment.musicService.playlists(
+                accessToken: token,
+                offset: offset,
+                count: count
+            )
+        }
+        let normalized = query.folding(
+            options: [.caseInsensitive, .diacriticInsensitive],
+            locale: .current
+        )
+        .lowercased()
+        let filtered = page.items.filter { playlist in
+            playlist.title.searchMatches(normalized)
+                || (playlist.description?.searchMatches(normalized) ?? false)
+        }
+        return MusicPage(
+            items: filtered,
+            totalCount: filtered.count,
+            nextOffset: page.nextOffset
+        )
     }
 
     private func add(_ track: Track) {
@@ -659,6 +781,13 @@ struct SearchView: View {
         }
     }
 
+    private func loadMorePlaylists() {
+        guard sessionStore.accessToken != nil else { return }
+        Task {
+            await model.loadMorePlaylists(operation: searchPlaylists)
+        }
+    }
+
     private func toggleAlbum(_ album: Album) {
         guard pendingAlbumIDs.insert(album.compositeID).inserted else {
             return
@@ -687,6 +816,23 @@ struct SearchView: View {
                 model.actionErrorMessage = error.localizedDescription
             }
         }
+    }
+}
+
+private extension String {
+    func searchMatches(_ normalizedQuery: String) -> Bool {
+        folding(
+            options: [.caseInsensitive, .diacriticInsensitive],
+            locale: .current
+        )
+        .lowercased()
+        .contains(normalizedQuery)
+    }
+}
+
+private extension Playlist {
+    var searchIdentity: String {
+        "\(ownerID)_\(id)"
     }
 }
 

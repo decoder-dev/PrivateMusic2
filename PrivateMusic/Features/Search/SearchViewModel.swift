@@ -15,6 +15,8 @@ final class SearchViewModel: ObservableObject {
         (String, Int, Int) async throws -> MusicPage<Track>
     typealias AlbumSearchOperation =
         (String, Int, Int) async throws -> MusicPage<Album>
+    typealias PlaylistSearchOperation =
+        (String, Int, Int) async throws -> MusicPage<Playlist>
     typealias AddOperation = (Track) async throws -> Track
 
     static let minimumQueryLength = 2
@@ -22,11 +24,15 @@ final class SearchViewModel: ObservableObject {
     @Published var query = ""
     @Published private(set) var tracks: [Track] = []
     @Published private(set) var albums: [Album] = []
+    @Published private(set) var playlists: [Playlist] = []
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingMore = false
     @Published private(set) var isLoadingAlbums = false
     @Published private(set) var isLoadingMoreAlbums = false
+    @Published private(set) var isLoadingPlaylists = false
+    @Published private(set) var isLoadingMorePlaylists = false
     @Published var albumErrorMessage: String?
+    @Published var playlistErrorMessage: String?
     @Published private(set) var recentQueries: [String]
     @Published private(set) var errorMessage: String?
     @Published private(set) var paginationErrorMessage: String?
@@ -34,12 +40,16 @@ final class SearchViewModel: ObservableObject {
 
     private var searchTask: Task<Void, Never>?
     private var albumSearchTask: Task<Void, Never>?
+    private var playlistSearchTask: Task<Void, Never>?
     private var searchRevision = 0
     private var nextOffset: Int?
     private var activeQuery = ""
     private var albumSearchRevision = 0
     private var albumNextOffset: Int?
     private var activeAlbumQuery = ""
+    private var playlistSearchRevision = 0
+    private var playlistNextOffset: Int?
+    private var activePlaylistQuery = ""
     private let defaults: UserDefaults
     private let historyKey = "search.recent.queries.v1"
     private let debounceDuration: Duration
@@ -66,16 +76,22 @@ final class SearchViewModel: ObservableObject {
         if normalizedQuery.count < Self.minimumQueryLength {
             return .needsMoreCharacters
         }
-        if (isLoading || isLoadingAlbums), tracks.isEmpty, albums.isEmpty {
+        if (isLoading || isLoadingAlbums || isLoadingPlaylists),
+           tracks.isEmpty,
+           albums.isEmpty,
+           playlists.isEmpty {
             return .loading
         }
-        if !tracks.isEmpty || !albums.isEmpty {
+        if !tracks.isEmpty || !albums.isEmpty || !playlists.isEmpty {
             return .results
         }
-        if let message = errorMessage ?? albumErrorMessage {
+        if let message = errorMessage ?? albumErrorMessage
+            ?? playlistErrorMessage {
             return .failure(message)
         }
-        if activeQuery == normalizedQuery {
+        if activeQuery == normalizedQuery
+            || activeAlbumQuery == normalizedQuery
+            || activePlaylistQuery == normalizedQuery {
             return .empty
         }
         return .idle
@@ -120,6 +136,14 @@ final class SearchViewModel: ObservableObject {
 
     func submitAlbums(operation: @escaping AlbumSearchOperation) {
         beginAlbumSearch(delay: .zero, operation: operation)
+    }
+
+    func schedulePlaylists(operation: @escaping PlaylistSearchOperation) {
+        beginPlaylistSearch(delay: debounceDuration, operation: operation)
+    }
+
+    func submitPlaylists(operation: @escaping PlaylistSearchOperation) {
+        beginPlaylistSearch(delay: .zero, operation: operation)
     }
 
     private func beginAlbumSearch(
@@ -198,6 +222,85 @@ final class SearchViewModel: ObservableObject {
         }
     }
 
+    private func beginPlaylistSearch(
+        delay: Duration,
+        operation: @escaping PlaylistSearchOperation
+    ) {
+        playlistSearchTask?.cancel()
+        playlistSearchRevision += 1
+        let revision = playlistSearchRevision
+        let requestedQuery = normalizedQuery
+        playlistErrorMessage = nil
+        isLoadingMorePlaylists = false
+        guard requestedQuery.count >= Self.minimumQueryLength else {
+            playlists = []
+            playlistNextOffset = nil
+            activePlaylistQuery = ""
+            isLoadingPlaylists = false
+            return
+        }
+        if requestedQuery != activePlaylistQuery {
+            playlists = []
+            playlistNextOffset = nil
+        }
+        isLoadingPlaylists = true
+        playlistSearchTask = Task {
+            do {
+                try await Task.sleep(for: delay)
+                let page = try await operation(requestedQuery, 0, 100)
+                guard revision == playlistSearchRevision,
+                      !Task.isCancelled else { return }
+                playlists = Self.uniquePlaylists(page.items)
+                playlistNextOffset = page.nextOffset
+                activePlaylistQuery = requestedQuery
+                if !playlists.isEmpty {
+                    record(requestedQuery)
+                }
+                playlistErrorMessage = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                guard revision == playlistSearchRevision else { return }
+                activePlaylistQuery = requestedQuery
+                playlistErrorMessage = error.localizedDescription
+            }
+            if revision == playlistSearchRevision {
+                isLoadingPlaylists = false
+            }
+        }
+    }
+
+    func loadMorePlaylists(operation: PlaylistSearchOperation) async {
+        let requestedQuery = normalizedQuery
+        guard requestedQuery == activePlaylistQuery,
+              !isLoadingPlaylists,
+              !isLoadingMorePlaylists,
+              let offset = playlistNextOffset else { return }
+        isLoadingMorePlaylists = true
+        let revision = playlistSearchRevision
+        defer { isLoadingMorePlaylists = false }
+        do {
+            let page = try await operation(requestedQuery, offset, 100)
+            guard revision == playlistSearchRevision,
+                  requestedQuery == activePlaylistQuery,
+                  !Task.isCancelled else {
+                return
+            }
+            playlists.append(
+                contentsOf: Self.uniquePlaylists(
+                    page.items,
+                    excluding: Set(playlists.map(Self.playlistIdentity))
+                )
+            )
+            playlistNextOffset = page.nextOffset
+            playlistErrorMessage = nil
+        } catch {
+            guard revision == playlistSearchRevision,
+                  !Self.isCancellation(error) else { return }
+            playlistErrorMessage = error.localizedDescription
+        }
+    }
+
     private func beginSearch(
         delay: Duration,
         operation: @escaping SearchOperation
@@ -214,13 +317,40 @@ final class SearchViewModel: ObservableObject {
             tracks = []
             nextOffset = nil
             activeQuery = ""
+            albumSearchTask?.cancel()
+            albums = []
+            albumNextOffset = nil
+            activeAlbumQuery = ""
+            albumErrorMessage = nil
+            playlists = []
+            playlistNextOffset = nil
+            activePlaylistQuery = ""
+            playlistErrorMessage = nil
             isLoading = false
+            isLoadingAlbums = false
+            isLoadingPlaylists = false
             return
         }
 
         if requestedQuery != activeQuery {
             tracks = []
             nextOffset = nil
+        }
+        if requestedQuery != activeAlbumQuery {
+            albumSearchTask?.cancel()
+            albums = []
+            albumNextOffset = nil
+            activeAlbumQuery = ""
+            albumErrorMessage = nil
+            isLoadingAlbums = false
+        }
+        if requestedQuery != activePlaylistQuery {
+            playlistSearchTask?.cancel()
+            playlists = []
+            playlistNextOffset = nil
+            activePlaylistQuery = ""
+            playlistErrorMessage = nil
+            isLoadingPlaylists = false
         }
         isLoading = true
         searchTask = Task {
@@ -398,6 +528,20 @@ final class SearchViewModel: ObservableObject {
     ) -> [Album] {
         var known = excludedIDs
         return albums.filter { known.insert($0.compositeID).inserted }
+    }
+
+    private static func uniquePlaylists(
+        _ playlists: [Playlist],
+        excluding excludedIDs: Set<String> = []
+    ) -> [Playlist] {
+        var known = excludedIDs
+        return playlists.filter {
+            known.insert(playlistIdentity($0)).inserted
+        }
+    }
+
+    private static func playlistIdentity(_ playlist: Playlist) -> String {
+        "\(playlist.ownerID)_\(playlist.id)"
     }
 
     private static func isCancellation(_ error: Error) -> Bool {

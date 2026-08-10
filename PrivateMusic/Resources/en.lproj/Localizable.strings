@@ -81,7 +81,9 @@
 "Треки" = "Tracks";
 "Исполнители" = "Artists";
 "Артисты" = "Artists";
+"Трек, исполнитель, альбом или плейлист" = "Track, artist, album, or playlist";
 "Ошибка поиска" = "Search Error";
+"Ошибка поиска плейлистов" = "Playlist search failed";
 "Ничего не найдено" = "No Results";
 "По запросу «%@» нет результатов." = "No results for “%@”.";
 "Тип поиска" = "Search Type";
@@ -284,6 +286,7 @@
 "Добавленные во VK треки появятся здесь." = "Tracks added to your VK library will appear here.";
 "Не удалось загрузить треки" = "Could Not Load Tracks";
 "Плейлисты" = "Playlists";
+"Плейлисты не найдены" = "No playlists found";
 "Нет своих плейлистов" = "No Available Playlists";
 "Создайте плейлист в медиатеке." = "Create a playlist in your library.";
 "Не удалось добавить" = "Could Not Add";
@@ -543,6 +546,7 @@
 "Не удалось загрузить треки этого альбома. Попробуйте ещё раз или найдите его в поиске." = "Could not load this album’s tracks. Try again or find it in Search.";
 "Громкость" = "Volume";
 "Обработка выполняется на устройстве и применяется к наушникам, колонкам и CarKit / Bluetooth автомобиля." = "Processing runs on device and applies to headphones, speakers, and CarKit / car Bluetooth.";
+"Обработка звука может отключить AirPlay." = "Audio processing may disable AirPlay.";
 
 "Почему Селена" = "Why Selena";
 "Почему этот микс" = "Why This Mix";
@@ -633,6 +637,7 @@
 "Полки каталога VK" = "VK catalog shelves";
 "Полосы частот" = "Frequency Bands";
 "Попробуйте вкладку альбомов или исполнителей." = "Try the albums or artists tab.";
+"Попробуйте вкладку альбомов, исполнителей или плейлистов." = "Try the albums, artists, or playlists tab.";
 "Попробуйте изменить запрос." = "Try changing your query.";
 "Предпочитает HQ-потоки VK и не ограничивает битрейт HLS. Выключите, чтобы экономить трафик (~160 кбит/с). Lossless у VK нет." = "Prefers VK HQ streams and does not cap the HLS bitrate. Turn it off to save data (~160 kbps). VK has no lossless.";
 "Радостно" = "Joyful";

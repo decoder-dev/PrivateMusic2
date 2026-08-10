@@ -87,6 +87,28 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertTrue(context.model.tracks.isEmpty)
     }
 
+    func testPlaylistResultsProduceResultsStateAndRecentQuery() async {
+        let context = makeModel(debounce: .zero)
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        context.model.query = "road"
+
+        context.model.submitPlaylists { query, _, _ in
+            Self.playlistPage(items: [
+                Self.playlist(id: 1, title: "Road Mix"),
+                Self.playlist(id: 2, title: "Evening")
+            ].filter {
+                $0.title.localizedCaseInsensitiveContains(query)
+            })
+        }
+        await waitUntil { !context.model.isLoadingPlaylists }
+
+        XCTAssertEqual(context.model.playlists.map(\.title), ["Road Mix"])
+        XCTAssertEqual(context.model.state, .results)
+        XCTAssertEqual(context.model.recentQueries.first, "road")
+    }
+
     func testChangingQueryResetsPaginationLoadingState() async {
         let context = makeModel(debounce: .seconds(1))
         defer {
@@ -188,6 +210,17 @@ final class SearchViewModelTests: XCTestCase {
         )
     }
 
+    private nonisolated static func playlistPage(
+        items: [Playlist],
+        nextOffset: Int? = nil
+    ) -> MusicPage<Playlist> {
+        MusicPage(
+            items: items,
+            totalCount: items.count,
+            nextOffset: nextOffset
+        )
+    }
+
     private nonisolated static func track(id: Int) -> Track {
         Track(
             trackID: id,
@@ -197,6 +230,18 @@ final class SearchViewModelTests: XCTestCase {
             duration: 180,
             streamURL: nil,
             artworkURL: nil
+        )
+    }
+
+    private nonisolated static func playlist(
+        id: Int,
+        title: String
+    ) -> Playlist {
+        Playlist(
+            id: id,
+            ownerID: 10,
+            title: title,
+            count: 12
         )
     }
 }
