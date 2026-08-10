@@ -378,7 +378,7 @@ final class AudioPlayerTransitionTests: XCTestCase {
         context.player.configureContinuation {
             requestCount += 1
             return [
-                track(
+                self.track(
                     id: 100 + requestCount,
                     duration: 200,
                     streamURL: silentWAVURL
