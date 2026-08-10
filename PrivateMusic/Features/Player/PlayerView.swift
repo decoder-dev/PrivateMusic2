@@ -19,6 +19,8 @@ struct PlayerView: View {
     @State private var isUpdatingLibrary = false
     @State private var scrubPosition: TimeInterval?
     @State private var showCopiedToast = false
+    @State private var showRouteHint = false
+    @State private var routeHintToken = UUID()
     @State private var sharingTrack: Track?
 
     var body: some View {
@@ -76,17 +78,23 @@ struct PlayerView: View {
             updateLibraryState()
         }
         .overlay(alignment: .bottom) {
-            if showCopiedToast {
-                Text(L10n.text("Ссылка скопирована"))
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .adaptiveGlass(in: Capsule())
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .padding(.bottom, 40)
+            VStack(spacing: 10) {
+                if showRouteHint {
+                    AudioProcessingRouteHintBanner()
+                }
+                if showCopiedToast {
+                    Text(L10n.text("Ссылка скопирована"))
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .adaptiveGlass(in: Capsule())
+                }
             }
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .padding(.bottom, 40)
         }
         .animation(.easeInOut(duration: 0.3), value: showCopiedToast)
+        .animation(.easeInOut(duration: 0.3), value: showRouteHint)
     }
 
     private var artworkBackground: some View {
@@ -271,7 +279,8 @@ struct PlayerView: View {
 
                     HStack(spacing: 8) {
                         AirPlayRoutePicker(
-                            tintColor: UIColor(playerForeground)
+                            tintColor: UIColor(playerForeground),
+                            onWillPresent: handleAirPlayRoutePickerOpened
                         )
                             .frame(width: 44, height: 44)
                             .adaptiveGlass(
@@ -879,6 +888,7 @@ struct PlayerView: View {
                 onSettings: {
                     deferFromActionSheet(.sheet(.settings))
                 },
+                onProcessingRouteHint: showProcessingRouteHint,
                 onDislikeTrack: {
                     presentedSheet = nil
                     environment.dislike(track, includeArtist: false)
@@ -1007,6 +1017,29 @@ struct PlayerView: View {
                 return
             }
             showCopiedToast = false
+        }
+    }
+
+    private func handleAirPlayRoutePickerOpened() {
+        guard settings.equalizerEnabled || settings.spatialAudioEnabled else {
+            return
+        }
+        showProcessingRouteHint()
+    }
+
+    private func showProcessingRouteHint() {
+        let token = UUID()
+        routeHintToken = token
+        Haptics.open()
+        showRouteHint = true
+        Task { @MainActor in
+            do {
+                try await Task.sleep(for: .seconds(3))
+            } catch {
+                return
+            }
+            guard routeHintToken == token else { return }
+            showRouteHint = false
         }
     }
 
@@ -1496,6 +1529,7 @@ private struct PlayerActionsSheet: View {
     let onCopyLink: () -> Void
     let onOffline: () -> Void
     let onSettings: () -> Void
+    let onProcessingRouteHint: () -> Void
     let onDislikeTrack: () -> Void
     let onDislikeArtist: () -> Void
     let onMixFromTrack: () -> Void
@@ -1712,7 +1746,7 @@ private struct PlayerActionsSheet: View {
             Divider()
                 .padding(.leading, 58)
 
-            Toggle(isOn: $spatialAudioEnabled) {
+            Toggle(isOn: spatialAudioBinding) {
                 actionRowLabel(
                     "Пространственный звук",
                     systemImage: "dot.radiowaves.left.and.right"
@@ -1760,6 +1794,19 @@ private struct PlayerActionsSheet: View {
                 cornerRadius: PremiumLayout.compactRadius,
                 style: .continuous
             )
+        )
+    }
+
+    private var spatialAudioBinding: Binding<Bool> {
+        Binding(
+            get: { spatialAudioEnabled },
+            set: { newValue in
+                let wasEnabled = spatialAudioEnabled
+                spatialAudioEnabled = newValue
+                if newValue && !wasEnabled {
+                    onProcessingRouteHint()
+                }
+            }
         )
     }
 
@@ -1943,12 +1990,18 @@ private struct PlayerActionsSheet: View {
 
 private struct AirPlayRoutePicker: UIViewRepresentable {
     let tintColor: UIColor
+    let onWillPresent: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onWillPresent: onWillPresent)
+    }
 
     func makeUIView(context: Context) -> AVRoutePickerView {
         let picker = AVRoutePickerView(frame: .zero)
         picker.tintColor = tintColor
         picker.activeTintColor = tintColor
         picker.prioritizesVideoDevices = false
+        picker.delegate = context.coordinator
         return picker
     }
 
@@ -1956,8 +2009,24 @@ private struct AirPlayRoutePicker: UIViewRepresentable {
         _ picker: AVRoutePickerView,
         context: Context
     ) {
+        context.coordinator.onWillPresent = onWillPresent
         picker.tintColor = tintColor
         picker.activeTintColor = tintColor
+        picker.delegate = context.coordinator
+    }
+
+    final class Coordinator: NSObject, AVRoutePickerViewDelegate {
+        var onWillPresent: () -> Void
+
+        init(onWillPresent: @escaping () -> Void) {
+            self.onWillPresent = onWillPresent
+        }
+
+        func routePickerViewWillBeginPresentingRoutes(
+            _ routePickerView: AVRoutePickerView
+        ) {
+            onWillPresent()
+        }
     }
 }
 
@@ -2103,5 +2172,43 @@ private struct PlayerControlStyle: ButtonStyle {
                     : .easeOut(duration: 0.1),
                 value: configuration.isPressed
             )
+    }
+}
+
+struct AudioProcessingRouteHintBanner: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "airplayaudio")
+                .font(.subheadline.weight(.semibold))
+                .accessibilityHidden(true)
+            Text(L10n.text("Обработка звука может отключить AirPlay."))
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .adaptiveGlass(in: Capsule())
+        .accessibilityElement(children: .combine)
+    }
+}
+
+extension View {
+    func audioProcessingRouteHintOverlay(
+        isPresented: Binding<Bool>,
+        bottomPadding: CGFloat = 28
+    ) -> some View {
+        overlay(alignment: .bottom) {
+            if isPresented.wrappedValue {
+                AudioProcessingRouteHintBanner()
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, bottomPadding)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(
+            .easeInOut(duration: 0.3),
+            value: isPresented.wrappedValue
+        )
     }
 }
