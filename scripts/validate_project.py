@@ -154,6 +154,10 @@ for required_system_tab_symbol in (
         )
 if ".searchable(" not in search_view_source:
     fail("SearchView must bind system .searchable for the search tab role")
+if "SystemSearchTabModifier" not in search_view_source:
+    fail("SearchView must apply SystemSearchTabModifier outside ScrollViewReader")
+if "isSystemSearchPresented = true" not in search_view_source:
+    fail("Search tab activation must present the system search field")
 if "refillFromServer: false" not in audio_player_source:
     fail("appendToQueue must rerank locally without server mix-radio refill")
 if "func presentQueue()" not in audio_player_source:
