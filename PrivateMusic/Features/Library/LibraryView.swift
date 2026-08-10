@@ -798,43 +798,65 @@ struct LibraryView: View {
     }
 
     private func libraryRow(_ track: Track) -> some View {
+        // Photo-1 composition: art | title+artist | heart | duration | … 
+        // Title column must flex; trailing cluster stays fixed so rows align.
         HStack(spacing: 12) {
             Button {
-                environment.player.play(track, in: tracks.tracks)
+                Haptics.selection()
+                environment.player.play(
+                    track,
+                    in: filteredTracks.isEmpty ? tracks.tracks : filteredTracks
+                )
             } label: {
                 HStack(spacing: 12) {
-                AsyncArtwork(url: track.artworkURL, size: 48)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(track.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(
-                            isCurrent(track)
-                                ? currentTrackColor
-                                : Color.primary
-                        )
-                        .lineLimit(1)
-                    Text(track.artist)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer()
-                LikedTrackBadge(track: track)
-                Text(track.duration.formattedDuration)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                if isCurrent(track) {
-                    PlaybackIndicatorView(
-                        isPlaying: highlight.isPlaying,
-                        color: currentTrackColor
-                    )
-                    .font(.caption)
-                    .foregroundStyle(currentTrackColor)
-                }
+                    AsyncArtwork(url: track.artworkURL, size: 48)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        if let title = libraryUsableMetadata(track.title) {
+                            Text(title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(
+                                    isCurrent(track)
+                                        ? currentTrackColor
+                                        : Color.primary
+                                )
+                                .lineLimit(1)
+                        }
+                        if let artist = libraryUsableMetadata(track.artist) {
+                            Text(artist)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .layoutPriority(1)
+
+                    HStack(spacing: 8) {
+                        LikedTrackBadge(track: track)
+                        Text(track.duration.formattedDuration)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(minWidth: 36, alignment: .trailing)
+                        if isCurrent(track) {
+                            PlaybackIndicatorView(
+                                isPlaying: highlight.isPlaying,
+                                color: currentTrackColor
+                            )
+                            .font(.caption)
+                            .foregroundStyle(currentTrackColor)
+                            .frame(width: 14, alignment: .center)
+                        }
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(libraryRowAccessibilityLabel(track))
+            .accessibilityHint(L10n.text("Воспроизвести трек"))
+
             Menu {
                 Button {
                     environment.player.playNext(track)
@@ -884,11 +906,31 @@ struct LibraryView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
+                    .font(.body.weight(.medium))
                     .foregroundStyle(.secondary)
-                    .frame(width: 38, height: 44)
+                    .frame(width: 32, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel(L10n.text("Ещё"))
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
+    }
+
+    private func libraryUsableMetadata(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func libraryRowAccessibilityLabel(_ track: Track) -> String {
+        let metadata = [
+            libraryUsableMetadata(track.title),
+            libraryUsableMetadata(track.artist)
+        ]
+            .compactMap { $0 }
+            .joined(separator: " — ")
+        let duration = track.duration.formattedDuration
+        guard !metadata.isEmpty else { return duration }
+        return "\(metadata), \(duration)"
     }
 
     private func toggleOffline(_ track: Track) {
