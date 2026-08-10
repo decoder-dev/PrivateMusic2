@@ -153,6 +153,31 @@ final class MixQueueRankerTests: XCTestCase {
         )
     }
 
+    func testPublicRerankIsDeterministicForSameQueue() {
+        let seed = makeTrack(id: 1, artist: "Alpha")
+        let queue = [
+            seed,
+            makeTrack(id: 2, artist: "Beta"),
+            makeTrack(id: 3, artist: "Gamma"),
+            makeTrack(id: 4, artist: "Beta"),
+            makeTrack(id: 5, artist: "Delta"),
+            makeTrack(id: 6, artist: "Epsilon")
+        ]
+        let first = MixQueueRanker.rerank(
+            queue: queue,
+            currentIndex: 0,
+            seed: seed,
+            mode: .balanced
+        )
+        let second = MixQueueRanker.rerank(
+            queue: queue,
+            currentIndex: 0,
+            seed: seed,
+            mode: .balanced
+        )
+        XCTAssertEqual(first.map(\.id), second.map(\.id))
+    }
+
     private func makeTrack(id: Int, artist: String) -> Track {
         Track(
             trackID: id,

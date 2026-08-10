@@ -51,9 +51,8 @@ enum MixRadioMode: String, CaseIterable, Identifiable, Sendable {
 enum MixQueueRanker {
     /// Reorders only the unplayed suffix. Preserves played prefix + current.
     ///
-    /// All modes (including Баланс) diversify the upcoming queue: artist
-    /// spacing, novelty/affinity scoring, and light jitter so equal scores
-    /// do not freeze VK's original clustered order.
+    /// Ranking is deterministic for a given queue + mode so background
+    /// refreshes / accidental double-applies do not reshuffle mid-listen.
     static func rerank(
         queue: [Track],
         currentIndex: Int,
@@ -61,7 +60,13 @@ enum MixQueueRanker {
         mode: MixRadioMode,
         historyArtists: Set<String> = []
     ) -> [Track] {
-        var rng = SystemRandomNumberGenerator()
+        var rng = StableMixRNG(
+            seed: stableSeed(
+                queue: queue,
+                currentIndex: currentIndex,
+                mode: mode
+            )
+        )
         return rerank(
             queue: queue,
             currentIndex: currentIndex,
@@ -70,6 +75,32 @@ enum MixQueueRanker {
             historyArtists: historyArtists,
             rng: &rng
         )
+    }
+
+    /// Stable seed so the same upcoming set ranks the same way.
+    static func stableSeed(
+        queue: [Track],
+        currentIndex: Int,
+        mode: MixRadioMode
+    ) -> UInt64 {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        let mix: (UInt64, UInt64) -> UInt64 = { value, byte in
+            var next = value
+            next ^= byte
+            next &*= 0x1000_0000_01b3
+            return next
+        }
+        for (index, track) in queue.enumerated() {
+            hash = mix(hash, UInt64(index &+ 1))
+            for byte in track.id.utf8 {
+                hash = mix(hash, UInt64(byte))
+            }
+        }
+        hash = mix(hash, UInt64(currentIndex &+ 1))
+        for byte in mode.rawValue.utf8 {
+            hash = mix(hash, UInt64(byte))
+        }
+        return hash == 0 ? 0x9e37_79b9_7f4a_7c15 : hash
     }
 
     static func rerank<G: RandomNumberGenerator>(
@@ -253,5 +284,22 @@ enum MixQueueRanker {
             )
             .lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Deterministic RNG so mix ranking is stable for the same queue snapshot.
+struct StableMixRNG: RandomNumberGenerator {
+    private var state: UInt64
+
+    init(seed: UInt64) {
+        state = seed == 0 ? 0x9e37_79b9_7f4a_7c15 : seed
+    }
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9e37_79b9_7f4a_7c15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xbf58_476d_1ce4_e5b9
+        z = (z ^ (z >> 27)) &* 0x94d0_49bb_1331_11eb
+        return z ^ (z >> 31)
     }
 }

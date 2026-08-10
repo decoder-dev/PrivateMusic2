@@ -292,9 +292,13 @@ private struct SystemPlaybackAccessory: View {
         case .hidden:
             EmptyView()
         case .expanded:
-            // Full glass mini player — only safe while the accessory is expanded.
-            MiniPlayerView(playerNamespace: playerNamespace)
-                .padding(.horizontal, 4)
+            // System accessory already supplies Liquid Glass — don't stack
+            // a second glass plate (looks like a floating black pill).
+            MiniPlayerView(
+                playerNamespace: playerNamespace,
+                showsOwnGlassChrome: false
+            )
+            .padding(.horizontal, 4)
         case .inline:
             // Compact chrome sized for the minimized system tab bar.
             InlineMiniPlayerView(playerNamespace: playerNamespace)
@@ -332,31 +336,33 @@ private struct PlaybackTabDock: View {
     let playerNamespace: Namespace.ID
 
     var body: some View {
-        AdaptiveGlassContainer(spacing: 10) {
-            VStack(spacing: 12) {
-                if player.currentTrack != nil {
-                    MiniPlayerView(playerNamespace: playerNamespace)
-                        .transition(
-                            .move(edge: .bottom).combined(with: .opacity)
-                        )
-                }
-
-                HStack(spacing: 10) {
-                    HStack(spacing: 4) {
-                        ForEach(primaryTabs, id: \.self) { tab in
-                            tabButton(tab)
-                        }
-                    }
-                    .padding(5)
-                    .adaptiveGlass(
-                        in: Capsule(style: .continuous),
-                        interactive: true,
-                        tint: settings.theme.accent.opacity(0.06)
+        // Do NOT wrap mini-player + tab capsule + search in one
+        // GlassEffectContainer: iOS 26 morphs sibling glass into floating
+        // orbs (giant search circle, detached mini-player pill, stray
+        // accent blobs). Glass stays on each chrome piece individually.
+        VStack(spacing: 12) {
+            if player.currentTrack != nil {
+                MiniPlayerView(playerNamespace: playerNamespace)
+                    .transition(
+                        .move(edge: .bottom).combined(with: .opacity)
                     )
-                    .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
+            }
 
-                    searchTabButton
+            HStack(spacing: 10) {
+                HStack(spacing: 4) {
+                    ForEach(primaryTabs, id: \.self) { tab in
+                        tabButton(tab)
+                    }
                 }
+                .padding(5)
+                .adaptiveGlass(
+                    in: Capsule(style: .continuous),
+                    interactive: true,
+                    tint: settings.theme.accent.opacity(0.06)
+                )
+                .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
+
+                searchTabButton
             }
         }
         .dynamicTypeSize(...DynamicTypeSize.large)

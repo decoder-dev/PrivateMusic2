@@ -7,6 +7,10 @@ struct MiniPlayerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @GestureState private var dragOffset: CGSize = .zero
     let playerNamespace: Namespace.ID
+    /// Legacy floating dock needs its own glass plate. The iOS 26.1+
+    /// `tabViewBottomAccessory` already provides system chrome — stacking
+    /// another plate reads as a detached black pill over the tab bar.
+    var showsOwnGlassChrome: Bool = true
 
     var body: some View {
         if let track = player.currentTrack {
@@ -22,17 +26,15 @@ struct MiniPlayerView: View {
                 progressBar
             }
             .frame(minHeight: MiniPlayerLayoutMetrics.minHeight)
-            .adaptiveGlass(
-                in: containerShape,
-                interactive: true,
-                tint: settings.theme.accent.opacity(
-                    MiniPlayerLayoutMetrics.glassTintOpacity
+            .modifier(
+                MiniPlayerChromeModifier(
+                    showsOwnGlassChrome: showsOwnGlassChrome,
+                    shape: containerShape,
+                    tint: settings.theme.accent.opacity(
+                        MiniPlayerLayoutMetrics.glassTintOpacity
+                    ),
+                    shadowOpacity: settings.theme == .dark ? 0.18 : 0.08
                 )
-            )
-            .shadow(
-                color: .black.opacity(settings.theme == .dark ? 0.18 : 0.08),
-                radius: MiniPlayerLayoutMetrics.containerShadowRadius,
-                y: MiniPlayerLayoutMetrics.containerShadowY
             )
             .miniPlayerTransitionSource(playerNamespace)
             .offset(liveDragOffset)
@@ -294,6 +296,34 @@ struct MiniPlayerView: View {
             return "Воспроизводится"
         }
         return "На паузе"
+    }
+}
+
+/// Optional own glass plate for the mini player. System tab accessories
+/// already provide Liquid Glass; stacking another plate looks broken.
+private struct MiniPlayerChromeModifier<S: Shape>: ViewModifier {
+    let showsOwnGlassChrome: Bool
+    let shape: S
+    let tint: Color
+    let shadowOpacity: Double
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if showsOwnGlassChrome {
+            content
+                .adaptiveGlass(
+                    in: shape,
+                    interactive: true,
+                    tint: tint
+                )
+                .shadow(
+                    color: .black.opacity(shadowOpacity),
+                    radius: MiniPlayerLayoutMetrics.containerShadowRadius,
+                    y: MiniPlayerLayoutMetrics.containerShadowY
+                )
+        } else {
+            content
+        }
     }
 }
 
