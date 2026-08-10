@@ -1,6 +1,6 @@
 import Foundation
 
-/// Display mode for the system tab-bar bottom accessory on iOS 26.1+.
+/// Display mode for the system tab-bar bottom accessory on iOS 26.0+.
 enum MiniPlayerAccessoryMode: Equatable, Sendable {
     case expanded
     case inline
@@ -50,9 +50,11 @@ enum MiniPlayerAccessoryPolicy {
         mode == .expanded
     }
 
-    /// Expanded owns its glass chrome; inline relies on the system accessory.
+    /// System `tabViewBottomAccessory` already draws Liquid Glass for both
+    /// placements. Legacy floating dock opts into its own plate via
+    /// `MiniPlayerView(showsOwnGlassChrome: true)`.
     static func showsOwnGlassChrome(_ mode: MiniPlayerAccessoryMode) -> Bool {
-        mode == .expanded
+        false
     }
 
     static func showsBufferingIndicator(isBuffering: Bool) -> Bool {

@@ -130,7 +130,11 @@ struct ListeningHistoryView: View {
         }
         .background(ThemeBackground())
         .navigationTitle("История")
-        .searchable(text: $query, prompt: "Трек или исполнитель")
+        .searchable(
+            text: $query,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Трек или исполнитель"
+        )
         .trackShareSheet(track: $sharingTrack)
         .sheet(item: $playlistTarget) { track in
             AddToPlaylistView(track: track)

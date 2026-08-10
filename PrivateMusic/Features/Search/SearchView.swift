@@ -42,7 +42,7 @@ struct SearchView: View {
     var body: some View {
         // Keep `.searchable` on the NavigationStack root (outside
         // ScrollViewReader) so Tab(role: .search) + tabViewSearchActivation
-        // can bind the system search field on iOS 26.1+.
+        // can bind the system search field on iOS 26.0+.
         searchScrollRoot
             .background(ThemeBackground())
             .navigationTitle("Поиск")
@@ -63,7 +63,7 @@ struct SearchView: View {
                 if active {
                     // Activate the system search field when the search tab
                     // is selected (belt-and-suspenders with tab activation).
-                    if #available(iOS 26.1, *) {
+                    if #available(iOS 26.0, *) {
                         isSystemSearchPresented = true
                     }
                     return
@@ -108,10 +108,10 @@ struct SearchView: View {
         }
     }
 
-    /// Inline field only on the pre–iOS 26.1 custom dock path. System tabs
+    /// Inline field only on the pre–iOS 26 custom dock path. System tabs
     /// use `.searchable` instead so the search tab is not empty.
     private var showsInlineSearchField: Bool {
-        if #available(iOS 26.1, *) {
+        if #available(iOS 26.0, *) {
             return false
         }
         return true
@@ -855,7 +855,7 @@ struct SearchView: View {
     }
 }
 
-/// Binds system search chrome for `Tab(role: .search)` on iOS 26.1+.
+/// Binds system search chrome for `Tab(role: .search)` on iOS 26.0+.
 /// Older OS versions keep the inline custom field in `SearchView`.
 private struct SystemSearchTabModifier: ViewModifier {
     @Binding var query: String
@@ -864,7 +864,7 @@ private struct SystemSearchTabModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.1, *) {
+        if #available(iOS 26.0, *) {
             content
                 .searchable(
                     text: $query,

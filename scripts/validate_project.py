@@ -173,6 +173,20 @@ if "id: \\.offset" in queue_view_source:
     fail("QueueView must use stable track identity, not list offset")
 if "id: \\.element.id" not in queue_view_source:
     fail("QueueView must identify rows by track id")
+if "PlaybackAccessoryModifier" not in main_tab_source:
+    fail(
+        "iOS 26.0 must attach bottom accessory via PlaybackAccessoryModifier "
+        "(isEnabled overload is 26.1-only)"
+    )
+if "if #available(iOS 26.0, *)" not in main_tab_source:
+    fail("system Liquid Glass TabView must activate on iOS 26.0, not only 26.1")
+if "navigationBarDrawer(displayMode: .always)" not in (
+    SOURCE / "Features/Library/LibraryView.swift"
+).read_text(encoding="utf-8"):
+    fail(
+        "Library searchable must stay in the navigation drawer, "
+        "not compete with bottom tab chrome"
+    )
 append_fn = audio_player_source.split("func appendToQueue(", 1)
 if len(append_fn) < 2:
     fail("AudioPlayer must expose appendToQueue")
