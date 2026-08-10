@@ -300,6 +300,8 @@ private struct AppearanceSettingsView: View {
 
 private struct PlayerAudioSettingsView: View {
     @EnvironmentObject private var settings: AppSettings
+    @State private var showRouteHint = false
+    @State private var routeHintToken = UUID()
 
     var body: some View {
         Form {
@@ -416,7 +418,7 @@ private struct PlayerAudioSettingsView: View {
 
             Section("Пространственный звук") {
                 Toggle(
-                    isOn: $settings.spatialAudioEnabled
+                    isOn: spatialAudioBinding
                 ) {
                     Label(
                         "Расширенная стереосцена",
@@ -457,6 +459,36 @@ private struct PlayerAudioSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle("Плеер и аудио")
+        .audioProcessingRouteHintOverlay(isPresented: $showRouteHint)
+    }
+
+    private var spatialAudioBinding: Binding<Bool> {
+        Binding(
+            get: { settings.spatialAudioEnabled },
+            set: { newValue in
+                let wasEnabled = settings.spatialAudioEnabled
+                settings.spatialAudioEnabled = newValue
+                if newValue && !wasEnabled {
+                    showProcessingRouteHint()
+                }
+            }
+        )
+    }
+
+    private func showProcessingRouteHint() {
+        let token = UUID()
+        routeHintToken = token
+        Haptics.open()
+        showRouteHint = true
+        Task { @MainActor in
+            do {
+                try await Task.sleep(for: .seconds(3))
+            } catch {
+                return
+            }
+            guard routeHintToken == token else { return }
+            showRouteHint = false
+        }
     }
 }
 
@@ -465,6 +497,8 @@ private struct PlayerAudioSettingsView: View {
 struct EqualizerSettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @Environment(\.dismiss) private var dismiss
+    @State private var showRouteHint = false
+    @State private var routeHintToken = UUID()
 
     private let frequencies = [
         "31", "62", "125", "250", "500",
@@ -476,7 +510,7 @@ struct EqualizerSettingsView: View {
             Section {
                 Toggle(
                     "Обработка звука",
-                    isOn: $settings.equalizerEnabled
+                    isOn: equalizerEnabledBinding
                 )
                 Toggle(
                     "Нормализация громкости",
@@ -575,10 +609,40 @@ struct EqualizerSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle("Эквалайзер")
+        .audioProcessingRouteHintOverlay(isPresented: $showRouteHint)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button(L10n.text("Готово")) { dismiss() }
             }
+        }
+    }
+
+    private var equalizerEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { settings.equalizerEnabled },
+            set: { newValue in
+                let wasEnabled = settings.equalizerEnabled
+                settings.equalizerEnabled = newValue
+                if newValue && !wasEnabled {
+                    showProcessingRouteHint()
+                }
+            }
+        )
+    }
+
+    private func showProcessingRouteHint() {
+        let token = UUID()
+        routeHintToken = token
+        Haptics.open()
+        showRouteHint = true
+        Task { @MainActor in
+            do {
+                try await Task.sleep(for: .seconds(3))
+            } catch {
+                return
+            }
+            guard routeHintToken == token else { return }
+            showRouteHint = false
         }
     }
 }
