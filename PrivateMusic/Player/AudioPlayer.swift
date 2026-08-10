@@ -250,6 +250,7 @@ enum NowPlayingDriftPolicy {
 
 enum PlaybackPreloadPolicy {
     static let maximumAge: TimeInterval = 5 * 60
+    static let preferredForwardBufferDuration: TimeInterval = 10
 
     static func nextIndex(
         queueCount: Int,
@@ -278,6 +279,13 @@ enum PlaybackPreloadPolicy {
         trackID == preparedTrackID
             && url == preparedURL
             && now.timeIntervalSince(preparedAt) < maximumAge
+    }
+
+    static func hasQueueChanged(_ lhs: [Track], _ rhs: [Track]) -> Bool {
+        guard lhs.count == rhs.count else { return true }
+        return zip(lhs, rhs).contains { left, right in
+            left.id != right.id || left.streamURL != right.streamURL
+        }
     }
 }
 
@@ -420,7 +428,12 @@ final class AudioPlayer: ObservableObject {
     /// so list rows never have to observe the player itself (see
     /// `syncHighlight`).
     @Published private(set) var queue: [Track] = [] {
-        didSet { syncHighlight() }
+        didSet {
+            syncHighlight()
+            if PlaybackPreloadPolicy.hasQueueChanged(oldValue, queue) {
+                invalidatePreloadedPlayback()
+            }
+        }
     }
     @Published private(set) var currentIndex: Int? {
         didSet { syncHighlight() }
@@ -1517,7 +1530,10 @@ final class AudioPlayer: ObservableObject {
         preloadedPlayback = nil
         let item = AVPlayerItem(asset: slot.asset)
         item.preferredForwardBufferDuration =
-            StreamFailureRetryPolicy.preferredForwardBufferDuration
+            PlaybackPreloadPolicy.preferredForwardBufferDuration
+        item.preferredPeakBitRate = StreamQualityPolicy.preferredPeakBitRate(
+            preferHighQuality: preferHighQuality
+        )
         return item
     }
 

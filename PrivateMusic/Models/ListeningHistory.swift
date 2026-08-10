@@ -9,45 +9,78 @@ struct ListeningHistoryEntry: Codable, Hashable, Identifiable, Sendable {
 
 @MainActor
 final class ListeningHistoryStore: ObservableObject {
+    static let maximumEntries = 250
+
     @Published private(set) var entries: [ListeningHistoryEntry]
 
     private let defaults: UserDefaults
     private let key = "listening.history.v1"
-    private let limit = 250
+    private static let saveDebounceNanoseconds: UInt64 = 350_000_000
+    private var saveTask: Task<Void, Never>?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        entries = (defaults.data(forKey: key))
+        let storedEntries = (defaults.data(forKey: key))
             .flatMap { try? JSONDecoder().decode(
                 [ListeningHistoryEntry].self,
                 from: $0
             ) } ?? []
+        entries = Array(storedEntries.prefix(Self.maximumEntries))
+        if storedEntries.count > Self.maximumEntries {
+            schedulePersist()
+        }
     }
 
     func record(_ track: Track) {
+        if entries.first?.track.id == track.id {
+            return
+        }
         entries.removeAll { $0.track.id == track.id }
         entries.insert(
             ListeningHistoryEntry(track: track, playedAt: Date()),
             at: 0
         )
-        if entries.count > limit {
-            entries.removeLast(entries.count - limit)
+        if entries.count > Self.maximumEntries {
+            entries.removeLast(entries.count - Self.maximumEntries)
         }
-        persist()
+        schedulePersist()
     }
 
     func remove(_ entry: ListeningHistoryEntry) {
+        let originalCount = entries.count
         entries.removeAll { $0.id == entry.id }
-        persist()
+        if entries.count != originalCount {
+            schedulePersist()
+        }
     }
 
     func clear() {
         entries = []
+        saveTask?.cancel()
+        saveTask = nil
         defaults.removeObject(forKey: key)
     }
 
-    private func persist() {
-        guard let data = try? JSONEncoder().encode(entries) else { return }
-        defaults.set(data, forKey: key)
+    private func schedulePersist() {
+        let snapshot = entries
+        saveTask?.cancel()
+        saveTask = Task { [weak self, snapshot] in
+            do {
+                try await Task.sleep(nanoseconds: Self.saveDebounceNanoseconds)
+            } catch {
+                return
+            }
+            let data = await Self.encodedData(for: snapshot)
+            guard !Task.isCancelled, let data, let self else { return }
+            self.defaults.set(data, forKey: self.key)
+        }
+    }
+
+    private nonisolated static func encodedData(
+        for entries: [ListeningHistoryEntry]
+    ) async -> Data? {
+        await Task.detached(priority: .utility) {
+            try? JSONEncoder().encode(entries)
+        }.value
     }
 }
