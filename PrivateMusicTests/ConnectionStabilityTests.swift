@@ -1957,37 +1957,56 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
-    // PENDING — Agent E enables/extends these once the corresponding branch
-    // has merged and the exact symbol names from that branch are known
-    // (Agent E does not invent or pre-guess production symbol names beyond
-    // what STABILITY_OFFICE_BRIEF.md documents):
+    // PENDING — Agent E enables these once the parent has actually merged
+    // A-D onto `main` (this branch does not merge their production code
+    // per the isolation rule; only the pins in `scripts/validate_project.py`
+    // may reference their symbols ahead of the merge, and only softly).
     //
-    // - Agent A (PostCallResumePolicy, cursor/post-call-resume-bc40):
-    //     `.ended` with no `.shouldResume` + playbackIntended + a call
-    //     (`otherAudioWasPlaying == true`) ⇒ policy says resume; foreground
-    //     fallback (scene becomes active, no pending resume task) also
-    //     requests resume; ear-off discriminator above still holds.
-    // - Agent B (NetworkAdaptiveBufferPolicy, cursor/network-aware-buffer-bc40):
-    //     `.wifi/.online` ⇒ preferredForwardBuffer == 30 (pins the current
-    //     `StreamFailureRetryPolicy.preferredForwardBufferDuration` value);
-    //     `.cellular/.constrained` ⇒ strictly greater (>= 45); connectivity
-    //     retry budget on constrained never falls below
-    //     `maximumConnectivityAttempts` and never auto-advances.
-    // - Agent C (SessionActivationRetryPolicy, cursor/avplayer-failure-hardening-bc40):
-    //     first `setActive` throw right after the call ⇒ bounded retry,
-    //     succeeds on retry ⇒ playback resumes; exhausted ⇒ surfaces error,
-    //     no crash.
-    // - Agent D (pm_buffer_health_*, cursor/c-buffer-health-estimator-bc40):
-    //     throughput sampled while the call was active reflects the
-    //     degraded window once B wires the estimator into the adaptive
-    //     buffer target (covered primarily by PrivateMusicCoreTests.swift;
-    //     referenced here only for the end-to-end call-during-3G narrative).
+    // All four branches below were confirmed pushed to origin — via
+    // `git fetch origin <branch>` + `git diff origin/main origin/<branch>`,
+    // never merged into this branch — while this file was being written, so
+    // the signatures here are the real ones, not speculative:
     //
-    // Meta-test to add once all four land: assert that every one of
+    // - Agent A (cursor/post-call-resume-bc40):
+    //     `PostCallResumePolicy.shouldResumeWithoutOption(wasPlayingBeforeInterruption:playbackIntended:otherAudioWasPlaying:routeDisconnectPending:beganAsRouteDisconnect:)`
+    //     ⇒ true for a call ended without `.shouldResume`; false for ear
+    //     detection (`otherAudioWasPlaying: false`, deferring to
+    //     `shouldTreatEndAsDeliberatePause` above), a pending/named route
+    //     disconnect, or no prior playback intent.
+    //     `PostCallResumePolicy.shouldResumeOnForeground(playbackIntended:isPlaying:isAudioInterrupted:hasPendingInterruptionResume:routeDisconnectPending:)`
+    //     ⇒ true only once none of the other four flags are already
+    //     covering the resume (suspended-app / missed-notification case).
+    // - Agent B (cursor/network-aware-buffer-bc40):
+    //     `NetworkAdaptiveBufferPolicy.preferredForwardBuffer(for: .nominal)`
+    //     == `StreamFailureRetryPolicy.preferredForwardBufferDuration` (30,
+    //     pins the existing wifi value byte-for-byte);
+    //     `.degraded` ⇒ `+ degradedBufferBonus` (currently 15, so >= 45).
+    //     `NetworkAdaptiveBufferPolicy.maximumConnectivityAttempts(baseline:condition:)`
+    //     ⇒ `.degraded` never returns fewer than `baseline`.
+    //     `NetworkAdaptiveBufferPolicy.retryDelay(base:condition:)` ⇒
+    //     `.degraded` backoff stays capped (`degradedRetryDelayCap`, 12s),
+    //     never unbounded.
+    // - Agent C (cursor/avplayer-failure-hardening-bc40):
+    //     `SessionActivationRetryPolicy.shouldRetry(attempt:)` ⇒ false once
+    //     `attempt >= maximumAttempts` (currently 3); `retryDelay(forAttempt:)`
+    //     stays capped at `maximumRetryDelay` (currently 2s). Exhausting the
+    //     budget must surface an error, not crash.
+    //     `StallRecoveryGuardPolicy.isOrphaned(blockedSince:now:)` ⇒ true
+    //     once a recovery/refresh task has blocked past `orphanThreshold`
+    //     (currently 20s), letting `recoverFromExtendedStall` proceed
+    //     instead of wedging shut forever.
+    // - Agent D (cursor/c-buffer-health-estimator-bc40):
+    //     `pm_buffer_health_*` throughput/underrun estimation is unit-tested
+    //     in `PrivateMusicCoreTests.swift`; referenced here only for the
+    //     end-to-end call-during-3G narrative once B wires the estimator
+    //     into the adaptive buffer target.
+    //
+    // Meta-test to add once all land: assert that every one of
     // PostCallResumePolicy / NetworkAdaptiveBufferPolicy /
-    // SessionActivationRetryPolicy / pm_buffer_health_* is exercised by at
-    // least one XCTestCase in this target, so the four policy families the
-    // brief calls out stay unit-covered as a group, not just individually.
+    // SessionActivationRetryPolicy / StallRecoveryGuardPolicy /
+    // pm_buffer_health_* is exercised by at least one XCTestCase in this
+    // target (mirrors `require_stability_office_symbols` in
+    // scripts/validate_project.py, which already pins all five by name).
 
     private func makeSession(expiresAt: Date?) -> Session {
         Session(
