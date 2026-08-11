@@ -708,6 +708,180 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    // «Наушники сняты — музыка играет дальше». Automatic Ear Detection
+    // begins and ends an interruption in one breath while the AirPods stay
+    // the current route, and the end even asks for a resume. Honouring it
+    // is what plays the track on with the buds in the case.
+    func testEarDetectionInterruptionEndIsADeliberatePause() {
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: false,
+                interruptionDuration: 0.2,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.bluetoothA2DP]
+            )
+        )
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: false,
+                interruptionDuration: 0.1,
+                previousOutputPortTypes: [.headphones],
+                currentOutputPortTypes: [.headphones]
+            )
+        )
+    }
+
+    // iOS 17 names the reason, and that needs no timing at all: the buds
+    // can sit out of the ear for as long as they like.
+    func testANamedRouteDisconnectIsAPauseWhateverItsTiming() {
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: true,
+                interruptionDuration: 240,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.bluetoothA2DP]
+            )
+        )
+    }
+
+    // A call, Siri or another app holding the session still resumes: it
+    // lasts far longer than the buds leaving an ear, and the route it ends
+    // on is the same one it started with.
+    func testALongInterruptionOnTheSameRouteStillResumes() {
+        XCTAssertFalse(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: false,
+                interruptionDuration: 45,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.bluetoothA2DP]
+            )
+        )
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldResume(
+                wasPlayingBeforeInterruption: true,
+                playbackIntended: true,
+                routeDisconnectPending: false,
+                options: [.shouldResume]
+            ),
+            "the ordinary interruption path is untouched"
+        )
+    }
+
+    // Nothing worn on the head, nothing to take off: a speaker or car
+    // interruption is never read as the user pausing.
+    func testOnlyAWornRouteCanEndAsADeliberatePause() {
+        XCTAssertFalse(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: true,
+                interruptionDuration: 0.2,
+                previousOutputPortTypes: [.builtInSpeaker],
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+        XCTAssertFalse(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: true,
+                interruptionDuration: 0.2,
+                previousOutputPortTypes: [.carAudio],
+                currentOutputPortTypes: [.carAudio]
+            )
+        )
+        XCTAssertFalse(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: true,
+                interruptionDuration: 0.2,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.builtInSpeaker]
+            ),
+            "a route that was lost belongs to the disconnect path"
+        )
+        XCTAssertFalse(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: true,
+                interruptionDuration: 0.2,
+                previousOutputPortTypes: [],
+                currentOutputPortTypes: []
+            )
+        )
+    }
+
+    // The fallback window has to be wider than the notification round-trip
+    // and far narrower than any call.
+    func testTheDeliberatePauseWindowStaysNarrow() {
+        XCTAssertGreaterThanOrEqual(
+            AudioInterruptionPolicy.deliberatePauseWindow,
+            0.5
+        )
+        XCTAssertLessThanOrEqual(
+            AudioInterruptionPolicy.deliberatePauseWindow,
+            3
+        )
+    }
+
+    // Nothing the app starts by itself may push audio through the speaker
+    // while the headphones that were playing are gone: not a stream retry,
+    // not a stall recovery, not the next track.
+    func testAutomaticPlaybackWaitsWhileADisconnectIsPending() {
+        XCTAssertFalse(
+            AudioAutoplayGatePolicy.allowsAutomaticPlayback(
+                routeDisconnectPending: true,
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+        XCTAssertFalse(
+            AudioAutoplayGatePolicy.allowsAutomaticPlayback(
+                routeDisconnectPending: true,
+                currentOutputPortTypes: [.builtInReceiver]
+            )
+        )
+        XCTAssertTrue(
+            AudioAutoplayGatePolicy.allowsAutomaticPlayback(
+                routeDisconnectPending: false,
+                currentOutputPortTypes: [.builtInSpeaker]
+            ),
+            "playback the user asked for is not this policy's business"
+        )
+        XCTAssertTrue(
+            AudioAutoplayGatePolicy.allowsAutomaticPlayback(
+                routeDisconnectPending: true,
+                currentOutputPortTypes: [.bluetoothA2DP]
+            ),
+            "a new route took the playback over"
+        )
+    }
+
+    // `.oldDeviceUnavailable` is read from a session that has not finished
+    // switching, so `currentRoute` can still name the device that just went
+    // away. Reading that as "nothing was lost" is the speaker leak.
+    func testAStaleRouteStillCountsAsADisconnect() {
+        XCTAssertTrue(
+            AudioRoutePolicy.looksLikeStaleRouteLoss(
+                previousOutputPortTypes: [.headphones],
+                currentOutputPortTypes: [.headphones]
+            )
+        )
+        XCTAssertTrue(
+            AudioRoutePolicy.looksLikeStaleRouteLoss(
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.bluetoothA2DP, .builtInSpeaker]
+            )
+        )
+        XCTAssertFalse(
+            AudioRoutePolicy.looksLikeStaleRouteLoss(
+                previousOutputPortTypes: [.headphones],
+                currentOutputPortTypes: [.bluetoothA2DP]
+            ),
+            "a different external route is a transfer, not a stale read"
+        )
+        XCTAssertFalse(
+            AudioRoutePolicy.looksLikeStaleRouteLoss(
+                previousOutputPortTypes: [.headphones],
+                currentOutputPortTypes: [.builtInSpeaker]
+            ),
+            "a settled loss is the ordinary disconnect path"
+        )
+    }
+
     // The wait exists so the route change can win the race; it is useless
     // if it is shorter than the gap between the two notifications.
     func testInterruptionResumeWaitsForTheRouteToSettle() {
