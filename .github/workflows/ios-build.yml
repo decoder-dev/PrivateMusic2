@@ -129,42 +129,48 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.68-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.69-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.68-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.69-iphone-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.68"
+          test "$GITHUB_REF_NAME" = "v3.28.69"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.68 (pre-release)
+          # Private Music 3.28.69 (pre-release)
 
-          Плейлисты, сохранённые у других людей, вернулись на полку
-          «Плейлисты» в Медиатеке.
+          Полка «Плейлисты» в Медиатеке снова показывает все плейлисты, а
+          не один.
 
           ## Плейлисты
-          - Полка «Альбомы» грузится запросом, который VK отвечает не
-            только альбомами: сохранённые чужие плейлисты приходили в том
-            же списке, а полка «Плейлисты» убирает всё, что есть в
-            «Альбомах», — поэтому у многих оставалась одна карточка
-          - Теперь список альбомов разбирается по записям: то, что VK
-            пометила как плейлист (`original`, `album_type: playlist` или
-            `collection`), остаётся плейлистом и не попадает ни в
-            «Альбомы», ни в список на удаление с полки
-          - Свой собственный плейлист больше нельзя скрыть совпадением
-            идентификатора с полкой «Альбомы»
-          - «Ваши плейлисты» на главной убирает подписки на альбомы по
-            тем же идентификаторам
-          - Из прошлых сборок: альбомом считается только запись, которую
-            VK явно пометила как релиз, а загрузка списка идёт до конца,
-            даже когда VK занижает общее количество
+          - Настоящая причина: полка «Альбомы» просила у VK
+            `filters=followed,albums`, а `filters` объединяет
+            перечисленные категории — VK отвечал не только релизами, но и
+            всеми плейлистами, сохранёнными у других людей. Полка
+            «Плейлисты» убирает всё, что пришло в «Альбомах», поэтому у
+            многих оставались только свои плейлисты, часто один
+          - Теперь «Альбомы» запрашивают `filters=albums`: в списке одни
+            релизы, и с полки «Плейлисты» больше нечему пропадать.
+            Разбор по записям остался вторым рубежом
+          - Прошлые сборки чинили это со стороны признаков записи, но VK
+            присылает сохранённый плейлист без единого признака
+            плейлиста, поэтому один и тот же дефект возвращался
+          - Страница списка читается не только из одного блока: записи
+            берутся и из блока `playlists`/`albums`, обёртка `playlist`
+            разворачивается, а аудиозапись за плейлист не принимается
+          - Плейлист без названия больше не выбрасывается — карточка
+            появляется без подписи, а не пропадает; идентификаторы,
+            пришедшие строкой, тоже разбираются
+          - Свои плейлисты определяются по тому же идентификатору
+            аккаунта, что и офлайн-хранилища, поэтому сессия, восстановленная
+            до загрузки профиля, больше не оставляет их без защиты
 
           ## Очередь
           - Нажатие на трек в Медиатеке ставит в очередь именно тот
@@ -184,19 +190,19 @@ jobs:
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.68-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.68-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.69-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.69-unsigned.ipa"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.68" \
+              --title "Private Music 3.28.69" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.68" \
+              --title "Private Music 3.28.69" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -205,9 +211,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.68-unsigned
+          name: PrivateMusic-3.28.69-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.68-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.68-unsigned.ipa
+            artifacts/PrivateMusic-3.28.69-iphone-unsigned.ipa
+            artifacts/PrivateMusic-3.28.69-unsigned.ipa
           if-no-files-found: error
           retention-days: 14

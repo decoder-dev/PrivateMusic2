@@ -1180,7 +1180,11 @@ struct LibraryView: View {
 
     private func reloadPlaylists(force: Bool) async {
         playlists.configure(
-            ownerID: sessionStore.session?.userID,
+            // The resolved account id, not the session field alone: a
+            // session restored before the profile lands carries no user id,
+            // and without one the shelf cannot tell which playlists are
+            // yours — the copies it must never drop.
+            ownerID: sessionStore.resolvedOfflineAccountID,
             // VK reports followed albums in the unfiltered playlist list.
             // The Albums shelf already knows exactly which ids those are,
             // so the shelf drops them by id instead of guessing from the
