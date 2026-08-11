@@ -108,6 +108,127 @@ final class AlbumDecodingTests: XCTestCase {
         )
     }
 
+    func testReleaseAlbumsIgnoreAudioRowsWithDuration() throws {
+        let data = """
+        {
+          "response": {
+            "blocks": [
+              {
+                "items": [
+                  {
+                    "id": 101,
+                    "owner_id": -8,
+                    "title": "Мутный тип",
+                    "duration": 187,
+                    "main_artists": [{"name": "Вектор А"}],
+                    "year": 2024
+                  },
+                  {
+                    "id": 55,
+                    "owner_id": -8,
+                    "title": "Мутный тип",
+                    "size": 1,
+                    "year": 2024,
+                    "main_artists": [{"name": "Вектор А"}],
+                    "thumb": {"photo_600": "https://cdn.example/single.jpg"}
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """.data(using: .utf8)!
+
+        let value = try JSONDecoder().decode(JSONValue.self, from: data)
+        let albums = value.releaseAlbums
+
+        XCTAssertEqual(albums.count, 1)
+        XCTAssertEqual(albums.first?.albumID, 55)
+        XCTAssertEqual(albums.first?.count, 1)
+        XCTAssertEqual(
+            albums.first?.artworkURL?.absoluteString,
+            "https://cdn.example/single.jpg"
+        )
+    }
+
+    func testArtistAlbumShelfPrefersCatalogWhenListIsIncomplete() {
+        let thin = Album(id: 1, ownerID: -1, title: "Мутный тип", count: 0)
+        XCTAssertTrue(ArtistAlbumShelfPolicy.isIncomplete(thin))
+        XCTAssertTrue(
+            ArtistAlbumShelfPolicy.shouldPreferCatalog(over: [thin])
+        )
+
+        let rich = Album(
+            id: 1,
+            ownerID: -1,
+            title: "Мутный тип",
+            count: 1,
+            artworkURL: URL(string: "https://cdn.example/a.jpg")
+        )
+        XCTAssertFalse(ArtistAlbumShelfPolicy.isIncomplete(rich))
+        XCTAssertFalse(
+            ArtistAlbumShelfPolicy.shouldPreferCatalog(over: [rich])
+        )
+    }
+
+    func testArtistAlbumShelfMergesCatalogMetadataOntoThinListEntries() {
+        let thin = Album(id: 9, ownerID: -3, title: "ЛЮБИЛИ", count: 0)
+        let catalog = Album(
+            id: 9,
+            ownerID: -3,
+            title: "ЛЮБИЛИ",
+            count: 1,
+            artworkURL: URL(string: "https://cdn.example/loved.jpg")
+        )
+
+        let merged = ArtistAlbumShelfPolicy.merging(
+            list: [thin],
+            catalog: [catalog]
+        )
+
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged.first?.count, 1)
+        XCTAssertEqual(
+            merged.first?.artworkURL?.absoluteString,
+            "https://cdn.example/loved.jpg"
+        )
+    }
+
+    func testArtistAlbumShelfDisplayFillsFromRelatedTracksAndDropsEmpty() {
+        let thin = Album(id: 7, ownerID: -2, title: "Накипело", count: 0)
+        let junk = Album(id: 99, ownerID: -2, title: "Ghost", count: 0)
+        let tracks = [
+            Track(
+                trackID: 1,
+                ownerID: -2,
+                title: "Накипело",
+                artist: "Вектор А",
+                albumTitle: "Накипело",
+                duration: 200,
+                streamURL: nil,
+                artworkURL: URL(string: "https://cdn.example/nakipelo.jpg"),
+                albumReference: AlbumReference(
+                    albumID: 7,
+                    ownerID: -2,
+                    accessKey: nil
+                )
+            )
+        ]
+
+        let displayed = ArtistAlbumShelfPolicy.displaying(
+            [thin, junk],
+            using: tracks
+        )
+
+        XCTAssertEqual(displayed.count, 1)
+        XCTAssertEqual(displayed.first?.albumID, 7)
+        XCTAssertEqual(displayed.first?.count, 1)
+        XCTAssertEqual(
+            displayed.first?.artworkURL?.absoluteString,
+            "https://cdn.example/nakipelo.jpg"
+        )
+    }
+
     func testAlbumShareLinkIncludesAccessKey() {
         let album = Album(
             id: 9,

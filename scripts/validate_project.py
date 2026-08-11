@@ -1468,6 +1468,36 @@ def require_stability_office_symbols() -> None:
 
 require_stability_office_symbols()
 
+
+def require_artist_album_shelf_fix() -> None:
+    """Artist «Альбомы» must not paint sparse audio rows as empty cards."""
+    policy = (SOURCE / "Models" / "ArtistAlbumShelfPolicy.swift").read_text(encoding="utf-8")
+    for symbol in (
+        "enum ArtistAlbumShelfPolicy",
+        "isIncomplete(",
+        "shouldPreferCatalog(",
+        "merging(list:",
+        "displaying(",
+    ):
+        if symbol not in policy:
+            fail(f"ArtistAlbumShelfPolicy must define {symbol}")
+    json_value = (SOURCE / "Core" / "Networking" / "JSONValue.swift").read_text(
+        encoding="utf-8"
+    )
+    if 'object["duration"] == nil' not in json_value:
+        fail("collectAlbums must exclude audio rows that carry duration")
+    artist_view = (SOURCE / "Features" / "Artist" / "ArtistView.swift").read_text(
+        encoding="utf-8"
+    )
+    if "ArtistAlbumShelfPolicy.displaying(" not in artist_view:
+        fail("ArtistView must hydrate albums via ArtistAlbumShelfPolicy.displaying")
+    service = (SOURCE / "Services" / "VKMusicService.swift").read_text(encoding="utf-8")
+    if "ArtistAlbumShelfPolicy.shouldPreferCatalog(" not in service:
+        fail("artistAlbums must prefer catalog over incomplete getAlbumsByArtist stubs")
+
+
+require_artist_album_shelf_fix()
+
 print(f"OK: {len(swift_files)} Swift files")
 print("OK: no embedded client secret or CAPTCHA interception")
 print("OK: Keychain, ephemeral URLSession and Now Playing are present")
