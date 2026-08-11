@@ -1068,6 +1068,9 @@ final class AudioPlayer: ObservableObject {
     /// by an item already playing, which keeps whatever buffer
     /// AVFoundation already negotiated.
     private var currentNetworkCondition: NetworkCondition = .nominal
+    /// Rolling C estimator fed from `loadedTimeRanges` on the periodic
+    /// time observer. Reset on every new item so tracks do not blend.
+    private let bufferHealthEstimator = BufferHealthEstimator()
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -1326,7 +1329,32 @@ final class AudioPlayer: ObservableObject {
         _ condition: NetworkCondition,
         throughputHint: Double? = nil
     ) {
+        let previous = currentNetworkCondition
         currentNetworkCondition = condition
+        // A path that comes back after offline used to only warm the next
+        // preload — the stalled *current* item stayed dead until the user
+        // tapped play. Kick same-track recovery when intent is still on.
+        if previous == .offline, condition != .offline {
+            kickRecoveryAfterNetworkReturn()
+        }
+        _ = throughputHint
+    }
+
+    /// Public entry for `AppEnvironment` when reachability returns: recover
+    /// the current track if we meant to be playing and are not.
+    func kickRecoveryAfterNetworkReturn() {
+        guard playbackIntended,
+              currentTrack != nil,
+              !isPlaying,
+              !isAudioInterrupted,
+              streamRecoveryTask == nil,
+              streamRefreshTask == nil else {
+            return
+        }
+        if streamRecoveryAttempts == 0 {
+            streamRecoveryAttempts = 1
+        }
+        scheduleSameTrackRecovery(autoplay: true, automatic: true)
     }
 
     /// Starts `tracks` at `track`.
@@ -2588,6 +2616,7 @@ final class AudioPlayer: ObservableObject {
                     self.duration = seconds
                 }
                 self.sampleListeningProgress()
+                self.sampleBufferHealth()
                 let buffering = self.isPlaying
                     && self.player.timeControlStatus
                         == .waitingToPlayAtSpecifiedRate
@@ -3377,7 +3406,8 @@ final class AudioPlayer: ObservableObject {
         streamRecoveryAttempts += 1
         guard StreamFailureRetryPolicy.shouldRetrySameTrack(
             attempts: streamRecoveryAttempts,
-            error: URLError(.timedOut)
+            error: URLError(.timedOut),
+            condition: currentNetworkCondition
         ) else {
             return
         }
@@ -3991,6 +4021,7 @@ final class AudioPlayer: ObservableObject {
         listenedTrackID = nil
         listenedPlaybackDuration = 0
         lastListeningElapsedTime = nil
+        bufferHealthEstimator.reset()
     }
 
     private func sampleListeningProgress() {
@@ -4005,6 +4036,32 @@ final class AudioPlayer: ObservableObject {
         guard delta > 0, delta <= 1.5 else { return }
         listenedPlaybackDuration += delta
         markCurrentTrackListenedIfNeeded()
+    }
+
+    /// Feed the C buffer-health estimator from `loadedTimeRanges` so a
+    /// future adaptive policy can react to measured underruns, not only
+    /// to the coarse NetworkMonitor state.
+    private func sampleBufferHealth() {
+        guard let item = player.currentItem else { return }
+        let ranges = item.loadedTimeRanges
+        guard !ranges.isEmpty else { return }
+        let position = item.currentTime()
+        var loadedAhead: TimeInterval = 0
+        for value in ranges {
+            let range = value.timeRangeValue
+            let end = CMTimeRangeGetEnd(range)
+            guard CMTIME_IS_NUMERIC(end), CMTIME_IS_NUMERIC(position) else {
+                continue
+            }
+            let ahead = CMTimeGetSeconds(CMTimeSubtract(end, position))
+            if ahead.isFinite {
+                loadedAhead = max(loadedAhead, ahead)
+            }
+        }
+        bufferHealthEstimator.observe(
+            now: ProcessInfo.processInfo.systemUptime,
+            loadedAheadSeconds: max(0, loadedAhead)
+        )
     }
 
     private func markCurrentTrackListenedIfNeeded() {
