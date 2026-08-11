@@ -688,6 +688,22 @@ enum SessionActivationRetryPolicy {
     }
 }
 
+/// Guards `recoverFromExtendedStall` against a recovery/refresh task whose
+/// reference was never cleared — e.g. a task whose guard clause returned
+/// early (generation/track mismatch) without reaching the code path that
+/// nils the stored task out. Once a task has been blocking recovery for
+/// longer than any legitimate same-track retry cycle could still be
+/// running, treat it as orphaned so a fresh recovery attempt can proceed
+/// instead of the stall guard wedging shut forever.
+enum StallRecoveryGuardPolicy {
+    static let orphanThreshold: TimeInterval = 20
+
+    static func isOrphaned(blockedSince: Date?, now: Date) -> Bool {
+        guard let blockedSince else { return false }
+        return now.timeIntervalSince(blockedSince) >= orphanThreshold
+    }
+}
+
 @MainActor
 final class AudioPlayer: ObservableObject {
     private final class PreloadedPlayback {
@@ -863,6 +879,11 @@ final class AudioPlayer: ObservableObject {
     private var streamRecoveryAttempts = 0
     private var streamRecoveryTask: Task<Void, Never>?
     private var stallStartedAt: Date?
+    /// When `recoverFromExtendedStall` first found an existing
+    /// recovery/refresh task blocking it. Cleared once no task is in the
+    /// way; used to detect a task orphaned by an early-return guard clause
+    /// elsewhere so the stall guard cannot wedge shut forever.
+    private var extendedStallGuardBlockedSince: Date?
     private var sessionActivationRetryTask: Task<Void, Never>?
     private var sessionActivationRetryAttempts = 0
     private var preloadedPlayback: PreloadedPlayback?
@@ -1591,6 +1612,7 @@ final class AudioPlayer: ObservableObject {
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
         sessionActivationRetryAttempts = 0
+        extendedStallGuardBlockedSince = nil
         sleepTask?.cancel()
         sleepTask = nil
         sleepTimerEndDate = nil
@@ -2777,6 +2799,7 @@ final class AudioPlayer: ObservableObject {
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
         sessionActivationRetryAttempts = 0
+        extendedStallGuardBlockedSince = nil
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
         minimumVolumeResumeSuppressed = false
@@ -3081,11 +3104,34 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func recoverFromExtendedStall() {
-        guard playbackIntended,
-              currentTrack != nil,
-              streamRecoveryTask == nil,
-              streamRefreshTask == nil else {
+        guard playbackIntended, currentTrack != nil else {
+            extendedStallGuardBlockedSince = nil
             return
+        }
+        if streamRecoveryTask != nil || streamRefreshTask != nil {
+            // A task is still on record as in flight. Most of the time that
+            // is a legitimate same-track retry still waiting out its delay
+            // — but a task whose own guard clause returned early (a
+            // generation or track-ID mismatch) never reaches the code that
+            // clears the stored reference, so this guard could otherwise
+            // stay shut forever on a task that has already finished doing
+            // nothing. Give it one stall cycle's worth of benefit of the
+            // doubt before treating it as orphaned.
+            if StallRecoveryGuardPolicy.isOrphaned(
+                blockedSince: extendedStallGuardBlockedSince,
+                now: Date()
+            ) {
+                cancelStreamRecovery()
+                cancelStreamRefresh()
+                extendedStallGuardBlockedSince = nil
+            } else {
+                if extendedStallGuardBlockedSince == nil {
+                    extendedStallGuardBlockedSince = Date()
+                }
+                return
+            }
+        } else {
+            extendedStallGuardBlockedSince = nil
         }
         streamRecoveryAttempts += 1
         guard StreamFailureRetryPolicy.shouldRetrySameTrack(
