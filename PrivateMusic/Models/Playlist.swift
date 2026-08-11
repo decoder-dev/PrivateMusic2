@@ -105,16 +105,46 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
         }
     }
 
+    /// VK is not consistent about whether an id arrives as a number or as a
+    /// string, and a strict `Int` decode threw the whole entry away.
+    private static func integer(
+        in container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) -> Int? {
+        if let value = try? container.decode(Int.self, forKey: key) {
+            return value
+        }
+        if let raw = try? container.decode(String.self, forKey: key) {
+            return Int(raw)
+        }
+        if let value = try? container.decode(Double.self, forKey: key) {
+            return Int(value.rounded())
+        }
+        return nil
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        playlistID = try container.decode(Int.self, forKey: .playlistID)
-        ownerID = try container.decode(Int.self, forKey: .ownerID)
-        title = try container.decode(String.self, forKey: .title)
+        guard let id = Self.integer(in: container, forKey: .playlistID),
+              let owner = Self.integer(in: container, forKey: .ownerID) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .playlistID,
+                in: container,
+                debugDescription: "Playlist entry without an owner-scoped id"
+            )
+        }
+        playlistID = id
+        ownerID = owner
+        // An untitled playlist is still a playlist. Requiring a title here
+        // is what made one arrive on the shelf as nothing at all.
+        title = (
+            try? container.decode(String.self, forKey: .title)
+        ) ?? L10n.text("Плейлист")
         description = try container.decodeIfPresent(
             String.self,
             forKey: .description
         )
-        count = try container.decodeIfPresent(Int.self, forKey: .count) ?? 0
+        count = Self.integer(in: container, forKey: .count) ?? 0
         accessKey = try container.decodeIfPresent(
             String.self,
             forKey: .accessKey
