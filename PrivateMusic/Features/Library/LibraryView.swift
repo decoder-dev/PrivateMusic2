@@ -274,14 +274,6 @@ struct LibraryView: View {
             tracks.removeLocally(track)
             libraryStore.markRemoved(track)
         }
-        .onReceive(likedAlbumsStore.$albums) { albums in
-            // Liked albums leak into the playlist shelf via unfiltered
-            // getPlaylists. Re-filter as soon as the Albums shelf knows
-            // their ids — no second playlist round-trip needed.
-            playlists.excludeFollowedAlbums(
-                Set(albums.map(\.compositeID))
-            )
-        }
         .onReceive(
             NotificationCenter.default.publisher(for: .likedAlbumsDidChange)
         ) { _ in
