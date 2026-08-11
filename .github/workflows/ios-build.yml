@@ -129,26 +129,26 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.74-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.75-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.74-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.75-iphone-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.74"
+          test "$GITHUB_REF_NAME" = "v3.28.75"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.74 (pre-release)
+          # Private Music 3.28.75 (pre-release)
 
-          Очередь медиатеки больше не упирается в 100 треков, шаффл
-          заметен, обложки альбомов читаются шире, наушники паузятся
-          надёжнее.
+          Главное: снятие AirPods / unplug больше не возобновляет
+          музыку. Плюс очередь медиатеки, шаффл, обложки и «Ваши треки»
+          из 3.28.74.
 
           ## Очередь из Медиатеки
           - У медиатеки свой потолок очереди (до 2000), отдельный от
@@ -173,9 +173,13 @@ jobs:
             VK больше не остаётся серой ноткой
 
           ## Наушники
-          - Окно ear-detection на iOS 16 расширено до 3 с, мерцание
-            A2DP↔HFP больше не срывает паузу
-          - Звонок / Siri по-прежнему возобновляют музыку
+          - Снятие наушников с уха больше не возобновляет музыку: пауза
+            смотрит, играл ли кто-то ещё (звонок / Siri), а не на короткое
+            окно прерывания
+          - Обрыв маршрута, media-services reset и «тихий» unplug не
+            открывают автоплей на динамик iPhone
+          - Мерцание A2DP↔HFP считается тем же worn-маршрутом; звонок /
+            Siri по-прежнему возобновляют
 
           ## Установка
           IPA не подписан.
@@ -183,19 +187,19 @@ jobs:
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.74-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.74-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.75-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.75-unsigned.ipa"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.74" \
+              --title "Private Music 3.28.75" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.74" \
+              --title "Private Music 3.28.75" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -204,9 +208,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.74-unsigned
+          name: PrivateMusic-3.28.75-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.74-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.74-unsigned.ipa
+            artifacts/PrivateMusic-3.28.75-iphone-unsigned.ipa
+            artifacts/PrivateMusic-3.28.75-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
