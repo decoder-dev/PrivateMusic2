@@ -8,7 +8,6 @@ final class PlaylistLibraryViewModel: ObservableObject {
     @Published var errorMessage: String?
     private var nextOffset: Int?
     private var ownerID: Int?
-    private var followedAlbumIdentities: Set<String> = []
     /// A prefetch cut short by cancellation (tab switch, token change) must
     /// not count as done: without this the next unforced load saw a
     /// non-empty list and returned, leaving the shelf stuck on whichever
@@ -16,20 +15,14 @@ final class PlaylistLibraryViewModel: ObservableObject {
     private var didFinishPrefetch = false
 
     /// Lets the shelf prefer the copy of a duplicated system playlist that
-    /// the signed-in user actually owns, and drop the followed albums the
-    /// Albums shelf already owns.
-    func configure(ownerID: Int?, followedAlbumIdentities: Set<String> = []) {
+    /// the signed-in user actually owns.
+    ///
+    /// The shelf takes no exclusion set from the Albums shelf. Subtracting
+    /// the ids that shelf reports is what emptied Медиатека down to one
+    /// card: the playlists loaded, then the Albums shelf landed and removed
+    /// most of them again.
+    func configure(ownerID: Int?) {
         self.ownerID = ownerID
-        self.followedAlbumIdentities = followedAlbumIdentities
-    }
-
-    /// The Albums shelf loads in parallel with the playlist prefetch, so the
-    /// exclusion set can arrive after the first pages. Re-filter in place
-    /// rather than refetching the list.
-    func excludeFollowedAlbums(_ identities: Set<String>) {
-        guard identities != followedAlbumIdentities else { return }
-        followedAlbumIdentities = identities
-        publish(playlists)
     }
 
     /// Loads the whole playlist list. VK mixes followed albums into
@@ -133,8 +126,7 @@ final class PlaylistLibraryViewModel: ObservableObject {
     private func publish(_ collected: [Playlist]) {
         let normalized = LibraryPlaylistShelfPolicy.normalized(
             collected,
-            ownerID: ownerID,
-            followedAlbumIdentities: followedAlbumIdentities
+            ownerID: ownerID
         )
         // Republishing an identical list would rebuild every shelf card for
         // nothing — the prefetch walks up to five pages, so that is four

@@ -244,8 +244,9 @@ enum JSONValue: Codable, Sendable {
     /// playlist filter, not a qualifier on `albums`: VK unions the two, so
     /// that request answered with every playlist saved from another person
     /// alongside the releases. Each of them decoded as an `Album`, and —
-    /// because the playlist shelf subtracts the ids this list reports — was
-    /// taken off Медиатека entirely, which is «ОНИ НЕ ВСЕ».
+    /// while the playlist shelf still subtracted the ids this list reported
+    /// — was taken off Медиатека entirely, which is «ОНИ НЕ ВСЕ». That
+    /// subtraction is gone: this list only fills the Albums shelf now.
     var libraryFollowedAlbumItems: [Album] {
         var result: [Album] = []
         for value in libraryEntryValues {

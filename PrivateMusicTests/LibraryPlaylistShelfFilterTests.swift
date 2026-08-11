@@ -1,20 +1,24 @@
 import XCTest
 @testable import PrivateMusic
 
-/// «ОНИ НЕ ВСЕ», the fourth time round: eight playlists in Медиатека and a
-/// single card on the shelf, still there after 3.28.68.
+/// «ОНИ НЕ ВСЕ»: eight playlists in Медиатека and a single card on the
+/// shelf.
 ///
-/// `audio.getPlaylists` takes a comma-separated `filters` of `all` (default),
-/// `owned`, `followed` and `albums`, and it *unions* the categories it names.
-/// The Albums shelf asked for `followed,albums`, so VK answered with every
-/// playlist saved from another person on top of the releases — and since the
-/// playlist shelf subtracts every id the Albums shelf reports, each of those
-/// playlists was taken off Медиатека. What is left is the playlists you made
-/// yourself, which for the reporter was one.
+/// `audio.getPlaylists` takes a comma-separated `filters` of `all`
+/// (default), `owned`, `followed` and `albums`, and it *unions* the
+/// categories it names. The Albums shelf asked for `followed,albums`, so VK
+/// answered with every playlist saved from another person on top of the
+/// releases — and since the playlist shelf subtracted every id the Albums
+/// shelf reported, each of those playlists was taken off Медиатека. What is
+/// left is the playlists you made yourself, which for the reporter was one.
 ///
 /// No per-entry test could have saved them: VK sends a saved playlist with
 /// nothing on it that says "playlist", so the three releases that narrowed
 /// the shape test one marker at a time all left the shelf at one card.
+///
+/// Narrowing the request to `filters=albums` only helps while VK honours
+/// it. The subtraction itself is gone now, so the playlist shelf is the
+/// same eight cards whatever the Albums shelf asks for or gets back.
 final class LibraryPlaylistShelfFilterTests: XCTestCase {
     /// `audio.getPlaylists` with the `filters` semantics VK documents.
     private struct FakeVK {
@@ -102,46 +106,72 @@ final class LibraryPlaylistShelfFilterTests: XCTestCase {
     }
 
     /// The whole library shelf, assembled the way the app assembles it.
-    private func shelf(albumShelfFilters: String) throws -> [Playlist] {
+    private func shelf() throws -> [Playlist] {
         let service = makeService()
-        let identities = Set(
-            service.followedAlbumPage(
-                try FakeVK.response(filters: albumShelfFilters),
-                offset: 0
-            )
-            .items
-            .map(\.compositeID)
-        )
         return LibraryPlaylistShelfPolicy.normalized(
             service.playlistPage(
                 try FakeVK.response(filters: nil),
                 offset: 0
             ).items,
-            ownerID: FakeVK.ownerID,
-            followedAlbumIdentities: identities
+            ownerID: FakeVK.ownerID
         )
     }
 
-    // The defect, reproduced end to end.
-    func testTheOldUnionFilterHidesSevenOfEightPlaylists() throws {
-        XCTAssertEqual(try shelf(albumShelfFilters: "followed,albums").count, 1)
+    /// What the Albums shelf reports for a given `filters`, which used to be
+    /// subtracted from the shelf above.
+    private func albumShelfIdentities(
+        filters: String
+    ) throws -> Set<String> {
+        Set(
+            makeService()
+                .followedAlbumPage(
+                    try FakeVK.response(filters: filters),
+                    offset: 0
+                )
+                .items
+                .map(\.compositeID)
+        )
     }
 
-    // The fix: every playlist reaches the shelf, and no release does.
-    func testEveryPlaylistReachesTheShelf() throws {
-        let shelf = try shelf(
-            albumShelfFilters: LibraryPlaylistPagePolicy.albumShelfFilters
-        )
+    // The defect, reproduced end to end: the Albums shelf reports all seven
+    // saved playlists as releases, and the shelf used to subtract exactly
+    // that — which is how the reporter was left with one card.
+    func testTheOldUnionFilterStillReportsEverySavedPlaylistAsAnAlbum()
+        throws {
+        let identities = try albumShelfIdentities(filters: "followed,albums")
 
-        XCTAssertEqual(shelf.count, 8)
-        XCTAssertEqual(shelf.first?.title, "Дорога")
+        XCTAssertEqual(identities.count, 10)
         XCTAssertEqual(
-            shelf.dropFirst().map(\.title),
-            (1...7).map { "Сохранённый \($0)" }
+            try shelf()
+                .filter { $0.title.hasPrefix("Сохранённый") }
+                .filter { identities.contains($0.libraryIdentity) }
+                .count,
+            7
         )
-        XCTAssertFalse(
-            shelf.contains { $0.title.hasPrefix("Release") },
-            "followed releases stay on the Albums shelf"
+    }
+
+    // The fix: the shelf keeps them anyway, because it subtracts nothing.
+    func testEveryPlaylistReachesTheShelf() throws {
+        let shelf = try shelf()
+
+        XCTAssertEqual(
+            shelf.filter { $0.title.hasPrefix("Release") == false }
+                .map(\.title),
+            ["Дорога"] + (1...7).map { "Сохранённый \($0)" }
+        )
+    }
+
+    // The cost of dropping the subtraction, stated outright: a release VK
+    // sent with no marker at all now rides along on Медиатека. A release
+    // that slips through still renders a card that opens and plays, and a
+    // playlist that is subtracted is simply gone — which is the defect.
+    func testAnUnmarkedReleaseRidesAlongRatherThanCostingAPlaylist() throws {
+        let shelf = try shelf()
+
+        XCTAssertEqual(
+            shelf.filter { $0.title.hasPrefix("Release") }.map(\.title),
+            ["Release 3"],
+            "the releases VK typed are still filtered by album_type"
         )
     }
 
