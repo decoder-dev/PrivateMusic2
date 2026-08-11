@@ -418,19 +418,29 @@ struct LibraryView: View {
     /// `playShuffled` is a per-collection entry point: it leaves the
     /// player's shuffle control and the persisted preference alone, so the
     /// next tap on a row still queues Медиатека in the order it is shown.
+    ///
+    /// Spelled out with `Label` rather than a bare icon: a screenshot report
+    /// showed people missing an icon-only glyph next to «Треки», so the
+    /// control now carries its own visible caption instead of relying on
+    /// the accessibility label alone.
     private var shuffleLibraryButton: some View {
         Button {
             Haptics.selection()
             shuffleLibrary()
         } label: {
-            Image(systemName: "shuffle")
+            Label(L10n.text("Перемешать"), systemImage: "shuffle")
                 .font(.subheadline.weight(.semibold))
-                .frame(width: 34, height: 34)
-                .contentShape(Circle())
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .tint(settings.theme.accent)
         .disabled(filteredTracks.isEmpty)
         .accessibilityLabel(L10n.text("Перемешать"))
+        .accessibilityHint(
+            L10n.text("Начинает воспроизведение треков в случайном порядке")
+        )
     }
 
     private func shuffleLibrary() {
