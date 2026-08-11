@@ -519,12 +519,19 @@ struct VKMusicService: MusicService {
         if let userID {
             parameters["owner_id"] = String(userID)
         }
-        let envelope: VKResponse<VKItems<Album>> = try await client.post(
+        // Lossy item decode, like the playlist list: `followed` also returns
+        // the playlists saved from other people, and they have to be told
+        // apart from releases before the playlist shelf subtracts these ids.
+        let envelope: VKResponse<JSONValue> = try await client.post(
             path: "/method/audio.getPlaylists",
             form: common(accessToken).merging(parameters) { _, new in new },
-            responseType: VKResponse<VKItems<Album>>.self
+            responseType: VKResponse<JSONValue>.self
         )
-        return page(envelope.response, offset: offset, requested: count)
+        return followedAlbumPage(
+            envelope.response,
+            offset: offset,
+            requested: count
+        )
     }
 
     func albumTracks(
@@ -1244,6 +1251,30 @@ struct VKMusicService: MusicService {
         requested: Int = LibraryPlaylistPagePolicy.pageSize
     ) -> MusicPage<Playlist> {
         let items = value.libraryPlaylistItems
+        let received = value.libraryItemCount
+        let total = value.libraryTotalCount ?? (offset + received)
+        return MusicPage(
+            items: items,
+            totalCount: max(total, offset + received),
+            nextOffset: LibraryPlaylistPagePolicy.nextOffset(
+                after: offset,
+                received: received,
+                requested: requested,
+                total: total
+            )
+        )
+    }
+
+    /// Assembles the Albums shelf page from the same `audio.getPlaylists`
+    /// payload shape, dropping the saved playlists the `followed` filter
+    /// hands back next to the releases. The offset advances by the raw entry
+    /// count for the same reason as `playlistPage`.
+    func followedAlbumPage(
+        _ value: JSONValue,
+        offset: Int,
+        requested: Int = LibraryPlaylistPagePolicy.pageSize
+    ) -> MusicPage<Album> {
+        let items = value.libraryFollowedAlbumItems
         let received = value.libraryItemCount
         let total = value.libraryTotalCount ?? (offset + received)
         return MusicPage(
