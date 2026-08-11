@@ -420,6 +420,13 @@ for forbidden_liked_title in (
         )
 if '"мне нравится"' not in shelf_policy_source:
     fail("the VK system liked playlist must still collapse its clones")
+if "guard item.ownerID != ownerID else { return false }" not in shelf_policy_source:
+    fail(
+        "a playlist you own must never be dropped as a followed album: VK "
+        "has no way for a person to own a release, so an id collision with "
+        "the Albums shelf is that shelf's fault, not a reason to hide the "
+        "playlist"
+    )
 playlist_paging_source_path = SOURCE / "Models/LibraryPlaylistPagePolicy.swift"
 if not playlist_paging_source_path.is_file():
     fail("LibraryPlaylistPagePolicy must define the playlist paging contract")
@@ -436,6 +443,17 @@ if "LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(" not in json_value_source
         "audio.getPlaylists entries must be classified by "
         "LibraryPlaylistEntryPolicy, not by an ad-hoc marker count"
     )
+for required_followed_album_symbol in (
+    "var libraryFollowedAlbumItems: [Album]",
+    "LibraryPlaylistEntryPolicy.belongsOnAlbumsShelf(",
+):
+    if required_followed_album_symbol not in json_value_source:
+        fail(
+            "the Albums shelf list (filters=followed,albums) also returns "
+            "the playlists saved from other people, and the playlist shelf "
+            "subtracts every id it reports: "
+            f"{required_followed_album_symbol}"
+        )
 entry_policy_path = SOURCE / "Models/LibraryPlaylistEntryPolicy.swift"
 if not entry_policy_path.is_file():
     fail("LibraryPlaylistEntryPolicy must define the playlist/release test")
@@ -443,6 +461,7 @@ entry_policy_source = entry_policy_path.read_text(encoding="utf-8")
 for required_entry_policy_symbol in (
     "static func hasPlaylistMarker(",
     "static func hasReleaseAlbumType(",
+    "static func belongsOnAlbumsShelf(",
     "guard !hasPlaylistMarker(entry), hasReleaseAlbumType(entry) else {",
 ):
     if required_entry_policy_symbol not in entry_policy_source:
@@ -836,6 +855,18 @@ vk_music_source = (SOURCE / "Services" / "VKMusicService.swift").read_text(
 )
 if '"audio_stream_mixes"' in vk_music_source or '"audio_new_releases"' in vk_music_source:
     fail("catalog sections must use real ids from catalog.getAudio")
+liked_albums_body = vk_music_source.split("func likedAlbums(", 1)
+if len(liked_albums_body) < 2:
+    fail("VKMusicService must load the Albums shelf through likedAlbums")
+else:
+    liked_albums_body = liked_albums_body[1].split("\n    func ", 1)[0]
+    if "followedAlbumPage(" not in liked_albums_body:
+        fail(
+            "the Albums shelf page must be classified item by item: a "
+            "strict VKItems<Album> decode took every playlist saved from "
+            "another owner for a release, and the playlist shelf subtracts "
+            "exactly those ids, so Медиатека lost them"
+        )
 for required_queue_symbol in (
     "func removeFromQueue(at index: Int)",
     ".swipeActions(",
