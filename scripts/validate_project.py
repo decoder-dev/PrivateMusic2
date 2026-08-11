@@ -1300,6 +1300,152 @@ close_braces = len(re.findall(r"\}", all_source))
 if open_braces != close_braces:
     fail(f"unbalanced braces: {open_braces} != {close_braces}")
 
+# ============================================================================
+# STABILITY OFFICE — AGENT E (KEYSTONE) PINS
+# ----------------------------------------------------------------------------
+# Locks the cross-cutting invariants that Agents A-D are introducing in
+# parallel branches off this same `main` tip (see STABILITY_OFFICE_BRIEF.md):
+#
+#   Agent A  LIFELINE   cursor/post-call-resume-bc40        PostCallResumePolicy
+#   Agent B  SLIPSTREAM cursor/network-aware-buffer-bc40    NetworkAdaptiveBufferPolicy
+#   Agent C  BEDROCK    cursor/avplayer-failure-hardening-bc40  SessionActivationRetryPolicy
+#   Agent D  FLINT      cursor/c-buffer-health-estimator-bc40   pm_buffer_health_*
+#
+# Agent E (this branch, cursor/stability-test-pins-bc40) merges last, once
+# A-D have landed on `main`, so its pins can be written against their final
+# symbol names. Until then those symbols do not exist on this branch, so a
+# hard `if symbol not in source: fail(...)` pin (like the ones above for
+# StreamFailureRetryPolicy / MediaServicesResetPolicy) would break today's
+# `main` for no reason.
+#
+# require_stability_office_symbols() below is therefore "soft-ready": each
+# family only becomes a *hard* requirement once a trigger substring for that
+# family is already visible in the searched file(s) — i.e. once that agent's
+# branch has actually been merged into this tree. Until a trigger fires the
+# family is silently skipped (main still passes cleanly). Once it fires, every
+# symbol declared for that family must be present verbatim, so a partial or
+# renamed landing fails loudly instead of the validator staying green with a
+# dropped symbol. This mirrors "no behavior changes without a pin that would
+# fail if it regressed" from the brief's guiding principle, without requiring
+# Agent E to guess A-D's exact identifiers before their branches exist.
+#
+# TODO(Decoder-Dev / Agent E): once each branch below has actually merged,
+# replace its soft-ready entry with an unconditional pin (same style as the
+# StreamFailureRetryPolicy / MediaServicesResetPolicy blocks above), using
+# the symbol names as they actually landed. If a name differs from the one
+# documented in STABILITY_OFFICE_BRIEF.md, file it back to the owning agent —
+# Agent E does not rename production symbols.
+# ============================================================================
+
+
+def require_stability_office_symbols() -> None:
+    audio_player_text = (
+        SOURCE / "Player" / "AudioPlayer.swift"
+    ).read_text(encoding="utf-8")
+    app_delegate_path = SOURCE / "App" / "AppDelegate.swift"
+    root_view_path = SOURCE / "Features" / "Root" / "RootView.swift"
+    scene_hook_text = audio_player_text
+    if app_delegate_path.is_file():
+        scene_hook_text += app_delegate_path.read_text(encoding="utf-8")
+    if root_view_path.is_file():
+        scene_hook_text += root_view_path.read_text(encoding="utf-8")
+    native_core_header_path = SOURCE / "Native" / "PrivateMusicCore.h"
+    native_core_header_text = (
+        native_core_header_path.read_text(encoding="utf-8")
+        if native_core_header_path.is_file()
+        else ""
+    )
+
+    # (family label, trigger substring, haystack, required symbols)
+    #
+    # A, B and D have already pushed their branches (confirmed via
+    # `git fetch origin` + inspecting their diffs against `origin/main`
+    # without merging their production code into this branch), so their
+    # entries below pin the exact method signatures observed there, not
+    # just the enum name. C (BEDROCK / SessionActivationRetryPolicy) had
+    # not pushed cursor/avplayer-failure-hardening-bc40 as of this commit,
+    # so it stays a name-only placeholder pending that branch.
+    families = (
+        (
+            "PostCallResumePolicy (Agent A / LIFELINE, "
+            "cursor/post-call-resume-bc40)",
+            "PostCallResumePolicy",
+            scene_hook_text,
+            (
+                "enum PostCallResumePolicy",
+                "PostCallResumePolicy.shouldResumeWithoutOption(",
+                "PostCallResumePolicy.shouldResumeOnForeground(",
+            ),
+        ),
+        (
+            "NetworkAdaptiveBufferPolicy (Agent B / SLIPSTREAM, "
+            "cursor/network-aware-buffer-bc40)",
+            "NetworkAdaptiveBufferPolicy",
+            audio_player_text,
+            (
+                "enum NetworkAdaptiveBufferPolicy",
+                "NetworkAdaptiveBufferPolicy.preferredForwardBuffer(",
+                "NetworkAdaptiveBufferPolicy.maximumConnectivityAttempts(",
+                "NetworkAdaptiveBufferPolicy.retryDelay(",
+            ),
+        ),
+        (
+            "SessionActivationRetryPolicy (Agent C / BEDROCK, "
+            "cursor/avplayer-failure-hardening-bc40)",
+            "SessionActivationRetryPolicy",
+            audio_player_text,
+            (
+                "SessionActivationRetryPolicy",
+            ),
+        ),
+        (
+            "pm_buffer_health_* (Agent D / FLINT, "
+            "cursor/c-buffer-health-estimator-bc40)",
+            "pm_buffer_health_",
+            native_core_header_text,
+            (
+                "pm_buffer_health_reset",
+                "pm_buffer_health_observe",
+                "pm_buffer_health_throughput",
+                "pm_buffer_health_predicted_underrun",
+            ),
+        ),
+    )
+    pending = []
+    for label, trigger, haystack, required_symbols in families:
+        if trigger not in haystack:
+            pending.append(label)
+            continue
+        for symbol in required_symbols:
+            if symbol not in haystack:
+                fail(
+                    f"stability-office pin: {label} has landed "
+                    f"(trigger {trigger!r} found) but is missing required "
+                    f"symbol {symbol!r} — coordinate with the owning agent, "
+                    "do not rename or delete the pin"
+                )
+    if pending:
+        print(
+            "PENDING (stability office, Agent E soft-ready pins, not yet "
+            f"required on this tree): {', '.join(pending)}"
+        )
+
+    # This discriminator predates A-D and is a release invariant (3.28.75):
+    # ear-off must stay a deliberate pause across every agent's merge,
+    # trigger or no trigger.
+    for always_required_symbol in (
+        "shouldTreatEndAsDeliberatePause(",
+        "otherAudioWasPlaying:",
+    ):
+        if always_required_symbol not in audio_player_text:
+            fail(
+                "stability-office pin: ear-detection deliberate-pause "
+                f"discriminator regressed: {always_required_symbol}"
+            )
+
+
+require_stability_office_symbols()
+
 print(f"OK: {len(swift_files)} Swift files")
 print("OK: no embedded client secret or CAPTCHA interception")
 print("OK: Keychain, ephemeral URLSession and Now Playing are present")
