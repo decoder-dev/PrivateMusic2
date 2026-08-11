@@ -184,6 +184,54 @@ enum AudioRoutePolicy {
             || portType == .HDMI
             || portType == .usbAudio
     }
+
+    /// A route worn on the head: the only kind that can be taken off, and
+    /// so the only kind whose interruption may be ear detection.
+    static func isWearable(_ portType: AVAudioSession.Port) -> Bool {
+        isBluetooth(portType) || portType == .headphones
+    }
+
+    /// `.oldDeviceUnavailable` says the route we were listening on is gone,
+    /// but `currentRoute` is read from a session that has not finished
+    /// switching: it can still name the very device that just went away.
+    ///
+    /// Reading that stale route as "nothing was lost" is a speaker leak —
+    /// a moment later the session lands on the built-in speaker with
+    /// playback still running. The disconnect is therefore acted on
+    /// whenever the route we were playing on is still in the answer, and
+    /// re-checked once the route has settled.
+    static func looksLikeStaleRouteLoss(
+        previousOutputPortTypes: [AVAudioSession.Port],
+        currentOutputPortTypes: [AVAudioSession.Port]
+    ) -> Bool {
+        guard previousOutputPortTypes.contains(where: isExternalPlayback),
+              currentOutputPortTypes.contains(where: isExternalPlayback) else {
+            return false
+        }
+        return currentOutputPortTypes.contains {
+            previousOutputPortTypes.contains($0)
+        }
+    }
+}
+
+/// Whether playback the *app* starts on its own — a stream retry, a stall
+/// recovery, the next track, a session restart after media services died —
+/// may begin right now.
+///
+/// None of those are the user asking to listen, so none of them may push
+/// audio through the device speaker while the headphones that were playing
+/// are gone. `routeDisconnectPending` is what says the disconnect has been
+/// seen and no new route has taken over yet.
+enum AudioAutoplayGatePolicy {
+    static func allowsAutomaticPlayback(
+        routeDisconnectPending: Bool,
+        currentOutputPortTypes: [AVAudioSession.Port]
+    ) -> Bool {
+        guard routeDisconnectPending else { return true }
+        return currentOutputPortTypes.contains(
+            where: AudioRoutePolicy.isExternalPlayback
+        )
+    }
 }
 
 enum AppVolumePolicy {
@@ -364,6 +412,43 @@ enum AudioInterruptionPolicy {
             previousOutputPortTypes: previousOutputPortTypes,
             currentOutputPortTypes: currentOutputPortTypes
         )
+    }
+
+    /// How long after it began an interruption end can still be the
+    /// headphones saying they came off, on systems that do not name the
+    /// reason (iOS 16).
+    ///
+    /// Automatic Ear Detection begins and ends the interruption in one
+    /// breath — the AirPods stay connected, so nothing about the route
+    /// changes and the end even arrives with `.shouldResume`. Resuming
+    /// there is what the reporter hears as «музыка не встаёт на паузу»:
+    /// the buds are in the case and the track plays on. A call, Siri or
+    /// another app holding the session lasts far longer than this, so they
+    /// still resume the way they always did.
+    static let deliberatePauseWindow: TimeInterval = 1.5
+
+    /// Whether an interruption that began and ended on the same headphone
+    /// route is the user taking the headphones off rather than something
+    /// borrowing the session for a moment.
+    ///
+    /// - Parameter beganAsRouteDisconnect: iOS 17 names the reason
+    ///   (`.routeDisconnected`), which is the exact signal and needs no
+    ///   timing at all — `setPrefersInterruptionOnRouteDisconnect(true)`
+    ///   is what asks for it.
+    static func shouldTreatEndAsDeliberatePause(
+        beganAsRouteDisconnect: Bool,
+        interruptionDuration: TimeInterval,
+        previousOutputPortTypes: [AVAudioSession.Port],
+        currentOutputPortTypes: [AVAudioSession.Port]
+    ) -> Bool {
+        guard !currentOutputPortTypes.isEmpty,
+              currentOutputPortTypes.allSatisfy(AudioRoutePolicy.isWearable),
+              Set(previousOutputPortTypes) == Set(currentOutputPortTypes)
+        else {
+            return false
+        }
+        if beganAsRouteDisconnect { return true }
+        return interruptionDuration <= deliberatePauseWindow
     }
 
     /// How long an interruption-end resume waits for the route to settle.
@@ -633,7 +718,13 @@ final class AudioPlayer: ObservableObject {
     private var resumeAfterRouteTransfer = false
     private var routeDisconnectPending = false
     private var outputsAtInterruptionBegan: [AVAudioSession.Port] = []
+    private var interruptionBeganAt: Date?
+    /// iOS 17 tells us an interruption *is* the route disconnecting, which
+    /// is how Automatic Ear Detection arrives while the AirPods stay the
+    /// current route.
+    private var interruptionBeganAsRouteDisconnect = false
     private var interruptionResumeTask: Task<Void, Never>?
+    private var routeSettleTask: Task<Void, Never>?
     private var pendingRemoteCommand: RemoteCommandCoalescing.Command?
     private var remoteCommandFlushTask: Task<Void, Never>?
     private var lastPersistedQueueSignature = ""
@@ -1240,6 +1331,12 @@ final class AudioPlayer: ObservableObject {
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         playbackIntended = false
+        // A pause from the user, the buds or the lock screen outranks any
+        // resume still waiting on a route to settle.
+        interruptionResumeTask?.cancel()
+        interruptionResumeTask = nil
+        routeSettleTask?.cancel()
+        routeSettleTask = nil
         pausePreservingIntent()
     }
 
@@ -1248,6 +1345,16 @@ final class AudioPlayer: ObservableObject {
     /// intent to keep listening afterwards.
     func pauseForShareExport() {
         pausePreservingIntent()
+    }
+
+    /// Whether playback the app starts on its own may begin right now —
+    /// see `AudioAutoplayGatePolicy`.
+    private var allowsAutomaticPlayback: Bool {
+        AudioAutoplayGatePolicy.allowsAutomaticPlayback(
+            routeDisconnectPending: routeDisconnectPending,
+            currentOutputPortTypes: AVAudioSession.sharedInstance()
+                .currentRoute.outputs.map(\.portType)
+        )
     }
 
     private func pausePreservingIntent() {
@@ -1339,6 +1446,10 @@ final class AudioPlayer: ObservableObject {
         playbackIntended = false
         playbackGeneration += 1
         dismissPlayer()
+        interruptionResumeTask?.cancel()
+        interruptionResumeTask = nil
+        routeSettleTask?.cancel()
+        routeSettleTask = nil
         sleepTask?.cancel()
         sleepTask = nil
         sleepTimerEndDate = nil
@@ -1396,10 +1507,18 @@ final class AudioPlayer: ObservableObject {
         loadCurrent(autoplay: true, startAt: 0)
     }
 
+    /// - Parameter automatic: `true` when the app is starting playback of
+    ///   its own accord — a retry, a stall recovery, a reload after media
+    ///   services died. Such a start waits for a route while the
+    ///   headphones that were playing are gone, so it cannot land on the
+    ///   built-in speaker; a start the user asked for never waits.
     private func loadCurrent(
-        autoplay: Bool,
-        startAt position: TimeInterval
+        autoplay requestedAutoplay: Bool,
+        startAt position: TimeInterval,
+        automatic: Bool = false
     ) {
+        let autoplay = requestedAutoplay
+            && (!automatic || allowsAutomaticPlayback)
         guard let track = currentTrack else { return }
         let offlineURL = offlineURLProvider?(track)
         guard let url = offlineURL ?? track.streamURL else {
@@ -1409,7 +1528,10 @@ final class AudioPlayer: ObservableObject {
                     attempts: streamRecoveryAttempts,
                     error: APIError.timedOut
                 ) {
-                    scheduleSameTrackRecovery(autoplay: autoplay)
+                    scheduleSameTrackRecovery(
+                        autoplay: autoplay,
+                        automatic: true
+                    )
                     return
                 }
                 if StreamFailureRetryPolicy.shouldAdvance(
@@ -2097,6 +2219,10 @@ final class AudioPlayer: ObservableObject {
             isAudioInterrupted = true
             outputsAtInterruptionBegan = AVAudioSession.sharedInstance()
                 .currentRoute.outputs.map(\.portType)
+            interruptionBeganAt = Date()
+            interruptionBeganAsRouteDisconnect = Self.isRouteDisconnect(
+                notification
+            )
             wasPlayingBeforeInterruption = playbackIntended && isPlaying
             pausePreservingIntent()
         case .ended:
@@ -2104,6 +2230,32 @@ final class AudioPlayer: ObservableObject {
             let previousOutputs = outputsAtInterruptionBegan
             let currentOutputs = AVAudioSession.sharedInstance()
                 .currentRoute.outputs.map(\.portType)
+            let beganAt = interruptionBeganAt
+            let beganAsRouteDisconnect = interruptionBeganAsRouteDisconnect
+            interruptionBeganAt = nil
+            interruptionBeganAsRouteDisconnect = false
+            // Taking the headphones off is the user saying stop, exactly
+            // like a pause from the buds themselves: the intent goes with
+            // it, so nothing later — a reconnect, a call ending, a stream
+            // retry — starts the track up again on its own.
+            if wasPlayingBeforeInterruption || playbackIntended,
+               AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                   beganAsRouteDisconnect: beganAsRouteDisconnect,
+                   interruptionDuration: beganAt.map {
+                       Date().timeIntervalSince($0)
+                   } ?? .greatestFiniteMagnitude,
+                   previousOutputPortTypes: previousOutputs,
+                   currentOutputPortTypes: currentOutputs
+               ) {
+                interruptionResumeTask?.cancel()
+                interruptionResumeTask = nil
+                wasPlayingBeforeInterruption = false
+                outputsAtInterruptionBegan = []
+                resumeAfterRouteTransfer = false
+                playbackIntended = false
+                pausePreservingIntent()
+                return
+            }
             if AudioInterruptionPolicy.shouldTreatEndAsRouteDisconnect(
                 previousOutputPortTypes: previousOutputs,
                 currentOutputPortTypes: currentOutputs
@@ -2148,6 +2300,21 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
+    /// Whether the system named the route disconnecting as the reason for
+    /// an interruption, which is what
+    /// `setPrefersInterruptionOnRouteDisconnect(true)` asks it to do.
+    private static func isRouteDisconnect(_ notification: Notification) -> Bool {
+        guard #available(iOS 17.0, *),
+              let raw = notification.userInfo?[
+                AVAudioSessionInterruptionReasonKey
+              ] as? UInt,
+              let reason = AVAudioSession.InterruptionReason(rawValue: raw)
+        else {
+            return false
+        }
+        return reason == .routeDisconnected
+    }
+
     /// Waits for the route to settle so a trailing `.oldDeviceUnavailable`
     /// can set `routeDisconnectPending` before we reactivate, then checks
     /// the route itself in case the notification is later still.
@@ -2190,6 +2357,51 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
+    /// Re-reads the route after a disconnect that arrived while the session
+    /// still named the device it lost.
+    ///
+    /// If the route has landed on the phone itself, the pause stands and
+    /// the pending flag keeps automatic playback off the speaker. If a
+    /// second external device took the playback over — a car head unit
+    /// while AirPods went away — the transfer is honoured the same way
+    /// `newDeviceAvailable` would.
+    private func scheduleRouteSettleRecheck(
+        from previousOutputs: [AVAudioSession.Port]
+    ) {
+        routeSettleTask?.cancel()
+        routeSettleTask = Task { @MainActor in
+            try? await Task.sleep(
+                nanoseconds: UInt64(
+                    AudioInterruptionPolicy.routeSettleDelay * 1_000_000_000
+                )
+            )
+            guard !Task.isCancelled else { return }
+            let settledOutputs = AVAudioSession.sharedInstance()
+                .currentRoute.outputs.map(\.portType)
+            guard !AudioRoutePolicy.didLoseExternalRoute(
+                previousOutputPortTypes: previousOutputs,
+                currentOutputPortTypes: settledOutputs
+            ) else {
+                return
+            }
+            let pendingResume = resumeAfterRouteTransfer
+            routeDisconnectPending = false
+            guard AudioRoutePolicy.shouldResumeAfterRouteTransfer(
+                pendingResume: pendingResume,
+                playbackIntended: playbackIntended,
+                hasCurrentTrack: currentTrack != nil,
+                isPlaying: isPlaying,
+                resumeBluetoothEnabled: resumeOnBluetoothConnection,
+                currentOutputPortTypes: settledOutputs
+            ) else {
+                return
+            }
+            resumeAfterRouteTransfer = false
+            _ = activateAudioSession()
+            resume()
+        }
+    }
+
     private func handleRouteChange(_ notification: Notification) {
         updateOutputToneProfile(reloadIfNeeded: true)
         guard let rawReason = notification.userInfo?[
@@ -2216,12 +2428,17 @@ final class AudioPlayer: ObservableObject {
             // arrived first: that interruption had already paused playback
             // and cleared the flag, so nothing here held the session back
             // and the next automatic resume went to the speaker.
-            guard AudioRoutePolicy.didLoseExternalRoute(
+            let lostRoute = AudioRoutePolicy.didLoseExternalRoute(
                 previousOutputPortTypes: previousOutputs,
                 currentOutputPortTypes: currentOutputs
-            ) else {
-                break
-            }
+            )
+            // The route can also still be mid-switch and name the device
+            // that just went away. Pause first, ask again once it settles.
+            let staleRoute = AudioRoutePolicy.looksLikeStaleRouteLoss(
+                previousOutputPortTypes: previousOutputs,
+                currentOutputPortTypes: currentOutputs
+            )
+            guard lostRoute || staleRoute else { break }
             let playbackWasActive = isPlaying
                 || wasPlayingBeforeInterruption
                 || resumeAfterRouteTransfer
@@ -2233,7 +2450,14 @@ final class AudioPlayer: ObservableObject {
             // conditional pause is the speaker leak this whole branch
             // exists to prevent.
             pausePreservingIntent()
+            if !lostRoute {
+                scheduleRouteSettleRecheck(from: previousOutputs)
+            }
         case .newDeviceAvailable:
+            // A route has arrived, so the settle re-check has nothing left
+            // to decide — this branch owns the transfer now.
+            routeSettleTask?.cancel()
+            routeSettleTask = nil
             let pendingResume = resumeAfterRouteTransfer
             resumeAfterRouteTransfer = false
             let currentOutputs = AVAudioSession.sharedInstance()
@@ -2288,6 +2512,8 @@ final class AudioPlayer: ObservableObject {
 
         interruptionResumeTask?.cancel()
         interruptionResumeTask = nil
+        routeSettleTask?.cancel()
+        routeSettleTask = nil
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
         minimumVolumeResumeSuppressed = false
@@ -2326,7 +2552,11 @@ final class AudioPlayer: ObservableObject {
         audioSessionConfigured = false
         let audioSessionRestored = configureAudioSession()
         guard currentTrack != nil else { return }
-        loadCurrent(autoplay: shouldAutoplay, startAt: position)
+        loadCurrent(
+            autoplay: shouldAutoplay,
+            startAt: position,
+            automatic: true
+        )
         if !audioSessionRestored {
             errorMessage = L10n.text(
                 "Не удалось восстановить аудиовыход."
@@ -2338,7 +2568,11 @@ final class AudioPlayer: ObservableObject {
         guard currentTrack != nil else { return }
         let shouldResume = isPlaying
         let position = elapsedTime
-        loadCurrent(autoplay: shouldResume, startAt: position)
+        loadCurrent(
+            autoplay: shouldResume,
+            startAt: position,
+            automatic: true
+        )
     }
 
     private func updateOutputToneProfile(reloadIfNeeded: Bool) {
@@ -2415,6 +2649,14 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func advanceAfterCompletion() {
+        // The queue does not walk on through the device speaker after the
+        // headphones went away — the intent is kept so the next route the
+        // user connects picks the queue back up.
+        guard allowsAutomaticPlayback else {
+            resumeAfterRouteTransfer = playbackIntended
+            pausePreservingIntent()
+            return
+        }
         if sleepTimerMode == .endOfTrack {
             cancelSleepTimer()
             pause()
@@ -2464,9 +2706,13 @@ final class AudioPlayer: ObservableObject {
             offlineInvalidationHandler?(track)
             didAttemptStreamRefresh = false
             if track.streamURL != nil {
-                loadCurrent(autoplay: true, startAt: elapsedTime)
+                loadCurrent(
+                    autoplay: true,
+                    startAt: elapsedTime,
+                    automatic: true
+                )
             } else if streamRefreshProvider != nil {
-                refreshCurrentStream(autoplay: true)
+                refreshCurrentStream(autoplay: true, automatic: true)
             }
             return
         }
@@ -2480,7 +2726,11 @@ final class AudioPlayer: ObservableObject {
             suppressAdvanceUntil = nil
             didAttemptStreamRefresh = false
             streamRecoveryAttempts = 0
-            loadCurrent(autoplay: playbackIntended, startAt: elapsedTime)
+            loadCurrent(
+                autoplay: playbackIntended,
+                startAt: elapsedTime,
+                automatic: true
+            )
             return
         }
 
@@ -2489,7 +2739,7 @@ final class AudioPlayer: ObservableObject {
             attempts: streamRecoveryAttempts,
             error: error
         ) {
-            scheduleSameTrackRecovery(autoplay: true)
+            scheduleSameTrackRecovery(autoplay: true, automatic: true)
             return
         }
 
@@ -2515,7 +2765,10 @@ final class AudioPlayer: ObservableObject {
         Haptics.error()
     }
 
-    private func scheduleSameTrackRecovery(autoplay: Bool) {
+    private func scheduleSameTrackRecovery(
+        autoplay: Bool,
+        automatic: Bool = false
+    ) {
         cancelStreamRecovery()
         isPlaying = false
         isBuffering = true
@@ -2536,9 +2789,16 @@ final class AudioPlayer: ObservableObject {
             }
             self.didAttemptStreamRefresh = false
             if self.streamRefreshProvider != nil {
-                self.refreshCurrentStream(autoplay: autoplay)
+                self.refreshCurrentStream(
+                    autoplay: autoplay,
+                    automatic: automatic
+                )
             } else {
-                self.loadCurrent(autoplay: autoplay, startAt: position)
+                self.loadCurrent(
+                    autoplay: autoplay,
+                    startAt: position,
+                    automatic: automatic
+                )
             }
         }
     }
@@ -2557,12 +2817,13 @@ final class AudioPlayer: ObservableObject {
         ) else {
             return
         }
-        scheduleSameTrackRecovery(autoplay: true)
+        scheduleSameTrackRecovery(autoplay: true, automatic: true)
     }
 
     @discardableResult
     private func advancePastFailedTrackIfPossible() -> Bool {
         guard advanceOnPlaybackError,
+              allowsAutomaticPlayback,
               let currentIndex,
               !queue.isEmpty else {
             return false
@@ -2616,7 +2877,10 @@ final class AudioPlayer: ObservableObject {
         return true
     }
 
-    private func refreshCurrentStream(autoplay: Bool) {
+    private func refreshCurrentStream(
+        autoplay: Bool,
+        automatic: Bool = false
+    ) {
         guard streamRefreshTask == nil,
               let provider = streamRefreshProvider,
               let index = currentIndex,
@@ -2645,7 +2909,8 @@ final class AudioPlayer: ObservableObject {
                 self.streamRefreshTask = nil
                 self.loadCurrent(
                     autoplay: autoplay,
-                    startAt: position
+                    startAt: position,
+                    automatic: automatic
                 )
             } catch is CancellationError {
                 guard generation == self.streamRefreshGeneration else {
