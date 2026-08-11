@@ -70,27 +70,41 @@ enum JSONValue: Codable, Sendable {
         return result
     }
 
-    /// Top-level `audio.getPlaylists` items, decoded one by one so a single
+    /// The `audio.getPlaylists` page as VK sent it, one raw entry per
+    /// element.
+    ///
+    /// The entries normally sit in a top-level `items`, but the same payload
+    /// has come back with the page under a `playlists` / `albums` block and
+    /// with each entry wrapped in a `playlist` object. Reading only the one
+    /// block the app expected left the shelf with whatever handful of
+    /// entries happened to be there.
+    var libraryEntryValues: [JSONValue] {
+        if case let .array(values) = self { return values }
+        guard case let .object(object) = self else { return [] }
+        // `items` is the documented shape and is authoritative even when
+        // empty: an empty page is how VK says the list ended, and looking
+        // further would restart a walk that has already finished.
+        if let values = object.entryArray(for: "items") { return values }
+        for key in ["playlists", "albums", "response", "list", "blocks"] {
+            if let values = object.entryArray(for: key) { return values }
+        }
+        return []
+    }
+
+    /// `audio.getPlaylists` entries, decoded one by one so a single
     /// undecodable entry cannot hide the rest of the page the way a strict
     /// whole-page decode did. Followed albums ride along in the same list
     /// and belong on the Albums shelf, so they are skipped here.
+    ///
+    /// Only `id` and `owner_id` are required. Demanding a `title` too
+    /// dropped playlists VK returned without one — a shelf card with no
+    /// caption is still a playlist you can open, an absent card is not.
     var libraryPlaylistItems: [Playlist] {
-        guard case let .object(object) = self,
-              case let .array(values)? = object["items"] else {
-            return []
-        }
         var result: [Playlist] = []
-        for value in values {
-            guard case let .object(item) = value,
-                  item["id"] != nil,
-                  item["owner_id"] != nil,
-                  item["title"] != nil,
+        for value in libraryEntryValues {
+            guard let item = value.libraryEntryObject,
                   !item.looksLikeFollowedAlbum,
-                  let data = try? JSONEncoder().encode(value),
-                  let playlist = try? JSONDecoder().decode(
-                    Playlist.self,
-                    from: data
-                  ) else {
+                  let playlist = item.decodedEntry(Playlist.self) else {
                 continue
             }
             result.append(playlist)
@@ -98,30 +112,21 @@ enum JSONValue: Codable, Sendable {
         return result
     }
 
-    /// Top-level `audio.getPlaylists` items for the Albums shelf, which asks
-    /// for `filters=followed,albums`.
+    /// `audio.getPlaylists` entries for the Albums shelf, which asks for
+    /// `filters=albums`.
     ///
-    /// `followed` is not an album filter: VK answers it with the playlists
-    /// you saved from other people too, and every one of them decodes as an
-    /// `Album`. Leaving them here put a playlist on the Albums shelf and —
-    /// because the playlist shelf subtracts the ids this list reports — took
-    /// it off Медиатека entirely, which is «ОНИ НЕ ВСЕ».
+    /// The shelf used to ask for `filters=followed,albums`. `followed` is a
+    /// playlist filter, not a qualifier on `albums`: VK unions the two, so
+    /// that request answered with every playlist saved from another person
+    /// alongside the releases. Each of them decoded as an `Album`, and —
+    /// because the playlist shelf subtracts the ids this list reports — was
+    /// taken off Медиатека entirely, which is «ОНИ НЕ ВСЕ».
     var libraryFollowedAlbumItems: [Album] {
-        guard case let .object(object) = self,
-              case let .array(values)? = object["items"] else {
-            return []
-        }
         var result: [Album] = []
-        for value in values {
-            guard case let .object(item) = value,
-                  item["id"] != nil,
-                  item["owner_id"] != nil,
+        for value in libraryEntryValues {
+            guard let item = value.libraryEntryObject,
                   item.belongsOnAlbumsShelf,
-                  let data = try? JSONEncoder().encode(value),
-                  let album = try? JSONDecoder().decode(
-                    Album.self,
-                    from: data
-                  ) else {
+                  let album = item.decodedEntry(Album.self) else {
                 continue
             }
             result.append(album)
@@ -129,14 +134,21 @@ enum JSONValue: Codable, Sendable {
         return result
     }
 
-    /// Raw entries in the top-level `items` array — what the next offset has
-    /// to advance by, whether or not every entry decoded.
-    var libraryItemCount: Int {
-        guard case let .object(object) = self,
-              case let .array(values)? = object["items"] else {
-            return 0
+    /// Raw entries in the page — what the next offset has to advance by,
+    /// whether or not every entry decoded.
+    var libraryItemCount: Int { libraryEntryValues.count }
+
+    /// The entry itself, or the entry a block wrapped around it. Objects
+    /// that carry a `duration` are audio rows, never playlist entries.
+    private var libraryEntryObject: [String: JSONValue]? {
+        guard case let .object(object) = self else { return nil }
+        if object.isLibraryEntry { return object }
+        for key in ["playlist", "album", "audio_playlist"] {
+            if case let .object(nested)? = object[key], nested.isLibraryEntry {
+                return nested
+            }
         }
-        return values.count
+        return nil
     }
 
     var libraryTotalCount: Int? {
@@ -386,6 +398,33 @@ enum JSONValue: Codable, Sendable {
 }
 
 private extension Dictionary where Key == String, Value == JSONValue {
+    /// An `audio.getPlaylists` entry: owner-scoped id, and not an audio row.
+    var isLibraryEntry: Bool {
+        self["id"] != nil && self["owner_id"] != nil && self["duration"] == nil
+    }
+
+    /// The page held at `key`, either as the array itself or as the `items`
+    /// of a block wrapped around it.
+    func entryArray(for key: String) -> [JSONValue]? {
+        switch self[key] {
+        case let .array(values):
+            return values
+        case let .object(nested):
+            if case let .array(values)? = nested["items"] { return values }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    /// Re-decodes the entry through its own `Decodable`. Encoding the
+    /// dictionary rather than the enclosing value keeps a wrapper block off
+    /// the payload the model sees.
+    func decodedEntry<Item: Decodable>(_ type: Item.Type) -> Item? {
+        guard let data = try? JSONEncoder().encode(self) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
+    }
+
     /// The entry reduced to the fields `LibraryPlaylistEntryPolicy` reads.
     var libraryPlaylistEntry: LibraryPlaylistEntry {
         var hasMainArtists = false
@@ -405,14 +444,14 @@ private extension Dictionary where Key == String, Value == JSONValue {
     }
 
     /// A followed release returned by `audio.getPlaylists`, which the Albums
-    /// shelf already covers via `filters=followed,albums`. See
+    /// shelf already covers via `filters=albums`. See
     /// `LibraryPlaylistEntryPolicy` for why the test stays this narrow.
     var looksLikeFollowedAlbum: Bool {
         LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(libraryPlaylistEntry)
     }
 
-    /// An entry of the `filters=followed,albums` list that is a release
-    /// rather than a playlist somebody saved.
+    /// An entry of the `filters=albums` list that is a release rather than a
+    /// playlist VK left in the answer.
     var belongsOnAlbumsShelf: Bool {
         LibraryPlaylistEntryPolicy.belongsOnAlbumsShelf(libraryPlaylistEntry)
     }

@@ -11,6 +11,18 @@ enum LibraryPlaylistPagePolicy {
     /// VK caps `audio.getPlaylists` at 100 entries per request.
     static let pageSize = 100
 
+    /// `filters` for the Albums shelf request.
+    ///
+    /// `filters` is a union of the categories named in it — `all` (default),
+    /// `owned`, `followed`, `albums` — not a chain of qualifiers. Asking for
+    /// `followed,albums` therefore returned every playlist saved from
+    /// another person *as well as* the releases, and since the playlist
+    /// shelf subtracts the ids this list reports, each of those playlists
+    /// vanished from Медиатека and only the ones the user made themselves
+    /// were left. `albums` alone is the releases, which is the only thing
+    /// the Albums shelf ever wanted.
+    static let albumShelfFilters = "albums"
+
     /// Upper bound on the pages the opening walk may request. It is a
     /// runaway guard, not a target: the walk stops as soon as VK reports no
     /// further offset, which for an ordinary library is after one request.
