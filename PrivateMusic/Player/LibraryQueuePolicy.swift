@@ -16,6 +16,9 @@ import Foundation
 enum LibraryQueuePolicy {
     /// Upcoming tracks a queue started from Медиатека may hold.
     static let queueLimit = 2_000
+    /// Library prefetch keeps walking while a whole `audio.get` page still
+    /// fits; partial pages at the real library end still append normally.
+    static let prefetchPageSize = LibraryTrackContinuationPolicy.pageSize
 
     static func isLibraryQueue(_ source: QueueSource?) -> Bool {
         source == .library
@@ -36,5 +39,15 @@ enum LibraryQueuePolicy {
         source: QueueSource?
     ) -> Int {
         max(upcomingLimit(for: source) - max(upcomingCount, 0), 0)
+    }
+
+    /// A library queue should fill in the background long before the listener
+    /// is six tracks from the edge. Stop when the soft cap has less than a
+    /// page left so prefetch never consumes and drops most of a page.
+    static func shouldPrefetch(upcomingCount: Int) -> Bool {
+        appendableCount(
+            upcomingCount: upcomingCount,
+            source: .library
+        ) >= prefetchPageSize
     }
 }

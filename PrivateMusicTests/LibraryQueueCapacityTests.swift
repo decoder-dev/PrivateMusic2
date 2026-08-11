@@ -153,6 +153,94 @@ final class LibraryQueueCapacityTests: XCTestCase {
         )
     }
 
+    func testReplaceUpcomingUsesTheLibraryCeilingForLibraryQueues() {
+        let library = makePlayer()
+        defer { library.tearDown() }
+        let mix = makePlayer()
+        defer { mix.tearDown() }
+        let seedPage = tracks(count: 10, idOffset: 5_000)
+        let replacement = tracks(count: 300, idOffset: 100)
+
+        library.player.play(seedPage[0], in: seedPage, source: .library)
+        library.player.replaceUpcoming(with: replacement)
+        mix.player.play(
+            seedPage[0],
+            in: seedPage,
+            source: .mix(title: "Selena")
+        )
+        mix.player.replaceUpcoming(with: replacement)
+
+        XCTAssertEqual(library.player.queue.count, 301)
+        XCTAssertEqual(
+            mix.player.queue.count,
+            MixTrackRequestPolicy.queueLimit + 1
+        )
+    }
+
+    func testLibraryPrefetchGrowsPastTheFirstLoadedPageBeforeRecommendations()
+        async {
+        let context = makePlayer()
+        defer { context.tearDown() }
+        let loadedPage = tracks(count: 100)
+        var nextLibraryPage = 1
+        var recommendationRequests = 0
+
+        context.player.play(
+            loadedPage[0],
+            in: loadedPage,
+            continuation: {
+                recommendationRequests += 1
+                return [self.tracks(count: 1, idOffset: 9_000)[0]]
+            },
+            prefetchContinuation: {
+                defer { nextLibraryPage += 1 }
+                if nextLibraryPage <= 7 {
+                    return self.tracks(
+                        count: 100,
+                        idOffset: nextLibraryPage * 100
+                    )
+                }
+                if nextLibraryPage == 8 {
+                    return self.tracks(count: 33, idOffset: 800)
+                }
+                return []
+            },
+            source: .library
+        )
+
+        await waitUntil {
+            context.player.queue.count == 833
+        }
+        XCTAssertEqual(context.player.queue.count, 833)
+        XCTAssertEqual(context.player.queue.last?.id, "10_833")
+        XCTAssertEqual(recommendationRequests, 0)
+        XCTAssertEqual(context.player.currentIndex, 0)
+        XCTAssertEqual(context.player.currentTrack?.id, loadedPage[0].id)
+    }
+
+    func testMixPrefetchStillWaitsUntilTheNearEndWindow() {
+        XCTAssertFalse(
+            ContinuationPrefetchPolicy.shouldPrefetch(
+                currentIndex: 0,
+                queueCount: 100
+            )
+        )
+        XCTAssertTrue(
+            ContinuationPrefetchPolicy.shouldPrefetch(
+                currentIndex: 0,
+                queueCount: 100,
+                libraryQueue: true
+            )
+        )
+        XCTAssertFalse(
+            ContinuationPrefetchPolicy.shouldPrefetch(
+                currentIndex: 0,
+                queueCount: LibraryQueuePolicy.queueLimit + 1,
+                libraryQueue: true
+            )
+        )
+    }
+
     private func upcomingCount(in player: AudioPlayer) -> Int {
         guard let index = player.currentIndex else { return 0 }
         return max(player.queue.count - index - 1, 0)
@@ -194,5 +282,16 @@ final class LibraryQueueCapacityTests: XCTestCase {
             defaults: defaults,
             suite: suite
         )
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 2,
+        condition: @MainActor () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
     }
 }
