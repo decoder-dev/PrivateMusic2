@@ -129,47 +129,53 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.71-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.72-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.71-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.72-iphone-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.71"
+          test "$GITHUB_REF_NAME" = "v3.28.72"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.71 (pre-release)
+          # Private Music 3.28.72 (pre-release)
 
-          Полка «Плейлисты» показывает все плейлисты, музыка выключается
-          при отключении наушников, а очередь из Медиатеки называет себя
-          «Ваши треки».
+          Полка «Плейлисты» в Медиатеке показывает все плейлисты, а не
+          один.
 
           ## Плейлисты
-          - Настоящая причина последнего «они не все»: VK раскладывает
-            один и тот же список по нескольким блокам ответа, а разбор
-            останавливался на первом непустом. В присланном случае в
-            `items` лежала одна запись, а остальные семь — в соседних
-            блоках, и на полке была одна карточка
-          - Записи теперь собираются из всех блоков сразу — `items`,
-            `playlists`, `albums`, `response`, `list`, `blocks`,
-            `sections` — и склеиваются по идентификатору владельца, так
-            что один плейлист остаётся одной карточкой
-          - Обёртка вокруг записи разворачивается до самого плейлиста:
-            у блока бывает собственный идентификатор, и карточка по нему
-            не открывалась
-          - Пагинация по-прежнему считает страницу по блоку `items`:
-            записи из соседних блоков — это копия того же списка, а не
-            продолжение, и шагать через них значило бы пропускать то,
-            что VK ещё не прислал
-          - Прошлые исправления остались на месте: «Альбомы» просят
-            `filters=albums`, разбор по признакам записи не выбрасывает
-            плейлисты, а плейлист без названия по-прежнему виден
+          - Настоящая причина «они не все»: полка вычитала из списка
+            плейлистов все идентификаторы, которые прислала полка
+            «Альбомы». В 3.28.70 эту вычитку убрали, но одно место
+            осталось — Медиатека перефильтровывала полку каждый раз,
+            когда полка «Альбомы» публиковала свой список. Плейлисты
+            загружались все, а потом приходили альбомы и снимали с полки
+            почти всё
+          - Вычитки больше нет нигде: ни в политике полки, ни во
+            вью-модели, ни в самом экране. Что бы полка «Альбомы» ни
+            приняла за релиз — и что бы VK ни ответил на
+            `filters=albums`, если решит его не соблюдать, — плейлист с
+            Медиатеки это уже не уберёт
+          - Отдельно чинит случай, когда сессия восстановлена раньше
+            профиля: без идентификатора владельца вычитка снимала и ваши
+            собственные плейлисты
+          - Релизы по-прежнему отсеиваются по самой записи: только то,
+            что VK сам пометил как релиз (`album_type`) и подтвердил
+            вторым признаком. Релиз, который проскочит, — это лишняя
+            рабочая карточка, а вычтенный плейлист — это и есть дефект
+          - «Мне нравится (2)» снова отдельная карточка: VK выдаёт
+            пронумерованную копию, когда «Мне нравится» сохраняют ещё
+            раз, и у неё свой идентификатор и свои треки. Схлопываются
+            только ваша и чужая копии одного и того же «Мне нравится»
+          - Прошлые исправления остались на месте: страница собирается
+            из всех блоков ответа, «Альбомы» просят `filters=albums`,
+            а плейлист без названия по-прежнему виден
 
           ## Наушники
           - Отключение наушников поднимает и прерывание, и смену
@@ -200,19 +206,19 @@ jobs:
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.71-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.71-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.72-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.72-unsigned.ipa"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.71" \
+              --title "Private Music 3.28.72" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.71" \
+              --title "Private Music 3.28.72" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -221,9 +227,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.71-unsigned
+          name: PrivateMusic-3.28.72-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.71-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.71-unsigned.ipa
+            artifacts/PrivateMusic-3.28.72-iphone-unsigned.ipa
+            artifacts/PrivateMusic-3.28.72-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
