@@ -1064,8 +1064,19 @@ for required_route_symbol in (
     # headphones that were playing are gone.
     "AudioAutoplayGatePolicy.allowsAutomaticPlayback(",
     # `.oldDeviceUnavailable` can arrive while the route still names the
-    # device that went away.
+    # device that went away, or with no previous route at all.
     "looksLikeStaleRouteLoss(",
+    "isUnattributedRouteLoss(",
+    # An unplug does not always announce itself as `.oldDeviceUnavailable`.
+    "mayCarryAnUnannouncedDisconnect(",
+    # Ear detection is told from a call by what else held the output, not
+    # by how long the interruption lasted.
+    "otherAudioWasPlaying:",
+    "isOtherAudioPlaying",
+    # AirPods flicker between A2DP and HFP without leaving the ear.
+    "namesTheSameWornRoute(",
+    # Media services restarting does not put the headphones back on.
+    "retainsDisconnectPendingAfterReset(",
 ):
     if required_route_symbol not in all_source:
         fail(f"headphone route pause is missing: {required_route_symbol}")
