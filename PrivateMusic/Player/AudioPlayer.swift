@@ -593,6 +593,53 @@ enum AudioInterruptionPolicy {
     }
 }
 
+/// Resume path for a phone call that has already released the session but
+/// never asked to resume the way an ordinary interruption does.
+///
+/// iOS attaches `.shouldResume` to `.ended` when it judges the interruption
+/// worth restarting on its own, and is documented to withhold that option
+/// once the app has spent the call in the background — the exact report
+/// this exists for: the call ends, the app is still backgrounded, and
+/// nothing plays again until it is reopened by hand. `otherAudioWasPlaying`
+/// is the same signal `AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause`
+/// already uses to tell a call apart from Automatic Ear Detection, so
+/// leaning on it here cannot resume through a deliberate headphone pause —
+/// that branch has already returned by the time this one is reached.
+enum PostCallResumePolicy {
+    static func shouldResumeWithoutOption(
+        wasPlayingBeforeInterruption: Bool,
+        playbackIntended: Bool,
+        otherAudioWasPlaying: Bool,
+        routeDisconnectPending: Bool,
+        beganAsRouteDisconnect: Bool
+    ) -> Bool {
+        wasPlayingBeforeInterruption
+            && playbackIntended
+            && otherAudioWasPlaying
+            && !routeDisconnectPending
+            && !beganAsRouteDisconnect
+    }
+
+    /// Safety net for an `.ended` that either arrived while the app was
+    /// suspended (so nothing ran) or never arrived at all before the app
+    /// was jettisoned mid-call. `RootView` forwards `scenePhase == .active`
+    /// into this so playback picks back up once the app is frontmost
+    /// again, with no dependency on the interruption notification firing.
+    static func shouldResumeOnForeground(
+        playbackIntended: Bool,
+        isPlaying: Bool,
+        isAudioInterrupted: Bool,
+        hasPendingInterruptionResume: Bool,
+        routeDisconnectPending: Bool
+    ) -> Bool {
+        playbackIntended
+            && !isPlaying
+            && !isAudioInterrupted
+            && !hasPendingInterruptionResume
+            && !routeDisconnectPending
+    }
+}
+
 /// Whether to restart playback after AVAudioSession media services die
 /// (common when attaching CarKit / Bluetooth head units).
 enum MediaServicesResetPolicy {
@@ -2671,9 +2718,22 @@ final class AudioPlayer: ObservableObject {
                 beganAsRouteDisconnect: beganAsRouteDisconnect,
                 options: options
             )
+            // iOS can end a call interruption without `.shouldResume` once
+            // the app spent it in the background — the ear-off discriminator
+            // (`otherAudioWasPlaying`) is what keeps this from re-opening the
+            // deliberate-pause leak, and that branch already returned above
+            // when it did not hold.
+            let shouldResumeForCall = !shouldResume
+                && PostCallResumePolicy.shouldResumeWithoutOption(
+                    wasPlayingBeforeInterruption: wasPlayingBeforeInterruption,
+                    playbackIntended: playbackIntended,
+                    otherAudioWasPlaying: otherAudioWasPlaying,
+                    routeDisconnectPending: routeDisconnectPending,
+                    beganAsRouteDisconnect: beganAsRouteDisconnect
+                )
             wasPlayingBeforeInterruption = false
             outputsAtInterruptionBegan = []
-            if shouldResume {
+            if shouldResume || shouldResumeForCall {
                 scheduleInterruptionResume(from: previousOutputs)
             } else if resumeAfterRouteTransfer,
                       playbackIntended,
@@ -2742,6 +2802,25 @@ final class AudioPlayer: ObservableObject {
             }
             resume()
         }
+    }
+
+    /// Called by `RootView` when `scenePhase` becomes `.active` — the
+    /// foreground safety net for a post-call resume that never happened:
+    /// `.ended` can arrive while the app is suspended (nothing runs), or
+    /// never arrive at all before the app is jettisoned mid-call, and
+    /// `scheduleInterruptionResume` is never reached either way. Without
+    /// this, the only way to hear the track again is to reopen the app.
+    func handleSceneBecameActive() {
+        guard PostCallResumePolicy.shouldResumeOnForeground(
+            playbackIntended: playbackIntended,
+            isPlaying: isPlaying,
+            isAudioInterrupted: isAudioInterrupted,
+            hasPendingInterruptionResume: interruptionResumeTask != nil,
+            routeDisconnectPending: routeDisconnectPending
+        ) else {
+            return
+        }
+        resume()
     }
 
     /// Re-reads the route after a disconnect that arrived while the session
