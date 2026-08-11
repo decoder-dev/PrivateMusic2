@@ -74,21 +74,146 @@ enum JSONValue: Codable, Sendable {
     /// element.
     ///
     /// The entries normally sit in a top-level `items`, but the same payload
-    /// has come back with the page under a `playlists` / `albums` block and
-    /// with each entry wrapped in a `playlist` object. Reading only the one
-    /// block the app expected left the shelf with whatever handful of
-    /// entries happened to be there.
-    var libraryEntryValues: [JSONValue] {
-        if case let .array(values) = self { return values }
-        guard case let .object(object) = self else { return [] }
-        // `items` is the documented shape and is authoritative even when
-        // empty: an empty page is how VK says the list ended, and looking
-        // further would restart a walk that has already finished.
-        if let values = object.entryArray(for: "items") { return values }
-        for key in ["playlists", "albums", "response", "list", "blocks"] {
-            if let values = object.entryArray(for: key) { return values }
+    /// has come back with part of the page under a `playlists` / `albums` /
+    /// `response` block, under `blocks[].items`, and with each entry wrapped
+    /// in a `playlist` object. Stopping at the first block that held
+    /// anything left the shelf with whichever handful of entries happened to
+    /// be there — one card out of eight in the reported case — so every
+    /// block the payload used is merged here instead.
+    var libraryEntryValues: [JSONValue] { libraryEntryPage.values }
+
+    /// Raw entries in the requested window — what the next offset has to
+    /// advance by, whether or not every entry decoded.
+    ///
+    /// Only the documented `items` block describes the window VK answered
+    /// with. Entries merged from a sibling block are extra copies of the
+    /// same list rather than a continuation of it, so they never move the
+    /// offset: advancing past them would step over entries VK has not sent
+    /// yet.
+    var libraryItemCount: Int { libraryEntryPage.rawCount }
+
+    /// One `audio.getPlaylists` page, merged across every block that carried
+    /// entries.
+    private var libraryEntryPage: LibraryEntryPage {
+        if case let .array(values) = self {
+            return LibraryEntryPage(values: values, rawCount: values.count)
         }
-        return []
+        guard case let .object(object) = self else {
+            return LibraryEntryPage(values: [], rawCount: 0)
+        }
+
+        var window: [JSONValue] = []
+        var hasWindow = false
+        switch object["items"] {
+        case .array, .object:
+            hasWindow = true
+            object["items"]?.collectLibraryEntries(into: &window, depth: 0)
+            // An empty `items` is how VK says the list ended. Looking
+            // further would restart a walk that has already finished.
+            if window.isEmpty {
+                return LibraryEntryPage(values: [], rawCount: 0)
+            }
+        default:
+            break
+        }
+
+        var merged: [JSONValue] = []
+        var seenIdentities = Set<String>()
+        Self.merge(window, into: &merged, seen: &seenIdentities)
+        for key in Self.siblingEntryKeys {
+            guard let block = object[key] else { continue }
+            var entries: [JSONValue] = []
+            block.collectLibraryEntries(into: &entries, depth: 0)
+            Self.merge(entries, into: &merged, seen: &seenIdentities)
+        }
+        return LibraryEntryPage(
+            values: merged,
+            rawCount: hasWindow ? window.count : merged.count
+        )
+    }
+
+    /// Blocks that have carried a copy of the playlist list next to — or
+    /// instead of — the documented `items`.
+    private static let siblingEntryKeys = [
+        "playlists", "albums", "response", "list", "blocks", "sections"
+    ]
+
+    /// Blocks to descend through while looking for entries. Anything else
+    /// an entry carries (`original`, `thumbs`, `owner`, …) is part of the
+    /// entry, not a list of its own.
+    private static let entryBlockKeys = [
+        "items", "playlists", "albums", "response", "list", "blocks",
+        "sections"
+    ]
+
+    /// Guards against a self-referential payload sending the walk down
+    /// forever. Six levels clear every nesting VK has been seen to use
+    /// (`response.blocks[].items[].playlist`).
+    private static let maximumEntryDepth = 6
+
+    /// Appends entries that are not already in `result`, matching on the
+    /// owner-scoped id so the same playlist arriving under two blocks
+    /// renders one card. Values that carry no id are kept as they are: they
+    /// decode to nothing, but they are part of the raw page.
+    private static func merge(
+        _ values: [JSONValue],
+        into result: inout [JSONValue],
+        seen: inout Set<String>
+    ) {
+        for value in values {
+            if let identity = value.libraryEntryIdentity {
+                guard seen.insert(identity).inserted else { continue }
+            }
+            result.append(value)
+        }
+    }
+
+    /// Flattens a block into the entries it holds, descending only through
+    /// the keys a list can hide behind and stopping at anything that is
+    /// already an entry.
+    private func collectLibraryEntries(
+        into result: inout [JSONValue],
+        depth: Int
+    ) {
+        guard depth <= Self.maximumEntryDepth else { return }
+        switch self {
+        case let .array(values):
+            for value in values {
+                value.collectLibraryEntries(into: &result, depth: depth + 1)
+            }
+        case let .object(object):
+            if libraryEntryObject != nil {
+                result.append(self)
+                return
+            }
+            let blocks = Self.entryBlockKeys.compactMap { object[$0] }
+            guard blocks.isEmpty else {
+                for block in blocks {
+                    block.collectLibraryEntries(
+                        into: &result,
+                        depth: depth + 1
+                    )
+                }
+                return
+            }
+            // An ad row, an audio row, an entry VK sent without an id:
+            // nothing decodes from it, but it still occupies a slot in the
+            // page VK answered with. The block itself never does.
+            if depth > 0 { result.append(self) }
+        default:
+            if depth > 0 { result.append(self) }
+        }
+    }
+
+    /// Owner-scoped id of the entry a value carries, or `nil` when it
+    /// carries no entry at all.
+    private var libraryEntryIdentity: String? {
+        guard let object = libraryEntryObject,
+              let id = object["id"]?.stringValue,
+              let ownerID = object["owner_id"]?.stringValue else {
+            return nil
+        }
+        return "\(ownerID)_\(id)"
     }
 
     /// `audio.getPlaylists` entries, decoded one by one so a single
@@ -134,21 +259,20 @@ enum JSONValue: Codable, Sendable {
         return result
     }
 
-    /// Raw entries in the page — what the next offset has to advance by,
-    /// whether or not every entry decoded.
-    var libraryItemCount: Int { libraryEntryValues.count }
-
-    /// The entry itself, or the entry a block wrapped around it. Objects
-    /// that carry a `duration` are audio rows, never playlist entries.
+    /// The entry a block wrapped around, or the entry itself. Objects that
+    /// carry a `duration` are audio rows, never playlist entries.
+    ///
+    /// The nested object wins: a wrapper carries an owner-scoped id of its
+    /// own often enough, and reading that instead of the playlist it holds
+    /// produced a card whose id opens nothing.
     private var libraryEntryObject: [String: JSONValue]? {
         guard case let .object(object) = self else { return nil }
-        if object.isLibraryEntry { return object }
         for key in ["playlist", "album", "audio_playlist"] {
             if case let .object(nested)? = object[key], nested.isLibraryEntry {
                 return nested
             }
         }
-        return nil
+        return object.isLibraryEntry ? object : nil
     }
 
     var libraryTotalCount: Int? {
@@ -397,24 +521,19 @@ enum JSONValue: Codable, Sendable {
     }
 }
 
+/// An `audio.getPlaylists` page after every block that carried entries has
+/// been merged into one list.
+private struct LibraryEntryPage {
+    /// Merged entries, in payload order, one per playlist VK named.
+    let values: [JSONValue]
+    /// Size of the window VK answered with, counted before the merge.
+    let rawCount: Int
+}
+
 private extension Dictionary where Key == String, Value == JSONValue {
     /// An `audio.getPlaylists` entry: owner-scoped id, and not an audio row.
     var isLibraryEntry: Bool {
         self["id"] != nil && self["owner_id"] != nil && self["duration"] == nil
-    }
-
-    /// The page held at `key`, either as the array itself or as the `items`
-    /// of a block wrapped around it.
-    func entryArray(for key: String) -> [JSONValue]? {
-        switch self[key] {
-        case let .array(values):
-            return values
-        case let .object(nested):
-            if case let .array(values)? = nested["items"] { return values }
-            return nil
-        default:
-            return nil
-        }
     }
 
     /// Re-decodes the entry through its own `Decodable`. Encoding the
