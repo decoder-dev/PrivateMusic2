@@ -27,7 +27,9 @@ enum LibraryPlaylistShelfPolicy {
     ///   the Albums shelf already loaded through `filters=followed,albums`.
     ///   VK reports those albums in the unfiltered playlist list too, and
     ///   this is the only way to recognise them that cannot mistake a real
-    ///   playlist for a release.
+    ///   playlist for a release — provided the list itself holds nothing but
+    ///   releases, which is what `LibraryPlaylistEntryPolicy` guarantees when
+    ///   the Albums shelf decodes it.
     static func normalized(
         _ items: [Playlist],
         ownerID: Int? = nil,
@@ -36,7 +38,11 @@ enum LibraryPlaylistShelfPolicy {
         var seenIdentities = Set<String>()
         var unique: [Playlist] = []
         for item in items {
-            guard !followedAlbumIdentities.contains(item.libraryIdentity),
+            guard !isFollowedAlbum(
+                item,
+                ownerID: ownerID,
+                identities: followedAlbumIdentities
+            ),
                   seenIdentities.insert(item.libraryIdentity).inserted else {
                 continue
             }
@@ -63,6 +69,23 @@ enum LibraryPlaylistShelfPolicy {
             return likedWinners[key]?.libraryIdentity
                 == playlist.libraryIdentity
         }
+    }
+
+    /// A playlist the Albums shelf already shows as a release.
+    ///
+    /// A playlist you made yourself is never one of them — VK has no way for
+    /// a person to own a release — so your own playlists are held back from
+    /// this test entirely. It is the last line of defence for the shelf that
+    /// three releases in a row came back empty-handed on: an id that matches
+    /// something on the Albums shelf while it belongs to you is a fault in
+    /// that shelf, not a reason to hide your playlist.
+    private static func isFollowedAlbum(
+        _ item: Playlist,
+        ownerID: Int?,
+        identities: Set<String>
+    ) -> Bool {
+        guard item.ownerID != ownerID else { return false }
+        return identities.contains(item.libraryIdentity)
     }
 
     /// Returns the copy worth keeping: the one you own beats a followed
