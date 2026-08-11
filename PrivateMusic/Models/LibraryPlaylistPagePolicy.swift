@@ -33,6 +33,11 @@ enum LibraryPlaylistPagePolicy {
     /// Raw entries scanned by the initial load in the worst case.
     static var prefetchCapacity: Int { pageSize * prefetchPages }
 
+    /// Pause before the walk asks for a failed page a second time. On 3G a
+    /// page times out often enough that ending the walk there left the
+    /// shelf short of playlists until the next pull-to-refresh.
+    static let retryDelay: TimeInterval = 0.6
+
     /// Offset of the page after `offset`, or `nil` once VK says the list is
     /// exhausted.
     ///
