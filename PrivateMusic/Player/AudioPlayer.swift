@@ -30,16 +30,20 @@ enum SleepTimerMode: Equatable, Sendable {
 }
 
 /// What started the current queue, for display in the full-screen player.
-/// Callers that start playback from a named collection pass the matching
-/// case; anything else (search results, recommendations, artist tracks,
-/// offline files, an "open player" context-menu action, …) is left `nil`
-/// and treated as an implicit automix seeded by the tapped track — see
-/// `AudioPlayer.queueContextTitle`.
+/// Callers that start playback from a named collection or from Медиатека
+/// pass the matching case; anything else (search results, recommendations,
+/// artist tracks, offline files, an "open player" context-menu action, …)
+/// is left `nil` and treated as an implicit automix seeded by the tapped
+/// track — see `AudioPlayer.queueContextTitle`.
 enum QueueSource: Equatable {
     case mix(title: String)
     case playlist(title: String)
     case album(title: String)
     case history
+    /// The Медиатека track list. It has no title of its own, and without a
+    /// case for it the player captioned a library queue as a mix seeded by
+    /// the tapped track — which is not what is playing.
+    case library
 }
 
 enum PendingPlayerSheet: Equatable, Sendable {
@@ -680,6 +684,8 @@ final class AudioPlayer: ObservableObject {
             return title
         case .history:
             return L10n.text("История прослушивания")
+        case .library:
+            return L10n.text("Ваши треки")
         default:
             if let seed = queueSeedTrackTitle,
                QueueSourceTitle.isUsable(seed) {
