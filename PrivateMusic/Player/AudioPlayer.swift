@@ -3083,7 +3083,13 @@ final class AudioPlayer: ObservableObject {
         startContinuationPrefetch()
     }
 
-    /// Append unique tracks to the active queue (background mix fill).
+    /// Append unique tracks to the active queue (background mix fill, or the
+    /// next Медиатека page).
+    ///
+    /// Capacity comes from `LibraryQueuePolicy`, which hands a library queue
+    /// a far larger ceiling than a mix: a library is a finite list the user
+    /// owns, and the mix cap refused every page past the first, so a
+    /// 833-track Медиатека played as «Трек 1 из 100».
     func appendToQueue(_ tracks: [Track]) {
         let filtered = mixTrackFilter?(tracks) ?? tracks
         let additions = PlaybackQueueBuilder.uniqueAdditions(
@@ -3100,7 +3106,10 @@ final class AudioPlayer: ObservableObject {
         }()
         let capped = Array(
             additions.prefix(
-                max(MixTrackRequestPolicy.queueLimit - upcomingCount, 0)
+                LibraryQueuePolicy.appendableCount(
+                    upcomingCount: upcomingCount,
+                    source: queueSource
+                )
             )
         )
         guard !capped.isEmpty else { return }
