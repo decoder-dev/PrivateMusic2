@@ -97,10 +97,11 @@ final class LibraryPlaylistPagingTests: XCTestCase {
         XCTAssertEqual(page.items.first?.count, 12)
     }
 
-    // Only an entry VK explicitly typed as a release, and backed up with a
-    // second release marker, is dropped here. Anything less certain stays a
-    // playlist and is dropped by identity instead, against the ids the
-    // Albums shelf loaded (`LibraryPlaylistShelfPolicy`).
+    // Only an entry VK typed as a release, named the artists behind and
+    // dated is dropped here. «Signed» carries the type and the artists but
+    // no year, «Single» the type and `type: 1` but no artists — and
+    // `type: 1` is what a playlist saved from another owner reports too, so
+    // both keep their card. Both still reach the Albums shelf.
     func testUnmistakableReleasesStayOffThePlaylistShelf() throws {
         let value = try payload(
             """
@@ -139,9 +140,21 @@ final class LibraryPlaylistPagingTests: XCTestCase {
             """
         )
 
-        let page = makeService().playlistPage(value, offset: 0)
+        let service = makeService()
 
-        XCTAssertEqual(page.items.map(\.playlistID), [1])
+        XCTAssertEqual(
+            service.playlistPage(value, offset: 0).items.map(\.playlistID),
+            [1, 3, 4]
+        )
+        let albumShelf = service.followedAlbumPage(value, offset: 0)
+            .items
+            .map(\.albumID)
+        for release in [2, 3, 4] {
+            XCTAssertTrue(
+                albumShelf.contains(release),
+                "a release kept on the playlist shelf is still an album"
+            )
+        }
     }
 
     // The reported defect, third time round: «ОНИ НЕ ВСЕ». Every entry here
