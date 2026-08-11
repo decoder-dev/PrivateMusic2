@@ -102,6 +102,40 @@ final class LibraryPlaybackOrderTests: XCTestCase {
         XCTAssertEqual(context.player.currentIndex, 3)
     }
 
+    // The library header disables «Перемешать» while the list is empty
+    // (loading, an empty library, or a search with no matches), but
+    // `playShuffled` guards the same case on its own so an empty collection
+    // never crashes or starts an empty queue.
+    func testShufflingAnEmptyCollectionDoesNothing() {
+        let context = makePlayer()
+        defer { context.tearDown() }
+
+        context.player.playShuffled(in: [], source: .library)
+
+        XCTAssertNil(context.player.currentTrack)
+        XCTAssertTrue(context.player.queue.isEmpty)
+        XCTAssertNil(context.player.queueSource)
+    }
+
+    // A search filter narrows the visible list without touching the loaded
+    // library page: shuffling the filtered rows must only ever queue what
+    // matched, never the untouched rest of the library.
+    func testShufflingAFilteredSearchResultOnlyQueuesTheMatches() {
+        let context = makePlayer()
+        defer { context.tearDown() }
+        let library = tracks(count: 20)
+        let filtered = Array(library[2..<5])
+
+        context.player.playShuffled(in: filtered, source: .library)
+
+        XCTAssertTrue(context.player.shuffleEnabled)
+        XCTAssertEqual(
+            Set(context.player.queue.map(\.id)),
+            Set(filtered.map(\.id))
+        )
+        XCTAssertEqual(context.player.queue.count, filtered.count)
+    }
+
     func testCollectionShuffleDoesNotPersistThePreference() {
         let context = makePlayer()
         defer { context.tearDown() }
