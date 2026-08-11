@@ -68,6 +68,12 @@ struct RootView: View {
                     try? await OfflinePlaylistStore.shared.flushPendingSave()
                 }
             }
+            // Foreground fallback for a post-call resume the interruption
+            // notification never delivered — see
+            // `AudioPlayer.handleSceneBecameActive()`.
+            if phase == .active {
+                player.handleSceneBecameActive()
+            }
             guard phase == .active,
                   sessionStore.session != nil else {
                 return
