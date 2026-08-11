@@ -663,6 +663,47 @@ enum StreamFailureRetryPolicy {
     }
 }
 
+/// Bounded retry for `AVAudioSession.setActive(true)` failures.
+///
+/// Right after a phone call ends or media services reset, the session can
+/// still be busy tearing itself down: the very next `setActive(true)`
+/// throws even though intent to play is real. That throw used to be
+/// swallowed with `try?` and nothing else ever tried again, so playback
+/// stayed silently dead until the user reopened the app. This policy caps
+/// how many times activation is retried and how long each wait is, so a
+/// transient failure heals itself without ever retrying forever.
+enum SessionActivationRetryPolicy {
+    static let maximumAttempts = 3
+    static let baseRetryDelay: TimeInterval = 0.3
+    static let maximumRetryDelay: TimeInterval = 2
+
+    static func retryDelay(forAttempt attempt: Int) -> TimeInterval {
+        let clamped = max(attempt, 1)
+        return min(baseRetryDelay * Double(clamped), maximumRetryDelay)
+    }
+
+    /// Whether another retry is worth scheduling after `attempt` failures.
+    static func shouldRetry(attempt: Int) -> Bool {
+        attempt < maximumAttempts
+    }
+}
+
+/// Guards `recoverFromExtendedStall` against a recovery/refresh task whose
+/// reference was never cleared — e.g. a task whose guard clause returned
+/// early (generation/track mismatch) without reaching the code path that
+/// nils the stored task out. Once a task has been blocking recovery for
+/// longer than any legitimate same-track retry cycle could still be
+/// running, treat it as orphaned so a fresh recovery attempt can proceed
+/// instead of the stall guard wedging shut forever.
+enum StallRecoveryGuardPolicy {
+    static let orphanThreshold: TimeInterval = 20
+
+    static func isOrphaned(blockedSince: Date?, now: Date) -> Bool {
+        guard let blockedSince else { return false }
+        return now.timeIntervalSince(blockedSince) >= orphanThreshold
+    }
+}
+
 @MainActor
 final class AudioPlayer: ObservableObject {
     private final class PreloadedPlayback {
@@ -767,6 +808,15 @@ final class AudioPlayer: ObservableObject {
     private var sleepTask: Task<Void, Never>?
     private var streamUserAgent: String?
     private var itemStatusObservation: NSKeyValueObservation?
+    /// The item a `.failed` transition has already been reported for.
+    ///
+    /// AVFoundation can deliver the `.status == .failed` KVO change and the
+    /// `AVPlayerItemFailedToPlayToEndTime` notification for the very same
+    /// underlying error on the very same item. Without this guard both
+    /// call `handleItemFailure`, double-spending the same-track retry
+    /// budget on a single real failure and advancing the queue twice as
+    /// eagerly as `StreamFailureRetryPolicy` intends.
+    private var lastFailedItemIdentifier: ObjectIdentifier?
     private var outputVolumeObservation: NSKeyValueObservation?
     private var defaultContinuationProvider: (() async throws -> [Track])?
     private var activeContinuationProvider: (() async throws -> [Track])?
@@ -838,6 +888,13 @@ final class AudioPlayer: ObservableObject {
     private var streamRecoveryAttempts = 0
     private var streamRecoveryTask: Task<Void, Never>?
     private var stallStartedAt: Date?
+    /// When `recoverFromExtendedStall` first found an existing
+    /// recovery/refresh task blocking it. Cleared once no task is in the
+    /// way; used to detect a task orphaned by an early-return guard clause
+    /// elsewhere so the stall guard cannot wedge shut forever.
+    private var extendedStallGuardBlockedSince: Date?
+    private var sessionActivationRetryTask: Task<Void, Never>?
+    private var sessionActivationRetryAttempts = 0
     private var preloadedPlayback: PreloadedPlayback?
     private var preloadAssetTask: Task<Void, Never>?
     private var preloadGeneration = 0
@@ -1561,6 +1618,10 @@ final class AudioPlayer: ObservableObject {
         interruptionResumeTask = nil
         routeSettleTask?.cancel()
         routeSettleTask = nil
+        sessionActivationRetryTask?.cancel()
+        sessionActivationRetryTask = nil
+        sessionActivationRetryAttempts = 0
+        extendedStallGuardBlockedSince = nil
         sleepTask?.cancel()
         sleepTask = nil
         sleepTimerEndDate = nil
@@ -1574,6 +1635,7 @@ final class AudioPlayer: ObservableObject {
         player.replaceCurrentItem(with: nil)
         itemStatusObservation?.invalidate()
         itemStatusObservation = nil
+        lastFailedItemIdentifier = nil
         queue = []
         sourceOrderedQueue = []
         currentIndex = nil
@@ -1694,6 +1756,7 @@ final class AudioPlayer: ObservableObject {
         // item — especially after CarKit media-services resets.
         item.audioMix = nil
         itemStatusObservation?.invalidate()
+        lastFailedItemIdentifier = nil
         itemStatusObservation = item.observe(
             \.status,
             options: [.initial, .new]
@@ -1710,6 +1773,7 @@ final class AudioPlayer: ObservableObject {
                     self.streamRecoveryAttempts = 0
                     self.didAttemptStreamRefresh = false
                     self.stallStartedAt = nil
+                    self.lastFailedItemIdentifier = nil
                     self.cancelStreamRecovery()
                     if wantsAudioTap {
                         self.attachAudioProcessing(to: item)
@@ -1722,6 +1786,11 @@ final class AudioPlayer: ObservableObject {
                 case .failed:
                     self.isPlaying = false
                     self.isBuffering = false
+                    let identifier = ObjectIdentifier(item)
+                    guard self.lastFailedItemIdentifier != identifier else {
+                        return
+                    }
+                    self.lastFailedItemIdentifier = identifier
                     self.handleItemFailure(item.error)
                 case .unknown:
                     self.isBuffering = true
@@ -2085,13 +2154,54 @@ final class AudioPlayer: ObservableObject {
         }
         do {
             try AVAudioSession.sharedInstance().setActive(true, options: [])
+            sessionActivationRetryAttempts = 0
+            sessionActivationRetryTask?.cancel()
+            sessionActivationRetryTask = nil
             return true
         } catch {
             errorMessage = L10n.text(
                 "Не удалось включить звук. Закройте другое аудиоприложение "
                     + "и повторите попытку."
             )
+            scheduleSessionActivationRetry()
             return false
+        }
+    }
+
+    /// A `setActive(true)` throw right after a call ends or media services
+    /// reset is usually the session still winding down, not a permanent
+    /// failure. Retries a bounded number of times with a small capped
+    /// delay; success resumes playback if the user still wants it playing,
+    /// and exhaustion leaves the error already surfaced above in place
+    /// without retrying forever or crashing.
+    private func scheduleSessionActivationRetry() {
+        guard playbackIntended,
+              SessionActivationRetryPolicy.shouldRetry(
+                  attempt: sessionActivationRetryAttempts
+              ) else {
+            sessionActivationRetryAttempts = 0
+            return
+        }
+        sessionActivationRetryTask?.cancel()
+        sessionActivationRetryAttempts += 1
+        let delay = SessionActivationRetryPolicy.retryDelay(
+            forAttempt: sessionActivationRetryAttempts
+        )
+        let generation = playbackGeneration
+        sessionActivationRetryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self,
+                  !Task.isCancelled,
+                  generation == self.playbackGeneration,
+                  self.playbackIntended,
+                  !self.isPlaying else {
+                return
+            }
+            self.sessionActivationRetryTask = nil
+            if self.activateAudioSession() {
+                self.errorMessage = nil
+                self.resume()
+            }
         }
     }
 
@@ -2223,6 +2333,11 @@ final class AudioPlayer: ObservableObject {
                 }
                 self.isPlaying = false
                 self.isBuffering = false
+                let identifier = ObjectIdentifier(failedItem)
+                guard self.lastFailedItemIdentifier != identifier else {
+                    return
+                }
+                self.lastFailedItemIdentifier = identifier
                 self.handleItemFailure(error)
             }
         })
@@ -2700,6 +2815,13 @@ final class AudioPlayer: ObservableObject {
         interruptionResumeTask = nil
         routeSettleTask?.cancel()
         routeSettleTask = nil
+        // The session is about to be torn down and rebuilt from scratch, so
+        // any bounded reactivation retry still waiting on the old session
+        // would only race the rebuild below.
+        sessionActivationRetryTask?.cancel()
+        sessionActivationRetryTask = nil
+        sessionActivationRetryAttempts = 0
+        extendedStallGuardBlockedSince = nil
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
         minimumVolumeResumeSuppressed = false
@@ -2720,6 +2842,7 @@ final class AudioPlayer: ObservableObject {
         playbackGeneration += 1
         itemStatusObservation?.invalidate()
         itemStatusObservation = nil
+        lastFailedItemIdentifier = nil
 
         let orphanedPlayer = player
         if let timeObserver {
@@ -3004,11 +3127,34 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func recoverFromExtendedStall() {
-        guard playbackIntended,
-              currentTrack != nil,
-              streamRecoveryTask == nil,
-              streamRefreshTask == nil else {
+        guard playbackIntended, currentTrack != nil else {
+            extendedStallGuardBlockedSince = nil
             return
+        }
+        if streamRecoveryTask != nil || streamRefreshTask != nil {
+            // A task is still on record as in flight. Most of the time that
+            // is a legitimate same-track retry still waiting out its delay
+            // — but a task whose own guard clause returned early (a
+            // generation or track-ID mismatch) never reaches the code that
+            // clears the stored reference, so this guard could otherwise
+            // stay shut forever on a task that has already finished doing
+            // nothing. Give it one stall cycle's worth of benefit of the
+            // doubt before treating it as orphaned.
+            if StallRecoveryGuardPolicy.isOrphaned(
+                blockedSince: extendedStallGuardBlockedSince,
+                now: Date()
+            ) {
+                cancelStreamRecovery()
+                cancelStreamRefresh()
+                extendedStallGuardBlockedSince = nil
+            } else {
+                if extendedStallGuardBlockedSince == nil {
+                    extendedStallGuardBlockedSince = Date()
+                }
+                return
+            }
+        } else {
+            extendedStallGuardBlockedSince = nil
         }
         streamRecoveryAttempts += 1
         guard StreamFailureRetryPolicy.shouldRetrySameTrack(

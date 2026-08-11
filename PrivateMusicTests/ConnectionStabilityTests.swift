@@ -126,6 +126,130 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    // Bounded reactivation retry for `setActive(true)` throws right after a
+    // call ends or media services reset. The budget must be finite and the
+    // delay must stay capped so a permanently unavailable session cannot
+    // spin the retry loop forever.
+    func testSessionActivationRetryPolicyIsBoundedAndCapped() {
+        XCTAssertTrue(SessionActivationRetryPolicy.shouldRetry(attempt: 0))
+        XCTAssertTrue(
+            SessionActivationRetryPolicy.shouldRetry(
+                attempt: SessionActivationRetryPolicy.maximumAttempts - 1
+            )
+        )
+        XCTAssertFalse(
+            SessionActivationRetryPolicy.shouldRetry(
+                attempt: SessionActivationRetryPolicy.maximumAttempts
+            ),
+            "the budget must exhaust rather than retry forever"
+        )
+        XCTAssertFalse(
+            SessionActivationRetryPolicy.shouldRetry(
+                attempt: SessionActivationRetryPolicy.maximumAttempts + 5
+            )
+        )
+
+        let firstDelay = SessionActivationRetryPolicy.retryDelay(forAttempt: 1)
+        let secondDelay = SessionActivationRetryPolicy.retryDelay(forAttempt: 2)
+        XCTAssertGreaterThan(secondDelay, firstDelay)
+        XCTAssertLessThanOrEqual(
+            SessionActivationRetryPolicy.retryDelay(forAttempt: 999),
+            SessionActivationRetryPolicy.maximumRetryDelay,
+            "retry delay must never grow unbounded"
+        )
+        XCTAssertEqual(
+            SessionActivationRetryPolicy.retryDelay(forAttempt: 0),
+            SessionActivationRetryPolicy.retryDelay(forAttempt: 1),
+            "a non-positive attempt must not shorten the delay below attempt 1"
+        )
+    }
+
+    // A recovery/refresh task that never clears its own stored reference
+    // (its guard clause returned early on a generation/track mismatch) must
+    // not wedge `recoverFromExtendedStall` shut forever. The guard gets one
+    // stall cycle's benefit of the doubt before treating the task as
+    // orphaned.
+    func testStallRecoveryGuardTreatsALingeringTaskAsOrphanedAfterAThreshold() {
+        let blockedAt = Date(timeIntervalSince1970: 10_000)
+        XCTAssertFalse(
+            StallRecoveryGuardPolicy.isOrphaned(
+                blockedSince: blockedAt,
+                now: blockedAt.addingTimeInterval(1)
+            ),
+            "a task that just started blocking is not orphaned yet"
+        )
+        XCTAssertFalse(
+            StallRecoveryGuardPolicy.isOrphaned(
+                blockedSince: blockedAt,
+                now: blockedAt.addingTimeInterval(
+                    StallRecoveryGuardPolicy.orphanThreshold - 0.1
+                )
+            )
+        )
+        XCTAssertTrue(
+            StallRecoveryGuardPolicy.isOrphaned(
+                blockedSince: blockedAt,
+                now: blockedAt.addingTimeInterval(
+                    StallRecoveryGuardPolicy.orphanThreshold
+                )
+            ),
+            "recovery must still fire once a task has lingered past the threshold"
+        )
+        XCTAssertFalse(
+            StallRecoveryGuardPolicy.isOrphaned(blockedSince: nil, now: Date()),
+            "no task blocking at all is not an orphan condition"
+        )
+    }
+
+    // Non-connectivity failures must transition cleanly from same-track
+    // retry to queue advance with no gap where neither happens — that gap
+    // is exactly what would surface as a dead track instead of a clean
+    // recovery/advance.
+    func testNonConnectivityFailureAdvancesCleanlyOnceRetryBudgetExhausted() {
+        let atBudget = StreamFailureRetryPolicy.maximumSameTrackAttempts
+        let pastBudget = atBudget + 1
+
+        XCTAssertTrue(
+            StreamFailureRetryPolicy.shouldRetrySameTrack(
+                attempts: atBudget,
+                error: APIError.invalidResponse
+            ),
+            "the last attempt still inside the budget must retry the same track"
+        )
+        XCTAssertFalse(
+            StreamFailureRetryPolicy.shouldAdvance(
+                attempts: atBudget,
+                error: APIError.invalidResponse,
+                advanceOnPlaybackError: true
+            ),
+            "must not advance while a same-track retry is still due"
+        )
+
+        XCTAssertFalse(
+            StreamFailureRetryPolicy.shouldRetrySameTrack(
+                attempts: pastBudget,
+                error: APIError.invalidResponse
+            ),
+            "same-track retries must stop once the budget is exhausted"
+        )
+        XCTAssertTrue(
+            StreamFailureRetryPolicy.shouldAdvance(
+                attempts: pastBudget,
+                error: APIError.invalidResponse,
+                advanceOnPlaybackError: true
+            ),
+            "exhausting retries on a non-connectivity failure must clean-advance, not go dead"
+        )
+        XCTAssertFalse(
+            StreamFailureRetryPolicy.shouldAdvance(
+                attempts: pastBudget,
+                error: APIError.invalidResponse,
+                advanceOnPlaybackError: false
+            ),
+            "the autoplay-on-error gate still wins even once the budget is exhausted"
+        )
+    }
+
     func testMediaServicesResetSuppressesAdvanceWindow() {
         let now = Date(timeIntervalSince1970: 1_000)
         XCTAssertFalse(
