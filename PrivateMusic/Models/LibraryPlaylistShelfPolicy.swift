@@ -24,12 +24,18 @@ enum LibraryPlaylistShelfPolicy {
     ]
 
     /// - Parameter followedAlbumIdentities: owner-scoped ids of the albums
-    ///   the Albums shelf already loaded through `filters=followed,albums`.
-    ///   VK reports those albums in the unfiltered playlist list too, and
-    ///   this is the only way to recognise them that cannot mistake a real
-    ///   playlist for a release — provided the list itself holds nothing but
-    ///   releases, which is what `LibraryPlaylistEntryPolicy` guarantees when
-    ///   the Albums shelf decodes it.
+    ///   the Albums shelf already loaded through `filters=albums`. VK reports
+    ///   those albums in the unfiltered playlist list too, and this is the
+    ///   only way to recognise them that cannot mistake a real playlist for a
+    ///   release — provided the list itself holds nothing but releases.
+    ///
+    ///   That proviso is the whole defect: the Albums shelf used to ask for
+    ///   `filters=followed,albums`, and `filters` unions its categories, so
+    ///   the list also held every playlist saved from another person. Each of
+    ///   them was subtracted here, leaving only the playlists the user made
+    ///   themselves. `LibraryPlaylistPagePolicy.albumShelfFilters` now asks
+    ///   for the releases alone, and `LibraryPlaylistEntryPolicy` still
+    ///   classifies the answer entry by entry as a second line of defence.
     static func normalized(
         _ items: [Playlist],
         ownerID: Int? = nil,

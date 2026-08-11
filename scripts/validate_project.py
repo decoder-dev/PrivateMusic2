@@ -449,11 +449,29 @@ for required_followed_album_symbol in (
 ):
     if required_followed_album_symbol not in json_value_source:
         fail(
-            "the Albums shelf list (filters=followed,albums) also returns "
-            "the playlists saved from other people, and the playlist shelf "
-            "subtracts every id it reports: "
+            "the Albums shelf list is classified entry by entry, because the "
+            "playlist shelf subtracts every id it reports: "
             f"{required_followed_album_symbol}"
         )
+albums_request_source = (SOURCE / "Services/VKMusicService.swift").read_text(
+    encoding="utf-8"
+)
+if '"filters": "followed,albums"' in all_source:
+    fail(
+        "audio.getPlaylists `filters` unions the categories it names, so "
+        "`followed,albums` asks for every playlist saved from another person "
+        "on top of the releases — and the playlist shelf subtracts every id "
+        "the Albums shelf reports, which took those playlists off Медиатека"
+    )
+if 'static let albumShelfFilters = "albums"' not in playlist_paging_source_path.read_text(
+    encoding="utf-8"
+):
+    fail("the Albums shelf must request the releases alone (filters=albums)")
+if "LibraryPlaylistPagePolicy.albumShelfFilters" not in albums_request_source:
+    fail(
+        "the Albums shelf request must take its `filters` from "
+        "LibraryPlaylistPagePolicy.albumShelfFilters"
+    )
 entry_policy_path = SOURCE / "Models/LibraryPlaylistEntryPolicy.swift"
 if not entry_policy_path.is_file():
     fail("LibraryPlaylistEntryPolicy must define the playlist/release test")

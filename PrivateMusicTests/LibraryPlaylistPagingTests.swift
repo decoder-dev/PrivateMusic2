@@ -36,7 +36,10 @@ final class LibraryPlaylistPagingTests: XCTestCase {
         XCTAssertEqual(page.items.map(\.title), ["Дорога", "Джаз"])
     }
 
-    func testEntriesWithoutATitleAreSkippedInsteadOfFailingThePage() throws {
+    // An entry VK sent without a title used to be dropped outright. A card
+    // with no caption is still a playlist you can open; an absent card is
+    // one more «они не все».
+    func testAnEntryWithoutATitleStaysOnTheShelf() throws {
         let value = try payload(
             """
             {
@@ -51,7 +54,47 @@ final class LibraryPlaylistPagingTests: XCTestCase {
 
         let page = makeService().playlistPage(value, offset: 0)
 
+        XCTAssertEqual(page.items.map(\.playlistID), [1, 2])
+        XCTAssertEqual(page.items.first?.title, L10n.text("Плейлист"))
+    }
+
+    // Only an entry with no owner-scoped id at all is unusable.
+    func testAnEntryWithoutAnIdIsSkippedInsteadOfFailingThePage() throws {
+        let value = try payload(
+            """
+            {
+              "count": 2,
+              "items": [
+                {"title": "Без идентификатора"},
+                {"id": 2, "owner_id": 100, "title": "Джаз"}
+              ]
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0)
+
         XCTAssertEqual(page.items.map(\.playlistID), [2])
+    }
+
+    // VK is not consistent about number vs string ids, and a strict `Int`
+    // decode threw the entry away.
+    func testStringEncodedIdentifiersStillDecode() throws {
+        let value = try payload(
+            """
+            {
+              "count": 1,
+              "items": [
+                {"id": "42", "owner_id": "-7", "title": "Дорога", "count": "12"}
+              ]
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0)
+
+        XCTAssertEqual(page.items.map(\.libraryIdentity), ["-7_42"])
+        XCTAssertEqual(page.items.first?.count, 12)
     }
 
     // Only an entry VK explicitly typed as a release, and backed up with a
@@ -392,6 +435,95 @@ final class LibraryPlaylistPagingTests: XCTestCase {
 
         XCTAssertTrue(page.items.isEmpty)
         XCTAssertNil(page.nextOffset)
+    }
+
+    // Reading only the one block the app expected left the shelf with
+    // whichever handful of entries happened to be there.
+    func testAPageDeliveredUnderAPlaylistsBlockIsStillRead() throws {
+        let value = try payload(
+            """
+            {
+              "playlists": {
+                "count": 3,
+                "items": [
+                  {"id": 1, "owner_id": 100, "title": "Дорога"},
+                  {"id": 2, "owner_id": 100, "title": "Джаз"},
+                  {"id": 3, "owner_id": 100, "title": "Рок"}
+                ]
+              }
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0)
+
+        XCTAssertEqual(page.items.map(\.playlistID), [1, 2, 3])
+    }
+
+    func testEntriesWrappedInABlockAreUnwrapped() throws {
+        let value = try payload(
+            """
+            {
+              "count": 2,
+              "items": [
+                {
+                  "type": "music_playlist",
+                  "playlist": {
+                    "id": 1, "owner_id": 100, "title": "Дорога", "count": 12
+                  }
+                },
+                {"id": 2, "owner_id": 100, "title": "Джаз"}
+              ]
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0)
+
+        XCTAssertEqual(page.items.map(\.playlistID), [1, 2])
+    }
+
+    // An empty top-level `items` is how VK says the walk is over, and must
+    // never send the parser hunting through the rest of the payload.
+    func testAnEmptyPageIsNotSecondGuessedFromAnotherBlock() throws {
+        let value = try payload(
+            """
+            {
+              "count": 8,
+              "items": [],
+              "playlists": {
+                "items": [{"id": 1, "owner_id": 100, "title": "Дорога"}]
+              }
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 40)
+
+        XCTAssertTrue(page.items.isEmpty)
+        XCTAssertNil(page.nextOffset)
+    }
+
+    // Audio rows carry id + owner_id too, and they are not playlists.
+    func testAudioRowsAreNeverReadAsPlaylists() throws {
+        let value = try payload(
+            """
+            {
+              "count": 2,
+              "items": [
+                {
+                  "id": 9, "owner_id": 100, "title": "Песня",
+                  "artist": "Artist", "duration": 210
+                },
+                {"id": 2, "owner_id": 100, "title": "Джаз"}
+              ]
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0)
+
+        XCTAssertEqual(page.items.map(\.playlistID), [2])
     }
 
     func testPrefetchCoversLibrariesFullOfFollowedAlbums() {

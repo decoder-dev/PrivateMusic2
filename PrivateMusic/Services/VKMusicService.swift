@@ -511,17 +511,21 @@ struct VKMusicService: MusicService {
         count: Int
     ) async throws -> MusicPage<Album> {
         let userID = try await resolvedUserID(accessToken: accessToken)
+        // `filters` unions the categories it names, so the long-standing
+        // `followed,albums` asked for every playlist saved from another
+        // person on top of the releases — and the playlist shelf subtracts
+        // whatever this list reports.
         var parameters = [
             "count": String(count),
             "offset": String(offset),
-            "filters": "followed,albums"
+            "filters": LibraryPlaylistPagePolicy.albumShelfFilters
         ]
         if let userID {
             parameters["owner_id"] = String(userID)
         }
-        // Lossy item decode, like the playlist list: `followed` also returns
-        // the playlists saved from other people, and they have to be told
-        // apart from releases before the playlist shelf subtracts these ids.
+        // Lossy item decode, like the playlist list, and each entry is still
+        // classified: a playlist VK leaves in this list must not reach the
+        // ids the playlist shelf subtracts.
         let envelope: VKResponse<JSONValue> = try await client.post(
             path: "/method/audio.getPlaylists",
             form: common(accessToken).merging(parameters) { _, new in new },
