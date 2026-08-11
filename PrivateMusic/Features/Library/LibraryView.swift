@@ -55,13 +55,14 @@ struct LibraryView: View {
                             .librarySectionSpacing()
                     }
 
-                    HStack {
+                    HStack(spacing: 12) {
                         Text("Треки")
                             .font(.title2.weight(.bold))
                         Spacer()
                         Text("\(tracks.totalCount)")
                             .font(.subheadline.monospacedDigit())
                             .foregroundStyle(.secondary)
+                        shuffleLibraryButton
                     }
                     .padding(.bottom, LibraryShelfMetrics.headerSpacing)
 
@@ -418,6 +419,36 @@ struct LibraryView: View {
                 }
             }
         }
+    }
+
+    /// Shuffles the visible track list and nothing else.
+    ///
+    /// `playShuffled` is a per-collection entry point: it leaves the
+    /// player's shuffle control and the persisted preference alone, so the
+    /// next tap on a row still queues Медиатека in the order it is shown.
+    private var shuffleLibraryButton: some View {
+        Button {
+            Haptics.selection()
+            shuffleLibrary()
+        } label: {
+            Image(systemName: "shuffle")
+                .font(.subheadline.weight(.semibold))
+                .frame(width: 34, height: 34)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.borderless)
+        .disabled(filteredTracks.isEmpty)
+        .accessibilityLabel(L10n.text("Перемешать"))
+    }
+
+    private func shuffleLibrary() {
+        let queue = filteredTracks
+        guard !queue.isEmpty else { return }
+        environment.player.playShuffled(
+            in: queue,
+            continuation: libraryContinuation(after: queue),
+            source: .library
+        )
     }
 
     /// Filters the loaded tracks list only — playlist and album shelves stay
@@ -1019,7 +1050,8 @@ struct LibraryView: View {
         environment.player.play(
             track,
             in: queue,
-            continuation: libraryContinuation(after: queue)
+            continuation: libraryContinuation(after: queue),
+            source: .library
         )
     }
 
