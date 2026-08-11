@@ -1308,15 +1308,22 @@ if open_braces != close_braces:
 #
 #   Agent A  LIFELINE   cursor/post-call-resume-bc40        PostCallResumePolicy
 #   Agent B  SLIPSTREAM cursor/network-aware-buffer-bc40    NetworkAdaptiveBufferPolicy
-#   Agent C  BEDROCK    cursor/avplayer-failure-hardening-bc40  SessionActivationRetryPolicy
+#   Agent C  BEDROCK    cursor/avplayer-failure-hardening-bc40  SessionActivationRetryPolicy,
+#                                                               StallRecoveryGuardPolicy
 #   Agent D  FLINT      cursor/c-buffer-health-estimator-bc40   pm_buffer_health_*
 #
 # Agent E (this branch, cursor/stability-test-pins-bc40) merges last, once
 # A-D have landed on `main`, so its pins can be written against their final
-# symbol names. Until then those symbols do not exist on this branch, so a
-# hard `if symbol not in source: fail(...)` pin (like the ones above for
-# StreamFailureRetryPolicy / MediaServicesResetPolicy) would break today's
-# `main` for no reason.
+# symbol names. As of this commit all four branches above have been pushed
+# to origin and their exact method signatures were confirmed via
+# `git fetch origin <branch>` + `git diff origin/main origin/<branch>`
+# *without* merging any of their production code into this branch (per the
+# isolation rule — E only pins and tests). Those symbols still do not exist
+# on *this* branch's own checkout of AudioPlayer.swift/PrivateMusicCore.h
+# though, so a plain hard `if symbol not in source: fail(...)` pin (like the
+# ones above for StreamFailureRetryPolicy / MediaServicesResetPolicy) would
+# break this branch and today's `main` for no reason until the parent
+# actually merges A-D.
 #
 # require_stability_office_symbols() below is therefore "soft-ready": each
 # family only becomes a *hard* requirement once a trigger substring for that
@@ -1326,14 +1333,17 @@ if open_braces != close_braces:
 # symbol declared for that family must be present verbatim, so a partial or
 # renamed landing fails loudly instead of the validator staying green with a
 # dropped symbol. This mirrors "no behavior changes without a pin that would
-# fail if it regressed" from the brief's guiding principle, without requiring
-# Agent E to guess A-D's exact identifiers before their branches exist.
+# fail if it regressed" from the brief's guiding principle. Verified by
+# temporarily swapping in A's AudioPlayer.swift/RootView.swift on this branch:
+# the pin recognized the landing (dropped from PENDING) and correctly failed
+# when a required method name was mutated, then this branch's own files were
+# restored unchanged.
 #
-# TODO(Decoder-Dev / Agent E): once each branch below has actually merged,
+# TODO(Decoder-Dev / Agent E): once the parent actually merges each branch
+# below into `main` (merge order per the brief: D -> C -> B -> A -> E),
 # replace its soft-ready entry with an unconditional pin (same style as the
-# StreamFailureRetryPolicy / MediaServicesResetPolicy blocks above), using
-# the symbol names as they actually landed. If a name differs from the one
-# documented in STABILITY_OFFICE_BRIEF.md, file it back to the owning agent —
+# StreamFailureRetryPolicy / MediaServicesResetPolicy blocks above). If a
+# name differs from what is pinned here, file it back to the owning agent —
 # Agent E does not rename production symbols.
 # ============================================================================
 
@@ -1395,7 +1405,19 @@ def require_stability_office_symbols() -> None:
             "SessionActivationRetryPolicy",
             audio_player_text,
             (
-                "SessionActivationRetryPolicy",
+                "enum SessionActivationRetryPolicy",
+                "SessionActivationRetryPolicy.shouldRetry(",
+                "SessionActivationRetryPolicy.retryDelay(",
+            ),
+        ),
+        (
+            "StallRecoveryGuardPolicy (Agent C / BEDROCK, "
+            "cursor/avplayer-failure-hardening-bc40)",
+            "StallRecoveryGuardPolicy",
+            audio_player_text,
+            (
+                "enum StallRecoveryGuardPolicy",
+                "StallRecoveryGuardPolicy.isOrphaned(",
             ),
         ),
         (
