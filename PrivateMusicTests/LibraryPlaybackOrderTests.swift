@@ -278,6 +278,22 @@ final class LibraryTrackContinuationCursorTests: XCTestCase {
 
         XCTAssertEqual(additions.map(\.artist), ["Recommended"])
     }
+
+    func testThePrefetchCursorStopsBeforeRecommendationsOnceLibraryEnds()
+        async throws {
+        let service = LibraryPagingMusicService(pageSize: 4, totalCount: 4)
+        let cursor = LibraryTrackContinuationCursor(
+            startingOffset: 4,
+            pageSize: 4
+        )
+
+        let additions = try await cursor.nextLibraryPage(
+            accessToken: "t",
+            musicService: service
+        )
+
+        XCTAssertTrue(additions.isEmpty)
+    }
 }
 
 /// Library pages in VK order plus a one-track recommendation tail.
