@@ -1318,6 +1318,173 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    // Звонок закончился без `.shouldResume` (обычно потому что приложение
+    // всё это время сидело в фоне) — `otherAudioWasPlaying` уже отличает
+    // звонок от снятых наушников, и на нём одном держится автоматический
+    // резюм без переоткрытия приложения.
+    func testPostCallResumePolicyResumesWithoutShouldResumeOptionForACall() {
+        XCTAssertTrue(
+            PostCallResumePolicy.shouldResumeWithoutOption(
+                wasPlayingBeforeInterruption: true,
+                playbackIntended: true,
+                otherAudioWasPlaying: true,
+                routeDisconnectPending: false,
+                beganAsRouteDisconnect: false
+            )
+        )
+    }
+
+    // То же самое отсутствие опции, но без звонка — это в точности снятые
+    // наушники, и решение остаётся у `shouldTreatEndAsDeliberatePause`,
+    // которая уже должна была вернуть паузу раньше в `handleInterruption`.
+    func testPostCallResumePolicyNeverOverridesEarDetectionDiscriminator() {
+        XCTAssertFalse(
+            PostCallResumePolicy.shouldResumeWithoutOption(
+                wasPlayingBeforeInterruption: true,
+                playbackIntended: true,
+                otherAudioWasPlaying: false,
+                routeDisconnectPending: false,
+                beganAsRouteDisconnect: false
+            )
+        )
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: false,
+                otherAudioWasPlaying: false,
+                interruptionDuration: 240,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.bluetoothA2DP]
+            ),
+            "Ear-off deliberate pause must keep winning alongside this policy"
+        )
+    }
+
+    func testPostCallResumePolicyDefersToRouteDisconnectAndPlaybackIntent() {
+        XCTAssertFalse(
+            PostCallResumePolicy.shouldResumeWithoutOption(
+                wasPlayingBeforeInterruption: true,
+                playbackIntended: true,
+                otherAudioWasPlaying: true,
+                routeDisconnectPending: true,
+                beganAsRouteDisconnect: false
+            ),
+            "A pending route disconnect must still win over call semantics"
+        )
+        XCTAssertFalse(
+            PostCallResumePolicy.shouldResumeWithoutOption(
+                wasPlayingBeforeInterruption: true,
+                playbackIntended: true,
+                otherAudioWasPlaying: true,
+                routeDisconnectPending: false,
+                beganAsRouteDisconnect: true
+            ),
+            "A named route disconnect must not resume through the speaker"
+        )
+        XCTAssertFalse(
+            PostCallResumePolicy.shouldResumeWithoutOption(
+                wasPlayingBeforeInterruption: false,
+                playbackIntended: true,
+                otherAudioWasPlaying: true,
+                routeDisconnectPending: false,
+                beganAsRouteDisconnect: false
+            ),
+            "Nothing was playing before the interruption began"
+        )
+        XCTAssertFalse(
+            PostCallResumePolicy.shouldResumeWithoutOption(
+                wasPlayingBeforeInterruption: true,
+                playbackIntended: false,
+                otherAudioWasPlaying: true,
+                routeDisconnectPending: false,
+                beganAsRouteDisconnect: false
+            ),
+            "The user paused since — do not resume against their intent"
+        )
+    }
+
+    // Приложение стало активным, и ничего до этого не проигрывало —
+    // резервный путь для случая, когда `.ended` пришёл во время
+    // приостановки приложения или не пришёл вовсе.
+    func testPostCallResumePolicyForegroundFallbackRequestsResume() {
+        XCTAssertTrue(
+            PostCallResumePolicy.shouldResumeOnForeground(
+                playbackIntended: true,
+                isPlaying: false,
+                isAudioInterrupted: false,
+                hasPendingInterruptionResume: false,
+                routeDisconnectPending: false
+            )
+        )
+    }
+
+    // Приложение было полностью приостановлено на весь звонок — `.ended`
+    // никогда не добрался до `handleInterruption`, и единственное, что
+    // переживает возобновление процесса, это сохранённое намерение играть.
+    func testPostCallResumePolicyCoversASuspendedAppThatMissedEnded() {
+        XCTAssertTrue(
+            PostCallResumePolicy.shouldResumeOnForeground(
+                playbackIntended: true,
+                isPlaying: false,
+                isAudioInterrupted: false,
+                hasPendingInterruptionResume: false,
+                routeDisconnectPending: false
+            )
+        )
+    }
+
+    func testPostCallResumePolicyForegroundFallbackDefersToPendingWork() {
+        XCTAssertFalse(
+            PostCallResumePolicy.shouldResumeOnForeground(
+                playbackIntended: true,
+                isPlaying: false,
+                isAudioInterrupted: true,
+                hasPendingInterruptionResume: false,
+                routeDisconnectPending: false
+            ),
+            "Still mid-interruption — the ordinary .ended path owns this"
+        )
+        XCTAssertFalse(
+            PostCallResumePolicy.shouldResumeOnForeground(
+                playbackIntended: true,
+                isPlaying: false,
+                isAudioInterrupted: false,
+                hasPendingInterruptionResume: true,
+                routeDisconnectPending: false
+            ),
+            "A scheduled interruption resume is already in flight"
+        )
+        XCTAssertFalse(
+            PostCallResumePolicy.shouldResumeOnForeground(
+                playbackIntended: true,
+                isPlaying: false,
+                isAudioInterrupted: false,
+                hasPendingInterruptionResume: false,
+                routeDisconnectPending: true
+            ),
+            "A pending route disconnect must not push audio to the speaker"
+        )
+        XCTAssertFalse(
+            PostCallResumePolicy.shouldResumeOnForeground(
+                playbackIntended: false,
+                isPlaying: false,
+                isAudioInterrupted: false,
+                hasPendingInterruptionResume: false,
+                routeDisconnectPending: false
+            ),
+            "Nothing intended to keep playing"
+        )
+        XCTAssertFalse(
+            PostCallResumePolicy.shouldResumeOnForeground(
+                playbackIntended: true,
+                isPlaying: true,
+                isAudioInterrupted: false,
+                hasPendingInterruptionResume: false,
+                routeDisconnectPending: false
+            ),
+            "Already playing — nothing to fall back to"
+        )
+    }
+
     func testMediaServicesResetAutoplayKeepsListeningIntent() {
         XCTAssertTrue(
             MediaServicesResetPolicy.shouldAutoplayAfterReset(
