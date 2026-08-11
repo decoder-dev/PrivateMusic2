@@ -48,9 +48,10 @@ struct ArtistView: View {
             if sessionStore.accessToken != nil {
                 resolvedArtist = try? await resolveArtist(named: artist)
             }
-            async let trackLoad: Void = load(resetContent: true)
-            async let albumLoad: Void = loadAlbums()
-            _ = await (trackLoad, albumLoad)
+            // Tracks first so album cards can inherit count/artwork from the
+            // same screen instead of painting sparse «0 треков» stubs.
+            await load(resetContent: true)
+            await loadAlbums()
         }
     }
 
@@ -364,9 +365,15 @@ struct ArtistView: View {
                 page.items,
                 artist: requestedArtist
             )
-            albums = filtered.isEmpty && matched != nil
+            let candidates = filtered.isEmpty && matched != nil
                 ? page.items
                 : filtered
+            // Tracks may already be on screen with covers; use them to fill
+            // thin album stubs and drop leftover audio-row false positives.
+            albums = ArtistAlbumShelfPolicy.displaying(
+                candidates,
+                using: tracks
+            )
         } catch {
             return
         }
