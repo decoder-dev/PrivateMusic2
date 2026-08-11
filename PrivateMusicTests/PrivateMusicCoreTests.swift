@@ -644,6 +644,181 @@ final class MixQueueRankerNativeParityTests: XCTestCase {
     }
 }
 
+final class NativeBufferHealthTests: XCTestCase {
+    func testSteadyHealthyFeedReportsHighThroughputAndNoUnderrun() {
+        let estimator = BufferHealthEstimator()
+        var now: TimeInterval = 0
+        var loaded: TimeInterval = 0
+        estimator.observe(now: now, loadedAheadSeconds: loaded)
+
+        // Loaded-ahead grows by a full wall-second every tick: downloading
+        // at twice normal playback speed, so the buffer keeps filling.
+        for _ in 0..<5 {
+            now += 1.0
+            loaded += 1.0
+            estimator.observe(now: now, loadedAheadSeconds: loaded)
+        }
+
+        XCTAssertEqual(estimator.throughput, 2.0, accuracy: 0.000_001)
+        XCTAssertGreaterThanOrEqual(estimator.throughput, 1.0)
+        XCTAssertEqual(
+            estimator.predictedUnderrun(playRate: 1.0),
+            BufferHealthEstimator.noUnderrun,
+            "a buffer that is filling, not draining, must never predict an underrun"
+        )
+    }
+
+    func testBandwidthCollapseDropsThroughputAndBringsUnderrunCloser() {
+        let estimator = BufferHealthEstimator()
+        var now: TimeInterval = 0
+        var loaded: TimeInterval = 5.0
+        estimator.observe(now: now, loadedAheadSeconds: loaded)
+
+        // Loaded-ahead shrinks every tick: downloads are no longer keeping
+        // up with playback, so the buffer drains toward empty.
+        for _ in 0..<4 {
+            now += 1.0
+            loaded -= 0.4
+            estimator.observe(now: now, loadedAheadSeconds: loaded)
+        }
+
+        XCTAssertEqual(estimator.throughput, 0.6, accuracy: 0.000_001)
+        XCTAssertLessThan(estimator.throughput, 1.0)
+
+        let underrun = estimator.predictedUnderrun(playRate: 1.0)
+        XCTAssertEqual(underrun, 8.5, accuracy: 0.000_001)
+        XCTAssertLessThan(
+            underrun,
+            BufferHealthEstimator.noUnderrun,
+            "a draining buffer must predict a bounded time-to-empty, not the sentinel"
+        )
+    }
+
+    func testRingWraparoundStaysBoundedAndReflectsOnlyRecentWindow() {
+        let estimator = BufferHealthEstimator()
+        let capacity = Int(PM_BUFFER_HEALTH_WINDOW_CAPACITY)
+        let overflow = 8
+        var now: TimeInterval = 0
+        var loaded: TimeInterval = 0
+        estimator.observe(now: now, loadedAheadSeconds: loaded)
+
+        // Fill the entire window with a fast feed (rate 3.0/tick).
+        for _ in 0..<capacity {
+            now += 1.0
+            loaded += 2.0
+            estimator.observe(now: now, loadedAheadSeconds: loaded)
+        }
+        // Push past capacity with a slow feed (rate 0.5/tick). A bounded
+        // ring must evict the oldest fast samples one-for-one rather than
+        // growing memory or drifting toward an all-time average.
+        for _ in 0..<overflow {
+            now += 1.0
+            loaded -= 0.5
+            estimator.observe(now: now, loadedAheadSeconds: loaded)
+        }
+
+        let keptFast = Double(capacity - overflow)
+        let keptSlow = Double(overflow)
+        let expectedWindowedAverage =
+            (keptFast * 3.0 + keptSlow * 0.5) / Double(capacity)
+        let unboundedAverage =
+            (Double(capacity) * 3.0 + keptSlow * 0.5) / Double(capacity + overflow)
+
+        XCTAssertEqual(
+            estimator.throughput,
+            expectedWindowedAverage,
+            accuracy: 0.000_001,
+            "must reflect only the most recent \(capacity) samples"
+        )
+        XCTAssertNotEqual(
+            estimator.throughput,
+            unboundedAverage,
+            accuracy: 0.05,
+            "an unbounded average would still be dragged up by the evicted fast samples"
+        )
+    }
+
+    func testSameInputSequenceProducesDeterministicOutputs() {
+        func feed(_ estimator: BufferHealthEstimator) {
+            var now: TimeInterval = 0
+            var loaded: TimeInterval = 2.0
+            estimator.observe(now: now, loadedAheadSeconds: loaded)
+            let deltas: [TimeInterval] = [0.8, -0.3, 0.5, -0.6, 0.1, -0.2]
+            for delta in deltas {
+                now += 0.5
+                loaded += delta
+                estimator.observe(now: now, loadedAheadSeconds: loaded)
+            }
+        }
+
+        let first = BufferHealthEstimator()
+        let second = BufferHealthEstimator()
+        feed(first)
+        feed(second)
+
+        XCTAssertEqual(first.throughput, second.throughput, accuracy: 0.000_001)
+        XCTAssertEqual(
+            first.predictedUnderrun(playRate: 1.0),
+            second.predictedUnderrun(playRate: 1.0),
+            accuracy: 0.000_001
+        )
+
+        // A reset clears history, so the same estimator replaying the same
+        // sequence again must reproduce its own first pass exactly.
+        first.reset()
+        feed(first)
+        XCTAssertEqual(first.throughput, second.throughput, accuracy: 0.000_001)
+    }
+
+    func testFirstObserveOnlySeedsAndDoesNotYetProduceARate() {
+        let estimator = BufferHealthEstimator()
+        estimator.observe(now: 0, loadedAheadSeconds: 3.0)
+
+        XCTAssertEqual(
+            estimator.throughput,
+            1.0,
+            "before a second sample there is no time delta to rate, so the estimator reports steady"
+        )
+        XCTAssertEqual(
+            estimator.predictedUnderrun(playRate: 1.0),
+            BufferHealthEstimator.noUnderrun
+        )
+    }
+
+    func testNonPositivePlayRateNeverPredictsAnUnderrun() {
+        let estimator = BufferHealthEstimator()
+        var now: TimeInterval = 0
+        var loaded: TimeInterval = 5.0
+        estimator.observe(now: now, loadedAheadSeconds: loaded)
+        for _ in 0..<3 {
+            now += 1.0
+            loaded -= 0.4
+            estimator.observe(now: now, loadedAheadSeconds: loaded)
+        }
+
+        XCTAssertEqual(
+            estimator.predictedUnderrun(playRate: 0.0),
+            BufferHealthEstimator.noUnderrun,
+            "paused playback (rate 0) never drains the buffer"
+        )
+    }
+
+    func testNonMonotonicTickIsDroppedInsteadOfCorruptingTheRate() {
+        let estimator = BufferHealthEstimator()
+        estimator.observe(now: 0, loadedAheadSeconds: 5.0)
+        estimator.observe(now: 1.0, loadedAheadSeconds: 4.6)
+        let throughputBeforeGlitch = estimator.throughput
+
+        // A duplicate/out-of-order tick at (or before) the same timestamp
+        // must not be folded into the rolling rate.
+        estimator.observe(now: 1.0, loadedAheadSeconds: 999.0)
+        XCTAssertEqual(estimator.throughput, throughputBeforeGlitch, accuracy: 0.000_001)
+
+        estimator.observe(now: 2.0, loadedAheadSeconds: 4.2)
+        XCTAssertEqual(estimator.throughput, 0.6, accuracy: 0.000_001)
+    }
+}
+
 /// Deterministic RNG (SplitMix64) so parity runs draw the same sequence.
 private struct SeededGenerator: RandomNumberGenerator {
     private var state: UInt64
