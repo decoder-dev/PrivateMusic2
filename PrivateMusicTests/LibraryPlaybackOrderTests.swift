@@ -88,6 +88,10 @@ final class LibraryPlaybackOrderTests: XCTestCase {
         XCTAssertTrue(context.player.shuffleEnabled)
         XCTAssertEqual(context.player.queueSource, .library)
         XCTAssertEqual(
+            context.player.queueContextTitle,
+            L10n.text("Ваши треки")
+        )
+        XCTAssertEqual(
             Set(context.player.queue.map(\.id)),
             Set(library.map(\.id))
         )
