@@ -960,21 +960,48 @@ final class PlaylistLibraryViewModelTests: XCTestCase {
         XCTAssertEqual(recorder.offsets, [0])
     }
 
-    // Albums ride along in the unfiltered playlist list. The Albums shelf
-    // knows their exact ids, so the playlist shelf drops them by id rather
-    // than guessing from the shape of the entry.
-    func testFollowedAlbumIdentitiesAreDroppedFromTheShelf() async {
+    // The reported defect: the shelf loaded all eight playlists, then the
+    // Albums shelf landed and subtracted most of them again. Nothing that
+    // arrives after the walk may shorten the shelf.
+    func testTheShelfKeepsEveryPlaylistAfterTheAlbumsShelfLoads() async {
         let model = PlaylistLibraryViewModel()
-        model.configure(
-            ownerID: 100,
-            followedAlbumIdentities: ["-5_2"]
-        )
+        model.configure(ownerID: 100)
+
+        await model.load { _ in
+            MusicPage(
+                items: (1...8).map {
+                    Playlist(
+                        id: $0,
+                        ownerID: 900 + $0,
+                        title: "Сохранённый \($0)",
+                        count: $0
+                    )
+                },
+                totalCount: 8,
+                nextOffset: nil
+            )
+        }
+        XCTAssertEqual(model.playlists.count, 8)
+
+        // The Albums shelf publishing its ids used to run through the shelf
+        // here. `configure` is the only entry point left, and it carries no
+        // exclusion set.
+        model.configure(ownerID: 100)
+
+        XCTAssertEqual(model.playlists.count, 8)
+    }
+
+    // A session restored before the profile lands leaves the shelf without
+    // an owner id. Every playlist must still be on it.
+    func testAnUnknownOwnerDoesNotShortenTheShelf() async {
+        let model = PlaylistLibraryViewModel()
+        model.configure(ownerID: nil)
 
         await model.load { _ in
             MusicPage(
                 items: [
                     makePlaylist(id: 1, title: "Дорога"),
-                    Playlist(id: 2, ownerID: -5, title: "Release", count: 10),
+                    Playlist(id: 2, ownerID: -5, title: "Сборник", count: 10),
                     makePlaylist(id: 3, title: "Джаз")
                 ],
                 totalCount: 3,
@@ -982,28 +1009,10 @@ final class PlaylistLibraryViewModelTests: XCTestCase {
             )
         }
 
-        XCTAssertEqual(model.playlists.map(\.title), ["Дорога", "Джаз"])
-    }
-
-    func testAlbumsThatLandAfterThePrefetchAreFilteredWithoutARefetch() async {
-        let model = PlaylistLibraryViewModel()
-        model.configure(ownerID: 100)
-
-        await model.load { _ in
-            MusicPage(
-                items: [
-                    makePlaylist(id: 1, title: "Дорога"),
-                    Playlist(id: 2, ownerID: -5, title: "Release", count: 10)
-                ],
-                totalCount: 2,
-                nextOffset: nil
-            )
-        }
-        XCTAssertEqual(model.playlists.count, 2)
-
-        model.excludeFollowedAlbums(["-5_2"])
-
-        XCTAssertEqual(model.playlists.map(\.title), ["Дорога"])
+        XCTAssertEqual(
+            model.playlists.map(\.title),
+            ["Дорога", "Сборник", "Джаз"]
+        )
     }
 
     private func makePlaylist(id: Int, title: String) -> Playlist {
