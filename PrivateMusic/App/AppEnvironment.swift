@@ -370,13 +370,9 @@ final class AppEnvironment: ObservableObject {
             }
         }()
         // «Ваши плейлисты» on the home screen is the same list as the
-        // library shelf, so it asks for a full page, collapses the
-        // duplicated system playlist and drops the followed releases the
-        // Albums shelf owns the same way.
+        // library shelf, so it asks for a full page and applies the same
+        // duplicate collapse policy.
         let playlistOwnerID = sessionStore.resolvedOfflineAccountID
-        let followedAlbumIdentities = Set(
-            likedAlbumsStore.albums.map(\.compositeID)
-        )
         async let playlistsResult: Result<[Playlist], Error> = {
             do {
                 let value = try await withAuthorizedToken { token in
@@ -390,8 +386,7 @@ final class AppEnvironment: ObservableObject {
                 return .success(
                     LibraryPlaylistShelfPolicy.normalized(
                         value,
-                        ownerID: playlistOwnerID,
-                        followedAlbumIdentities: followedAlbumIdentities
+                        ownerID: playlistOwnerID
                     )
                 )
             } catch {
