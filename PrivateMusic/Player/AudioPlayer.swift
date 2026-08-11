@@ -2386,6 +2386,11 @@ final class AudioPlayer: ObservableObject {
             }
             let pendingResume = resumeAfterRouteTransfer
             routeDisconnectPending = false
+            // The route that settled is the same one the disconnect named:
+            // nothing took the playback over, so nothing starts it again.
+            // AirPods leaving an ear look exactly like this, and resuming
+            // there is the defect this release is about.
+            guard Set(settledOutputs) != Set(previousOutputs) else { return }
             guard AudioRoutePolicy.shouldResumeAfterRouteTransfer(
                 pendingResume: pendingResume,
                 playbackIntended: playbackIntended,
