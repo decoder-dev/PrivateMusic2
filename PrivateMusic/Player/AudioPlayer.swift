@@ -669,6 +669,8 @@ final class AudioPlayer: ObservableObject {
     private var outputVolumeObservation: NSKeyValueObservation?
     private var defaultContinuationProvider: (() async throws -> [Track])?
     private var activeContinuationProvider: (() async throws -> [Track])?
+    private var activeContinuationPrefetchProvider:
+        (() async throws -> [Track])?
     private var streamRefreshProvider: ((Track) async throws -> Track)?
     private var offlineURLProvider: ((Track) -> URL?)?
     private var offlineInvalidationHandler: ((Track) -> Void)?
@@ -918,6 +920,7 @@ final class AudioPlayer: ObservableObject {
         cancelContinuation()
         defaultContinuationProvider = provider
         activeContinuationProvider = provider
+        activeContinuationPrefetchProvider = nil
     }
 
     func configureMixTrackFilter(
@@ -995,6 +998,7 @@ final class AudioPlayer: ObservableObject {
         _ track: Track,
         in tracks: [Track],
         continuation: (() async throws -> [Track])? = nil,
+        prefetchContinuation: (() async throws -> [Track])? = nil,
         source: QueueSource? = nil,
         shuffle intent: PlaybackShuffleIntent = .followPreference
     ) {
@@ -1014,6 +1018,7 @@ final class AudioPlayer: ObservableObject {
         attemptedPreloadRefreshes.removeAll()
         activeContinuationProvider =
             continuation ?? defaultContinuationProvider
+        activeContinuationPrefetchProvider = prefetchContinuation
         queueSource = source
         queueSeedTrackTitle = track.title
         // A fresh queue arrives in source order, so a previous radio
@@ -1086,6 +1091,7 @@ final class AudioPlayer: ObservableObject {
     func playShuffled(
         in tracks: [Track],
         continuation: (() async throws -> [Track])? = nil,
+        prefetchContinuation: (() async throws -> [Track])? = nil,
         source: QueueSource? = nil
     ) {
         guard let seed = tracks.randomElement() ?? tracks.first else {
@@ -1095,6 +1101,7 @@ final class AudioPlayer: ObservableObject {
             seed,
             in: tracks,
             continuation: continuation,
+            prefetchContinuation: prefetchContinuation,
             source: source,
             shuffle: .shuffleCollection
         )
@@ -2955,7 +2962,8 @@ final class AudioPlayer: ObservableObject {
         continuationPrefetchInThreshold = ContinuationPrefetchPolicy
             .shouldPrefetch(
                 currentIndex: currentIndex,
-                queueCount: queue.count
+                queueCount: queue.count,
+                libraryQueue: LibraryQueuePolicy.isLibraryQueue(queueSource)
             )
     }
 
@@ -2981,6 +2989,32 @@ final class AudioPlayer: ObservableObject {
         cancelStreamRecovery()
     }
 
+    private func upcomingCountForCapacity() -> Int {
+        guard let currentIndex,
+              queue.indices.contains(currentIndex) else {
+            return queue.count
+        }
+        return max(queue.count - currentIndex - 1, 0)
+    }
+
+    private func cappedUniqueContinuationAdditions(
+        from proposed: [Track]
+    ) -> [Track] {
+        let additions = PlaybackQueueBuilder.uniqueAdditions(
+            existing: queue,
+            candidates: proposed
+        )
+        guard !additions.isEmpty else { return [] }
+        return Array(
+            additions.prefix(
+                LibraryQueuePolicy.appendableCount(
+                    upcomingCount: upcomingCountForCapacity(),
+                    source: queueSource
+                )
+            )
+        )
+    }
+
     private func startContinuationIfNeeded() {
         guard continuationTask == nil else { return }
         continuationGeneration += 1
@@ -3001,7 +3035,8 @@ final class AudioPlayer: ObservableObject {
 
     private func startContinuationPrefetch() {
         guard continuationPrefetchTask == nil,
-              let provider = activeContinuationProvider else {
+              let provider = activeContinuationPrefetchProvider
+                ?? activeContinuationProvider else {
             return
         }
         let generation = continuationGeneration
@@ -3019,9 +3054,8 @@ final class AudioPlayer: ObservableObject {
                           self.currentIndex == sourceIndex else {
                         return
                     }
-                    additions = PlaybackQueueBuilder.uniqueAdditions(
-                        existing: self.queue,
-                        candidates: proposed
+                    additions = self.cappedUniqueContinuationAdditions(
+                        from: proposed
                     )
                     if !additions.isEmpty { break }
                     if attempt < 2 {
@@ -3076,7 +3110,8 @@ final class AudioPlayer: ObservableObject {
         }
         let should = ContinuationPrefetchPolicy.shouldPrefetch(
             currentIndex: currentIndex,
-            queueCount: queue.count
+            queueCount: queue.count,
+            libraryQueue: LibraryQueuePolicy.isLibraryQueue(queueSource)
         )
         continuationPrefetchInThreshold = should
         guard should else { return }
@@ -3097,17 +3132,10 @@ final class AudioPlayer: ObservableObject {
             candidates: filtered
         )
         guard !additions.isEmpty else { return }
-        let upcomingCount: Int = {
-            guard let currentIndex,
-                  queue.indices.contains(currentIndex) else {
-                return queue.count
-            }
-            return max(queue.count - currentIndex - 1, 0)
-        }()
         let capped = Array(
             additions.prefix(
                 LibraryQueuePolicy.appendableCount(
-                    upcomingCount: upcomingCount,
+                    upcomingCount: upcomingCountForCapacity(),
                     source: queueSource
                 )
             )
@@ -3140,7 +3168,7 @@ final class AudioPlayer: ObservableObject {
             existingUpcoming: existingUpcoming,
             replacement: filtered,
             pinnedIDs: pinnedPlayNextIDs,
-            limit: MixTrackRequestPolicy.queueLimit
+            limit: LibraryQueuePolicy.upcomingLimit(for: queueSource)
         )
         guard next.map(\.id) != queue.map(\.id) else { return }
         queue = next
@@ -3315,10 +3343,7 @@ final class AudioPlayer: ObservableObject {
                       currentIndex == sourceIndex else {
                     return
                 }
-                additions = PlaybackQueueBuilder.uniqueAdditions(
-                    existing: queue,
-                    candidates: proposed
-                )
+                additions = cappedUniqueContinuationAdditions(from: proposed)
                 if !additions.isEmpty {
                     break
                 }

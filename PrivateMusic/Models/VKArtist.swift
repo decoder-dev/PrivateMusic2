@@ -210,9 +210,16 @@ enum MixTrackRequestPolicy {
 }
 
 enum ContinuationPrefetchPolicy {
-    static func shouldPrefetch(currentIndex: Int?, queueCount: Int) -> Bool {
+    static func shouldPrefetch(
+        currentIndex: Int?,
+        queueCount: Int,
+        libraryQueue: Bool = false
+    ) -> Bool {
         guard let currentIndex, queueCount > 0 else { return false }
         let remaining = queueCount - currentIndex - 1
+        if libraryQueue {
+            return LibraryQueuePolicy.shouldPrefetch(upcomingCount: remaining)
+        }
         return remaining <= MixTrackRequestPolicy.continuationRemainingThreshold
     }
 }
