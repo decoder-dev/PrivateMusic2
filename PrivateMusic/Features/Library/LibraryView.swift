@@ -446,9 +446,11 @@ struct LibraryView: View {
     private func shuffleLibrary() {
         let queue = filteredTracks
         guard !queue.isEmpty else { return }
+        let continuation = libraryContinuation(after: queue)
         environment.player.playShuffled(
             in: queue,
-            continuation: libraryContinuation(after: queue),
+            continuation: continuation?.advance,
+            prefetchContinuation: continuation?.prefetch,
             source: .library
         )
     }
