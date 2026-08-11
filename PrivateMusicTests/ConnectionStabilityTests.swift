@@ -610,6 +610,117 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    // Unplugging raises an interruption and a route change, in either
+    // order. When the interruption lands first it has already paused
+    // playback and cleared the flags that said we were playing, so the
+    // route change has to recognise the disconnect from the route alone —
+    // otherwise nothing holds the session back from the speaker.
+    func testRouteLossIsRecognizedWithoutALivePlaybackFlag() {
+        XCTAssertTrue(
+            AudioRoutePolicy.didLoseExternalRoute(
+                previousOutputPortTypes: [.headphones],
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+        XCTAssertTrue(
+            AudioRoutePolicy.didLoseExternalRoute(
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.builtInReceiver]
+            )
+        )
+        XCTAssertFalse(
+            AudioRoutePolicy.shouldPauseAfterRouteLoss(
+                wasPlaying: false,
+                previousOutputPortTypes: [.headphones],
+                currentOutputPortTypes: [.builtInSpeaker]
+            ),
+            "the playing test itself must keep its meaning"
+        )
+    }
+
+    // Handing a wired unplug to already-connected AirPods is a transfer,
+    // not a disconnect, and must not pause.
+    func testMovingBetweenExternalRoutesIsNotARouteLoss() {
+        XCTAssertFalse(
+            AudioRoutePolicy.didLoseExternalRoute(
+                previousOutputPortTypes: [.headphones],
+                currentOutputPortTypes: [.bluetoothA2DP]
+            )
+        )
+        XCTAssertFalse(
+            AudioRoutePolicy.didLoseExternalRoute(
+                previousOutputPortTypes: [.builtInSpeaker],
+                currentOutputPortTypes: [.builtInSpeaker]
+            )
+        )
+    }
+
+    // The resume scheduled at interruption end re-reads the route when it
+    // fires: `.oldDeviceUnavailable` can still be in flight at that point,
+    // and a resume that trusted the flags it was scheduled with restarted
+    // playback on the speaker.
+    func testDelayedInterruptionResumeRechecksTheRoute() {
+        XCTAssertTrue(
+            AudioInterruptionPolicy.allowsDelayedResume(
+                isAudioInterrupted: false,
+                playbackIntended: true,
+                routeDisconnectPending: false,
+                previousOutputPortTypes: [.headphones],
+                currentOutputPortTypes: [.headphones]
+            )
+        )
+        XCTAssertFalse(
+            AudioInterruptionPolicy.allowsDelayedResume(
+                isAudioInterrupted: false,
+                playbackIntended: true,
+                routeDisconnectPending: false,
+                previousOutputPortTypes: [.headphones],
+                currentOutputPortTypes: [.builtInSpeaker]
+            ),
+            "the headphones are gone by the time the resume fires"
+        )
+        XCTAssertFalse(
+            AudioInterruptionPolicy.allowsDelayedResume(
+                isAudioInterrupted: false,
+                playbackIntended: true,
+                routeDisconnectPending: true,
+                previousOutputPortTypes: [.headphones],
+                currentOutputPortTypes: [.headphones]
+            )
+        )
+        XCTAssertFalse(
+            AudioInterruptionPolicy.allowsDelayedResume(
+                isAudioInterrupted: true,
+                playbackIntended: true,
+                routeDisconnectPending: false,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.bluetoothA2DP]
+            )
+        )
+        XCTAssertFalse(
+            AudioInterruptionPolicy.allowsDelayedResume(
+                isAudioInterrupted: false,
+                playbackIntended: false,
+                routeDisconnectPending: false,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.bluetoothA2DP]
+            )
+        )
+    }
+
+    // The wait exists so the route change can win the race; it is useless
+    // if it is shorter than the gap between the two notifications.
+    func testInterruptionResumeWaitsForTheRouteToSettle() {
+        XCTAssertGreaterThanOrEqual(
+            AudioInterruptionPolicy.routeSettleDelay,
+            0.3
+        )
+        XCTAssertLessThanOrEqual(
+            AudioInterruptionPolicy.routeSettleDelay,
+            1
+        )
+    }
+
     func testRouteTransferResumeRequiresPendingPlaybackIntent() {
         XCTAssertTrue(
             AudioRoutePolicy.shouldResumeAfterRouteTransfer(
