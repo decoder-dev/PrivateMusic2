@@ -808,6 +808,15 @@ final class AudioPlayer: ObservableObject {
     private var sleepTask: Task<Void, Never>?
     private var streamUserAgent: String?
     private var itemStatusObservation: NSKeyValueObservation?
+    /// The item a `.failed` transition has already been reported for.
+    ///
+    /// AVFoundation can deliver the `.status == .failed` KVO change and the
+    /// `AVPlayerItemFailedToPlayToEndTime` notification for the very same
+    /// underlying error on the very same item. Without this guard both
+    /// call `handleItemFailure`, double-spending the same-track retry
+    /// budget on a single real failure and advancing the queue twice as
+    /// eagerly as `StreamFailureRetryPolicy` intends.
+    private var lastFailedItemIdentifier: ObjectIdentifier?
     private var outputVolumeObservation: NSKeyValueObservation?
     private var defaultContinuationProvider: (() async throws -> [Track])?
     private var activeContinuationProvider: (() async throws -> [Track])?
@@ -1626,6 +1635,7 @@ final class AudioPlayer: ObservableObject {
         player.replaceCurrentItem(with: nil)
         itemStatusObservation?.invalidate()
         itemStatusObservation = nil
+        lastFailedItemIdentifier = nil
         queue = []
         sourceOrderedQueue = []
         currentIndex = nil
@@ -1746,6 +1756,7 @@ final class AudioPlayer: ObservableObject {
         // item — especially after CarKit media-services resets.
         item.audioMix = nil
         itemStatusObservation?.invalidate()
+        lastFailedItemIdentifier = nil
         itemStatusObservation = item.observe(
             \.status,
             options: [.initial, .new]
@@ -1762,6 +1773,7 @@ final class AudioPlayer: ObservableObject {
                     self.streamRecoveryAttempts = 0
                     self.didAttemptStreamRefresh = false
                     self.stallStartedAt = nil
+                    self.lastFailedItemIdentifier = nil
                     self.cancelStreamRecovery()
                     if wantsAudioTap {
                         self.attachAudioProcessing(to: item)
@@ -1774,6 +1786,11 @@ final class AudioPlayer: ObservableObject {
                 case .failed:
                     self.isPlaying = false
                     self.isBuffering = false
+                    let identifier = ObjectIdentifier(item)
+                    guard self.lastFailedItemIdentifier != identifier else {
+                        return
+                    }
+                    self.lastFailedItemIdentifier = identifier
                     self.handleItemFailure(item.error)
                 case .unknown:
                     self.isBuffering = true
@@ -2316,6 +2333,11 @@ final class AudioPlayer: ObservableObject {
                 }
                 self.isPlaying = false
                 self.isBuffering = false
+                let identifier = ObjectIdentifier(failedItem)
+                guard self.lastFailedItemIdentifier != identifier else {
+                    return
+                }
+                self.lastFailedItemIdentifier = identifier
                 self.handleItemFailure(error)
             }
         })
@@ -2820,6 +2842,7 @@ final class AudioPlayer: ObservableObject {
         playbackGeneration += 1
         itemStatusObservation?.invalidate()
         itemStatusObservation = nil
+        lastFailedItemIdentifier = nil
 
         let orphanedPlayer = player
         if let timeObserver {
