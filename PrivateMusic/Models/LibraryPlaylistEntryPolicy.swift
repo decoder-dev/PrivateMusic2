@@ -100,4 +100,21 @@ enum LibraryPlaylistEntryPolicy {
         }
         return corroboratingReleaseMarkers(entry) >= 1
     }
+
+    /// `true` for an entry that belongs to the Albums shelf.
+    ///
+    /// The Albums shelf loads `audio.getPlaylists` with
+    /// `filters=followed,albums`, and `followed` covers the playlists you
+    /// saved from other people as much as it covers releases. Every one of
+    /// those entries decodes as an `Album`, and the playlist shelf subtracts
+    /// exactly the ids that list reports — so a saved playlist left in it
+    /// disappeared from Медиатека altogether.
+    ///
+    /// The test is the mirror of `hasPlaylistMarker`, not of
+    /// `looksLikeFollowedAlbum`: an entry VK marked as person-made is a
+    /// playlist wherever it turns up, and a release never carries those
+    /// markers, so nothing that belongs on the Albums shelf is lost here.
+    static func belongsOnAlbumsShelf(_ entry: LibraryPlaylistEntry) -> Bool {
+        !hasPlaylistMarker(entry)
+    }
 }

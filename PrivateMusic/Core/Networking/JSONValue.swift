@@ -98,6 +98,37 @@ enum JSONValue: Codable, Sendable {
         return result
     }
 
+    /// Top-level `audio.getPlaylists` items for the Albums shelf, which asks
+    /// for `filters=followed,albums`.
+    ///
+    /// `followed` is not an album filter: VK answers it with the playlists
+    /// you saved from other people too, and every one of them decodes as an
+    /// `Album`. Leaving them here put a playlist on the Albums shelf and —
+    /// because the playlist shelf subtracts the ids this list reports — took
+    /// it off Медиатека entirely, which is «ОНИ НЕ ВСЕ».
+    var libraryFollowedAlbumItems: [Album] {
+        guard case let .object(object) = self,
+              case let .array(values)? = object["items"] else {
+            return []
+        }
+        var result: [Album] = []
+        for value in values {
+            guard case let .object(item) = value,
+                  item["id"] != nil,
+                  item["owner_id"] != nil,
+                  item.belongsOnAlbumsShelf,
+                  let data = try? JSONEncoder().encode(value),
+                  let album = try? JSONDecoder().decode(
+                    Album.self,
+                    from: data
+                  ) else {
+                continue
+            }
+            result.append(album)
+        }
+        return result
+    }
+
     /// Raw entries in the top-level `items` array — what the next offset has
     /// to advance by, whether or not every entry decoded.
     var libraryItemCount: Int {
@@ -378,6 +409,12 @@ private extension Dictionary where Key == String, Value == JSONValue {
     /// `LibraryPlaylistEntryPolicy` for why the test stays this narrow.
     var looksLikeFollowedAlbum: Bool {
         LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(libraryPlaylistEntry)
+    }
+
+    /// An entry of the `filters=followed,albums` list that is a release
+    /// rather than a playlist somebody saved.
+    var belongsOnAlbumsShelf: Bool {
+        LibraryPlaylistEntryPolicy.belongsOnAlbumsShelf(libraryPlaylistEntry)
     }
 
     var mixMatchPercent: Int? {
