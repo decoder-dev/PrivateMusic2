@@ -1039,10 +1039,12 @@ struct LibraryView: View {
     /// continuing into recommendations instead of the next library page.
     private func playLibraryTrack(_ track: Track) {
         let queue = filteredTracks.isEmpty ? tracks.tracks : filteredTracks
+        let continuation = libraryContinuation(after: queue)
         environment.player.play(
             track,
             in: queue,
-            continuation: libraryContinuation(after: queue),
+            continuation: continuation?.advance,
+            prefetchContinuation: continuation?.prefetch,
             source: .library
         )
     }
@@ -1052,7 +1054,10 @@ struct LibraryView: View {
     /// belong behind a filtered list.
     private func libraryContinuation(
         after queue: [Track]
-    ) -> (() async throws -> [Track])? {
+    ) -> (
+        advance: () async throws -> [Track],
+        prefetch: () async throws -> [Track]
+    )? {
         guard queue.count == tracks.tracks.count,
               let offset = tracks.nextPageOffset else {
             return nil
@@ -1065,7 +1070,7 @@ struct LibraryView: View {
         // environment itself rather than reading the EnvironmentObject
         // wrapper later.
         let appEnvironment = environment
-        return {
+        let advance = {
             try await appEnvironment.withAuthorizedToken { token in
                 try await cursor.next(
                     accessToken: token,
@@ -1073,6 +1078,15 @@ struct LibraryView: View {
                 )
             }
         }
+        let prefetch = {
+            try await appEnvironment.withAuthorizedToken { token in
+                try await cursor.nextLibraryPage(
+                    accessToken: token,
+                    musicService: appEnvironment.musicService
+                )
+            }
+        }
+        return (advance: advance, prefetch: prefetch)
     }
 
     private func libraryUsableMetadata(_ value: String) -> String? {
