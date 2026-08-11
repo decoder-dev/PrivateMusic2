@@ -182,8 +182,11 @@ final class AppEnvironment: ObservableObject {
             .sink { [weak player] state in
                 // Restart preloads whenever the network is usable again —
                 // including constrained cellular, not only unconstrained wifi.
+                // Also kick same-track recovery so a stalled current item
+                // does not stay dead until the user taps play.
                 if state != .offline {
                     player?.resumePreloading()
+                    player?.kickRecoveryAfterNetworkReturn()
                 } else {
                     player?.cancelPreloading()
                 }
