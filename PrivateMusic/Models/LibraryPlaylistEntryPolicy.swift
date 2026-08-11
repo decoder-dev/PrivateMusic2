@@ -48,10 +48,10 @@ struct LibraryPlaylistEntry: Equatable, Sendable {
 /// playlist: a release that slips through still renders a working card,
 /// while a dropped playlist is simply gone from the shelf.
 ///
-/// Followed albums that survive this test do not reach the shelf either —
-/// `LibraryPlaylistShelfPolicy` drops every entry the Albums shelf already
-/// loaded by identity (`owner_id` + `id`), which cannot mistake a playlist
-/// for a release.
+/// This is the only test that keeps a release off Медиатека. The shelf used
+/// to also subtract every id the Albums shelf reported, and that is what
+/// left the reporter with one card out of eight: anything the Albums shelf
+/// mistook for a release vanished from the playlist shelf too.
 enum LibraryPlaylistEntryPolicy {
     /// `album_type` values VK uses for a release. `main_only` is what a
     /// plain studio release reports.
@@ -103,15 +103,17 @@ enum LibraryPlaylistEntryPolicy {
 
     /// `true` for an entry that belongs to the Albums shelf.
     ///
-    /// The Albums shelf loads `audio.getPlaylists` with `filters=albums`,
-    /// and the playlist shelf subtracts exactly the ids that list reports —
-    /// so a playlist left in it disappears from Медиатека altogether. That
-    /// is what asking for `filters=followed,albums` did: `filters` unions
-    /// its categories, so the answer carried every playlist saved from
-    /// another person, each of which decodes as an `Album` just fine.
+    /// The Albums shelf loads `audio.getPlaylists` with `filters=albums`.
+    /// `filters` unions the categories it names rather than qualifying
+    /// them, so the old `followed,albums` answered with every playlist
+    /// saved from another person as well — each of which decodes as an
+    /// `Album` just fine. The request is narrowed now, and this test stays
+    /// as the second line of defence for anything VK still leaves in the
+    /// answer.
     ///
-    /// The request is narrowed now, and this test stays as the second line
-    /// of defence for anything VK still leaves in the answer.
+    /// Getting it wrong now costs a card on the Albums shelf and nothing
+    /// else: the playlist shelf no longer subtracts the ids this list
+    /// reports, so a misread entry cannot take a playlist off Медиатека.
     ///
     /// The test is the mirror of `hasPlaylistMarker`, not of
     /// `looksLikeFollowedAlbum`: an entry VK marked as person-made is a

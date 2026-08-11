@@ -396,14 +396,31 @@ if "didFinishPrefetch" not in playlist_library_source:
         "a cancelled playlist prefetch must not count as loaded: the shelf "
         "would stay stuck on whichever page landed first"
     )
-if "followedAlbumIdentities" not in playlist_library_source:
-    fail(
-        "the playlist shelf must drop followed albums by id, not by "
-        "guessing at the shape of a VK entry"
-    )
 shelf_policy_source = (
     SOURCE / "Models/LibraryPlaylistShelfPolicy.swift"
 ).read_text(encoding="utf-8")
+# «ОНИ НЕ ВСЕ»: the shelf loaded all eight playlists and the Albums shelf
+# then subtracted most of them again. Whatever that shelf mistakes for a
+# release — or whatever VK returns when it ignores `filters=albums` — must
+# not be able to take a playlist off Медиатека.
+for source_name, source_text in (
+    ("PlaylistLibraryViewModel", playlist_library_source),
+    ("LibraryPlaylistShelfPolicy", shelf_policy_source),
+    ("LibraryView", library_view_source),
+):
+    for forbidden_subtraction_symbol in (
+        "followedAlbumIdentities",
+        "excludeFollowedAlbums",
+    ):
+        if forbidden_subtraction_symbol in source_text:
+            fail(
+                "the playlist shelf must not subtract the ids the Albums "
+                "shelf reports: one wrong entry there emptied Медиатека "
+                "down to a single card. Followed releases are kept off the "
+                "shelf entry by entry, by "
+                "LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum "
+                f"({source_name}: {forbidden_subtraction_symbol})"
+            )
 for forbidden_liked_title in (
     '"любимое"',
     '"любимые"',
@@ -419,14 +436,22 @@ for forbidden_liked_title in (
             "collapsing it hides real playlists"
         )
 if '"мне нравится"' not in shelf_policy_source:
-    fail("the VK system liked playlist must still collapse its clones")
-if "guard item.ownerID != ownerID else { return false }" not in shelf_policy_source:
     fail(
-        "a playlist you own must never be dropped as a followed album: VK "
-        "has no way for a person to own a release, so an id collision with "
-        "the Albums shelf is that shelf's fault, not a reason to hide the "
-        "playlist"
+        "the owned and followed copies of the VK system liked playlist "
+        "must still collapse into one card"
     )
+# «Мне нравится (2)» is a separate saved playlist with its own id and its
+# own tracks, and the shelf must show it next to «Мне нравится».
+for forbidden_clone_marker_pattern in (
+    '\\\\s*\\\\(\\\\d+\\\\)$',
+    '\\\\s*#\\\\d+$',
+):
+    if forbidden_clone_marker_pattern in shelf_policy_source:
+        fail(
+            "a trailing clone marker is part of the name VK gave the "
+            "playlist: stripping it merged «Мне нравится (2)» into «Мне "
+            "нравится» and took a real playlist off the shelf"
+        )
 playlist_paging_source_path = SOURCE / "Models/LibraryPlaylistPagePolicy.swift"
 if not playlist_paging_source_path.is_file():
     fail("LibraryPlaylistPagePolicy must define the playlist paging contract")
@@ -476,8 +501,8 @@ if "ownerID: sessionStore.resolvedOfflineAccountID" not in library_view_source:
     fail(
         "the playlist shelf must know whose playlists these are through the "
         "resolved account id: a session restored before the profile lands "
-        "carries no user id, and the shelf cannot then protect your own "
-        "playlists from the Albums shelf subtraction"
+        "carries no user id, and the shelf cannot then tell the copy of "
+        "«Мне нравится» you own from the one you follow"
     )
 entry_policy_path = SOURCE / "Models/LibraryPlaylistEntryPolicy.swift"
 if not entry_policy_path.is_file():
