@@ -64,6 +64,21 @@ final class NetworkMonitor: ObservableObject {
         state != .offline
     }
 
+    /// Collapses `state`/`transport` into the `NetworkCondition` the
+    /// player's buffer/retry policy reacts to (see
+    /// `NetworkAdaptiveBufferPolicy` in `AudioPlayer.swift`). Read-only:
+    /// this does not add to the published state machine above, it only
+    /// reads it.
+    var condition: NetworkCondition {
+        if state == .offline {
+            return .offline
+        }
+        if state == .constrained || transport == .cellular {
+            return .degraded
+        }
+        return .nominal
+    }
+
     private nonisolated static func transport(
         for path: NWPath
     ) -> Transport {
