@@ -114,7 +114,26 @@ enum AudioRoutePolicy {
         currentOutputPortTypes: [AVAudioSession.Port]
     ) -> Bool {
         wasPlaying
-            && previousOutputPortTypes.contains(where: isExternalPlayback)
+            && didLoseExternalRoute(
+                previousOutputPortTypes: previousOutputPortTypes,
+                currentOutputPortTypes: currentOutputPortTypes
+            )
+    }
+
+    /// The route the app was listening on is gone and the session has
+    /// fallen back to the device itself.
+    ///
+    /// This is `shouldPauseAfterRouteLoss` with the playback state left
+    /// out, because the state is exactly what the disconnect race takes
+    /// away: unplugging headphones raises an interruption *and* a route
+    /// change, and when the interruption lands first it has already paused
+    /// playback and cleared the flags that said we were playing. Reading
+    /// the route alone is what recognises the disconnect either way.
+    static func didLoseExternalRoute(
+        previousOutputPortTypes: [AVAudioSession.Port],
+        currentOutputPortTypes: [AVAudioSession.Port]
+    ) -> Bool {
+        previousOutputPortTypes.contains(where: isExternalPlayback)
             && !currentOutputPortTypes.contains(where: isExternalPlayback)
     }
 
@@ -338,6 +357,40 @@ enum AudioInterruptionPolicy {
     ) -> Bool {
         AudioRoutePolicy.shouldPauseAfterRouteLoss(
             wasPlaying: true,
+            previousOutputPortTypes: previousOutputPortTypes,
+            currentOutputPortTypes: currentOutputPortTypes
+        )
+    }
+
+    /// How long an interruption-end resume waits for the route to settle.
+    ///
+    /// The two notifications an unplug raises are not ordered: the
+    /// interruption can end while `currentRoute` still names the
+    /// headphones, and `.oldDeviceUnavailable` follows a moment later. The
+    /// wait is what lets the route change arrive first and cancel the
+    /// resume instead of the resume beating it into the speaker.
+    static let routeSettleDelay: TimeInterval = 0.35
+
+    /// Whether a resume scheduled at interruption end may still go ahead
+    /// once the route has settled.
+    ///
+    /// Re-reading the route at that point is the second half of the fix:
+    /// the route change can also arrive *after* the wait, and a resume that
+    /// only checked the flags it captured when it was scheduled would have
+    /// already pushed audio to the speaker by then.
+    static func allowsDelayedResume(
+        isAudioInterrupted: Bool,
+        playbackIntended: Bool,
+        routeDisconnectPending: Bool,
+        previousOutputPortTypes: [AVAudioSession.Port],
+        currentOutputPortTypes: [AVAudioSession.Port]
+    ) -> Bool {
+        guard !isAudioInterrupted,
+              playbackIntended,
+              !routeDisconnectPending else {
+            return false
+        }
+        return !AudioRoutePolicy.didLoseExternalRoute(
             previousOutputPortTypes: previousOutputPortTypes,
             currentOutputPortTypes: currentOutputPortTypes
         )
@@ -2042,15 +2095,21 @@ final class AudioPlayer: ObservableObject {
             pausePreservingIntent()
         case .ended:
             isAudioInterrupted = false
+            let previousOutputs = outputsAtInterruptionBegan
             let currentOutputs = AVAudioSession.sharedInstance()
                 .currentRoute.outputs.map(\.portType)
             if AudioInterruptionPolicy.shouldTreatEndAsRouteDisconnect(
-                previousOutputPortTypes: outputsAtInterruptionBegan,
+                previousOutputPortTypes: previousOutputs,
                 currentOutputPortTypes: currentOutputs
             ) {
                 routeDisconnectPending = true
+                // `.oldDeviceUnavailable` may already have run and recorded
+                // the intent to carry playback to the next route; the
+                // interruption that came with the same unplug must not
+                // erase it on the way past.
                 resumeAfterRouteTransfer =
-                    wasPlayingBeforeInterruption && playbackIntended
+                    (wasPlayingBeforeInterruption || resumeAfterRouteTransfer)
+                    && playbackIntended
                 wasPlayingBeforeInterruption = false
                 outputsAtInterruptionBegan = []
                 handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
@@ -2071,11 +2130,11 @@ final class AudioPlayer: ObservableObject {
             wasPlayingBeforeInterruption = false
             outputsAtInterruptionBegan = []
             if shouldResume {
-                scheduleInterruptionResume()
+                scheduleInterruptionResume(from: previousOutputs)
             } else if resumeAfterRouteTransfer,
                       playbackIntended,
                       !routeDisconnectPending {
-                scheduleInterruptionResume()
+                scheduleInterruptionResume(from: previousOutputs)
             }
             handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
         @unknown default:
@@ -2083,16 +2142,42 @@ final class AudioPlayer: ObservableObject {
         }
     }
 
-    /// Brief delay so a trailing `.oldDeviceUnavailable` can set
-    /// `routeDisconnectPending` before we reactivate into the speaker.
-    private func scheduleInterruptionResume() {
+    /// Waits for the route to settle so a trailing `.oldDeviceUnavailable`
+    /// can set `routeDisconnectPending` before we reactivate, then checks
+    /// the route itself in case the notification is later still.
+    ///
+    /// - Parameter previousOutputs: the outputs playback was running on
+    ///   when the interruption began. A resume that finds them gone is the
+    ///   unplug arriving late, and holds for `newDeviceAvailable` instead
+    ///   of restarting on the speaker.
+    private func scheduleInterruptionResume(
+        from previousOutputs: [AVAudioSession.Port]
+    ) {
         interruptionResumeTask?.cancel()
         interruptionResumeTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 150_000_000)
+            try? await Task.sleep(
+                nanoseconds: UInt64(
+                    AudioInterruptionPolicy.routeSettleDelay * 1_000_000_000
+                )
+            )
             guard !Task.isCancelled else { return }
-            guard !isAudioInterrupted,
-                  playbackIntended,
-                  !routeDisconnectPending else {
+            let currentOutputs = AVAudioSession.sharedInstance()
+                .currentRoute.outputs.map(\.portType)
+            guard AudioInterruptionPolicy.allowsDelayedResume(
+                isAudioInterrupted: isAudioInterrupted,
+                playbackIntended: playbackIntended,
+                routeDisconnectPending: routeDisconnectPending,
+                previousOutputPortTypes: previousOutputs,
+                currentOutputPortTypes: currentOutputs
+            ) else {
+                if AudioRoutePolicy.didLoseExternalRoute(
+                    previousOutputPortTypes: previousOutputs,
+                    currentOutputPortTypes: currentOutputs
+                ) {
+                    routeDisconnectPending = true
+                    resumeAfterRouteTransfer = playbackIntended
+                    pausePreservingIntent()
+                }
                 return
             }
             resume()
@@ -2120,17 +2205,28 @@ final class AudioPlayer: ObservableObject {
             let previousOutputs = previousRoute?.outputs.map(\.portType) ?? []
             let currentOutputs = AVAudioSession.sharedInstance()
                 .currentRoute.outputs.map(\.portType)
-            let playbackWasActive = isPlaying || wasPlayingBeforeInterruption
-            if AudioRoutePolicy.shouldPauseAfterRouteLoss(
-                wasPlaying: playbackWasActive,
+            // The disconnect is recognised from the route alone. Requiring
+            // a live playback flag lost the unplug whose interruption
+            // arrived first: that interruption had already paused playback
+            // and cleared the flag, so nothing here held the session back
+            // and the next automatic resume went to the speaker.
+            guard AudioRoutePolicy.didLoseExternalRoute(
                 previousOutputPortTypes: previousOutputs,
                 currentOutputPortTypes: currentOutputs
-            ) {
-                routeDisconnectPending = true
-                resumeAfterRouteTransfer = playbackIntended
-                    && playbackWasActive
-                pausePreservingIntent()
+            ) else {
+                break
             }
+            let playbackWasActive = isPlaying
+                || wasPlayingBeforeInterruption
+                || resumeAfterRouteTransfer
+            routeDisconnectPending = true
+            resumeAfterRouteTransfer = playbackIntended && playbackWasActive
+            allowsMinimumVolumeResume = false
+            // Unconditional: `isPlaying` is published state, and the route
+            // notification can beat the rate change that sets it, so a
+            // conditional pause is the speaker leak this whole branch
+            // exists to prevent.
+            pausePreservingIntent()
         case .newDeviceAvailable:
             let pendingResume = resumeAfterRouteTransfer
             resumeAfterRouteTransfer = false
