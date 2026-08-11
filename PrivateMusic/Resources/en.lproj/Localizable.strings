@@ -343,6 +343,7 @@
 "Прослушанные треки автоматически сохраняются для повторного воспроизведения без интернета. При заполнении хранилища старый автокэш очищается первым; ручные загрузки сохраняются." = "Played tracks are saved automatically for replay without an internet connection. When storage is full, the oldest automatic cache is cleared first; manual downloads are kept.";
 "Качество выбирает VK автоматически" = "Quality depends on the available VK stream";
 "Перемешать" = "Shuffle";
+"Начинает воспроизведение треков в случайном порядке" = "Starts playing tracks in random order";
 "Повтор" = "Repeat";
 "Текст" = "Lyrics";
 "Экспорт" = "Share";
