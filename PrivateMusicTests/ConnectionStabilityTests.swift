@@ -805,8 +805,20 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
-    // The fallback window has to be wider than the notification round-trip
-    // and far narrower than any call.
+    // A slow case-close used to land past the old 1.5s window and resume.
+    func testASlowWearableInterruptionStillPausesInsideTheWindow() {
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: false,
+                interruptionDuration: 2.5,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.bluetoothA2DP]
+            )
+        )
+    }
+
+    // The fallback window has to be wider than a slow Bluetooth case-close
+    // round-trip and far narrower than any call.
     func testTheDeliberatePauseWindowStaysNarrow() {
         XCTAssertGreaterThanOrEqual(
             AudioInterruptionPolicy.deliberatePauseWindow,
@@ -815,6 +827,27 @@ final class ConnectionStabilityTests: XCTestCase {
         XCTAssertLessThanOrEqual(
             AudioInterruptionPolicy.deliberatePauseWindow,
             3
+        )
+    }
+
+    // AirPods can flicker between A2DP and HFP while still worn. Exact port
+    // set equality used to drop that interruption, and playback resumed.
+    func testWearablePortFlickerStillCountsAsEarDetection() {
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: false,
+                interruptionDuration: 0.4,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.bluetoothHFP]
+            )
+        )
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: true,
+                interruptionDuration: 12,
+                previousOutputPortTypes: [.bluetoothA2DP, .bluetoothHFP],
+                currentOutputPortTypes: [.bluetoothA2DP]
+            )
         )
     }
 
