@@ -34,6 +34,23 @@ actor LibraryTrackContinuationCursor {
         accessToken: String,
         musicService: any MusicService
     ) async throws -> [Track] {
+        let additions = try await nextLibraryPage(
+            accessToken: accessToken,
+            musicService: musicService
+        )
+        if !additions.isEmpty { return additions }
+        // An all-duplicate page still advanced the cursor; only give up on
+        // the library once VK says there is nothing after it.
+        if nextOffset != nil { return [] }
+        return try await musicService.recommendations(
+            accessToken: accessToken
+        ).filter { knownIDs.insert($0.id).inserted }
+    }
+
+    func nextLibraryPage(
+        accessToken: String,
+        musicService: any MusicService
+    ) async throws -> [Track] {
         if let offset = nextOffset {
             let page = try await musicService.library(
                 accessToken: accessToken,
@@ -45,12 +62,7 @@ actor LibraryTrackContinuationCursor {
             }
             nextOffset = page.nextOffset.flatMap { $0 > offset ? $0 : nil }
             if !additions.isEmpty { return additions }
-            // An all-duplicate page still advanced the cursor; only give up
-            // on the library once VK says there is nothing after it.
-            if nextOffset != nil { return [] }
         }
-        return try await musicService.recommendations(
-            accessToken: accessToken
-        ).filter { knownIDs.insert($0.id).inserted }
+        return []
     }
 }
