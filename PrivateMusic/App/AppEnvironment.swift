@@ -373,7 +373,7 @@ final class AppEnvironment: ObservableObject {
         // library shelf, so it asks for a full page, collapses the
         // duplicated system playlist and drops the followed releases the
         // Albums shelf owns the same way.
-        let playlistOwnerID = sessionStore.session?.userID
+        let playlistOwnerID = sessionStore.resolvedOfflineAccountID
         let followedAlbumIdentities = Set(
             likedAlbumsStore.albums.map(\.compositeID)
         )

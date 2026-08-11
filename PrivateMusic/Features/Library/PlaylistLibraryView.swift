@@ -123,7 +123,7 @@ struct PlaylistLibraryView: View {
     private func load(force: Bool = false) async {
         guard sessionStore.accessToken != nil else { return }
         model.configure(
-            ownerID: sessionStore.session?.userID,
+            ownerID: sessionStore.resolvedOfflineAccountID,
             // Followed albums ride along in the unfiltered playlist list and
             // are recognised by the ids the Albums shelf loaded, never by
             // guessing at the shape of a VK entry.
