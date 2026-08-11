@@ -33,6 +33,81 @@ final class AlbumDecodingTests: XCTestCase {
         )
     }
 
+    func testDecodesAlbumArtworkFromMissingCoverThumbsPayload() throws {
+        let data = """
+        {
+          "id": 43,
+          "owner_id": -7,
+          "title": "Missing Cover",
+          "size": 10,
+          "main_artists": [{"name": "Decoder"}],
+          "photo_600": "",
+          "photo": "",
+          "thumbs": [
+            {
+              "width": 300,
+              "height": 300,
+              "url": "http://cdn.example/missing-300.jpg"
+            },
+            {
+              "width": 600,
+              "height": 600,
+              "url": "http://cdn.example/missing-600.jpg"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let album = try JSONDecoder().decode(Album.self, from: data)
+
+        XCTAssertEqual(
+            album.artworkURL?.absoluteString,
+            "https://cdn.example/missing-600.jpg"
+        )
+    }
+
+    func testCatalogAlbumArtworkDecodesFromGridMosaicPayload() throws {
+        let data = """
+        {
+          "response": {
+            "blocks": [
+              {
+                "items": [
+                  {
+                    "id": 44,
+                    "owner_id": -8,
+                    "title": "Mosaic",
+                    "year": 2024,
+                    "main_artists": [{"name": "Decoder"}],
+                    "photo": [],
+                    "grid": {
+                      "items": [
+                        {"width": 270, "url": ""},
+                        {
+                          "width": 600,
+                          "height": 600,
+                          "url": "https://cdn.example/mosaic-600.jpg"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """.data(using: .utf8)!
+
+        let value = try JSONDecoder().decode(JSONValue.self, from: data)
+        let albums = value.releaseAlbums
+
+        XCTAssertEqual(albums.count, 1)
+        XCTAssertEqual(
+            albums.first?.artworkURL?.absoluteString,
+            "https://cdn.example/mosaic-600.jpg"
+        )
+    }
+
     func testAlbumShareLinkIncludesAccessKey() {
         let album = Album(
             id: 9,
