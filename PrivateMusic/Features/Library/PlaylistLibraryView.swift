@@ -3,7 +3,6 @@ import SwiftUI
 struct PlaylistLibraryView: View {
     @EnvironmentObject private var environment: AppEnvironment
     @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
     @StateObject private var model = PlaylistLibraryViewModel()
     @State private var showingEditor = false
     @State private var editingPlaylist: Playlist?
@@ -91,9 +90,6 @@ struct PlaylistLibraryView: View {
         }
         .task { await load() }
         .refreshable { await load(force: true) }
-        .onReceive(likedAlbumsStore.$albums) { albums in
-            model.excludeFollowedAlbums(Set(albums.map(\.compositeID)))
-        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -122,15 +118,7 @@ struct PlaylistLibraryView: View {
 
     private func load(force: Bool = false) async {
         guard sessionStore.accessToken != nil else { return }
-        model.configure(
-            ownerID: sessionStore.resolvedOfflineAccountID,
-            // Followed albums ride along in the unfiltered playlist list and
-            // are recognised by the ids the Albums shelf loaded, never by
-            // guessing at the shape of a VK entry.
-            followedAlbumIdentities: Set(
-                likedAlbumsStore.albums.map(\.compositeID)
-            )
-        )
+        model.configure(ownerID: sessionStore.resolvedOfflineAccountID)
         await model.load(force: force) { offset in
             try await fetchPage(offset: offset)
         }
