@@ -1,11 +1,13 @@
 import XCTest
 @testable import PrivateMusic
 
-/// The Albums shelf loads `audio.getPlaylists` with
-/// `filters=followed,albums`, and the playlist shelf subtracts every id that
-/// list reports. `followed` is not an album filter — VK answers it with the
-/// playlists saved from other people too — so anything left in that list
-/// disappears from Медиатека.
+/// The Albums shelf loads `audio.getPlaylists` with `filters=albums` and
+/// classifies the answer entry by entry.
+///
+/// It used to hand its ids to the playlist shelf, which subtracted them.
+/// That coupling is gone: whatever this shelf gets wrong now costs an album
+/// card and nothing else, because no list it produces can take a playlist
+/// off Медиатека.
 final class LibraryFollowedAlbumShelfTests: XCTestCase {
     private func makeService() -> VKMusicService {
         VKMusicService(
@@ -66,9 +68,8 @@ final class LibraryFollowedAlbumShelfTests: XCTestCase {
         XCTAssertEqual(page.items.map(\.albumID), [10])
     }
 
-    // Nothing that is really a release may be lost here either: the playlist
-    // shelf drops followed albums by exactly these ids, so an album missing
-    // from this list floods Медиатека instead.
+    // Nothing that is really a release may be lost here either, or the
+    // Albums shelf itself comes back short.
     func testEveryReleaseShapeStaysOnTheAlbumsShelfList() throws {
         let value = try payload(
             """
@@ -138,8 +139,8 @@ final class LibraryFollowedAlbumShelfTests: XCTestCase {
 
     // The reported defect, in the shape it reached users: eight playlists in
     // Медиатека, seven of them saved from other people, and a single card on
-    // the shelf. The identity subtraction was fed the followed list verbatim,
-    // so every saved playlist in it was taken for a release.
+    // the shelf. Every one of these eight also decodes as an `Album`, which
+    // is exactly what the identity subtraction used to act on.
     func testEverySavedPlaylistStaysOnTheLibraryShelf() throws {
         let saved = (2...8).map { index in
             """
@@ -149,72 +150,79 @@ final class LibraryFollowedAlbumShelfTests: XCTestCase {
               "title": "Сохранённый \(index)",
               "type": 1,
               "year": 2019,
-              "main_artists": [{"name": "Artist"}],
-              "original": {"playlist_id": \(index), "owner_id": \(300 + index)}
+              "main_artists": [{"name": "Artist"}]
             }
             """
         }
-        // A release VK sent without a single marker on it: the shape test
-        // leaves it alone by design, so only the identity subtraction can
-        // keep it off the playlist shelf.
-        let release = """
-        {"id": 90, "owner_id": -5, "title": "Release", "count": 9}
-        """
         let owned = """
         {"id": 1, "owner_id": 100, "title": "Дорога", "count": 12}
         """
         let service = makeService()
 
+        // The worst case the Albums shelf can produce: it read every one of
+        // the eight playlists as a release.
         let followed = try payload(
             """
             {
               "count": \(saved.count + 1),
-              "items": [\((saved + [release]).joined(separator: ","))]
+              "items": [\(([owned] + saved).joined(separator: ","))]
             }
             """
         )
-        let identities = Set(
-            service.followedAlbumPage(followed, offset: 0)
-                .items
-                .map(\.compositeID)
+        XCTAssertEqual(
+            service.followedAlbumPage(followed, offset: 0).items.count,
+            8,
+            "the Albums shelf list is what the shelf used to subtract"
         )
-        XCTAssertEqual(identities, ["-5_90"])
 
         let library = try payload(
             """
             {
-              "count": \(saved.count + 2),
-              "items": [\(([owned] + saved + [release]).joined(separator: ","))]
+              "count": \(saved.count + 1),
+              "items": [\(([owned] + saved).joined(separator: ","))]
             }
             """
         )
         let shelf = LibraryPlaylistShelfPolicy.normalized(
             service.playlistPage(library, offset: 0).items,
-            ownerID: 100,
-            followedAlbumIdentities: identities
+            ownerID: 100
         )
 
         XCTAssertEqual(shelf.count, 8)
         XCTAssertEqual(shelf.first?.title, "Дорога")
-        XCTAssertFalse(
-            shelf.contains { $0.libraryIdentity == "-5_90" },
-            "the followed release still belongs to the Albums shelf"
+        XCTAssertEqual(
+            shelf.dropFirst().map(\.title),
+            (2...8).map { "Сохранённый \($0)" }
         )
     }
 
-    // A release cannot belong to a person, so an id that matches the Albums
-    // shelf while it is one of your own playlists is a fault in that shelf.
-    func testAnOwnedPlaylistSurvivesAnAlbumIdentityCollision() {
+    // The shelf has no way to be handed an exclusion set any more. Keeping
+    // the parameter around is what let one call site quietly go on
+    // subtracting after the rest of the app had stopped.
+    func testTheShelfPolicyTakesNoAlbumExclusionSet() {
         let mine = Playlist(id: 7, ownerID: 100, title: "Дорога", count: 12)
-        let theirs = Playlist(id: 7, ownerID: -5, title: "Release", count: 9)
+        let theirs = Playlist(id: 7, ownerID: -5, title: "Сборник", count: 9)
 
         let shelf = LibraryPlaylistShelfPolicy.normalized(
             [mine, theirs],
-            ownerID: 100,
-            followedAlbumIdentities: ["100_7", "-5_7"]
+            ownerID: 100
         )
 
-        XCTAssertEqual(shelf.map(\.libraryIdentity), ["100_7"])
+        XCTAssertEqual(shelf.map(\.libraryIdentity), ["100_7", "-5_7"])
+    }
+
+    // The session can be restored before the profile lands, and then the
+    // shelf does not know whose playlists these are. It must still show all
+    // of them: an unknown owner used to disable the one guard that kept the
+    // subtraction off your own playlists.
+    func testAnUnknownOwnerStillKeepsEveryPlaylist() {
+        let playlists = (1...8).map {
+            Playlist(id: $0, ownerID: 100, title: "P\($0)", count: $0)
+        }
+
+        let shelf = LibraryPlaylistShelfPolicy.normalized(playlists)
+
+        XCTAssertEqual(shelf.count, 8)
     }
 }
 

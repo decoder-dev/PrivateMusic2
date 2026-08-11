@@ -53,7 +53,10 @@ final class LibraryPlaylistShelfTests: XCTestCase {
         XCTAssertEqual(shelf.map(\.id), [owned.id])
     }
 
-    func testShelfCollapsesNumberedLikedClones() throws {
+    // VK hands out «Мне нравится (2)» when the liked playlist is saved
+    // again. It has its own id and its own tracks, and the user expects
+    // both cards — collapsing it took a real playlist off Медиатека.
+    func testShelfKeepsNumberedLikedClonesAsSeparateCards() throws {
         let liked = try makePlaylist(
             id: 1,
             ownerID: 100,
@@ -72,7 +75,7 @@ final class LibraryPlaylistShelfTests: XCTestCase {
             ownerID: 100
         )
 
-        XCTAssertEqual(shelf.map(\.id), [liked.id])
+        XCTAssertEqual(shelf.map(\.id), [liked.id, clone.id])
     }
 
     func testShelfKeepsDistinctUserPlaylistsWithNumberedTitles() throws {
@@ -85,6 +88,39 @@ final class LibraryPlaylistShelfTests: XCTestCase {
         )
 
         XCTAssertEqual(shelf.map(\.id), [rock.id, rockTwo.id])
+    }
+
+    // The library in the report: eight playlists, «Мне нравится» and «Мне
+    // нравится (2)» among them, rendered as one card.
+    func testTheReportedLibraryRendersEveryCard() throws {
+        var library = [
+            try makePlaylist(
+                id: 1,
+                ownerID: 100,
+                title: "Мне нравится",
+                count: 118
+            ),
+            try makePlaylist(
+                id: 2,
+                ownerID: 100,
+                title: "Мне нравится (2)",
+                count: 12
+            )
+        ]
+        library += try (3...8).map { index in
+            try makePlaylist(
+                id: index,
+                ownerID: 900 + index,
+                title: "Сохранённый \(index)"
+            )
+        }
+
+        let shelf = LibraryPlaylistShelfPolicy.normalized(
+            library,
+            ownerID: 100
+        )
+
+        XCTAssertEqual(shelf.map(\.id), library.map(\.id))
     }
 
     func testShelfKeepsPlaylistsPeopleNameLikeFavourites() throws {
@@ -153,19 +189,30 @@ final class LibraryPlaylistShelfTests: XCTestCase {
         XCTAssertNil(LibraryPlaylistShelfPolicy.likedKey(for: "Мне нравится это"))
     }
 
-    func testCloneMarkerStripping() {
+    // Nothing is stripped off the end of a title any more: a trailing
+    // marker is part of the name VK gave the playlist, and treating it as
+    // noise merged two separate playlists into one card.
+    func testTitleFoldingKeepsTrailingMarkers() {
         XCTAssertEqual(
+            LibraryPlaylistShelfPolicy.normalizedTitle("Мне нравится (2)"),
+            "мне нравится (2)"
+        )
+        XCTAssertNotEqual(
             LibraryPlaylistShelfPolicy.normalizedTitle("Мне нравится (2)"),
             LibraryPlaylistShelfPolicy.normalizedTitle("мне нравится")
         )
         XCTAssertEqual(
             LibraryPlaylistShelfPolicy.normalizedTitle("Дорога #3"),
-            "дорога"
+            "дорога #3"
         )
         XCTAssertEqual(
-            LibraryPlaylistShelfPolicy.normalizedTitle("Trip (2019)"),
-            "trip",
-            "a trailing year reads as a clone marker; only liked titles use it"
+            LibraryPlaylistShelfPolicy.normalizedTitle("  МНЁ \n НРАВИТСЯ  "),
+            "мне нравится",
+            "case, ё and stray whitespace still fold"
+        )
+        XCTAssertNil(
+            LibraryPlaylistShelfPolicy.likedKey(for: "Мне нравится (2)"),
+            "a numbered clone is a playlist of its own"
         )
     }
 
