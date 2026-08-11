@@ -415,10 +415,16 @@ enum PlaybackPreloadPolicy {
     /// Buffer duration to apply to a track's `AVPlayerItem`, depending on
     /// whether it is merely warming up in the preload slot or has been
     /// promoted to the actively playing item. Promoted items switch to
-    /// `StreamFailureRetryPolicy`'s larger buffer for stall resilience.
-    static func forwardBufferDuration(isActivePlayback: Bool) -> TimeInterval {
+    /// `NetworkAdaptiveBufferPolicy`'s buffer for stall resilience,
+    /// which widens further on a degraded/cellular link.
+    static func forwardBufferDuration(
+        isActivePlayback: Bool,
+        condition: NetworkCondition = .nominal
+    ) -> TimeInterval {
         isActivePlayback
-            ? StreamFailureRetryPolicy.preferredForwardBufferDuration
+            ? NetworkAdaptiveBufferPolicy.preferredForwardBuffer(
+                for: condition
+              )
             : preferredForwardBufferDuration
     }
 
@@ -606,6 +612,23 @@ enum MediaServicesResetPolicy {
     }
 }
 
+/// Network condition the player's buffer/retry policy reacts to,
+/// derived from `NetworkMonitor.state`/`transport` (see the read-only
+/// `NetworkMonitor.condition` computed property). Kept as its own tiny
+/// value type so the retry math below never has to import `Network`.
+enum NetworkCondition: Equatable {
+    /// Wifi/wired, or an unconstrained cellular-adjacent path — the
+    /// numbers `StreamFailureRetryPolicy` already shipped with.
+    case nominal
+    /// Cellular transport, or a constrained/expensive path — the
+    /// 4G→3G collapse this policy exists to survive.
+    case degraded
+    /// No usable path at all. Sizing stays at the nominal numbers:
+    /// there is nothing to buffer into, and connectivity failures
+    /// already keep retrying the same track without advancing.
+    case offline
+}
+
 /// Same-track recovery before auto-skip on flaky networks / stale CDN URLs.
 enum StreamFailureRetryPolicy {
     static let maximumSameTrackAttempts = 3
@@ -614,9 +637,16 @@ enum StreamFailureRetryPolicy {
     static let stallRecoveryThreshold: TimeInterval = 20
     static let baseRetryDelay: TimeInterval = 1.2
 
-    static func retryDelay(forAttempt attempt: Int) -> TimeInterval {
+    static func retryDelay(
+        forAttempt attempt: Int,
+        condition: NetworkCondition = .nominal
+    ) -> TimeInterval {
         let clamped = max(attempt, 1)
-        return min(baseRetryDelay * Double(clamped), 6)
+        let base = min(baseRetryDelay * Double(clamped), 6)
+        return NetworkAdaptiveBufferPolicy.retryDelay(
+            base: base,
+            condition: condition
+        )
     }
 
     static func isConnectivityFailure(_ error: Error?) -> Bool {
@@ -640,14 +670,28 @@ enum StreamFailureRetryPolicy {
         }
     }
 
+    /// Connectivity retry budget for the given network condition. Wifi
+    /// and offline keep `maximumConnectivityAttempts` unchanged; a
+    /// degraded link only ever gets *more* room, never less.
+    static func maximumConnectivityAttempts(
+        for condition: NetworkCondition
+    ) -> Int {
+        NetworkAdaptiveBufferPolicy.maximumConnectivityAttempts(
+            baseline: maximumConnectivityAttempts,
+            condition: condition
+        )
+    }
+
     /// Keep the current track while retries remain. Connectivity failures
-    /// get a larger budget and never auto-advance the queue.
+    /// get a larger budget — wider still on a degraded link — and never
+    /// auto-advance the queue.
     static func shouldRetrySameTrack(
         attempts: Int,
-        error: Error?
+        error: Error?,
+        condition: NetworkCondition = .nominal
     ) -> Bool {
         if isConnectivityFailure(error) {
-            return attempts <= maximumConnectivityAttempts
+            return attempts <= maximumConnectivityAttempts(for: condition)
         }
         return attempts <= maximumSameTrackAttempts
     }
@@ -701,6 +745,71 @@ enum StallRecoveryGuardPolicy {
     static func isOrphaned(blockedSince: Date?, now: Date) -> Bool {
         guard let blockedSince else { return false }
         return now.timeIntervalSince(blockedSince) >= orphanThreshold
+    }
+}
+
+/// Makes the forward-buffer target, connectivity retry budget and retry
+/// backoff functions of `NetworkCondition` instead of the fixed
+/// `StreamFailureRetryPolicy` constants, so a mid-track 4G→3G collapse
+/// requests a bigger buffer and backs off more gently instead of
+/// draining a fixed 30s window and stalling.
+///
+/// `.nominal` reproduces `StreamFailureRetryPolicy`'s existing numbers
+/// exactly, so every current pin on those numbers stays green. Degraded
+/// conditions are additive only — never a smaller buffer, never fewer
+/// retry attempts, never a shorter backoff than the wifi baseline.
+enum NetworkAdaptiveBufferPolicy {
+    /// Extra forward-buffer seconds requested once the link is
+    /// cellular/constrained, on top of the wifi baseline. A bandwidth
+    /// collapse mid-track drains whatever is already buffered before
+    /// the retry loop even starts, so the margin has to outlast that
+    /// drain, not just the next retry.
+    static let degradedBufferBonus: TimeInterval = 15
+    /// Extra connectivity retry attempts allowed once the link is
+    /// degraded. Connectivity failures never auto-advance the queue
+    /// regardless (`StreamFailureRetryPolicy.shouldAdvance`), so a
+    /// larger budget only buys more time on the same track.
+    static let degradedConnectivityAttemptBonus = 4
+    /// Backoff grows more slowly on a degraded link — a brief bandwidth
+    /// dip should not burn through the retry budget before the CDN
+    /// recovers — but stays capped well short of an unbounded wait.
+    static let degradedRetryDelayMultiplier: Double = 1.6
+    static let degradedRetryDelayCap: TimeInterval = 12
+
+    static func preferredForwardBuffer(
+        for condition: NetworkCondition
+    ) -> TimeInterval {
+        switch condition {
+        case .nominal, .offline:
+            return StreamFailureRetryPolicy.preferredForwardBufferDuration
+        case .degraded:
+            return StreamFailureRetryPolicy.preferredForwardBufferDuration
+                + degradedBufferBonus
+        }
+    }
+
+    static func maximumConnectivityAttempts(
+        baseline: Int,
+        condition: NetworkCondition
+    ) -> Int {
+        switch condition {
+        case .nominal, .offline:
+            return baseline
+        case .degraded:
+            return baseline + degradedConnectivityAttemptBonus
+        }
+    }
+
+    static func retryDelay(
+        base: TimeInterval,
+        condition: NetworkCondition
+    ) -> TimeInterval {
+        switch condition {
+        case .nominal, .offline:
+            return base
+        case .degraded:
+            return min(base * degradedRetryDelayMultiplier, degradedRetryDelayCap)
+        }
     }
 }
 
@@ -905,6 +1014,13 @@ final class AudioPlayer: ObservableObject {
     private var canPreloadPlayback: () -> Bool = { true }
     private var artworkPrefetchHandler: (([Track]) async -> Void)?
     private var artworkPrefetchTask: Task<Void, Never>?
+    /// Last condition `AppEnvironment` pushed from `NetworkMonitor`.
+    /// Read by `makePlaybackItem`/`takePreloadedPlayback` when sizing a
+    /// new `AVPlayerItem`'s forward buffer, and by the same-track
+    /// retry path when sizing its connectivity budget/backoff — never
+    /// by an item already playing, which keeps whatever buffer
+    /// AVFoundation already negotiated.
+    private var currentNetworkCondition: NetworkCondition = .nominal
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -1148,6 +1264,22 @@ final class AudioPlayer: ObservableObject {
         streamUserAgent = cleaned?.isEmpty == false ? cleaned : nil
         invalidatePreloadedPlayback()
         scheduleNeighborPreloads()
+    }
+
+    /// Pushed by `AppEnvironment` whenever `NetworkMonitor` reports a new
+    /// state/transport, so a 4G→3G collapse widens the buffer/retry
+    /// budget the *next* item created requests instead of leaving the
+    /// player pinned to the wifi numbers.
+    ///
+    /// - Parameter throughputHint: reserved for a future C-computed
+    ///   buffer-health estimate (see `BufferHealthEstimator`, Agent D).
+    ///   Unused today and safe to leave `nil` indefinitely — this is
+    ///   the hook D's estimator will feed once it lands.
+    func updateNetworkCondition(
+        _ condition: NetworkCondition,
+        throughputHint: Double? = nil
+    ) {
+        currentNetworkCondition = condition
     }
 
     /// Starts `tracks` at `track`.
@@ -1704,7 +1836,8 @@ final class AudioPlayer: ObservableObject {
                 streamRecoveryAttempts += 1
                 if StreamFailureRetryPolicy.shouldRetrySameTrack(
                     attempts: streamRecoveryAttempts,
-                    error: APIError.timedOut
+                    error: APIError.timedOut,
+                    condition: currentNetworkCondition
                 ) {
                     scheduleSameTrackRecovery(
                         autoplay: autoplay,
@@ -1836,7 +1969,9 @@ final class AudioPlayer: ObservableObject {
             asset: makePlaybackAsset(url: url, isOffline: isOffline)
         )
         item.preferredForwardBufferDuration =
-            StreamFailureRetryPolicy.preferredForwardBufferDuration
+            NetworkAdaptiveBufferPolicy.preferredForwardBuffer(
+                for: currentNetworkCondition
+            )
         item.preferredPeakBitRate = StreamQualityPolicy.preferredPeakBitRate(
             preferHighQuality: preferHighQuality
         )
@@ -1955,7 +2090,8 @@ final class AudioPlayer: ObservableObject {
         // full prefetch would.
         item.preferredForwardBufferDuration =
             PlaybackPreloadPolicy.forwardBufferDuration(
-                isActivePlayback: false
+                isActivePlayback: false,
+                condition: currentNetworkCondition
             )
         let slot = PreloadedPlayback(
             trackID: track.id,
@@ -2023,7 +2159,8 @@ final class AudioPlayer: ObservableObject {
         // playing one (see `StreamFailureRetryPolicy` for why 30s).
         item.preferredForwardBufferDuration =
             PlaybackPreloadPolicy.forwardBufferDuration(
-                isActivePlayback: true
+                isActivePlayback: true,
+                condition: currentNetworkCondition
             )
         item.preferredPeakBitRate = StreamQualityPolicy.preferredPeakBitRate(
             preferHighQuality: preferHighQuality
@@ -3060,7 +3197,8 @@ final class AudioPlayer: ObservableObject {
         streamRecoveryAttempts += 1
         if StreamFailureRetryPolicy.shouldRetrySameTrack(
             attempts: streamRecoveryAttempts,
-            error: error
+            error: error,
+            condition: currentNetworkCondition
         ) {
             scheduleSameTrackRecovery(autoplay: true, automatic: true)
             return
@@ -3098,7 +3236,8 @@ final class AudioPlayer: ObservableObject {
         errorMessage = nil
         let position = elapsedTime
         let delay = StreamFailureRetryPolicy.retryDelay(
-            forAttempt: streamRecoveryAttempts
+            forAttempt: streamRecoveryAttempts,
+            condition: currentNetworkCondition
         )
         let generation = playbackGeneration
         let trackID = currentTrack?.id

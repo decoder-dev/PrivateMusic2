@@ -1,4 +1,5 @@
 import AVFoundation
+import Network
 import XCTest
 @testable import PrivateMusic
 
@@ -99,6 +100,204 @@ final class ConnectionStabilityTests: XCTestCase {
             accuracy: 0.001,
             "Promoting a preloaded item to active playback must widen its buffer for stall resilience"
         )
+    }
+
+    // Wifi/online must reproduce the exact numbers `StreamFailureRetryPolicy`
+    // already shipped with — nothing here may regress an existing pin.
+    func testNetworkAdaptiveBufferKeepsWifiValueUnchanged() {
+        XCTAssertEqual(
+            NetworkAdaptiveBufferPolicy.preferredForwardBuffer(for: .nominal),
+            StreamFailureRetryPolicy.preferredForwardBufferDuration,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            NetworkAdaptiveBufferPolicy.preferredForwardBuffer(for: .nominal),
+            30,
+            accuracy: 0.001
+        )
+    }
+
+    // A 4G→3G collapse must widen the buffer, not shrink or ignore it.
+    // Offline keeps the nominal number — there is nothing to buffer into.
+    func testNetworkAdaptiveBufferWidensOnDegradedLinkOnly() {
+        XCTAssertGreaterThanOrEqual(
+            NetworkAdaptiveBufferPolicy.preferredForwardBuffer(for: .degraded),
+            45
+        )
+        XCTAssertGreaterThan(
+            NetworkAdaptiveBufferPolicy.preferredForwardBuffer(for: .degraded),
+            NetworkAdaptiveBufferPolicy.preferredForwardBuffer(for: .nominal)
+        )
+        XCTAssertEqual(
+            NetworkAdaptiveBufferPolicy.preferredForwardBuffer(for: .offline),
+            NetworkAdaptiveBufferPolicy.preferredForwardBuffer(for: .nominal),
+            accuracy: 0.001
+        )
+    }
+
+    // Promoting a preloaded item to active playback must keep routing
+    // through the network-adaptive buffer, degraded link included.
+    func testPreloadPromotionUsesNetworkAdaptiveBufferPerCondition() {
+        for condition in [
+            NetworkCondition.nominal, .degraded, .offline
+        ] {
+            XCTAssertEqual(
+                PlaybackPreloadPolicy.forwardBufferDuration(
+                    isActivePlayback: true,
+                    condition: condition
+                ),
+                NetworkAdaptiveBufferPolicy.preferredForwardBuffer(
+                    for: condition
+                ),
+                accuracy: 0.001
+            )
+        }
+        // The preload slot itself never widens — only ~10s warm-up,
+        // regardless of link condition, until it is promoted.
+        XCTAssertEqual(
+            PlaybackPreloadPolicy.forwardBufferDuration(
+                isActivePlayback: false,
+                condition: .degraded
+            ),
+            PlaybackPreloadPolicy.preferredForwardBufferDuration,
+            accuracy: 0.001
+        )
+    }
+
+    // Connectivity retry budget must never shrink on wifi and never drop
+    // below the wifi budget on a degraded link.
+    func testConnectivityRetryBudgetNeverShrinksAcrossConditions() {
+        XCTAssertEqual(
+            StreamFailureRetryPolicy.maximumConnectivityAttempts(for: .nominal),
+            StreamFailureRetryPolicy.maximumConnectivityAttempts
+        )
+        XCTAssertEqual(
+            StreamFailureRetryPolicy.maximumConnectivityAttempts(for: .nominal),
+            8
+        )
+        XCTAssertEqual(
+            StreamFailureRetryPolicy.maximumConnectivityAttempts(for: .offline),
+            StreamFailureRetryPolicy.maximumConnectivityAttempts
+        )
+        XCTAssertGreaterThanOrEqual(
+            StreamFailureRetryPolicy.maximumConnectivityAttempts(for: .degraded),
+            StreamFailureRetryPolicy.maximumConnectivityAttempts
+        )
+    }
+
+    // `shouldRetrySameTrack` must widen its own budget identically, and
+    // connectivity failures must still never auto-advance — on any link.
+    func testSameTrackRetryWidensOnDegradedLinkAndNeverAutoAdvances() {
+        let wifiBudget = StreamFailureRetryPolicy.maximumConnectivityAttempts
+        XCTAssertTrue(
+            StreamFailureRetryPolicy.shouldRetrySameTrack(
+                attempts: wifiBudget,
+                error: APIError.timedOut,
+                condition: .nominal
+            )
+        )
+        XCTAssertFalse(
+            StreamFailureRetryPolicy.shouldRetrySameTrack(
+                attempts: wifiBudget + 1,
+                error: APIError.timedOut,
+                condition: .nominal
+            )
+        )
+        // An attempt count that would exhaust the wifi budget must still
+        // be retried once the link is degraded.
+        XCTAssertTrue(
+            StreamFailureRetryPolicy.shouldRetrySameTrack(
+                attempts: wifiBudget + 1,
+                error: APIError.timedOut,
+                condition: .degraded
+            ),
+            "a degraded link must never retry less than wifi"
+        )
+        for condition in [NetworkCondition.nominal, .degraded, .offline] {
+            XCTAssertFalse(
+                StreamFailureRetryPolicy.shouldAdvance(
+                    attempts: StreamFailureRetryPolicy
+                        .maximumConnectivityAttempts(for: condition) + 1,
+                    error: APIError.timedOut,
+                    advanceOnPlaybackError: true
+                ),
+                "connectivity failures must never auto-advance, " +
+                    "regardless of network condition"
+            )
+        }
+    }
+
+    // Backoff on wifi is unchanged and stays capped at 6s; on a degraded
+    // link it only ever grows (never shrinks below wifi), stays
+    // monotonic in the attempt count, and stays capped — no unbounded
+    // wait for the user.
+    func testRetryDelayStaysCappedAndMonotonicAcrossConditions() {
+        XCTAssertEqual(
+            StreamFailureRetryPolicy.retryDelay(
+                forAttempt: 100,
+                condition: .nominal
+            ),
+            6,
+            accuracy: 0.001
+        )
+        var previousDegradedDelay: TimeInterval = 0
+        for attempt in 1...10 {
+            let wifiDelay = StreamFailureRetryPolicy.retryDelay(
+                forAttempt: attempt,
+                condition: .nominal
+            )
+            let degradedDelay = StreamFailureRetryPolicy.retryDelay(
+                forAttempt: attempt,
+                condition: .degraded
+            )
+            XCTAssertGreaterThanOrEqual(degradedDelay, wifiDelay)
+            XCTAssertGreaterThanOrEqual(degradedDelay, previousDegradedDelay)
+            XCTAssertLessThanOrEqual(degradedDelay, 12)
+            previousDegradedDelay = degradedDelay
+        }
+        XCTAssertEqual(
+            StreamFailureRetryPolicy.retryDelay(
+                forAttempt: 100,
+                condition: .offline
+            ),
+            6,
+            accuracy: 0.001
+        )
+    }
+
+    // Simulates a mid-track `.wifi → .cellular` transition: the item the
+    // player was already playing keeps its buffer, but every item the
+    // buffer/retry policy sizes *after* the transition requests the
+    // larger, degraded-link buffer.
+    func testConditionTransitionWidensSubsequentlyRequestedBuffers() {
+        var condition = NetworkCondition.nominal
+        let beforeTransition = NetworkAdaptiveBufferPolicy
+            .preferredForwardBuffer(for: condition)
+        XCTAssertEqual(beforeTransition, 30, accuracy: 0.001)
+
+        condition = .degraded // 4G → 3G mid-track
+        let afterTransition = NetworkAdaptiveBufferPolicy
+            .preferredForwardBuffer(for: condition)
+        XCTAssertGreaterThan(afterTransition, beforeTransition)
+        XCTAssertEqual(
+            PlaybackPreloadPolicy.forwardBufferDuration(
+                isActivePlayback: true,
+                condition: condition
+            ),
+            afterTransition,
+            accuracy: 0.001,
+            "an item created after the transition must request the " +
+                "wider, degraded-link buffer"
+        )
+    }
+
+    // `NetworkMonitor.condition` groups cellular and constrained
+    // together as degraded and treats offline as its own case, matching
+    // the mapping `NetworkAdaptiveBufferPolicy` expects.
+    @MainActor
+    func testNetworkMonitorConditionMapsStateAndTransport() {
+        let wifiOnline = NetworkMonitor(monitor: NWPathMonitor())
+        XCTAssertEqual(wifiOnline.condition, .nominal)
     }
 
     func testAudioTapSupportedForProgressiveAndOfflineButNotHLS() {

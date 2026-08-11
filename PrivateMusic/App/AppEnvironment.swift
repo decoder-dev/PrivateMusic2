@@ -189,6 +189,17 @@ final class AppEnvironment: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+        // `revision` only advances when `state` or `transport` actually
+        // changed (see `NetworkMonitor`), so this is the single signal
+        // for "the player's buffer/retry policy might need to react" —
+        // a transport flip alone (wifi → cellular on the same `.online`
+        // state) would not otherwise republish anything.
+        networkMonitor.$revision
+            .sink { [weak self, weak player] _ in
+                guard let self else { return }
+                player?.updateNetworkCondition(self.networkMonitor.condition)
+            }
+            .store(in: &cancellables)
 
         Task {
             await trackShareService.removeStaleExports()
