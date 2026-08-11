@@ -513,11 +513,37 @@ for required_entry_policy_symbol in (
     "static func hasReleaseAlbumType(",
     "static func belongsOnAlbumsShelf(",
     "guard !hasPlaylistMarker(entry), hasReleaseAlbumType(entry) else {",
+    # A release names its artists. `type: 1` and a year are worn by saved
+    # playlists too, so the release type plus one of them dropped real
+    # playlists off Медиатека.
+    "guard entry.hasMainArtists else { return false }",
+    "return corroboratingReleaseMarkers(entry) >= 2",
 ):
     if required_entry_policy_symbol not in entry_policy_source:
         fail(
             "inferred VK markers must never drop a playlist on their own: "
             f"{required_entry_policy_symbol}"
+        )
+# An empty top-level `items` says the requested window held nothing, not
+# that the playlists in the block beside it are not playlists. Ending the
+# page there is what left the reporter with a single card.
+if "if window.isEmpty {" in json_value_source:
+    fail(
+        "an empty `items` must not end the page before its sibling blocks "
+        "are merged: the playlists arrive under `playlists` / `blocks` / "
+        "`sections` often enough that reading the empty window as the "
+        "whole answer emptied Медиатека"
+    )
+for required_prefetch_resume_symbol in (
+    "prefetchOffset",
+    "LibraryPlaylistPagePolicy.retryDelay",
+):
+    if required_prefetch_resume_symbol not in playlist_library_source:
+        fail(
+            "an interrupted playlist walk must resume from where it "
+            "stopped, retrying a failed page once — restarting from zero "
+            "republished a one-page shelf on every tab switch: "
+            f"{required_prefetch_resume_symbol}"
         )
 if "VKItems<Playlist>" in all_source:
     fail("playlist pages must not use the strict all-or-nothing decode")
@@ -993,9 +1019,33 @@ for required_route_symbol in (
     "setPrefersInterruptionOnRouteDisconnect",
     "oldDeviceUnavailable",
     "responding-to-audio-route-changes",
+    # Ear detection ends its interruption asking for a resume while the
+    # AirPods are still the route: honouring that played the track on with
+    # the buds in the case.
+    "shouldTreatEndAsDeliberatePause(",
+    # Nothing the app starts by itself may reach the speaker while the
+    # headphones that were playing are gone.
+    "AudioAutoplayGatePolicy.allowsAutomaticPlayback(",
+    # `.oldDeviceUnavailable` can arrive while the route still names the
+    # device that went away.
+    "looksLikeStaleRouteLoss(",
 ):
     if required_route_symbol not in all_source:
         fail(f"headphone route pause is missing: {required_route_symbol}")
+audio_player_source = (SOURCE / "Player/AudioPlayer.swift").read_text(
+    encoding="utf-8"
+)
+for required_autoplay_gate_symbol in (
+    "automatic: true",
+    "guard allowsAutomaticPlayback else {",
+):
+    if required_autoplay_gate_symbol not in audio_player_source:
+        fail(
+            "automatic playback — stream retry, stall recovery, the next "
+            "track, the reload after a media services reset — must pass "
+            "through the route gate: "
+            f"{required_autoplay_gate_symbol}"
+        )
 if ".clipped()" in player_view_source:
     fail("full-screen player must not clip its safe-area background")
 if ".clear.interactive" in glass_source:

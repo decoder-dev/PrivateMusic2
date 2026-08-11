@@ -483,9 +483,11 @@ final class LibraryPlaylistPagingTests: XCTestCase {
         XCTAssertEqual(page.items.map(\.playlistID), [1, 2])
     }
 
-    // An empty top-level `items` is how VK says the walk is over, and must
-    // never send the parser hunting through the rest of the payload.
-    func testAnEmptyPageIsNotSecondGuessedFromAnotherBlock() throws {
+    // An empty top-level `items` says the window VK answered with held
+    // nothing, so the walk ends here. It does not say the playlists beside
+    // it are not playlists: reading it that way is what left the reporter
+    // with a single card when VK answered in this shape.
+    func testAnEmptyItemsStillReadsThePlaylistsBesideIt() throws {
         let value = try payload(
             """
             {
@@ -500,8 +502,74 @@ final class LibraryPlaylistPagingTests: XCTestCase {
 
         let page = makeService().playlistPage(value, offset: 40)
 
-        XCTAssertTrue(page.items.isEmpty)
-        XCTAssertNil(page.nextOffset)
+        XCTAssertEqual(page.items.map(\.playlistID), [1])
+        XCTAssertNil(
+            page.nextOffset,
+            "an empty window ends the walk however many siblings it has"
+        )
+    }
+
+    // The walk must still terminate: a payload that answers every offset
+    // with the same sibling block would otherwise be requested forever.
+    func testAnEmptyItemsEndsTheWalkOnEveryPage() throws {
+        let value = try payload(
+            """
+            {
+              "count": 900,
+              "items": [],
+              "sections": [
+                {
+                  "items": [
+                    {"playlist": {"id": 1, "owner_id": 100, "title": "Рок"}}
+                  ]
+                }
+              ]
+            }
+            """
+        )
+
+        for offset in [0, 100, 800] {
+            let page = makeService().playlistPage(value, offset: offset)
+
+            XCTAssertEqual(page.items.map(\.playlistID), [1])
+            XCTAssertNil(page.nextOffset)
+        }
+    }
+
+    // The whole page under a sibling block, arriving on the first request
+    // with `items` left empty — the shape the shelf used to read as an
+    // empty library.
+    func testAFirstPageCarriedEntirelyByASiblingBlockReachesTheShelf()
+        throws {
+        let value = try payload(
+            """
+            {
+              "count": 8,
+              "items": [],
+              "playlists": [
+                {"id": 1, "owner_id": 100, "title": "Мне нравится"},
+                {"id": 2, "owner_id": 100, "title": "Мне нравится (2)"},
+                {"id": 3, "owner_id": 100, "title": "Дорога"},
+                {"id": 4, "owner_id": 900, "title": "Сохранённый"}
+              ]
+            }
+            """
+        )
+
+        let shelf = LibraryPlaylistShelfPolicy.normalized(
+            makeService().playlistPage(value, offset: 0).items,
+            ownerID: 100
+        )
+
+        XCTAssertEqual(
+            shelf.map(\.title),
+            [
+                "Мне нравится",
+                "Мне нравится (2)",
+                "Дорога",
+                "Сохранённый"
+            ]
+        )
     }
 
     // The screenshot case. VK scattered a library of eight playlists across
@@ -768,19 +836,53 @@ final class LibraryPlaylistEntryPolicyTests: XCTestCase {
         )
     }
 
-    func testAnExplicitReleaseTypeWithASecondMarkerIsARelease() {
-        XCTAssertTrue(
+    // `type: 1` is what a playlist saved from another owner reports too, so
+    // a release type next to it is not enough to take a card off the shelf.
+    func testAReleaseTypeWithoutArtistAttributionStaysAPlaylist() {
+        XCTAssertFalse(
             LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(
                 LibraryPlaylistEntry(albumType: "single", vkType: 1)
+            )
+        )
+        XCTAssertFalse(
+            LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(
+                LibraryPlaylistEntry(albumType: "album", hasReleaseYear: true)
+            )
+        )
+    }
+
+    func testATypedDatedAttributedEntryIsARelease() {
+        XCTAssertTrue(
+            LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(
+                LibraryPlaylistEntry(
+                    albumType: "MAIN_ONLY",
+                    hasMainArtists: true,
+                    hasReleaseYear: true
+                )
             )
         )
         XCTAssertTrue(
             LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(
                 LibraryPlaylistEntry(
-                    albumType: "MAIN_ONLY",
-                    hasMainArtists: true
+                    albumType: "single",
+                    hasMainArtists: true,
+                    vkType: 1
                 )
             )
+        )
+    }
+
+    // A release that keeps its playlist card is a blemish; a playlist that
+    // never arrives is the defect. The Albums shelf still gets it either
+    // way, so nothing is lost by leaning this way.
+    func testAnEntryTypedAsAReleaseAloneStillReachesTheAlbumsShelf() {
+        let entry = LibraryPlaylistEntry(albumType: "single", vkType: 1)
+
+        XCTAssertFalse(
+            LibraryPlaylistEntryPolicy.looksLikeFollowedAlbum(entry)
+        )
+        XCTAssertTrue(
+            LibraryPlaylistEntryPolicy.belongsOnAlbumsShelf(entry)
         )
     }
 
@@ -930,15 +1032,107 @@ final class PlaylistLibraryViewModelTests: XCTestCase {
         }
         XCTAssertEqual(model.playlists.count, 1)
 
+        let recorder = OffsetRecorder()
         await model.load(pages: 5) { offset in
-            MusicPage(
+            recorder.offsets.append(offset)
+            return MusicPage(
                 items: [makePlaylist(id: offset + 1, title: "P\(offset)")],
                 totalCount: 8,
                 nextOffset: offset + 1 < 8 ? offset + 1 : nil
             )
         }
 
-        XCTAssertEqual(model.playlists.count, 5)
+        // Resumed from the pending offset with the first page still on the
+        // shelf: on 3G, restarting from zero cost the whole walk again and
+        // shrank the shelf back to one card on the way through.
+        XCTAssertEqual(recorder.offsets, [1, 2, 3, 4, 5])
+        XCTAssertEqual(model.playlists.count, 6)
+    }
+
+    // The shelf must never go backwards while a cancelled walk is picked
+    // back up — that is «сначала было восемь, стало одна» all over again.
+    func testAResumedPrefetchNeverShortensTheShelf() async {
+        let model = PlaylistLibraryViewModel()
+        model.configure(ownerID: 100)
+
+        await model.load(pages: 5) { offset in
+            guard offset == 0 else { throw CancellationError() }
+            return MusicPage(
+                items: (1...4).map { makePlaylist(id: $0, title: "P\($0)") },
+                totalCount: 8,
+                nextOffset: 4
+            )
+        }
+        let afterCancellation = model.playlists.count
+
+        let shelfSizes = OffsetRecorder()
+        await model.load(pages: 5) { offset in
+            shelfSizes.offsets.append(model.playlists.count)
+            return MusicPage(
+                items: [makePlaylist(id: offset + 1, title: "P\(offset)")],
+                totalCount: 8,
+                nextOffset: offset + 1 < 8 ? offset + 1 : nil
+            )
+        }
+
+        XCTAssertEqual(afterCancellation, 4)
+        XCTAssertFalse(
+            shelfSizes.offsets.contains { $0 < afterCancellation },
+            "the shelf shrank while the walk resumed: \(shelfSizes.offsets)"
+        )
+        XCTAssertEqual(model.playlists.count, 8)
+    }
+
+    // One page timing out on a slow connection used to end the walk with
+    // whatever had landed.
+    func testATransientPageFailureIsRetriedOnce() async {
+        let model = PlaylistLibraryViewModel()
+        model.configure(ownerID: 100)
+        let recorder = OffsetRecorder()
+
+        await model.load(pages: 3) { offset in
+            recorder.offsets.append(offset)
+            if offset == 1, recorder.offsets.filter({ $0 == 1 }).count == 1 {
+                throw URLError(.timedOut)
+            }
+            return MusicPage(
+                items: [makePlaylist(id: offset + 1, title: "P\(offset)")],
+                totalCount: 3,
+                nextOffset: offset + 1 < 3 ? offset + 1 : nil
+            )
+        }
+
+        XCTAssertEqual(recorder.offsets, [0, 1, 1, 2])
+        XCTAssertEqual(model.playlists.count, 3)
+        XCTAssertNil(model.errorMessage)
+    }
+
+    // A forced load — pull to refresh — is the one thing that starts over.
+    func testAForcedLoadStartsTheWalkFromTheTop() async {
+        let model = PlaylistLibraryViewModel()
+        model.configure(ownerID: 100)
+
+        await model.load(pages: 5) { offset in
+            guard offset == 0 else { throw CancellationError() }
+            return MusicPage(
+                items: [makePlaylist(id: 1, title: "Дорога")],
+                totalCount: 8,
+                nextOffset: 1
+            )
+        }
+
+        let recorder = OffsetRecorder()
+        await model.load(force: true, pages: 2) { offset in
+            recorder.offsets.append(offset)
+            return MusicPage(
+                items: [makePlaylist(id: offset + 1, title: "P\(offset)")],
+                totalCount: 8,
+                nextOffset: offset + 1
+            )
+        }
+
+        XCTAssertEqual(recorder.offsets, [0, 1])
+        XCTAssertEqual(model.playlists.count, 2)
     }
 
     func testACompletedPrefetchIsNotRepeated() async {
