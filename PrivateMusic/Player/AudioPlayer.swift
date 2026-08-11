@@ -422,28 +422,35 @@ enum AudioInterruptionPolicy {
     /// breath — the AirPods stay connected, so nothing about the route
     /// changes and the end even arrives with `.shouldResume`. Resuming
     /// there is what the reporter hears as «музыка не встаёт на паузу»:
-    /// the buds are in the case and the track plays on. A call, Siri or
-    /// another app holding the session lasts far longer than this, so they
-    /// still resume the way they always did.
-    static let deliberatePauseWindow: TimeInterval = 1.5
+    /// the buds are in the case and the track plays on. Slow Bluetooth /
+    /// case-close round-trips can stretch past a second, so the window is
+    /// wide enough to catch those without swallowing a real call or Siri
+    /// (tens of seconds).
+    static let deliberatePauseWindow: TimeInterval = 3
 
-    /// Whether an interruption that began and ended on the same headphone
-    /// route is the user taking the headphones off rather than something
-    /// borrowing the session for a moment.
+    /// Whether an interruption that began and ended on a wearable
+    /// headphone route is the user taking the headphones off rather than
+    /// something borrowing the session for a moment.
     ///
     /// - Parameter beganAsRouteDisconnect: iOS 17 names the reason
     ///   (`.routeDisconnected`), which is the exact signal and needs no
     ///   timing at all — `setPrefersInterruptionOnRouteDisconnect(true)`
     ///   is what asks for it.
+    ///
+    /// Port identity is not required to match exactly: AirPods can flicker
+    /// between A2DP and HFP while still worn. What matters is that both
+    /// sides of the interruption are wearable — a fall to the speaker is
+    /// the ordinary route-disconnect path, not ear detection.
     static func shouldTreatEndAsDeliberatePause(
         beganAsRouteDisconnect: Bool,
         interruptionDuration: TimeInterval,
         previousOutputPortTypes: [AVAudioSession.Port],
         currentOutputPortTypes: [AVAudioSession.Port]
     ) -> Bool {
-        guard !currentOutputPortTypes.isEmpty,
-              currentOutputPortTypes.allSatisfy(AudioRoutePolicy.isWearable),
-              Set(previousOutputPortTypes) == Set(currentOutputPortTypes)
+        guard !previousOutputPortTypes.isEmpty,
+              !currentOutputPortTypes.isEmpty,
+              previousOutputPortTypes.allSatisfy(AudioRoutePolicy.isWearable),
+              currentOutputPortTypes.allSatisfy(AudioRoutePolicy.isWearable)
         else {
             return false
         }
