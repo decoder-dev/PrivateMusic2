@@ -255,12 +255,24 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
 
 extension URL {
     static func secureRemoteURL(_ rawValue: String) -> URL? {
-        guard !rawValue.isEmpty,
-              let url = URL(string: rawValue),
-              url.scheme?.lowercased() == "https",
-              url.host != nil else {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
             return nil
         }
-        return url
+        let schemed = trimmed.hasPrefix("//") ? "https:" + trimmed : trimmed
+        guard var components = URLComponents(string: schemed),
+              let scheme = components.scheme?.lowercased(),
+              components.host != nil else {
+            return nil
+        }
+        switch scheme {
+        case "https":
+            break
+        case "http":
+            components.scheme = "https"
+        default:
+            return nil
+        }
+        return components.url
     }
 }
