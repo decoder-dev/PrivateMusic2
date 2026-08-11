@@ -218,7 +218,10 @@ if "SelenaRecommendationCursor(" not in library_view_source:
 for required_audio_stream_symbol in (
     "ContinuationPrefetchPolicy.shouldPrefetch",
     "guard should else { return }",
-    "queueLimit - upcomingCount",
+    # The near-end refill still sizes itself from the upcoming window (the
+    # played history must not eat the budget); the ceiling it subtracts from
+    # now depends on the queue source — see LibraryQueuePolicy.
+    "upcomingCount: upcomingCount",
 ):
     if required_audio_stream_symbol not in audio_player_source:
         fail(
@@ -703,6 +706,40 @@ else:
         fail(
             "appendToQueue must not reshuffle the upcoming mix queue "
             "(causes mid-listen jumps)"
+        )
+    if "LibraryQueuePolicy.appendableCount(" not in append_body:
+        fail(
+            "appendToQueue must size the queue through LibraryQueuePolicy: "
+            "a Медиатека of 833 tracks played as «Трек 1 из 100» while the "
+            "append shared the mix ceiling"
+        )
+    if "MixTrackRequestPolicy.queueLimit" in append_body:
+        fail(
+            "appendToQueue must not cap every queue at the mix limit — the "
+            "mix ceiling belongs to LibraryQueuePolicy.upcomingLimit(for:), "
+            "which keeps it for mix / Selena and lifts it for Медиатека"
+        )
+library_queue_policy_path = SOURCE / "Player/LibraryQueuePolicy.swift"
+if not library_queue_policy_path.is_file():
+    fail(
+        "a queue started from Медиатека needs its own capacity policy: "
+        "PrivateMusic/Player/LibraryQueuePolicy.swift"
+    )
+library_queue_policy_source = library_queue_policy_path.read_text(
+    encoding="utf-8"
+)
+for required_library_queue_symbol in (
+    "enum LibraryQueuePolicy",
+    "static let queueLimit = 2_000",
+    "func upcomingLimit(for source: QueueSource?)",
+    "func appendableCount(",
+    "upcomingLimit(for: source) - max(upcomingCount, 0)",
+    "MixTrackRequestPolicy.queueLimit",
+):
+    if required_library_queue_symbol not in library_queue_policy_source:
+        fail(
+            "the library queue ceiling must stay separate from the mix one "
+            f"and above it: {required_library_queue_symbol}"
         )
 for required_dock_glass_symbol in (
     "tint: settings.theme.accent.opacity(0.06)",
