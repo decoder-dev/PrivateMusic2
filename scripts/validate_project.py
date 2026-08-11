@@ -1339,26 +1339,41 @@ def require_stability_office_symbols() -> None:
     )
 
     # (family label, trigger substring, haystack, required symbols)
+    #
+    # A, B and D have already pushed their branches (confirmed via
+    # `git fetch origin` + inspecting their diffs against `origin/main`
+    # without merging their production code into this branch), so their
+    # entries below pin the exact method signatures observed there, not
+    # just the enum name. C (BEDROCK / SessionActivationRetryPolicy) had
+    # not pushed cursor/avplayer-failure-hardening-bc40 as of this commit,
+    # so it stays a name-only placeholder pending that branch.
     families = (
         (
-            "PostCallResumePolicy (Agent A / LIFELINE)",
+            "PostCallResumePolicy (Agent A / LIFELINE, "
+            "cursor/post-call-resume-bc40)",
             "PostCallResumePolicy",
             scene_hook_text,
             (
-                "PostCallResumePolicy",
+                "enum PostCallResumePolicy",
+                "PostCallResumePolicy.shouldResumeWithoutOption(",
+                "PostCallResumePolicy.shouldResumeOnForeground(",
             ),
         ),
         (
-            "NetworkAdaptiveBufferPolicy (Agent B / SLIPSTREAM)",
+            "NetworkAdaptiveBufferPolicy (Agent B / SLIPSTREAM, "
+            "cursor/network-aware-buffer-bc40)",
             "NetworkAdaptiveBufferPolicy",
             audio_player_text,
             (
-                "NetworkAdaptiveBufferPolicy",
-                "NetworkAdaptiveBufferPolicy.preferredForwardBuffer",
+                "enum NetworkAdaptiveBufferPolicy",
+                "NetworkAdaptiveBufferPolicy.preferredForwardBuffer(",
+                "NetworkAdaptiveBufferPolicy.maximumConnectivityAttempts(",
+                "NetworkAdaptiveBufferPolicy.retryDelay(",
             ),
         ),
         (
-            "SessionActivationRetryPolicy (Agent C / BEDROCK)",
+            "SessionActivationRetryPolicy (Agent C / BEDROCK, "
+            "cursor/avplayer-failure-hardening-bc40)",
             "SessionActivationRetryPolicy",
             audio_player_text,
             (
@@ -1366,7 +1381,8 @@ def require_stability_office_symbols() -> None:
             ),
         ),
         (
-            "pm_buffer_health_* (Agent D / FLINT)",
+            "pm_buffer_health_* (Agent D / FLINT, "
+            "cursor/c-buffer-health-estimator-bc40)",
             "pm_buffer_health_",
             native_core_header_text,
             (
