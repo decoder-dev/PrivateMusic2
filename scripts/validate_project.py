@@ -269,6 +269,12 @@ for symbol in (
     "pm_text_find",
     "pm_mix_select_best",
     "pm_mix_score_candidate",
+    # Fixed-memory buffer-health ring estimator feeding the network-aware
+    # buffer policy: no malloc, constant memory per observe() tick.
+    "pm_buffer_health_reset",
+    "pm_buffer_health_observe",
+    "pm_buffer_health_throughput",
+    "pm_buffer_health_predicted_underrun",
 ):
     if symbol not in native_core_header_text:
         fail(f"PrivateMusicCore.h must expose {symbol}")
@@ -315,6 +321,18 @@ if "FoldedSearchQuery" not in native_text_source:
     fail("NativeTextSearch must expose FoldedSearchQuery for reused needles")
 if "FoldedSearchQuery(" not in search_view_source:
     fail("SearchView playlist filtering must fold the needle once via C")
+buffer_health_source_path = SOURCE / "Player" / "BufferHealthEstimator.swift"
+if not buffer_health_source_path.is_file():
+    fail("BufferHealthEstimator must live under Player/")
+buffer_health_source = buffer_health_source_path.read_text(encoding="utf-8")
+for symbol in (
+    "pm_buffer_health_reset(",
+    "pm_buffer_health_observe(",
+    "pm_buffer_health_throughput(",
+    "pm_buffer_health_predicted_underrun(",
+):
+    if symbol not in buffer_health_source:
+        fail(f"BufferHealthEstimator must call {symbol[:-1]}")
 project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
 if "SWIFT_OBJC_BRIDGING_HEADER: PrivateMusic/Native/PrivateMusic-Bridging-Header.h" not in project_yml:
     fail("project.yml must set SWIFT_OBJC_BRIDGING_HEADER for the C DSP module")

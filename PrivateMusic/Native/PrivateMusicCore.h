@@ -118,6 +118,79 @@ double pm_mix_score_candidate(
     int32_t recent_count
 );
 
+#pragma mark - Buffer health estimator
+
+/// Number of recent throughput samples the ring buffer keeps. Fixed at
+/// compile time so `pm_buffer_health` never allocates.
+#define PM_BUFFER_HEALTH_WINDOW_CAPACITY 32
+
+/// Sentinel `pm_buffer_health_predicted_underrun` returns when the buffer is
+/// not draining: throughput at or above `play_rate`, a non-positive
+/// `play_rate`, or no sample observed yet. Large enough that callers can
+/// treat it as "no imminent underrun" without a separate boolean.
+#define PM_BUFFER_HEALTH_UNDERRUN_NONE 1.0e9
+
+/// Fixed-memory rolling estimator over `AVPlayerItem.loadedTimeRanges`
+/// samples, sampled from the ~2 Hz periodic time observer. Every field is
+/// POD and the sample window is a ring buffer sized by
+/// `PM_BUFFER_HEALTH_WINDOW_CAPACITY`, so observing a sample never
+/// allocates.
+///
+/// `throughput` is expressed as a multiple of normal playback speed: `1.0`
+/// means the loaded range is neither growing nor shrinking (download rate
+/// equals a normal-speed playback's consumption rate), `> 1.0` means the
+/// buffer is filling, and `< 1.0` (down to `0`) means it is draining. This
+/// assumes playback proceeds at its usual pace between samples; a paused or
+/// fast-forwarded item between two `observe` calls will skew the reading
+/// until fresh samples flush it out of the window.
+typedef struct PMBufferHealthState {
+    double rate_samples[PM_BUFFER_HEALTH_WINDOW_CAPACITY];
+    double rate_sum;
+    int32_t rate_count;
+    int32_t next_index;
+    double previous_timestamp;
+    double previous_loaded_ahead;
+    double latest_loaded_ahead;
+    bool has_previous;
+} pm_buffer_health;
+
+/// Clear every sample and forget the previous tick, as if newly constructed.
+/// Call this when a new item loads so a track switch does not blend its
+/// history with the last track's throughput.
+void pm_buffer_health_reset(pm_buffer_health *state);
+
+/// Record one `loadedTimeRanges` sample. `now_seconds` should be a
+/// monotonic wall clock (e.g. `CACurrentMediaTime()`); `loaded_ahead_seconds`
+/// is how far the loaded range extends past the current playback position.
+///
+/// The first call after a reset only seeds the previous-sample state — a
+/// rate needs a time delta, so it takes two calls to produce one. Ticks
+/// whose `now_seconds` is not strictly after the previous tick (clock jump,
+/// duplicate tick) are dropped rather than divided by a near-zero interval,
+/// though the latest-observed value they carry still updates
+/// `pm_buffer_health_predicted_underrun`'s input.
+void pm_buffer_health_observe(
+    pm_buffer_health *state,
+    double now_seconds,
+    double loaded_ahead_seconds
+);
+
+/// Smoothed loaded-seconds-per-wall-second over the current window. Returns
+/// `1.0` (steady) before any rate sample exists, i.e. before the second
+/// `pm_buffer_health_observe` call since the last reset.
+double pm_buffer_health_throughput(const pm_buffer_health *state);
+
+/// Seconds until the buffer is predicted to run dry at `play_rate` (`1.0`
+/// for normal speed), extrapolating the current smoothed throughput from
+/// the most recently observed loaded-ahead value. Returns
+/// `PM_BUFFER_HEALTH_UNDERRUN_NONE` when throughput is at or above
+/// `play_rate`, when `play_rate` is not positive, or when no sample has
+/// been observed yet.
+double pm_buffer_health_predicted_underrun(
+    const pm_buffer_health *state,
+    double play_rate
+);
+
 #ifdef __cplusplus
 }
 #endif

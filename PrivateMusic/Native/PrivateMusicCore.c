@@ -329,3 +329,88 @@ int32_t pm_mix_select_best(
     }
     return best_index;
 }
+
+#pragma mark - Buffer health estimator
+
+/// Ticks closer together than this (or non-monotonic) are dropped instead of
+/// dividing by a near-zero interval.
+static const double pm_buffer_health_min_interval = 1e-6;
+
+void pm_buffer_health_reset(pm_buffer_health *state) {
+    if (state == NULL) {
+        return;
+    }
+    memset(state, 0, sizeof(*state));
+}
+
+void pm_buffer_health_observe(
+    pm_buffer_health *state,
+    double now_seconds,
+    double loaded_ahead_seconds
+) {
+    if (state == NULL) {
+        return;
+    }
+
+    if (!state->has_previous) {
+        state->previous_timestamp = now_seconds;
+        state->previous_loaded_ahead = loaded_ahead_seconds;
+        state->latest_loaded_ahead = loaded_ahead_seconds;
+        state->has_previous = true;
+        return;
+    }
+
+    const double elapsed = now_seconds - state->previous_timestamp;
+    if (elapsed <= pm_buffer_health_min_interval) {
+        // Non-monotonic or duplicate tick: keep the latest reading for
+        // predicted-underrun purposes, but do not fold it into the rolling
+        // rate — the previous tick stays the basis for the next real delta.
+        state->latest_loaded_ahead = loaded_ahead_seconds;
+        return;
+    }
+
+    double rate = 1.0
+        + (loaded_ahead_seconds - state->previous_loaded_ahead) / elapsed;
+    if (rate < 0.0) {
+        rate = 0.0;
+    }
+
+    const int32_t index = state->next_index;
+    if (state->rate_count == PM_BUFFER_HEALTH_WINDOW_CAPACITY) {
+        state->rate_sum -= state->rate_samples[index];
+    } else {
+        state->rate_count += 1;
+    }
+    state->rate_samples[index] = rate;
+    state->rate_sum += rate;
+    state->next_index = (index + 1) % PM_BUFFER_HEALTH_WINDOW_CAPACITY;
+
+    state->previous_timestamp = now_seconds;
+    state->previous_loaded_ahead = loaded_ahead_seconds;
+    state->latest_loaded_ahead = loaded_ahead_seconds;
+}
+
+double pm_buffer_health_throughput(const pm_buffer_health *state) {
+    if (state == NULL || state->rate_count == 0) {
+        return 1.0;
+    }
+    return state->rate_sum / (double)state->rate_count;
+}
+
+double pm_buffer_health_predicted_underrun(
+    const pm_buffer_health *state,
+    double play_rate
+) {
+    if (state == NULL || !state->has_previous || play_rate <= 0.0) {
+        return PM_BUFFER_HEALTH_UNDERRUN_NONE;
+    }
+
+    const double drain_rate = play_rate - pm_buffer_health_throughput(state);
+    if (drain_rate <= 0.0) {
+        return PM_BUFFER_HEALTH_UNDERRUN_NONE;
+    }
+    if (state->latest_loaded_ahead <= 0.0) {
+        return 0.0;
+    }
+    return state->latest_loaded_ahead / drain_rate;
+}
