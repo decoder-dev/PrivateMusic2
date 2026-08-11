@@ -472,6 +472,13 @@ if "LibraryPlaylistPagePolicy.albumShelfFilters" not in albums_request_source:
         "the Albums shelf request must take its `filters` from "
         "LibraryPlaylistPagePolicy.albumShelfFilters"
     )
+if "ownerID: sessionStore.resolvedOfflineAccountID" not in library_view_source:
+    fail(
+        "the playlist shelf must know whose playlists these are through the "
+        "resolved account id: a session restored before the profile lands "
+        "carries no user id, and the shelf cannot then protect your own "
+        "playlists from the Albums shelf subtraction"
+    )
 entry_policy_path = SOURCE / "Models/LibraryPlaylistEntryPolicy.swift"
 if not entry_policy_path.is_file():
     fail("LibraryPlaylistEntryPolicy must define the playlist/release test")
