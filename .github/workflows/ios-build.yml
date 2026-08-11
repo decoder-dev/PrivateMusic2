@@ -129,34 +129,42 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.67-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.68-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.67-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.68-iphone-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.67"
+          test "$GITHUB_REF_NAME" = "v3.28.68"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.67 (pre-release)
+          # Private Music 3.28.68 (pre-release)
 
-          Медиатека наконец показывает все плейлисты и играет по порядку.
+          Плейлисты, сохранённые у других людей, вернулись на полку
+          «Плейлисты» в Медиатеке.
 
           ## Плейлисты
-          - Плейлисты больше не пропадают с полки: признаки вроде
-            `type: 1`, года или исполнителя VK ставит и на обычные
-            плейлисты, поэтому альбомом теперь считается только запись,
-            которую VK явно пометила как релиз
-          - Подписки на альбомы убираются с полки по идентификаторам с
-            полки «Альбомы», а не по догадке о содержимом записи
-          - Загрузка списка идёт до конца, а не до пятой страницы, и не
-            останавливается, когда VK занижает общее количество
+          - Полка «Альбомы» грузится запросом, который VK отвечает не
+            только альбомами: сохранённые чужие плейлисты приходили в том
+            же списке, а полка «Плейлисты» убирает всё, что есть в
+            «Альбомах», — поэтому у многих оставалась одна карточка
+          - Теперь список альбомов разбирается по записям: то, что VK
+            пометила как плейлист (`original`, `album_type: playlist` или
+            `collection`), остаётся плейлистом и не попадает ни в
+            «Альбомы», ни в список на удаление с полки
+          - Свой собственный плейлист больше нельзя скрыть совпадением
+            идентификатора с полкой «Альбомы»
+          - «Ваши плейлисты» на главной убирает подписки на альбомы по
+            тем же идентификаторам
+          - Из прошлых сборок: альбомом считается только запись, которую
+            VK явно пометила как релиз, а загрузка списка идёт до конца,
+            даже когда VK занижает общее количество
 
           ## Очередь
           - Нажатие на трек в Медиатеке ставит в очередь именно тот
@@ -176,19 +184,19 @@ jobs:
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.67-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.67-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.68-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.68-unsigned.ipa"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.67" \
+              --title "Private Music 3.28.68" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.67" \
+              --title "Private Music 3.28.68" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -197,9 +205,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.67-unsigned
+          name: PrivateMusic-3.28.68-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.67-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.67-unsigned.ipa
+            artifacts/PrivateMusic-3.28.68-iphone-unsigned.ipa
+            artifacts/PrivateMusic-3.28.68-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
