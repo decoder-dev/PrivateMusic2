@@ -476,9 +476,13 @@ enum JSONValue: Codable, Sendable {
     private func collectAlbums(into result: inout [Album]) {
         switch self {
         case let .object(object):
+            // Audio rows also carry owner_id/id/title/main_artists. Without
+            // excluding `duration` they decode as empty albums (count 0, no
+            // top-level cover) and poison artist/catalog release shelves.
             let looksLikeAlbum = object["owner_id"] != nil
                 && object["id"] != nil
                 && object["title"] != nil
+                && object["duration"] == nil
                 && (object["main_artists"] != nil || object["year"] != nil)
             if looksLikeAlbum,
                let data = try? JSONEncoder().encode(self),
