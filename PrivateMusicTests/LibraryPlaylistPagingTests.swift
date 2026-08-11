@@ -504,6 +504,202 @@ final class LibraryPlaylistPagingTests: XCTestCase {
         XCTAssertNil(page.nextOffset)
     }
 
+    // The screenshot case. VK scattered a library of eight playlists across
+    // four blocks of one payload, and a parser that stopped at the first
+    // block holding anything rendered the single entry in `items` — one
+    // card out of eight.
+    func testEveryBlockOfAScatteredPageReachesTheShelf() throws {
+        let value = try payload(
+            """
+            {
+              "count": 8,
+              "items": [
+                {"id": 1, "owner_id": 100, "title": "Мне нравится",
+                 "count": 118}
+              ],
+              "playlists": {
+                "count": 8,
+                "items": [
+                  {"id": 1, "owner_id": 100, "title": "Мне нравится",
+                   "count": 118},
+                  {"id": 2, "owner_id": 100, "title": "Дорога", "count": 12},
+                  {"id": 3, "owner_id": 100, "title": "Джаз", "count": 4}
+                ]
+              },
+              "blocks": [
+                {
+                  "id": "block_playlists",
+                  "items": [
+                    {
+                      "type": "music_playlist",
+                      "playlist": {
+                        "id": 4, "owner_id": 100, "title": "Рок", "count": 9
+                      }
+                    },
+                    {
+                      "type": "music_playlist",
+                      "playlist": {
+                        "id": 5,
+                        "owner_id": 300,
+                        "title": "Сборник друга",
+                        "original": {"playlist_id": 5, "owner_id": 300}
+                      }
+                    }
+                  ]
+                }
+              ],
+              "response": {
+                "playlists": {
+                  "items": [
+                    {"id": 6, "owner_id": 100, "title": "Итоги 2019",
+                     "year": 2019},
+                    {"id": 7, "owner_id": 100, "title": "С артиста",
+                     "main_artists": [{"name": "Artist"}]},
+                    {"id": 8, "owner_id": 100, "title": "Без названия"}
+                  ]
+                }
+              }
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0)
+
+        XCTAssertEqual(
+            page.items.map(\.playlistID).sorted(),
+            [1, 2, 3, 4, 5, 6, 7, 8]
+        )
+    }
+
+    // The same playlist arriving under two blocks is one playlist.
+    func testAPlaylistRepeatedAcrossBlocksRendersOneCard() throws {
+        let value = try payload(
+            """
+            {
+              "count": 2,
+              "items": [{"id": 1, "owner_id": 100, "title": "Дорога"}],
+              "playlists": {
+                "items": [
+                  {"id": 1, "owner_id": 100, "title": "Дорога"},
+                  {"id": 2, "owner_id": 100, "title": "Джаз"}
+                ]
+              }
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0)
+
+        XCTAssertEqual(page.items.map(\.playlistID), [1, 2])
+    }
+
+    // Entries merged from a sibling block are another copy of the list, not
+    // a continuation of it: advancing past them would step over entries VK
+    // has not sent yet.
+    func testMergedSiblingEntriesDoNotMoveTheOffset() throws {
+        let value = try payload(
+            """
+            {
+              "count": 900,
+              "items": [
+                {"id": 1, "owner_id": 100, "title": "Дорога"},
+                {"type": "ad"},
+                {"id": 2, "owner_id": 100, "title": "Джаз"}
+              ],
+              "playlists": {
+                "items": [
+                  {"id": 3, "owner_id": 100, "title": "Рок"},
+                  {"id": 4, "owner_id": 100, "title": "Классика"}
+                ]
+              }
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 100)
+
+        XCTAssertEqual(page.items.map(\.playlistID), [1, 2, 3, 4])
+        XCTAssertEqual(page.nextOffset, 103)
+    }
+
+    // A block can carry an owner-scoped id of its own. Decoding that
+    // instead of the playlist it wraps produced a card that opens nothing.
+    func testTheWrappedPlaylistWinsOverTheBlockAroundIt() throws {
+        let value = try payload(
+            """
+            {
+              "count": 1,
+              "items": [
+                {
+                  "id": 999,
+                  "owner_id": 100,
+                  "type": "music_playlist",
+                  "playlist": {
+                    "id": 7, "owner_id": 100, "title": "Дорога", "count": 12
+                  }
+                }
+              ]
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0)
+
+        XCTAssertEqual(page.items.map(\.playlistID), [7])
+        XCTAssertEqual(page.items.first?.title, "Дорога")
+    }
+
+    // Merging must not smuggle followed releases onto the playlist shelf.
+    func testReleasesMergedFromAnAlbumsBlockStayOffTheShelf() throws {
+        let value = try payload(
+            """
+            {
+              "count": 2,
+              "items": [{"id": 1, "owner_id": 100, "title": "Дорога"}],
+              "albums": {
+                "items": [
+                  {
+                    "id": 2,
+                    "owner_id": -5,
+                    "title": "Release",
+                    "type": 1,
+                    "year": 2020,
+                    "album_type": "album",
+                    "main_artists": [{"name": "Artist"}]
+                  }
+                ]
+              }
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0)
+
+        XCTAssertEqual(page.items.map(\.playlistID), [1])
+    }
+
+    func testAPageCarriedEntirelyByBlocksIsStillRead() throws {
+        let value = try payload(
+            """
+            {
+              "count": 2,
+              "blocks": [
+                {
+                  "items": [
+                    {"playlist": {"id": 1, "owner_id": 100, "title": "Дорога"}},
+                    {"playlist": {"id": 2, "owner_id": 100, "title": "Джаз"}}
+                  ]
+                }
+              ]
+            }
+            """
+        )
+
+        let page = makeService().playlistPage(value, offset: 0)
+
+        XCTAssertEqual(page.items.map(\.playlistID), [1, 2])
+    }
+
     // Audio rows carry id + owner_id too, and they are not playlists.
     func testAudioRowsAreNeverReadAsPlaylists() throws {
         let value = try payload(
