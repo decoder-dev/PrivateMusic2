@@ -663,6 +663,31 @@ enum StreamFailureRetryPolicy {
     }
 }
 
+/// Bounded retry for `AVAudioSession.setActive(true)` failures.
+///
+/// Right after a phone call ends or media services reset, the session can
+/// still be busy tearing itself down: the very next `setActive(true)`
+/// throws even though intent to play is real. That throw used to be
+/// swallowed with `try?` and nothing else ever tried again, so playback
+/// stayed silently dead until the user reopened the app. This policy caps
+/// how many times activation is retried and how long each wait is, so a
+/// transient failure heals itself without ever retrying forever.
+enum SessionActivationRetryPolicy {
+    static let maximumAttempts = 3
+    static let baseRetryDelay: TimeInterval = 0.3
+    static let maximumRetryDelay: TimeInterval = 2
+
+    static func retryDelay(forAttempt attempt: Int) -> TimeInterval {
+        let clamped = max(attempt, 1)
+        return min(baseRetryDelay * Double(clamped), maximumRetryDelay)
+    }
+
+    /// Whether another retry is worth scheduling after `attempt` failures.
+    static func shouldRetry(attempt: Int) -> Bool {
+        attempt < maximumAttempts
+    }
+}
+
 @MainActor
 final class AudioPlayer: ObservableObject {
     private final class PreloadedPlayback {
@@ -838,6 +863,8 @@ final class AudioPlayer: ObservableObject {
     private var streamRecoveryAttempts = 0
     private var streamRecoveryTask: Task<Void, Never>?
     private var stallStartedAt: Date?
+    private var sessionActivationRetryTask: Task<Void, Never>?
+    private var sessionActivationRetryAttempts = 0
     private var preloadedPlayback: PreloadedPlayback?
     private var preloadAssetTask: Task<Void, Never>?
     private var preloadGeneration = 0
@@ -1561,6 +1588,9 @@ final class AudioPlayer: ObservableObject {
         interruptionResumeTask = nil
         routeSettleTask?.cancel()
         routeSettleTask = nil
+        sessionActivationRetryTask?.cancel()
+        sessionActivationRetryTask = nil
+        sessionActivationRetryAttempts = 0
         sleepTask?.cancel()
         sleepTask = nil
         sleepTimerEndDate = nil
@@ -2085,13 +2115,54 @@ final class AudioPlayer: ObservableObject {
         }
         do {
             try AVAudioSession.sharedInstance().setActive(true, options: [])
+            sessionActivationRetryAttempts = 0
+            sessionActivationRetryTask?.cancel()
+            sessionActivationRetryTask = nil
             return true
         } catch {
             errorMessage = L10n.text(
                 "Не удалось включить звук. Закройте другое аудиоприложение "
                     + "и повторите попытку."
             )
+            scheduleSessionActivationRetry()
             return false
+        }
+    }
+
+    /// A `setActive(true)` throw right after a call ends or media services
+    /// reset is usually the session still winding down, not a permanent
+    /// failure. Retries a bounded number of times with a small capped
+    /// delay; success resumes playback if the user still wants it playing,
+    /// and exhaustion leaves the error already surfaced above in place
+    /// without retrying forever or crashing.
+    private func scheduleSessionActivationRetry() {
+        guard playbackIntended,
+              SessionActivationRetryPolicy.shouldRetry(
+                  attempt: sessionActivationRetryAttempts
+              ) else {
+            sessionActivationRetryAttempts = 0
+            return
+        }
+        sessionActivationRetryTask?.cancel()
+        sessionActivationRetryAttempts += 1
+        let delay = SessionActivationRetryPolicy.retryDelay(
+            forAttempt: sessionActivationRetryAttempts
+        )
+        let generation = playbackGeneration
+        sessionActivationRetryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self,
+                  !Task.isCancelled,
+                  generation == self.playbackGeneration,
+                  self.playbackIntended,
+                  !self.isPlaying else {
+                return
+            }
+            self.sessionActivationRetryTask = nil
+            if self.activateAudioSession() {
+                self.errorMessage = nil
+                self.resume()
+            }
         }
     }
 
@@ -2700,6 +2771,12 @@ final class AudioPlayer: ObservableObject {
         interruptionResumeTask = nil
         routeSettleTask?.cancel()
         routeSettleTask = nil
+        // The session is about to be torn down and rebuilt from scratch, so
+        // any bounded reactivation retry still waiting on the old session
+        // would only race the rebuild below.
+        sessionActivationRetryTask?.cancel()
+        sessionActivationRetryTask = nil
+        sessionActivationRetryAttempts = 0
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
         minimumVolumeResumeSuppressed = false
