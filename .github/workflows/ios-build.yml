@@ -129,71 +129,53 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.73-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.74-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.73-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.74-iphone-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.73"
+          test "$GITHUB_REF_NAME" = "v3.28.74"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.73 (pre-release)
+          # Private Music 3.28.74 (pre-release)
 
-          Все плейлисты на полке «Медиатека», и пауза, когда наушники
-          сняты.
+          Очередь медиатеки больше не упирается в 100 треков, шаффл
+          заметен, обложки альбомов читаются шире, наушники паузятся
+          надёжнее.
 
-          Сборки 3.28.72 не было: тег не публиковался, IPA не выходил.
-          Всё, что было в ней, входит сюда.
+          ## Очередь из Медиатеки
+          - У медиатеки свой потолок очереди (до 2000), отдельный от
+            лимита миксов (80). Раньше `appendToQueue` резал догрузку
+            лимитом микса, и при «Трек 1 из 100» следующие страницы
+            библиотеки в очередь не попадали
+          - Continuation после старта сразу догружает следующие страницы
+            `audio.get` в порядке списка, так что 833 трека дорастают
+            в очереди, а не остаются на первой сотне
 
-          ## Плейлисты
-          - Пустой `items` в ответе VK больше не считается пустой
-            библиотекой. Когда плейлисты приходили в соседнем блоке
-            (`playlists`, `blocks`, `sections`), а `items` был пустым,
-            страница читалась как «ничего нет» — и на полке оставалась
-            одна карточка. Соседние блоки читаются всегда; пустое окно
-            по-прежнему завершает обход, так что лишних запросов нет
-          - Прерванный обход продолжается с того места, где остановился.
-            На 3G переключение вкладки или один упавший запрос отправляли
-            обход заново с нуля, и полка по дороге сжималась до одной
-            страницы. Упавшая страница теперь ещё и повторяется один раз
-          - Запись считается релизом, только если VK пометил её типом
-            релиза, назвал исполнителей и поставил год. Раньше хватало
-            типа и одного косвенного признака — а `type: 1` стоит и на
-            чужом сохранённом плейлисте. Лишняя карточка релиза — это
-            мелочь, пропавший плейлист — это дефект
-          - Вычитание идентификаторов полки «Альбомы» не вернулось ни в
-            политику полки, ни во вью-модель, ни в экран
-          - «Мне нравится (2)» — отдельная карточка: VK выдаёт
-            пронумерованную копию, когда «Мне нравится» сохраняют ещё
-            раз, и у неё свой идентификатор и свои треки
+          ## Перемешать
+          - У заголовка «Треки» кнопка «Перемешать» с подписью
+          - Шаффл — per-collection: глобальный shuffle и настройка не
+            залипают; следующий тап по строке снова играет по порядку
+
+          ## Ваши треки
+          - Очередь из медиатеки (и шаффл тоже) подписывается «Ваши треки»
+
+          ## Обложки альбомов
+          - Декод обложек читает `thumbs` / grid / вложенные photo и
+            нормализует HTTP CDN в HTTPS — часть альбомов после обновления
+            VK больше не остаётся серой ноткой
 
           ## Наушники
-          - AirPods, вынутые из уха, присылают прерывание, которое тут же
-            заканчивается просьбой продолжить, — а маршрут при этом
-            остаётся тем же. Именно эта просьба и включала музыку снова,
-            когда наушники уже лежали в кейсе. Теперь такое окончание
-            считается паузой от пользователя: намерение играть снимается,
-            отложенное возобновление не назначается. iOS 17 сама называет
-            причину (`.routeDisconnected`), на iOS 16 работает по времени,
-            поэтому звонок или Siri по-прежнему возобновляют музыку
-          - Автозапуск, который делает само приложение — повтор потока,
-            выход из долгой паузы буфера, следующий трек, восстановление
-            после сброса медиасервисов, — не начинается, пока отключение
-            не отыграно и звук идёт через динамик устройства
-          - Смена маршрута, пришедшая до того, как система успела
-            переключиться (в маршруте всё ещё те же наушники), тоже
-            ставит паузу и перепроверяет маршрут, когда тот устоится
-
-          ## Очередь
-          - Порядок очереди из Медиатеки, «Ваши треки», кнопка
-            «Перемешать» и бесконечное пополнение миксов — без изменений
+          - Окно ear-detection на iOS 16 расширено до 3 с, мерцание
+            A2DP↔HFP больше не срывает паузу
+          - Звонок / Siri по-прежнему возобновляют музыку
 
           ## Установка
           IPA не подписан.
@@ -201,19 +183,19 @@ jobs:
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.73-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.73-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.74-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.74-unsigned.ipa"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.73" \
+              --title "Private Music 3.28.74" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.73" \
+              --title "Private Music 3.28.74" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -222,9 +204,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.73-unsigned
+          name: PrivateMusic-3.28.74-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.73-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.73-unsigned.ipa
+            artifacts/PrivateMusic-3.28.74-iphone-unsigned.ipa
+            artifacts/PrivateMusic-3.28.74-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
