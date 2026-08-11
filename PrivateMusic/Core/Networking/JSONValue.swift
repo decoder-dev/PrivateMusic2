@@ -90,10 +90,23 @@ enum JSONValue: Codable, Sendable {
     /// same list rather than a continuation of it, so they never move the
     /// offset: advancing past them would step over entries VK has not sent
     /// yet.
+    ///
+    /// An empty `items` therefore still counts as zero even when a sibling
+    /// block carried playlists, which is what ends the walk on that page.
+    /// The entries themselves are kept — see `libraryEntryPage`.
     var libraryItemCount: Int { libraryEntryPage.rawCount }
 
     /// One `audio.getPlaylists` page, merged across every block that carried
     /// entries.
+    ///
+    /// An empty top-level `items` is not on its own a statement that the
+    /// library is empty: the same answer has arrived with the playlists in
+    /// a sibling block and `items` left at `[]`. Reading the empty `items`
+    /// as the whole page is what left the reporter looking at one card, so
+    /// the siblings are merged either way. What the empty `items` does
+    /// still mean is that the requested window held nothing, and that is
+    /// what `rawCount` reports — the walk ends on this page instead of
+    /// asking for the same entries over and over.
     private var libraryEntryPage: LibraryEntryPage {
         if case let .array(values) = self {
             return LibraryEntryPage(values: values, rawCount: values.count)
@@ -108,11 +121,6 @@ enum JSONValue: Codable, Sendable {
         case .array, .object:
             hasWindow = true
             object["items"]?.collectLibraryEntries(into: &window, depth: 0)
-            // An empty `items` is how VK says the list ended. Looking
-            // further would restart a walk that has already finished.
-            if window.isEmpty {
-                return LibraryEntryPage(values: [], rawCount: 0)
-            }
         default:
             break
         }

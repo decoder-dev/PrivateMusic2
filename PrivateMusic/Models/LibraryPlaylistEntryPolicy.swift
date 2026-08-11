@@ -43,8 +43,9 @@ struct LibraryPlaylistEntry: Equatable, Sendable {
 /// combination of those *inferred* markers is evidence of a release.
 ///
 /// An entry is therefore treated as a release only when VK typed it as one
-/// (`album_type` is a release type), backs that up with a second release
-/// marker, and carries no playlist marker at all. Everything else stays a
+/// (`album_type` is a release type), named the artists behind it, backs
+/// that up with a year or `type: 1`, and carries no playlist marker at
+/// all. Everything else stays a
 /// playlist: a release that slips through still renders a working card,
 /// while a dropped playlist is simply gone from the shelf.
 ///
@@ -94,11 +95,25 @@ enum LibraryPlaylistEntryPolicy {
     }
 
     /// `true` only for an entry that is unmistakably a followed release.
+    ///
+    /// Three things have to line up: VK typed the entry as a release, named
+    /// the artists behind it, and dated it (or flagged it as a release with
+    /// `type: 1`). Artist attribution is required on its own because that
+    /// is what a release always carries and a person-made list almost
+    /// never does — and the one list that does carry it, the one built off
+    /// an artist page, is not also typed as a release.
+    ///
+    /// A release that fails any of these stays on the playlist shelf as an
+    /// extra card, and still reaches the Albums shelf through
+    /// `belongsOnAlbumsShelf`. That is the trade this whole file is built
+    /// around: a card too many is a blemish, a playlist that never arrives
+    /// is the defect users keep reporting.
     static func looksLikeFollowedAlbum(_ entry: LibraryPlaylistEntry) -> Bool {
         guard !hasPlaylistMarker(entry), hasReleaseAlbumType(entry) else {
             return false
         }
-        return corroboratingReleaseMarkers(entry) >= 1
+        guard entry.hasMainArtists else { return false }
+        return corroboratingReleaseMarkers(entry) >= 2
     }
 
     /// `true` for an entry that belongs to the Albums shelf.
