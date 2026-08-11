@@ -1353,6 +1353,152 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    // MARK: - Cross-cutting: "call-during-3G" (Agent E / KEYSTONE)
+    //
+    // STABILITY_OFFICE_BRIEF.md assigns the call-during-3G interaction to
+    // Agent E because it spans policies owned by Agents A, B, C and D, none
+    // of whom may touch each other's region. These tests exercise the parts
+    // of that interaction that are already expressible against `main`'s
+    // current policies (`StreamFailureRetryPolicy`, `AudioInterruptionPolicy`,
+    // `MediaServicesResetPolicy`) as a baseline that must keep holding once
+    // A-D land, and document — without referencing symbols that do not exist
+    // on this branch yet — the additional assertions Agent E will add once
+    // each branch has actually merged. This file is tests + docs only; no
+    // production Swift/C source is edited here.
+
+    // A connectivity failure that happens to line up with a call must not
+    // let a fixed same-track attempt cap force an auto-advance: connectivity
+    // failures always use the larger `maximumConnectivityAttempts` budget
+    // and never advance regardless of `advanceOnPlaybackError`. This is the
+    // pre-existing half of the call-during-3G guarantee that Agent B's
+    // `NetworkAdaptiveBufferPolicy` must not weaken.
+    func testCallDuringConnectivityCollapseNeverAdvancesTheTrack() {
+        XCTAssertTrue(
+            StreamFailureRetryPolicy.shouldRetrySameTrack(
+                attempts: StreamFailureRetryPolicy.maximumSameTrackAttempts + 1,
+                error: APIError.timedOut
+            ),
+            "connectivity failures get the larger retry budget, not the "
+                + "same-track cap"
+        )
+        XCTAssertFalse(
+            StreamFailureRetryPolicy.shouldAdvance(
+                attempts: StreamFailureRetryPolicy.maximumConnectivityAttempts,
+                error: APIError.timedOut,
+                advanceOnPlaybackError: true
+            ),
+            "a call overlapping a bandwidth collapse must not cause an "
+                + "auto-skip of the current track"
+        )
+    }
+
+    // Once the call ends, resume must still be permitted purely from the
+    // interruption/session side, independent of whatever the network did
+    // mid-call. This is the pre-existing half of the guarantee that Agent
+    // A's `PostCallResumePolicy` extends (foreground fallback, missing
+    // `.shouldResume`, suspended app) and Agent C's
+    // `SessionActivationRetryPolicy` extends (bounded `setActive` retry).
+    func testResumeAfterCallIsPermittedRegardlessOfNetworkState() {
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldResume(
+                wasPlayingBeforeInterruption: true,
+                playbackIntended: true,
+                routeDisconnectPending: false,
+                beganAsRouteDisconnect: false,
+                options: [.shouldResume]
+            ),
+            "an ordinary call-ended resume must not be gated on network "
+                + "condition — that gating belongs to the buffer target, "
+                + "not to whether we resume at all"
+        )
+    }
+
+    // The ear-off deliberate-pause discriminator is a release invariant
+    // (3.28.75) that predates A-D and must survive every one of their
+    // merges into `AudioPlayer.swift`, including Agent A's `.ended`-branch
+    // and foreground-fallback changes. A call (`otherAudioWasPlaying: true`)
+    // must keep resuming; ear detection on an unchanged worn route
+    // (`otherAudioWasPlaying: false`) must keep NOT resuming — even while a
+    // connectivity retry budget is live, so the two families can never leak
+    // into each other via shared state.
+    func testEarDetectionDiscriminatorIsIndependentOfConnectivityState() {
+        XCTAssertFalse(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: false,
+                otherAudioWasPlaying: true,
+                interruptionDuration: 45,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.bluetoothA2DP]
+            ),
+            "a call must resume even mid connectivity-retry budget"
+        )
+        XCTAssertTrue(
+            AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
+                beganAsRouteDisconnect: false,
+                otherAudioWasPlaying: false,
+                interruptionDuration: 0.2,
+                previousOutputPortTypes: [.bluetoothA2DP],
+                currentOutputPortTypes: [.bluetoothA2DP]
+            ),
+            "ear-off must stay a deliberate pause regardless of any "
+                + "in-flight connectivity retry"
+        )
+    }
+
+    // A media-services reset mid-call-recovery must keep the same autoplay
+    // intent semantics that Agent C's `SessionActivationRetryPolicy` and
+    // Agent A's resume flow both depend on: only resume automatically if
+    // the user actually intended playback and it was active before the
+    // reset landed.
+    func testMediaServicesResetDuringRecoveryPreservesAutoplayIntent() {
+        XCTAssertTrue(
+            MediaServicesResetPolicy.shouldAutoplayAfterReset(
+                playbackIntended: true,
+                wasActivelyPlaying: true
+            )
+        )
+        XCTAssertFalse(
+            MediaServicesResetPolicy.shouldAutoplayAfterReset(
+                playbackIntended: true,
+                wasActivelyPlaying: false
+            ),
+            "a reset landing while playback was already stopped must not "
+                + "restart it on its own"
+        )
+    }
+
+    // PENDING — Agent E enables/extends these once the corresponding branch
+    // has merged and the exact symbol names from that branch are known
+    // (Agent E does not invent or pre-guess production symbol names beyond
+    // what STABILITY_OFFICE_BRIEF.md documents):
+    //
+    // - Agent A (PostCallResumePolicy, cursor/post-call-resume-bc40):
+    //     `.ended` with no `.shouldResume` + playbackIntended + a call
+    //     (`otherAudioWasPlaying == true`) ⇒ policy says resume; foreground
+    //     fallback (scene becomes active, no pending resume task) also
+    //     requests resume; ear-off discriminator above still holds.
+    // - Agent B (NetworkAdaptiveBufferPolicy, cursor/network-aware-buffer-bc40):
+    //     `.wifi/.online` ⇒ preferredForwardBuffer == 30 (pins the current
+    //     `StreamFailureRetryPolicy.preferredForwardBufferDuration` value);
+    //     `.cellular/.constrained` ⇒ strictly greater (>= 45); connectivity
+    //     retry budget on constrained never falls below
+    //     `maximumConnectivityAttempts` and never auto-advances.
+    // - Agent C (SessionActivationRetryPolicy, cursor/avplayer-failure-hardening-bc40):
+    //     first `setActive` throw right after the call ⇒ bounded retry,
+    //     succeeds on retry ⇒ playback resumes; exhausted ⇒ surfaces error,
+    //     no crash.
+    // - Agent D (pm_buffer_health_*, cursor/c-buffer-health-estimator-bc40):
+    //     throughput sampled while the call was active reflects the
+    //     degraded window once B wires the estimator into the adaptive
+    //     buffer target (covered primarily by PrivateMusicCoreTests.swift;
+    //     referenced here only for the end-to-end call-during-3G narrative).
+    //
+    // Meta-test to add once all four land: assert that every one of
+    // PostCallResumePolicy / NetworkAdaptiveBufferPolicy /
+    // SessionActivationRetryPolicy / pm_buffer_health_* is exercised by at
+    // least one XCTestCase in this target, so the four policy families the
+    // brief calls out stay unit-covered as a group, not just individually.
+
     private func makeSession(expiresAt: Date?) -> Session {
         Session(
             accessToken: "0123456789abcdef",
