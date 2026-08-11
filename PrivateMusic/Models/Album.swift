@@ -27,16 +27,10 @@ struct Album: Decodable, Hashable, Identifiable, Sendable {
         let name: String
     }
 
-    private struct Artwork: Decodable {
-        let photo600: String?
-        let photo300: String?
-        let photo270: String?
-
-        enum CodingKeys: String, CodingKey {
-            case photo600 = "photo_600"
-            case photo300 = "photo_300"
-            case photo270 = "photo_270"
-        }
+    private struct ArtworkCandidate {
+        let url: URL
+        let size: Int
+        let order: Int
     }
 
     let albumID: Int
@@ -181,41 +175,7 @@ struct Album: Decodable, Hashable, Identifiable, Sendable {
             || (try? container.decode(Int.self, forKey: .followed)) == 1
         isFollowed = followedBool ?? followedInteger
         followHash = try container.decodeIfPresent(String.self, forKey: .followHash)
-        let nestedArtwork = try container.decodeIfPresent(
-            Artwork.self,
-            forKey: .thumb
-        )
-        let nestedPhoto = try container.decodeIfPresent(
-            Artwork.self,
-            forKey: .photo
-        )
-        var rawArtwork = try container.decodeIfPresent(
-            String.self,
-            forKey: .photo600
-        )
-        if rawArtwork == nil {
-            rawArtwork = try container.decodeIfPresent(
-                String.self,
-                forKey: .photo300
-            )
-        }
-        if rawArtwork == nil {
-            rawArtwork = try container.decodeIfPresent(
-                String.self,
-                forKey: .photo270
-            )
-        }
-        if rawArtwork == nil {
-            rawArtwork = nestedArtwork?.photo600
-                ?? nestedArtwork?.photo300
-                ?? nestedArtwork?.photo270
-        }
-        if rawArtwork == nil {
-            rawArtwork = nestedPhoto?.photo600
-                ?? nestedPhoto?.photo300
-                ?? nestedPhoto?.photo270
-        }
-        artworkURL = rawArtwork.flatMap(URL.secureRemoteURL)
+        artworkURL = Self.artworkURL(from: try? JSONValue(from: decoder))
         let integerReleaseDate = try? container.decode(
             Int.self,
             forKey: .releaseDate
@@ -341,6 +301,157 @@ struct Album: Decodable, Hashable, Identifiable, Sendable {
                 ? $0.order > $1.order
                 : $0.count < $1.count
         }?.value
+    }
+
+    private static func artworkURL(from payload: JSONValue?) -> URL? {
+        guard case let .object(object)? = payload else { return nil }
+
+        for key in [
+            "photo_1200", "photo_600", "photo_300", "photo_270",
+            "photo", "cover_url", "thumb_url", "image"
+        ] {
+            guard let value = object[key] else { continue }
+            if let url = directArtworkURL(from: value) {
+                return url
+            }
+            if let url = bestNestedArtworkURL(from: value) {
+                return url
+            }
+        }
+
+        for key in [
+            "thumb", "cover", "thumbs", "photos", "images", "grid"
+        ] {
+            guard let url = bestNestedArtworkURL(from: object[key]) else {
+                continue
+            }
+            return url
+        }
+
+        return nil
+    }
+
+    private static func directArtworkURL(from value: JSONValue) -> URL? {
+        guard case let .string(raw) = value else { return nil }
+        return URL.secureRemoteURL(raw)
+    }
+
+    private static func bestNestedArtworkURL(from value: JSONValue?) -> URL? {
+        guard let value else { return nil }
+        var order = 0
+        var candidates: [ArtworkCandidate] = []
+        collectArtworkCandidates(
+            from: value,
+            inheritedSize: nil,
+            order: &order,
+            into: &candidates
+        )
+        return candidates.max {
+            if $0.size == $1.size {
+                return $0.order > $1.order
+            }
+            return $0.size < $1.size
+        }?.url
+    }
+
+    private static func collectArtworkCandidates(
+        from value: JSONValue,
+        inheritedSize: Int?,
+        order: inout Int,
+        into candidates: inout [ArtworkCandidate]
+    ) {
+        switch value {
+        case let .string(raw):
+            appendArtworkCandidate(
+                raw,
+                size: inheritedSize ?? 0,
+                order: &order,
+                into: &candidates
+            )
+        case let .array(values):
+            for item in values {
+                collectArtworkCandidates(
+                    from: item,
+                    inheritedSize: inheritedSize,
+                    order: &order,
+                    into: &candidates
+                )
+            }
+        case let .object(object):
+            let objectSize = artworkSizeHint(in: object) ?? inheritedSize
+            for key in [
+                "photo_1200", "photo_600", "photo_300", "photo_270",
+                "photo_135", "photo", "cover_url", "thumb_url",
+                "image", "src", "url"
+            ] {
+                guard case let .string(raw)? = object[key] else { continue }
+                appendArtworkCandidate(
+                    raw,
+                    size: max(
+                        artworkSizeHint(fromKey: key) ?? 0,
+                        objectSize ?? 0
+                    ),
+                    order: &order,
+                    into: &candidates
+                )
+            }
+            for key in [
+                "thumb", "cover", "photo", "thumbs", "photos", "images",
+                "image", "grid", "items", "list"
+            ] {
+                guard let nested = object[key] else { continue }
+                collectArtworkCandidates(
+                    from: nested,
+                    inheritedSize: objectSize,
+                    order: &order,
+                    into: &candidates
+                )
+            }
+        default:
+            break
+        }
+    }
+
+    private static func appendArtworkCandidate(
+        _ raw: String,
+        size: Int,
+        order: inout Int,
+        into candidates: inout [ArtworkCandidate]
+    ) {
+        defer { order += 1 }
+        guard let url = URL.secureRemoteURL(raw) else { return }
+        candidates.append(
+            ArtworkCandidate(url: url, size: size, order: order)
+        )
+    }
+
+    private static func artworkSizeHint(in object: [String: JSONValue]) -> Int? {
+        [
+            numericArtworkValue(object["width"]),
+            numericArtworkValue(object["height"]),
+            numericArtworkValue(object["size"])
+        ]
+        .compactMap { $0 }
+        .max()
+    }
+
+    private static func artworkSizeHint(fromKey key: String) -> Int? {
+        guard let suffix = key.split(separator: "_").last,
+              let size = Int(suffix) else {
+            return nil
+        }
+        return size
+    }
+
+    private static func numericArtworkValue(_ value: JSONValue?) -> Int? {
+        switch value {
+        case let .number(number)?:
+            return Int(number.rounded())
+        case let .string(raw)?:
+            return Int(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            return nil
+        }
     }
 }
 
