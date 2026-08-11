@@ -60,6 +60,48 @@ final class LibraryPlaybackOrderTests: XCTestCase {
         XCTAssertEqual(context.player.currentIndex, 2)
     }
 
+    // A library queue used to be captioned as a mix seeded by the tapped
+    // track, which is not what is playing.
+    func testALibraryQueueNamesItselfInThePlayer() {
+        let context = makePlayer()
+        defer { context.tearDown() }
+        let library = tracks(count: 6)
+
+        context.player.play(library[1], in: library, source: .library)
+
+        XCTAssertEqual(context.player.queueSource, .library)
+        XCTAssertEqual(
+            context.player.queueContextTitle,
+            L10n.text("Ваши треки")
+        )
+    }
+
+    // «Перемешать» over the library shuffles the queue it starts and
+    // nothing else: the next tap on a row still plays in list order.
+    func testShufflingTheLibraryDoesNotLatchTheNextLibraryQueue() {
+        let context = makePlayer()
+        defer { context.tearDown() }
+        let library = tracks(count: 30)
+
+        context.player.playShuffled(in: library, source: .library)
+
+        XCTAssertTrue(context.player.shuffleEnabled)
+        XCTAssertEqual(context.player.queueSource, .library)
+        XCTAssertEqual(
+            Set(context.player.queue.map(\.id)),
+            Set(library.map(\.id))
+        )
+        XCTAssertFalse(
+            context.defaults.bool(forKey: PlaybackShufflePreference.key)
+        )
+
+        context.player.play(library[3], in: library, source: .library)
+
+        XCTAssertFalse(context.player.shuffleEnabled)
+        XCTAssertEqual(context.player.queue.map(\.id), library.map(\.id))
+        XCTAssertEqual(context.player.currentIndex, 3)
+    }
+
     func testCollectionShuffleDoesNotPersistThePreference() {
         let context = makePlayer()
         defer { context.tearDown() }
