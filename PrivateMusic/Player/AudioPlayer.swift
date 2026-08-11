@@ -191,6 +191,30 @@ enum AudioRoutePolicy {
         isBluetooth(portType) || portType == .headphones
     }
 
+    /// Whether two route reads name the same worn device.
+    ///
+    /// Exact port identity is too strict: a pair of AirPods flickers
+    /// between `.bluetoothA2DP` and `.bluetoothHFP` without ever leaving
+    /// the ear, and an interruption that began on one and ended on the
+    /// other is still the same buds.
+    ///
+    /// Wired and wireless are not interchangeable, though. Losing a cable
+    /// to a pair of buds is a transfer, and transfers carry the playback
+    /// over rather than stopping it.
+    static func namesTheSameWornRoute(
+        _ lhs: [AVAudioSession.Port],
+        _ rhs: [AVAudioSession.Port]
+    ) -> Bool {
+        guard !lhs.isEmpty,
+              !rhs.isEmpty,
+              lhs.allSatisfy(isWearable),
+              rhs.allSatisfy(isWearable) else {
+            return false
+        }
+        if Set(lhs) == Set(rhs) { return true }
+        return lhs.allSatisfy(isBluetooth) && rhs.allSatisfy(isBluetooth)
+    }
+
     /// `.oldDeviceUnavailable` says the route we were listening on is gone,
     /// but `currentRoute` is read from a session that has not finished
     /// switching: it can still name the very device that just went away.
@@ -212,6 +236,47 @@ enum AudioRoutePolicy {
             previousOutputPortTypes.contains($0)
         }
     }
+
+    /// `.oldDeviceUnavailable` that arrives without a usable previous
+    /// route.
+    ///
+    /// The payload is documented but not guaranteed: it goes missing when
+    /// the notification is coalesced with a media-services restart, and a
+    /// disconnect the app could not attribute used to fall straight
+    /// through the pause branch. The reason itself already says a device
+    /// went away, so landing on the phone's own output is the disconnect.
+    static func isUnattributedRouteLoss(
+        previousOutputPortTypes: [AVAudioSession.Port],
+        currentOutputPortTypes: [AVAudioSession.Port]
+    ) -> Bool {
+        previousOutputPortTypes.isEmpty
+            && !currentOutputPortTypes.contains(where: isExternalPlayback)
+    }
+
+    /// Whether a route change carrying this reason may be read as playback
+    /// losing the route it was running on.
+    ///
+    /// `.oldDeviceUnavailable` is the documented unplug and is handled on
+    /// its own. These are the safety net for the disconnects that arrive
+    /// without saying so — a wired unplug during sleep, a pair of buds the
+    /// system drops without naming, a category the route cannot serve.
+    ///
+    /// `.override` and `.categoryChange` are deliberately left out: a user
+    /// picking «iPhone» in the route picker is asking for the speaker, not
+    /// losing a route, and pausing on them would fight the request.
+    static func mayCarryAnUnannouncedDisconnect(
+        _ reason: AVAudioSession.RouteChangeReason
+    ) -> Bool {
+        switch reason {
+        case .unknown,
+             .wakeFromSleep,
+             .noSuitableRouteForCategory,
+             .routeConfigurationChange:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 /// Whether playback the *app* starts on its own — a stream retry, a stall
@@ -231,6 +296,22 @@ enum AudioAutoplayGatePolicy {
         return currentOutputPortTypes.contains(
             where: AudioRoutePolicy.isExternalPlayback
         )
+    }
+
+    /// Media services coming back does not put the headphones back on.
+    ///
+    /// The reset tears every flag down and rebuilds the session, and the
+    /// route it rebuilds on is the phone itself. Dropping the pending
+    /// disconnect there reopened the gate for the reload the reset
+    /// schedules, which is the speaker leak on the CarKit path.
+    static func retainsDisconnectPendingAfterReset(
+        wasPending: Bool,
+        currentOutputPortTypes: [AVAudioSession.Port]
+    ) -> Bool {
+        wasPending
+            && !currentOutputPortTypes.contains(
+                where: AudioRoutePolicy.isExternalPlayback
+            )
     }
 }
 
@@ -388,15 +469,21 @@ enum ContinuationAdvancePolicy {
 }
 
 enum AudioInterruptionPolicy {
+    /// - Parameter beganAsRouteDisconnect: the system named the route
+    ///   going away as the reason. Such an interruption still ends asking
+    ///   for a resume, and obeying that is a speaker leak: the route it
+    ///   named is gone, so only a route arriving may start playback again.
     static func shouldResume(
         wasPlayingBeforeInterruption: Bool,
         playbackIntended: Bool,
         routeDisconnectPending: Bool,
+        beganAsRouteDisconnect: Bool,
         options: AVAudioSession.InterruptionOptions
     ) -> Bool {
         wasPlayingBeforeInterruption
             && playbackIntended
             && !routeDisconnectPending
+            && !beganAsRouteDisconnect
             && options.contains(.shouldResume)
     }
 
@@ -414,40 +501,54 @@ enum AudioInterruptionPolicy {
         )
     }
 
-    /// How long after it began an interruption end can still be the
-    /// headphones saying they came off, on systems that do not name the
-    /// reason (iOS 16).
+    /// Last-resort window for an interruption that nothing else explains.
     ///
-    /// Automatic Ear Detection begins and ends the interruption in one
-    /// breath — the AirPods stay connected, so nothing about the route
-    /// changes and the end even arrives with `.shouldResume`. Resuming
-    /// there is what the reporter hears as «музыка не встаёт на паузу»:
-    /// the buds are in the case and the track plays on. A call, Siri or
-    /// another app holding the session lasts far longer than this, so they
-    /// still resume the way they always did.
+    /// Only reached when another audio session was holding the output when
+    /// the interruption began *and* the system refused to name a reason —
+    /// the ambiguous corner where a very short foreign interruption is
+    /// still likelier to be the buds than a call.
     static let deliberatePauseWindow: TimeInterval = 1.5
 
-    /// Whether an interruption that began and ended on the same headphone
+    /// Whether an interruption that began and ended on the same worn
     /// route is the user taking the headphones off rather than something
     /// borrowing the session for a moment.
     ///
+    /// Automatic Ear Detection is the case this exists for. The AirPods
+    /// stay connected, so nothing about the route changes, and the end
+    /// arrives with `.shouldResume` — obeying it is what the reporter
+    /// hears as «музыка не встаёт на паузу», with the buds in the case and
+    /// the track playing on. Taking the headphones off is the user saying
+    /// stop, exactly as if they had pressed pause on the buds themselves.
+    ///
+    /// Timing does not separate the two. The buds can sit out of an ear
+    /// for a second or for an hour, and the interruption only ends when
+    /// they go back in; a window narrow enough to exclude a call is far
+    /// too narrow to cover that, and that gap is the defect. What does
+    /// separate them is whether anything else was making sound.
+    ///
     /// - Parameter beganAsRouteDisconnect: iOS 17 names the reason
     ///   (`.routeDisconnected`), which is the exact signal and needs no
-    ///   timing at all — `setPrefersInterruptionOnRouteDisconnect(true)`
+    ///   inference at all — `setPrefersInterruptionOnRouteDisconnect(true)`
     ///   is what asks for it.
+    /// - Parameter otherAudioWasPlaying: a call, Siri or another app owned
+    ///   the output when the interruption began. Ear detection never looks
+    ///   like that — the buds go quiet and nothing takes their place — so
+    ///   these keep resuming the way they always did.
     static func shouldTreatEndAsDeliberatePause(
         beganAsRouteDisconnect: Bool,
+        otherAudioWasPlaying: Bool,
         interruptionDuration: TimeInterval,
         previousOutputPortTypes: [AVAudioSession.Port],
         currentOutputPortTypes: [AVAudioSession.Port]
     ) -> Bool {
-        guard !currentOutputPortTypes.isEmpty,
-              currentOutputPortTypes.allSatisfy(AudioRoutePolicy.isWearable),
-              Set(previousOutputPortTypes) == Set(currentOutputPortTypes)
-        else {
+        guard AudioRoutePolicy.namesTheSameWornRoute(
+            previousOutputPortTypes,
+            currentOutputPortTypes
+        ) else {
             return false
         }
         if beganAsRouteDisconnect { return true }
+        if !otherAudioWasPlaying { return true }
         return interruptionDuration <= deliberatePauseWindow
     }
 
@@ -725,6 +826,9 @@ final class AudioPlayer: ObservableObject {
     /// is how Automatic Ear Detection arrives while the AirPods stay the
     /// current route.
     private var interruptionBeganAsRouteDisconnect = false
+    /// Whether a call, Siri or another app owned the output when the
+    /// interruption began — the one thing ear detection never looks like.
+    private var otherAudioAtInterruptionBegan = false
     private var interruptionResumeTask: Task<Void, Never>?
     private var routeSettleTask: Task<Void, Never>?
     private var pendingRemoteCommand: RemoteCommandCoalescing.Command?
@@ -1526,6 +1630,11 @@ final class AudioPlayer: ObservableObject {
     ) {
         let autoplay = requestedAutoplay
             && (!automatic || allowsAutomaticPlayback)
+        if requestedAutoplay, !autoplay {
+            // Held back by the gate, not given up on: the next route the
+            // user connects picks the track back up.
+            resumeAfterRouteTransfer = playbackIntended
+        }
         guard let track = currentTrack else { return }
         let offlineURL = offlineURLProvider?(track)
         guard let url = offlineURL ?? track.streamURL else {
@@ -2230,7 +2339,21 @@ final class AudioPlayer: ObservableObject {
             interruptionBeganAsRouteDisconnect = Self.isRouteDisconnect(
                 notification
             )
+            otherAudioAtInterruptionBegan = AVAudioSession.sharedInstance()
+                .isOtherAudioPlaying
             wasPlayingBeforeInterruption = playbackIntended && isPlaying
+            // iOS 17 states the disconnect outright. When the route read
+            // has already moved on to the phone itself, that is the whole
+            // unplug in one notification, and the gate has to shut here:
+            // by the time the interruption ends, the route it recorded no
+            // longer names anything that could be seen to have been lost.
+            if interruptionBeganAsRouteDisconnect,
+               !outputsAtInterruptionBegan.contains(
+                   where: AudioRoutePolicy.isExternalPlayback
+               ) {
+                routeDisconnectPending = true
+                resumeAfterRouteTransfer = wasPlayingBeforeInterruption
+            }
             pausePreservingIntent()
         case .ended:
             isAudioInterrupted = false
@@ -2239,8 +2362,10 @@ final class AudioPlayer: ObservableObject {
                 .currentRoute.outputs.map(\.portType)
             let beganAt = interruptionBeganAt
             let beganAsRouteDisconnect = interruptionBeganAsRouteDisconnect
+            let otherAudioWasPlaying = otherAudioAtInterruptionBegan
             interruptionBeganAt = nil
             interruptionBeganAsRouteDisconnect = false
+            otherAudioAtInterruptionBegan = false
             // Taking the headphones off is the user saying stop, exactly
             // like a pause from the buds themselves: the intent goes with
             // it, so nothing later — a reconnect, a call ending, a stream
@@ -2248,6 +2373,7 @@ final class AudioPlayer: ObservableObject {
             if wasPlayingBeforeInterruption || playbackIntended,
                AudioInterruptionPolicy.shouldTreatEndAsDeliberatePause(
                    beganAsRouteDisconnect: beganAsRouteDisconnect,
+                   otherAudioWasPlaying: otherAudioWasPlaying,
                    interruptionDuration: beganAt.map {
                        Date().timeIntervalSince($0)
                    } ?? .greatestFiniteMagnitude,
@@ -2290,6 +2416,7 @@ final class AudioPlayer: ObservableObject {
                 wasPlayingBeforeInterruption: wasPlayingBeforeInterruption,
                 playbackIntended: playbackIntended,
                 routeDisconnectPending: routeDisconnectPending,
+                beganAsRouteDisconnect: beganAsRouteDisconnect,
                 options: options
             )
             wasPlayingBeforeInterruption = false
@@ -2298,6 +2425,7 @@ final class AudioPlayer: ObservableObject {
                 scheduleInterruptionResume(from: previousOutputs)
             } else if resumeAfterRouteTransfer,
                       playbackIntended,
+                      !beganAsRouteDisconnect,
                       !routeDisconnectPending {
                 scheduleInterruptionResume(from: previousOutputs)
             }
@@ -2385,6 +2513,15 @@ final class AudioPlayer: ObservableObject {
             guard !Task.isCancelled else { return }
             let settledOutputs = AVAudioSession.sharedInstance()
                 .currentRoute.outputs.map(\.portType)
+            // Nothing left to listen through: the pause stands and the
+            // gate stays shut. Reading a settled built-in speaker as "no
+            // loss" is what let a disconnect with no previous route in its
+            // payload reopen automatic playback a third of a second later.
+            guard settledOutputs.contains(
+                where: AudioRoutePolicy.isExternalPlayback
+            ) else {
+                return
+            }
             guard !AudioRoutePolicy.didLoseExternalRoute(
                 previousOutputPortTypes: previousOutputs,
                 currentOutputPortTypes: settledOutputs
@@ -2424,46 +2561,17 @@ final class AudioPlayer: ObservableObject {
               ) else {
             return
         }
+        let previousOutputs = (notification.userInfo?[
+            AVAudioSessionRouteChangePreviousRouteKey
+        ] as? AVAudioSessionRouteDescription)?.outputs.map(\.portType) ?? []
         var allowsMinimumVolumeResume = true
         switch reason {
         case .oldDeviceUnavailable:
-            interruptionResumeTask?.cancel()
-            interruptionResumeTask = nil
-            let previousRoute = notification.userInfo?[
-                AVAudioSessionRouteChangePreviousRouteKey
-            ] as? AVAudioSessionRouteDescription
-            let previousOutputs = previousRoute?.outputs.map(\.portType) ?? []
-            let currentOutputs = AVAudioSession.sharedInstance()
-                .currentRoute.outputs.map(\.portType)
-            // The disconnect is recognised from the route alone. Requiring
-            // a live playback flag lost the unplug whose interruption
-            // arrived first: that interruption had already paused playback
-            // and cleared the flag, so nothing here held the session back
-            // and the next automatic resume went to the speaker.
-            let lostRoute = AudioRoutePolicy.didLoseExternalRoute(
-                previousOutputPortTypes: previousOutputs,
-                currentOutputPortTypes: currentOutputs
-            )
-            // The route can also still be mid-switch and name the device
-            // that just went away. Pause first, ask again once it settles.
-            let staleRoute = AudioRoutePolicy.looksLikeStaleRouteLoss(
-                previousOutputPortTypes: previousOutputs,
-                currentOutputPortTypes: currentOutputs
-            )
-            guard lostRoute || staleRoute else { break }
-            let playbackWasActive = isPlaying
-                || wasPlayingBeforeInterruption
-                || resumeAfterRouteTransfer
-            routeDisconnectPending = true
-            resumeAfterRouteTransfer = playbackIntended && playbackWasActive
-            allowsMinimumVolumeResume = false
-            // Unconditional: `isPlaying` is published state, and the route
-            // notification can beat the rate change that sets it, so a
-            // conditional pause is the speaker leak this whole branch
-            // exists to prevent.
-            pausePreservingIntent()
-            if !lostRoute {
-                scheduleRouteSettleRecheck(from: previousOutputs)
+            if handleRouteLoss(
+                previousOutputs: previousOutputs,
+                acceptsStaleRoute: true
+            ) {
+                allowsMinimumVolumeResume = false
             }
         case .newDeviceAvailable:
             // A route has arrived, so the settle re-check has nothing left
@@ -2500,12 +2608,77 @@ final class AudioPlayer: ObservableObject {
                 _ = activateAudioSession()
             }
         default:
-            break
+            // `.oldDeviceUnavailable` is the documented way a listening
+            // route goes away, but it is not the only reason that carries
+            // the move. Whatever the system calls it, playback that was
+            // running on a route the user was listening through must never
+            // land on the phone's own speaker.
+            guard AudioRoutePolicy.mayCarryAnUnannouncedDisconnect(reason),
+                  handleRouteLoss(
+                      previousOutputs: previousOutputs,
+                      acceptsStaleRoute: false
+                  ) else {
+                break
+            }
+            allowsMinimumVolumeResume = false
         }
         handleOutputVolume(
             AVAudioSession.sharedInstance().outputVolume,
             allowsAutomaticResume: allowsMinimumVolumeResume
         )
+    }
+
+    /// Pauses and shuts the automatic-playback gate when the route
+    /// playback was running on has gone away.
+    ///
+    /// - Parameter acceptsStaleRoute: whether a `currentRoute` that has
+    ///   not caught up — one still naming the device that went away, or
+    ///   one arriving with no previous route at all — counts as the
+    ///   disconnect. Only `.oldDeviceUnavailable` states outright that
+    ///   something was lost, so only it may act on an unsettled read.
+    /// - Returns: whether a disconnect was acted on.
+    @discardableResult
+    private func handleRouteLoss(
+        previousOutputs: [AVAudioSession.Port],
+        acceptsStaleRoute: Bool
+    ) -> Bool {
+        let currentOutputs = AVAudioSession.sharedInstance()
+            .currentRoute.outputs.map(\.portType)
+        // The disconnect is recognised from the route alone. Requiring a
+        // live playback flag lost the unplug whose interruption arrived
+        // first: that interruption had already paused playback and cleared
+        // the flag, so nothing here held the session back and the next
+        // automatic resume went to the speaker.
+        let lostRoute = AudioRoutePolicy.didLoseExternalRoute(
+            previousOutputPortTypes: previousOutputs,
+            currentOutputPortTypes: currentOutputs
+        )
+        let unsettledRoute = acceptsStaleRoute
+            && (AudioRoutePolicy.looksLikeStaleRouteLoss(
+                previousOutputPortTypes: previousOutputs,
+                currentOutputPortTypes: currentOutputs
+            ) || AudioRoutePolicy.isUnattributedRouteLoss(
+                previousOutputPortTypes: previousOutputs,
+                currentOutputPortTypes: currentOutputs
+            ))
+        guard lostRoute || unsettledRoute else { return false }
+        interruptionResumeTask?.cancel()
+        interruptionResumeTask = nil
+        let playbackWasActive = isPlaying
+            || wasPlayingBeforeInterruption
+            || resumeAfterRouteTransfer
+        routeDisconnectPending = true
+        resumeAfterRouteTransfer = playbackIntended && playbackWasActive
+        // Unconditional: `isPlaying` is published state, and the route
+        // notification can beat the rate change that sets it, so a
+        // conditional pause is the speaker leak this whole branch exists
+        // to prevent.
+        pausePreservingIntent()
+        // Re-read the route once it settles even when the loss looked
+        // unambiguous: a head unit can take a disconnected pair of buds
+        // over without a `newDeviceAvailable` of its own.
+        scheduleRouteSettleRecheck(from: previousOutputs)
+        return true
     }
 
     private func handleMediaServicesReset() {
@@ -2518,6 +2691,7 @@ final class AudioPlayer: ObservableObject {
         )
         let position = elapsedTime
         let keepIntent = playbackIntended || wasActivelyPlaying
+        let disconnectWasPending = routeDisconnectPending
         suppressAdvanceUntil = Date().addingTimeInterval(
             AudioProcessingAttachPolicy.postResetAdvanceSuppression
         )
@@ -2534,6 +2708,7 @@ final class AudioPlayer: ObservableObject {
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         outputsAtInterruptionBegan = []
+        otherAudioAtInterruptionBegan = false
         isPlaying = false
         isBuffering = false
         playbackIntended = keepIntent
@@ -2563,6 +2738,16 @@ final class AudioPlayer: ObservableObject {
 
         audioSessionConfigured = false
         let audioSessionRestored = configureAudioSession()
+        // The session came back, the headphones did not. Rebuilding on the
+        // phone's own output is exactly the moment the reload below would
+        // otherwise have played the track out loud.
+        routeDisconnectPending =
+            AudioAutoplayGatePolicy.retainsDisconnectPendingAfterReset(
+                wasPending: disconnectWasPending,
+                currentOutputPortTypes: AVAudioSession.sharedInstance()
+                    .currentRoute.outputs.map(\.portType)
+            )
+        resumeAfterRouteTransfer = routeDisconnectPending && shouldAutoplay
         guard currentTrack != nil else { return }
         loadCurrent(
             autoplay: shouldAutoplay,
@@ -2653,6 +2838,9 @@ final class AudioPlayer: ObservableObject {
             isAudioInterrupted: isAudioInterrupted,
             allowsAutomaticResume: allowsAutomaticResume
                 && !minimumVolumeResumeSuppressed
+                // Turning the volume back up is not the headphones coming
+                // back, and this is a resume the app makes on its own.
+                && allowsAutomaticPlayback
         ) else { return }
         resume(
             preservingMinimumVolumePause: true,
