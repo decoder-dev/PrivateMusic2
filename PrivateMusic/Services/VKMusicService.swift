@@ -442,6 +442,7 @@ struct VKMusicService: MusicService {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Album> {
+        var listItems: [Album] = []
         do {
             let envelope: VKResponse<VKItems<Album>> = try await client.post(
                 path: "/method/audio.getAlbumsByArtist",
@@ -452,13 +453,7 @@ struct VKMusicService: MusicService {
                 ]) { _, new in new },
                 responseType: VKResponse<VKItems<Album>>.self
             )
-            if !envelope.response.items.isEmpty {
-                return page(
-                    envelope.response,
-                    offset: offset,
-                    requested: count
-                )
-            }
+            listItems = envelope.response.items
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as APIError where error == .unauthorized {
@@ -469,21 +464,47 @@ struct VKMusicService: MusicService {
             // Fall through to catalog artist page albums.
         }
 
-        let envelope: VKResponse<JSONValue> = try await client.post(
-            path: "/method/catalog.getAudioArtist",
-            form: common(accessToken).merging([
-                "artist_id": artistID,
-                "need_blocks": "1"
-            ]) { _, new in new },
-            responseType: VKResponse<JSONValue>.self
-        )
-        let albums = envelope.response.releaseAlbums
-        let sliced = Array(albums.dropFirst(offset).prefix(count))
+        let catalogAlbums: [Album]
+        do {
+            let envelope: VKResponse<JSONValue> = try await client.post(
+                path: "/method/catalog.getAudioArtist",
+                form: common(accessToken).merging([
+                    "artist_id": artistID,
+                    "need_blocks": "1"
+                ]) { _, new in new },
+                responseType: VKResponse<JSONValue>.self
+            )
+            catalogAlbums = envelope.response.releaseAlbums
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as APIError where error == .unauthorized {
+            throw error
+        } catch let error as APIError where error.isConnectivityFailure {
+            throw error
+        } catch {
+            catalogAlbums = []
+        }
+
+        let merged: [Album]
+        if listItems.isEmpty {
+            merged = catalogAlbums
+        } else if ArtistAlbumShelfPolicy.shouldPreferCatalog(over: listItems) {
+            // Sparse getAlbumsByArtist stubs used to short-circuit the
+            // catalog path and paint every card as «0 треков» with no art.
+            merged = catalogAlbums.isEmpty ? listItems : catalogAlbums
+        } else {
+            merged = ArtistAlbumShelfPolicy.merging(
+                list: listItems,
+                catalog: catalogAlbums
+            )
+        }
+
+        let sliced = Array(merged.dropFirst(offset).prefix(count))
         let consumed = offset + sliced.count
         return MusicPage(
             items: sliced,
-            totalCount: albums.count,
-            nextOffset: consumed < albums.count ? consumed : nil
+            totalCount: merged.count,
+            nextOffset: consumed < merged.count ? consumed : nil
         )
     }
 
