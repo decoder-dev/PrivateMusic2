@@ -860,6 +860,81 @@ enum NetworkAdaptiveBufferPolicy {
     }
 }
 
+/// Owns recovery work when reachability changes. In-flight refreshes are
+/// suspended offline without spending the outer same-track budget; the first
+/// usable path then gets a short jittered restart instead of inheriting a stale
+/// multi-second backoff.
+enum StreamRecoveryNetworkTransitionPolicy {
+    enum Action: Equatable {
+        case none
+        case suspend
+        case recover
+    }
+
+    static func action(
+        from previous: NetworkCondition,
+        to current: NetworkCondition
+    ) -> Action {
+        guard previous != current else { return .none }
+        if current == .offline { return .suspend }
+        if previous == .offline { return .recover }
+        return .none
+    }
+}
+
+/// Adds jitter to playback recovery without changing the established baseline
+/// delays exposed by `StreamFailureRetryPolicy`. A network-return attempt uses
+/// a separate sub-second window so reconnecting devices neither stampede the
+/// API simultaneously nor wait for the backoff that belonged to the old path.
+enum StreamRecoveryDelayPolicy {
+    enum Trigger: Equatable {
+        case failure
+        case networkReturn
+    }
+
+    static let jitterFraction = 0.15
+    static let networkReturnMinimumDelay: TimeInterval = 0.1
+    static let networkReturnMaximumDelay: TimeInterval = 0.5
+
+    static func delay(
+        for trigger: Trigger,
+        attempt: Int,
+        condition: NetworkCondition,
+        jitterUnit: Double
+    ) -> TimeInterval {
+        let unit = min(max(jitterUnit, 0), 1)
+        switch trigger {
+        case .networkReturn:
+            return networkReturnMinimumDelay
+                + (networkReturnMaximumDelay - networkReturnMinimumDelay) * unit
+        case .failure:
+            let base = StreamFailureRetryPolicy.retryDelay(
+                forAttempt: attempt,
+                condition: condition
+            )
+            let multiplier = (1 - jitterFraction)
+                + (2 * jitterFraction * unit)
+            let cap = condition == .degraded
+                ? NetworkAdaptiveBufferPolicy.degradedRetryDelayCap
+                : 6
+            return min(max(base * multiplier, 0.2), cap)
+        }
+    }
+
+    static func delay(
+        for trigger: Trigger,
+        attempt: Int,
+        condition: NetworkCondition
+    ) -> TimeInterval {
+        delay(
+            for: trigger,
+            attempt: attempt,
+            condition: condition,
+            jitterUnit: Double.random(in: 0...1)
+        )
+    }
+}
+
 @MainActor
 final class AudioPlayer: ObservableObject {
     private final class PreloadedPlayback {
@@ -1043,6 +1118,9 @@ final class AudioPlayer: ObservableObject {
     private var suppressAdvanceUntil: Date?
     private var streamRecoveryAttempts = 0
     private var streamRecoveryTask: Task<Void, Never>?
+    /// Identifies the task currently occupying `streamRecoveryTask`, allowing
+    /// its completion path to clear only its own slot.
+    private var streamRecoveryID: UUID?
     private var stallStartedAt: Date?
     /// When `recoverFromExtendedStall` first found an existing
     /// recovery/refresh task blocking it. Cleared once no task is in the
@@ -1331,30 +1409,43 @@ final class AudioPlayer: ObservableObject {
     ) {
         let previous = currentNetworkCondition
         currentNetworkCondition = condition
-        // A path that comes back after offline used to only warm the next
-        // preload — the stalled *current* item stayed dead until the user
-        // tapped play. Kick same-track recovery when intent is still on.
-        if previous == .offline, condition != .offline {
+        switch StreamRecoveryNetworkTransitionPolicy.action(
+            from: previous,
+            to: condition
+        ) {
+        case .suspend:
+            // Do not let a timer created for the dead path wake up, make an
+            // API request and consume another same-track attempt while offline.
+            cancelStreamRefresh()
+            stallStartedAt = nil
+        case .recover:
             kickRecoveryAfterNetworkReturn()
+        case .none:
+            break
         }
         _ = throughputHint
     }
 
-    /// Public entry for `AppEnvironment` when reachability returns: recover
-    /// the current track if we meant to be playing and are not.
+    /// Recover a failed or visibly stalled current item when reachability
+    /// returns. Healthy buffered playback is left alone.
     func kickRecoveryAfterNetworkReturn() {
-        guard playbackIntended,
+        guard currentNetworkCondition != .offline,
+              playbackIntended,
               currentTrack != nil,
-              !isPlaying,
               !isAudioInterrupted,
               streamRecoveryTask == nil,
-              streamRefreshTask == nil else {
+              streamRefreshTask == nil,
+              !isPlaying || isBuffering else {
             return
         }
         if streamRecoveryAttempts == 0 {
             streamRecoveryAttempts = 1
         }
-        scheduleSameTrackRecovery(autoplay: true, automatic: true)
+        scheduleSameTrackRecovery(
+            autoplay: true,
+            automatic: true,
+            trigger: .networkReturn
+        )
     }
 
     /// Starts `tracks` at `track`.
@@ -3336,23 +3427,35 @@ final class AudioPlayer: ObservableObject {
 
     private func scheduleSameTrackRecovery(
         autoplay: Bool,
-        automatic: Bool = false
+        automatic: Bool = false,
+        trigger: StreamRecoveryDelayPolicy.Trigger = .failure
     ) {
         cancelStreamRecovery()
         isPlaying = false
         isBuffering = true
         errorMessage = nil
         let position = elapsedTime
-        let delay = StreamFailureRetryPolicy.retryDelay(
-            forAttempt: streamRecoveryAttempts,
+        let delay = StreamRecoveryDelayPolicy.delay(
+            for: trigger,
+            attempt: streamRecoveryAttempts,
             condition: currentNetworkCondition
         )
         let generation = playbackGeneration
         let trackID = currentTrack?.id
+        let recoveryID = UUID()
+        streamRecoveryID = recoveryID
         streamRecoveryTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard let self,
-                  !Task.isCancelled,
+                  self.streamRecoveryID == recoveryID else {
+                return
+            }
+            // A completed timer must stop occupying the recovery slot before
+            // it starts stream refresh. Otherwise a network-return signal sees
+            // a stale non-nil task and incorrectly refuses to recover.
+            self.streamRecoveryTask = nil
+            self.streamRecoveryID = nil
+            guard !Task.isCancelled,
                   generation == self.playbackGeneration,
                   self.currentTrack?.id == trackID else {
                 return
@@ -3527,6 +3630,7 @@ final class AudioPlayer: ObservableObject {
     private func cancelStreamRecovery() {
         streamRecoveryTask?.cancel()
         streamRecoveryTask = nil
+        streamRecoveryID = nil
     }
 
     private func cancelContinuation() {
