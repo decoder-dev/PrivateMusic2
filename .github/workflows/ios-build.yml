@@ -129,26 +129,26 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.77-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.78-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.77-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.78-iphone-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.77"
+          test "$GITHUB_REF_NAME" = "v3.28.78"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.77 (pre-release)
+          # Private Music 3.28.78 (pre-release)
 
-          Альбомы на странице исполнителя больше не рисуются как
-          «0 треков» с серой нотой. Плюс стабильность подключения из
-          3.28.76.
+          Сетевое восстановление плеера стало быстрее и чище:
+          меньше лишних retry-запросов, быстрее возврат после offline,
+          аккуратный jitter и короче timeout обновления stream URL.
 
           ## Очередь из Медиатеки
           - У медиатеки свой потолок очереди (до 2000), отдельный от
@@ -171,6 +171,16 @@ jobs:
           - Декод обложек читает `thumbs` / grid / вложенные photo и
             нормализует HTTP CDN в HTTPS — часть альбомов после обновления
             VK больше не остаётся серой ноткой
+
+          ## Сетевое восстановление
+          - Обновление stream URL больше не делает вложенные ретраи внутри
+            внешнего recovery-цикла плеера
+          - Возврат сети поднимает текущий трек через короткое jitter-окно
+            (0.1–0.5 c), а не после старого backoff
+          - Offline-состояние гасит устаревшие recovery-задачи без расхода
+            retry-бюджета
+          - API retry не повторяет 501/505; добавлен retry для
+            `resourceUnavailable`
 
           ## Альбомы исполнителя
           - Полка «Альбомы» больше не принимает audio-строки за релизы
@@ -197,19 +207,19 @@ jobs:
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.77-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.77-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.78-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.78-unsigned.ipa"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.77" \
+              --title "Private Music 3.28.78" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.77" \
+              --title "Private Music 3.28.78" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -218,9 +228,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.77-unsigned
+          name: PrivateMusic-3.28.78-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.77-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.77-unsigned.ipa
+            artifacts/PrivateMusic-3.28.78-iphone-unsigned.ipa
+            artifacts/PrivateMusic-3.28.78-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
