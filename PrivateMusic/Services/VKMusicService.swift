@@ -175,6 +175,7 @@ struct VKMusicService: MusicService {
             form: common(accessToken).merging([
                 "audios": audioID
             ]) { _, new in new },
+            retryPolicy: .playbackRecovery,
             responseType: VKResponse<[Track]>.self
         )
         let userID = try await resolvedUserID(accessToken: accessToken)

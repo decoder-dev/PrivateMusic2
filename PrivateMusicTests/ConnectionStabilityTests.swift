@@ -265,6 +265,117 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    func testPlaybackRecoveryDelayAddsBoundedJitter() {
+        let baseline = StreamFailureRetryPolicy.retryDelay(
+            forAttempt: 1,
+            condition: .nominal
+        )
+        let earliest = StreamRecoveryDelayPolicy.delay(
+            for: .failure,
+            attempt: 1,
+            condition: .nominal,
+            jitterUnit: 0
+        )
+        let latest = StreamRecoveryDelayPolicy.delay(
+            for: .failure,
+            attempt: 1,
+            condition: .nominal,
+            jitterUnit: 1
+        )
+        XCTAssertLessThan(earliest, baseline)
+        XCTAssertGreaterThan(latest, baseline)
+        XCTAssertGreaterThanOrEqual(earliest, 0.2)
+        XCTAssertLessThanOrEqual(
+            StreamRecoveryDelayPolicy.delay(
+                for: .failure,
+                attempt: 100,
+                condition: .nominal,
+                jitterUnit: 1
+            ),
+            6
+        )
+        XCTAssertLessThanOrEqual(
+            StreamRecoveryDelayPolicy.delay(
+                for: .failure,
+                attempt: 100,
+                condition: .degraded,
+                jitterUnit: 1
+            ),
+            NetworkAdaptiveBufferPolicy.degradedRetryDelayCap
+        )
+    }
+
+    func testNetworkReturnUsesShortJitteredRecoveryWindow() {
+        let earliest = StreamRecoveryDelayPolicy.delay(
+            for: .networkReturn,
+            attempt: 8,
+            condition: .nominal,
+            jitterUnit: -1
+        )
+        let latest = StreamRecoveryDelayPolicy.delay(
+            for: .networkReturn,
+            attempt: 8,
+            condition: .degraded,
+            jitterUnit: 2
+        )
+        XCTAssertEqual(
+            earliest,
+            StreamRecoveryDelayPolicy.networkReturnMinimumDelay,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            latest,
+            StreamRecoveryDelayPolicy.networkReturnMaximumDelay,
+            accuracy: 0.001
+        )
+        XCTAssertLessThan(latest, StreamFailureRetryPolicy.baseRetryDelay)
+    }
+
+    func testOfflineTransitionSuspendsAndReturnRecovers() {
+        XCTAssertEqual(
+            StreamRecoveryNetworkTransitionPolicy.action(
+                from: .nominal,
+                to: .offline
+            ),
+            .suspend
+        )
+        XCTAssertEqual(
+            StreamRecoveryNetworkTransitionPolicy.action(
+                from: .degraded,
+                to: .offline
+            ),
+            .suspend
+        )
+        XCTAssertEqual(
+            StreamRecoveryNetworkTransitionPolicy.action(
+                from: .offline,
+                to: .nominal
+            ),
+            .recover
+        )
+        XCTAssertEqual(
+            StreamRecoveryNetworkTransitionPolicy.action(
+                from: .offline,
+                to: .degraded
+            ),
+            .recover
+        )
+        XCTAssertEqual(
+            StreamRecoveryNetworkTransitionPolicy.action(
+                from: .nominal,
+                to: .degraded
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            StreamRecoveryNetworkTransitionPolicy.action(
+                from: .offline,
+                to: .offline
+            ),
+            .none
+        )
+    }
+
     // Simulates a mid-track `.wifi → .cellular` transition: the item the
     // player was already playing keeps its buffer, but every item the
     // buffer/retry policy sizes *after* the transition requests the
@@ -478,12 +589,35 @@ final class ConnectionStabilityTests: XCTestCase {
 
     func testTransientPolicyRetriesOnlyConnectivityFailures() {
         XCTAssertEqual(RequestRetryPolicy.transient.maximumAttempts, 3)
+        XCTAssertEqual(RequestRetryPolicy.transient.requestTimeout, 30)
         XCTAssertTrue(
             RequestRetryPolicy.transient.shouldRetry(.notConnectedToInternet)
         )
         XCTAssertTrue(RequestRetryPolicy.transient.shouldRetry(.timedOut))
+        XCTAssertTrue(
+            RequestRetryPolicy.transient.shouldRetry(.resourceUnavailable)
+        )
         XCTAssertFalse(
             RequestRetryPolicy.transient.shouldRetry(.userAuthenticationRequired)
+        )
+    }
+
+    func testPlaybackRefreshLeavesRetriesToThePlayerRecoveryLoop() {
+        XCTAssertEqual(
+            RequestRetryPolicy.playbackRecovery.maximumAttempts,
+            1
+        )
+        XCTAssertEqual(
+            RequestRetryPolicy.playbackRecovery.requestTimeout,
+            12
+        )
+        XCTAssertFalse(
+            RequestRetryPolicy.playbackRecovery.shouldRetry(
+                .networkConnectionLost
+            )
+        )
+        XCTAssertFalse(
+            RequestRetryPolicy.playbackRecovery.shouldRetry(statusCode: 503)
         )
     }
 
@@ -509,6 +643,15 @@ final class ConnectionStabilityTests: XCTestCase {
         )
         XCTAssertTrue(
             RequestRetryPolicy.transient.shouldRetry(statusCode: 503)
+        )
+        XCTAssertTrue(
+            RequestRetryPolicy.transient.shouldRetry(statusCode: 502)
+        )
+        XCTAssertFalse(
+            RequestRetryPolicy.transient.shouldRetry(statusCode: 501)
+        )
+        XCTAssertFalse(
+            RequestRetryPolicy.transient.shouldRetry(statusCode: 505)
         )
         XCTAssertFalse(
             RequestRetryPolicy.transient.shouldRetry(statusCode: 401)

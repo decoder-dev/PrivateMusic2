@@ -2,12 +2,23 @@ import Foundation
 
 enum RequestRetryPolicy: Sendable, Equatable {
     case transient
+    /// Stream URL refresh already runs inside AudioPlayer's condition-aware
+    /// same-track recovery loop. Retrying here as well multiplies one outage
+    /// into 24–36 requests and can hold each outer attempt for 90 seconds.
+    case playbackRecovery
     case never
 
     var maximumAttempts: Int {
         switch self {
         case .transient: 3
-        case .never: 1
+        case .playbackRecovery, .never: 1
+        }
+    }
+
+    var requestTimeout: TimeInterval {
+        switch self {
+        case .transient, .never: 30
+        case .playbackRecovery: 12
         }
     }
 
@@ -22,7 +33,8 @@ enum RequestRetryPolicy: Sendable, Equatable {
             .notConnectedToInternet,
             .internationalRoamingOff,
             .callIsActive,
-            .dataNotAllowed
+            .dataNotAllowed,
+            .resourceUnavailable
         ].contains(code)
     }
 
@@ -30,7 +42,7 @@ enum RequestRetryPolicy: Sendable, Equatable {
         guard self == .transient else { return false }
         return statusCode == 408
             || statusCode == 429
-            || statusCode >= 500
+            || [500, 502, 503, 504].contains(statusCode)
     }
 }
 
@@ -85,7 +97,7 @@ actor APIClient {
         var request = URLRequest(
             url: url,
             cachePolicy: .reloadIgnoringLocalCacheData,
-            timeoutInterval: 30
+            timeoutInterval: retryPolicy.requestTimeout
         )
         request.httpMethod = "POST"
         request.setValue(
