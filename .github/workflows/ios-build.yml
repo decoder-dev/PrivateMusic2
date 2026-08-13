@@ -149,6 +149,7 @@ jobs:
           Треки, которые «не грузятся» и «не играют»: play больше не
           тыкает в мёртвый AVPlayerItem, refresh не клинит после
           shuffle, нет URL больше не маскируется под таймаут сети.
+          Share/офлайн demux (MPEG-TS, CMAF) и VK unmask ушли в C.
 
           ## Очередь из Медиатеки
           - У медиатеки свой потолок очереди (до 2000), отдельный от
@@ -215,6 +216,13 @@ jobs:
             смотрит, играл ли кто-то ещё (звонок / Siri)
           - Обрыв маршрута и media-services reset не открывают автоплей
             на динамик iPhone
+
+          ## Share / офлайн (C)
+          - MPEG-TS demux больше не режет Swift `Data` на каждый пакет
+            188 байт (share stitch / офлайн)
+          - Один ISO BMFF walker на CMAF и HLS (`ftyp`/`moov`/`moof`/`mdat`)
+          - VK URL unmask (alphabet / shuffle) на каждом getById
+          - Time observer складывает `loadedTimeRanges` в C, без Array
 
           ## Установка
           IPA не подписан.
