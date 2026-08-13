@@ -4142,29 +4142,36 @@ final class AudioPlayer: ObservableObject {
         markCurrentTrackListenedIfNeeded()
     }
 
-    /// Feed the C buffer-health estimator from `loadedTimeRanges` so a
-    /// future adaptive policy can react to measured underruns, not only
-    /// to the coarse NetworkMonitor state.
+    /// Fold `loadedTimeRanges` in C and feed the rolling buffer-health
+    /// estimator. The observer must not allocate an Array or walk
+    /// `CMTimeSubtract` in Swift.
     private func sampleBufferHealth() {
         guard let item = player.currentItem else { return }
         let ranges = item.loadedTimeRanges
         guard !ranges.isEmpty else { return }
         let position = item.currentTime()
-        var loadedAhead: TimeInterval = 0
-        for value in ranges {
-            let range = value.timeRangeValue
-            let end = CMTimeRangeGetEnd(range)
-            guard CMTIME_IS_NUMERIC(end), CMTIME_IS_NUMERIC(position) else {
-                continue
+        guard CMTIME_IS_NUMERIC(position) else { return }
+        let positionSeconds = CMTimeGetSeconds(position)
+        let count = min(ranges.count, 32)
+        let loadedAhead = withUnsafeTemporaryAllocation(
+            of: Double.self,
+            capacity: count
+        ) { ends -> Double in
+            for index in 0..<count {
+                let end = CMTimeRangeGetEnd(ranges[index].timeRangeValue)
+                ends[index] = CMTIME_IS_NUMERIC(end)
+                    ? CMTimeGetSeconds(end)
+                    : Double.nan
             }
-            let ahead = CMTimeGetSeconds(CMTimeSubtract(end, position))
-            if ahead.isFinite {
-                loadedAhead = max(loadedAhead, ahead)
-            }
+            return pm_buffer_max_loaded_ahead(
+                positionSeconds,
+                ends.baseAddress,
+                Int32(count)
+            )
         }
         bufferHealthEstimator.observe(
             now: ProcessInfo.processInfo.systemUptime,
-            loadedAheadSeconds: max(0, loadedAhead)
+            loadedAheadSeconds: loadedAhead
         )
     }
 
