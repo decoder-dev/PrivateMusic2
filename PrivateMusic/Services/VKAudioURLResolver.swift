@@ -8,10 +8,12 @@ enum VKAudioURLResolver {
     static func resolve(_ url: URL?, userID: Int?) -> URL? {
         guard let url else { return nil }
         let raw = url.absoluteString
-        guard raw.contains("audio_api_unavailable"),
-              let userID,
-              let unmasked = unmask(raw, userID: userID) else {
+        guard raw.contains("audio_api_unavailable") else {
             return url
+        }
+        guard let userID,
+              let unmasked = unmask(raw, userID: userID) else {
+            return nil
         }
         return URL.secureRemoteURL(unmasked)
     }
