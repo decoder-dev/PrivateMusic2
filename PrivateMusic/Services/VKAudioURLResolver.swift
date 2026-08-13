@@ -20,20 +20,20 @@ enum VKAudioURLResolver {
         original: URL
     ) -> URL? {
         guard let base = bytes.baseAddress else { return original }
-        guard let userID else { return original }
         var output = [UInt8](repeating: 0, count: max(bytes.count, 16))
         let written = output.withUnsafeMutableBufferPointer { buffer in
             pm_vk_unmask(
                 base,
                 Int32(bytes.count),
-                Int32(clamping: userID),
+                Int32(clamping: userID ?? 0),
                 buffer.baseAddress,
                 Int32(buffer.count)
             )
         }
-        if written == PM_VK_UNMASK_NOT_MASKED || written <= 0 {
+        if written == PM_VK_UNMASK_NOT_MASKED {
             return original
         }
+        guard written > 0, userID != nil else { return nil }
         let unmasked = String(
             decoding: output.prefix(Int(written)),
             as: UTF8.self

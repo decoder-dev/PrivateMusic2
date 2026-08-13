@@ -33,5 +33,20 @@ final class TrackDecodingTests: XCTestCase {
             "https://example.com/cover.jpg"
         )
     }
+
+    func testMaskedVKStreamFailsClosedWithoutAUserID() {
+        let masked = URL(
+            string: "https://vk.com/mp3/audio_api_unavailable.mp3?extra=abc"
+        )!
+        XCTAssertNil(VKAudioURLResolver.resolve(masked, userID: nil))
+        XCTAssertNil(VKAudioURLResolver.resolve(masked, userID: 1))
+    }
+
+    func testOrdinaryHTTPSStreamPassesThroughTheResolver() {
+        let url = URL(string: "https://example.com/audio.mp3")!
+        XCTAssertEqual(VKAudioURLResolver.resolve(url, userID: nil), url)
+        XCTAssertEqual(VKAudioURLResolver.resolve(url, userID: 7), url)
+        XCTAssertNil(VKAudioURLResolver.resolve(nil, userID: 7))
+    }
 }
 
