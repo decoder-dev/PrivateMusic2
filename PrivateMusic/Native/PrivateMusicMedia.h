@@ -105,6 +105,53 @@ bool pm_iso_contains_types(
     int32_t type_count
 );
 
+#pragma mark - CMAF fragment extract
+
+#define PM_CMAF_OK 0
+#define PM_CMAF_MISSING_MOOF 1
+#define PM_CMAF_MISSING_TFHD 2
+#define PM_CMAF_TRACK_MISMATCH 3
+#define PM_CMAF_MISSING_SIZE 4
+#define PM_CMAF_SAMPLE_OUTSIDE 5
+#define PM_CMAF_MISSING_MDAT 6
+#define PM_CMAF_TRUNCATED 7
+#define PM_CMAF_OVERFLOW 8
+#define PM_CMAF_SAMPLE_LIMIT 65536
+
+typedef struct PMCMAFSample {
+    int32_t offset;
+    int32_t size;
+    int64_t decode_time;
+    int64_t presentation_time;
+    int64_t duration;
+    bool is_sync;
+} pm_cmaf_sample;
+
+typedef struct PMCMAFStatus {
+    int32_t code;
+    uint32_t found_track_id;
+} pm_cmaf_status;
+
+/// One `moof`/`mdat` fragment → sample table into `mdat`. Never allocates.
+/// `out` may be NULL to count. `decode_time` / `has_decode_time` are inout
+/// running DTS when `tfdt` is omitted.
+int32_t pm_cmaf_extract_fragment(
+    const uint8_t *data,
+    int32_t length,
+    uint32_t track_id,
+    uint32_t default_duration,
+    bool has_default_duration,
+    uint32_t default_size,
+    bool has_default_size,
+    uint32_t default_flags,
+    bool has_default_flags,
+    int64_t *decode_time,
+    bool *has_decode_time,
+    pm_cmaf_sample *out,
+    int32_t out_capacity,
+    pm_cmaf_status *status
+);
+
 #pragma mark - VK stream unmask
 
 #define PM_VK_UNMASK_NOT_MASKED 0
