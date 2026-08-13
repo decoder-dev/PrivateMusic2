@@ -278,10 +278,72 @@ for symbol in (
 ):
     if symbol not in native_core_header_text:
         fail(f"PrivateMusicCore.h must expose {symbol}")
+native_media_header = SOURCE / "Native" / "PrivateMusicMedia.h"
+native_media_source = SOURCE / "Native" / "PrivateMusicMedia.c"
+if not native_media_header.is_file() or not native_media_source.is_file():
+    fail("PrivateMusicMedia C module (header + source) must exist under Native/")
+native_media_header_text = native_media_header.read_text(encoding="utf-8")
+for symbol in (
+    "pm_mpegts_extract_audio",
+    "pm_mpegts_parse_packet",
+    "pm_mpegts_parse_pat",
+    "pm_mpegts_parse_pmt",
+    "pm_mpegts_pes_slice",
+    "pm_iso_walk",
+    "pm_iso_contains_types",
+    "pm_vk_unmask",
+    "pm_buffer_max_loaded_ahead",
+):
+    if symbol not in native_media_header_text:
+        fail(f"PrivateMusicMedia.h must expose {symbol}")
+native_media_source_text = native_media_source.read_text(encoding="utf-8")
+if "malloc(" in native_media_source_text:
+    fail("PrivateMusicMedia.c must not malloc on the demux/unmask hot path")
 bridging_header_text = bridging_header.read_text(encoding="utf-8")
-for header in ("PrivateMusicDSP.h", "PrivateMusicCore.h"):
+for header in (
+    "PrivateMusicDSP.h",
+    "PrivateMusicCore.h",
+    "PrivateMusicMedia.h",
+):
     if header not in bridging_header_text:
         fail(f"bridging header must import {header}")
+mpegts_source = (
+    SOURCE / "Services" / "MPEGTSAudioExtractor.swift"
+).read_text(encoding="utf-8")
+for symbol in (
+    "pm_mpegts_extract_audio(",
+    "pm_mpegts_parse_packet(",
+    "pm_mpegts_parse_pat(",
+    "pm_mpegts_parse_pmt(",
+    "pm_mpegts_pes_slice(",
+):
+    if symbol not in mpegts_source:
+        fail(f"MPEGTSAudioExtractor must call {symbol[:-1]}")
+if "func parsePAT" in mpegts_source or "func parsePMT" in mpegts_source:
+    fail("MPEG-TS PAT/PMT must stay in PrivateMusicMedia.c")
+iso_source = (SOURCE / "Services" / "ISOBoxReader.swift").read_text(
+    encoding="utf-8"
+)
+if "pm_iso_walk(" not in iso_source:
+    fail("ISOBoxReader must walk boxes through pm_iso_walk")
+if "func parseBox" in iso_source:
+    fail("ISO BMFF box headers must be parsed in PrivateMusicMedia.c")
+hls_exporter_source = (
+    SOURCE / "Services" / "HLSSegmentExporter.swift"
+).read_text(encoding="utf-8")
+if "pm_iso_contains_types(" not in hls_exporter_source:
+    fail("HLSSegmentExporter must detect ftyp/moov/moof/mdat via pm_iso_contains_types")
+vk_resolver_source = (
+    SOURCE / "Services" / "VKAudioURLResolver.swift"
+).read_text(encoding="utf-8")
+if "pm_vk_unmask(" not in vk_resolver_source:
+    fail("VKAudioURLResolver must unmask through pm_vk_unmask")
+if "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN0PQRSTUVWXYZO123456789+/=" in vk_resolver_source:
+    fail("VK unmask alphabet/decode/shuffle must stay in PrivateMusicMedia.c")
+if "pm_buffer_max_loaded_ahead(" not in audio_player_source:
+    fail("AudioPlayer must fold loadedTimeRanges through pm_buffer_max_loaded_ahead")
+if "CMTimeSubtract(end, position)" in audio_player_source:
+    fail("loadedTimeRanges max-ahead must not be walked in Swift")
 equalizer_source = (SOURCE / "Player" / "EqualizerDSP.swift").read_text(
     encoding="utf-8"
 )
