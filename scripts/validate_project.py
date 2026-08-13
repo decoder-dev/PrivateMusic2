@@ -291,6 +291,7 @@ for symbol in (
     "pm_mpegts_pes_slice",
     "pm_iso_walk",
     "pm_iso_contains_types",
+    "pm_cmaf_extract_fragment",
     "pm_vk_unmask",
     "pm_buffer_max_loaded_ahead",
 ):
@@ -328,6 +329,15 @@ if "pm_iso_walk(" not in iso_source:
     fail("ISOBoxReader must walk boxes through pm_iso_walk")
 if "func parseBox" in iso_source:
     fail("ISO BMFF box headers must be parsed in PrivateMusicMedia.c")
+cmaf_source = (SOURCE / "Services" / "CMAFAudioDemuxer.swift").read_text(
+    encoding="utf-8"
+)
+if "pm_cmaf_extract_fragment(" not in cmaf_source:
+    fail("CMAFAudioDemuxer must extract trun/mdat samples through pm_cmaf_extract_fragment")
+if "func parseTRUN" in cmaf_source or "func parseTFHD" in cmaf_source:
+    fail("CMAF tfhd/trun tables must stay in PrivateMusicMedia.c")
+if "[UInt32?]" in cmaf_source:
+    fail("CMAF fragment extract must not allocate per-sample Swift size/duration arrays")
 hls_exporter_source = (
     SOURCE / "Services" / "HLSSegmentExporter.swift"
 ).read_text(encoding="utf-8")
