@@ -94,6 +94,154 @@ final class PrivateMusicMediaTests: XCTestCase {
         XCTAssertEqual(pm_mpegts_packet_size(nil, 0), 0)
     }
 
+    func testCMAFFragmentExtractsSamplesWithoutSwiftTRUNArrays() throws {
+        let payload = Data("AAAABBBB".utf8)
+        let fragment = Self.cmafFragment(
+            samples: [(1024, 4), (1024, 4)],
+            payload: payload
+        )
+        var decodeTime: Int64? = nil
+        let samples = try CMAFAudioDemuxer().parseFragment(
+            fragment,
+            initialization: Self.audioInit(),
+            decodeTime: &decodeTime
+        )
+        XCTAssertEqual(samples.count, 2)
+        XCTAssertEqual(samples[0].data, Data("AAAA".utf8))
+        XCTAssertEqual(samples[1].data, Data("BBBB".utf8))
+        XCTAssertEqual(samples[0].decodeTime, 1000)
+        XCTAssertEqual(samples[1].decodeTime, 2024)
+        XCTAssertEqual(samples[0].duration, 1024)
+        XCTAssertEqual(decodeTime, 3048)
+    }
+
+    func testCMAFFragmentContinuesDecodeTimeWhenTFDTIsOmitted() throws {
+        let fragment = Self.cmafFragment(
+            decodeTime: nil,
+            samples: [(1024, 4)],
+            payload: Data("AAAA".utf8)
+        )
+        var decodeTime: Int64? = 5000
+        let samples = try CMAFAudioDemuxer().parseFragment(
+            fragment,
+            initialization: Self.audioInit(),
+            decodeTime: &decodeTime
+        )
+        XCTAssertEqual(samples.first?.decodeTime, 5000)
+        XCTAssertEqual(decodeTime, 6024)
+    }
+
+    func testCMAFFragmentRejectsTrackMismatchAndMissingSize() {
+        let payload = Data("AAAA".utf8)
+        let mismatched = Self.cmafFragment(
+            trackID: 2,
+            samples: [(1024, 4)],
+            payload: payload
+        )
+        var decodeTime: Int64? = nil
+        XCTAssertThrowsError(
+            try CMAFAudioDemuxer().parseFragment(
+                mismatched,
+                initialization: Self.audioInit(trackID: 1),
+                decodeTime: &decodeTime
+            )
+        ) { error in
+            guard case CMAFAudioDemuxer.CMAFError.trackIDMismatch(
+                expected: 1,
+                found: 2
+            ) = error else {
+                return XCTFail("expected track mismatch, got \(error)")
+            }
+        }
+
+        let noSize = Self.cmafFragment(
+            samples: [(1024, 4)],
+            payload: payload,
+            trunFlags: 0x000001
+        )
+        XCTAssertThrowsError(
+            try CMAFAudioDemuxer().parseFragment(
+                noSize,
+                initialization: Self.audioInit(),
+                decodeTime: &decodeTime
+            )
+        ) { error in
+            guard case CMAFAudioDemuxer.CMAFError.missingSampleSize = error else {
+                return XCTFail("expected missing size, got \(error)")
+            }
+        }
+    }
+
+    private static func audioInit(trackID: UInt32 = 1) -> CMAFAudioDemuxer.InitializationInfo {
+        CMAFAudioDemuxer.InitializationInfo(
+            trackID: trackID,
+            timescale: 44_100,
+            sampleRate: 44_100,
+            channelCount: 2,
+            codec: .aac,
+            audioSpecificConfig: nil,
+            elementaryStreamDescriptor: nil,
+            defaultSampleDuration: nil,
+            defaultSampleSize: nil,
+            defaultSampleFlags: nil
+        )
+    }
+
+    private static func u32(_ value: UInt32) -> Data {
+        var bigEndian = value.bigEndian
+        return Data(bytes: &bigEndian, count: 4)
+    }
+
+    private static func u64(_ value: UInt64) -> Data {
+        var bigEndian = value.bigEndian
+        return Data(bytes: &bigEndian, count: 8)
+    }
+
+    private static func cmafFragment(
+        trackID: UInt32 = 1,
+        decodeTime: UInt64? = 1000,
+        samples: [(UInt32, UInt32)],
+        payload: Data,
+        trunFlags: UInt32 = 0x000001 | 0x000100 | 0x000200
+    ) -> Data {
+        let mfhd = isoBox("mfhd", payload: u32(0))
+        let tfhd = isoBox("tfhd", payload: u32(0x00020000) + u32(trackID))
+        var inner = tfhd
+        if let decodeTime {
+            inner.append(
+                isoBox("tfdt", payload: u32(0x01000000) + u64(decodeTime))
+            )
+        }
+        var entries = Data()
+        for sample in samples {
+            if trunFlags & 0x000100 != 0 {
+                entries.append(u32(sample.0))
+            }
+            if trunFlags & 0x000200 != 0 {
+                entries.append(u32(sample.1))
+            }
+        }
+        let sampleCount = UInt32(max(samples.count, 1))
+        func trunBox(dataOffset: UInt32) -> Data {
+            var body = u32(trunFlags) + u32(sampleCount)
+            if trunFlags & 0x000001 != 0 {
+                body.append(u32(dataOffset))
+            }
+            body.append(entries)
+            return isoBox("trun", payload: body)
+        }
+        let placeholder = isoBox(
+            "moof",
+            payload: mfhd + isoBox("traf", payload: inner + trunBox(dataOffset: 0))
+        )
+        let dataOffset = UInt32(placeholder.count + 8)
+        let moof = isoBox(
+            "moof",
+            payload: mfhd + isoBox("traf", payload: inner + trunBox(dataOffset: dataOffset))
+        )
+        return moof + isoBox("mdat", payload: payload)
+    }
+
     private static func isoBox(_ type: String, payload: Data) -> Data {
         precondition(type.utf8.count == 4)
         var size = UInt32(8 + payload.count).bigEndian

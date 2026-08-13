@@ -588,6 +588,16 @@ static uint64_t pm_iso_load_u64(const uint8_t *data, int32_t offset) {
         | (uint64_t)pm_iso_load_u32(data, offset + 4);
 }
 
+static int32_t pm_iso_load_i32(const uint8_t *data, int32_t offset) {
+    return (int32_t)pm_iso_load_u32(data, offset);
+}
+
+static uint32_t pm_iso_load_u24(const uint8_t *data, int32_t offset) {
+    return ((uint32_t)data[offset] << 16)
+        | ((uint32_t)data[offset + 1] << 8)
+        | (uint32_t)data[offset + 2];
+}
+
 static bool pm_iso_parse_box(
     const uint8_t *data,
     int32_t length,
@@ -803,6 +813,613 @@ bool pm_iso_contains_types(
         offset += (int32_t)box_size;
     }
     return remaining_count == 0;
+}
+
+#pragma mark - CMAF fragment extract
+
+#define PM_ISO_TYPE(a, b, c, d) \
+    (((uint32_t)(unsigned char)(a) << 24) \
+        | ((uint32_t)(unsigned char)(b) << 16) \
+        | ((uint32_t)(unsigned char)(c) << 8) \
+        | (uint32_t)(unsigned char)(d))
+
+#define PM_ISO_MOOF PM_ISO_TYPE('m', 'o', 'o', 'f')
+#define PM_ISO_MDAT PM_ISO_TYPE('m', 'd', 'a', 't')
+#define PM_ISO_TRAF PM_ISO_TYPE('t', 'r', 'a', 'f')
+#define PM_ISO_TFHD PM_ISO_TYPE('t', 'f', 'h', 'd')
+#define PM_ISO_TFDT PM_ISO_TYPE('t', 'f', 'd', 't')
+#define PM_ISO_TRUN PM_ISO_TYPE('t', 'r', 'u', 'n')
+
+#define PM_CMAF_BOX_CAP 64
+
+static void pm_cmaf_fail(pm_cmaf_status *status, int32_t code, uint32_t track) {
+    if (status == NULL) {
+        return;
+    }
+    status->code = code;
+    status->found_track_id = track;
+}
+
+static bool pm_cmaf_fits(
+    int32_t offset,
+    int32_t bytes,
+    int32_t limit
+) {
+    return offset >= 0 && bytes >= 0 && offset <= limit - bytes;
+}
+
+static int32_t pm_cmaf_payload_start(const pm_iso_box *box) {
+    return box->start + box->header_size;
+}
+
+static int32_t pm_cmaf_payload_end(const pm_iso_box *box) {
+    return box->start + box->size;
+}
+
+static const pm_iso_box *pm_cmaf_find_box(
+    const pm_iso_box *boxes,
+    int32_t count,
+    uint32_t type
+) {
+    for (int32_t index = 0; index < count; index++) {
+        if (boxes[index].type == type) {
+            return &boxes[index];
+        }
+    }
+    return NULL;
+}
+
+static int32_t pm_cmaf_walk_children(
+    const uint8_t *data,
+    int32_t length,
+    const pm_iso_box *parent,
+    pm_iso_box *out,
+    int32_t out_capacity,
+    pm_cmaf_status *status
+) {
+    pm_iso_status walk = {PM_ISO_OK, 0, 0};
+    const int32_t count = pm_iso_walk(
+        data,
+        length,
+        pm_cmaf_payload_start(parent),
+        pm_cmaf_payload_end(parent),
+        out,
+        out_capacity,
+        &walk
+    );
+    if (walk.code != PM_ISO_OK && count == 0) {
+        pm_cmaf_fail(
+            status,
+            walk.code == PM_ISO_TRUNCATED
+                ? PM_CMAF_TRUNCATED
+                : PM_CMAF_MISSING_MOOF,
+            0
+        );
+        return -1;
+    }
+    return count;
+}
+
+typedef struct {
+    uint32_t track_id;
+    uint32_t default_duration;
+    uint32_t default_size;
+    uint32_t default_flags;
+    bool has_duration;
+    bool has_size;
+    bool has_flags;
+} pm_cmaf_tfhd;
+
+static bool pm_cmaf_parse_tfhd(
+    const uint8_t *data,
+    int32_t length,
+    const pm_iso_box *box,
+    pm_cmaf_tfhd *out,
+    pm_cmaf_status *status
+) {
+    const int32_t body = pm_cmaf_payload_start(box);
+    const int32_t end = pm_cmaf_payload_end(box);
+    if (!pm_cmaf_fits(body, 8, end) || !pm_cmaf_fits(body, 8, length)) {
+        pm_cmaf_fail(status, PM_CMAF_TRUNCATED, 0);
+        return false;
+    }
+    const uint32_t flags = pm_iso_load_u24(data, body + 1);
+    int32_t offset = body + 8;
+    pm_cmaf_tfhd header;
+    header.track_id = pm_iso_load_u32(data, body + 4);
+    header.default_duration = 0;
+    header.default_size = 0;
+    header.default_flags = 0;
+    header.has_duration = false;
+    header.has_size = false;
+    header.has_flags = false;
+    if (flags & 0x000001) {
+        if (!pm_cmaf_fits(offset, 8, end)) {
+            pm_cmaf_fail(status, PM_CMAF_TRUNCATED, header.track_id);
+            return false;
+        }
+        offset += 8;
+    }
+    if (flags & 0x000002) {
+        if (!pm_cmaf_fits(offset, 4, end)) {
+            pm_cmaf_fail(status, PM_CMAF_TRUNCATED, header.track_id);
+            return false;
+        }
+        offset += 4;
+    }
+    if (flags & 0x000008) {
+        if (!pm_cmaf_fits(offset, 4, end)) {
+            pm_cmaf_fail(status, PM_CMAF_TRUNCATED, header.track_id);
+            return false;
+        }
+        header.default_duration = pm_iso_load_u32(data, offset);
+        header.has_duration = true;
+        offset += 4;
+    }
+    if (flags & 0x000010) {
+        if (!pm_cmaf_fits(offset, 4, end)) {
+            pm_cmaf_fail(status, PM_CMAF_TRUNCATED, header.track_id);
+            return false;
+        }
+        header.default_size = pm_iso_load_u32(data, offset);
+        header.has_size = true;
+        offset += 4;
+    }
+    if (flags & 0x000020) {
+        if (!pm_cmaf_fits(offset, 4, end)) {
+            pm_cmaf_fail(status, PM_CMAF_TRUNCATED, header.track_id);
+            return false;
+        }
+        header.default_flags = pm_iso_load_u32(data, offset);
+        header.has_flags = true;
+    }
+    *out = header;
+    return true;
+}
+
+static bool pm_cmaf_parse_tfdt(
+    const uint8_t *data,
+    int32_t length,
+    const pm_iso_box *box,
+    int64_t *out,
+    pm_cmaf_status *status
+) {
+    const int32_t body = pm_cmaf_payload_start(box);
+    const int32_t end = pm_cmaf_payload_end(box);
+    if (!pm_cmaf_fits(body, 5, end) || !pm_cmaf_fits(body, 5, length)) {
+        pm_cmaf_fail(status, PM_CMAF_TRUNCATED, 0);
+        return false;
+    }
+    const uint8_t version = data[body];
+    if (version == 1) {
+        if (!pm_cmaf_fits(body + 4, 8, end)) {
+            pm_cmaf_fail(status, PM_CMAF_TRUNCATED, 0);
+            return false;
+        }
+        *out = (int64_t)pm_iso_load_u64(data, body + 4);
+        return true;
+    }
+    if (!pm_cmaf_fits(body + 4, 4, end)) {
+        pm_cmaf_fail(status, PM_CMAF_TRUNCATED, 0);
+        return false;
+    }
+    *out = (int64_t)pm_iso_load_u32(data, body + 4);
+    return true;
+}
+
+static bool pm_cmaf_store_sample(
+    pm_cmaf_sample *out,
+    int32_t out_capacity,
+    int32_t *written,
+    pm_cmaf_sample sample,
+    pm_cmaf_status *status
+) {
+    if (*written >= PM_CMAF_SAMPLE_LIMIT) {
+        pm_cmaf_fail(status, PM_CMAF_OVERFLOW, 0);
+        return false;
+    }
+    if (out != NULL) {
+        if (*written >= out_capacity) {
+            pm_cmaf_fail(status, PM_CMAF_OVERFLOW, 0);
+            return false;
+        }
+        out[*written] = sample;
+    }
+    *written += 1;
+    return true;
+}
+
+static bool pm_cmaf_extract_trun(
+    const uint8_t *data,
+    int32_t length,
+    const pm_iso_box *trun_box,
+    const pm_iso_box *moof,
+    int32_t mdat_start,
+    int32_t mdat_end,
+    const pm_cmaf_tfhd *tfhd,
+    uint32_t default_duration,
+    bool has_default_duration,
+    uint32_t default_size,
+    bool has_default_size,
+    uint32_t default_flags,
+    bool has_default_flags,
+    int64_t *decode_time,
+    pm_cmaf_sample *out,
+    int32_t out_capacity,
+    int32_t *written,
+    pm_cmaf_status *status
+) {
+    const int32_t body = pm_cmaf_payload_start(trun_box);
+    const int32_t end = pm_cmaf_payload_end(trun_box);
+    if (!pm_cmaf_fits(body, 8, end) || !pm_cmaf_fits(body, 8, length)) {
+        pm_cmaf_fail(status, PM_CMAF_TRUNCATED, 0);
+        return false;
+    }
+    const uint32_t flags = pm_iso_load_u24(data, body + 1);
+    const int32_t sample_count = (int32_t)pm_iso_load_u32(data, body + 4);
+    if (sample_count <= 0) {
+        pm_cmaf_fail(status, PM_CMAF_MISSING_MDAT, 0);
+        return false;
+    }
+    int32_t offset = body + 8;
+    bool has_data_offset = false;
+    int32_t data_offset = 0;
+    bool has_first_flags = false;
+    uint32_t first_flags = 0;
+    if (flags & 0x000001) {
+        if (!pm_cmaf_fits(offset, 4, end)) {
+            pm_cmaf_fail(status, PM_CMAF_TRUNCATED, 0);
+            return false;
+        }
+        data_offset = pm_iso_load_i32(data, offset);
+        has_data_offset = true;
+        offset += 4;
+    }
+    if (flags & 0x000004) {
+        if (!pm_cmaf_fits(offset, 4, end)) {
+            pm_cmaf_fail(status, PM_CMAF_TRUNCATED, 0);
+            return false;
+        }
+        first_flags = pm_iso_load_u32(data, offset);
+        has_first_flags = true;
+        offset += 4;
+    }
+
+    int32_t row = 0;
+    if (flags & 0x000100) {
+        row += 4;
+    }
+    if (flags & 0x000200) {
+        row += 4;
+    }
+    if (flags & 0x000400) {
+        row += 4;
+    }
+    if (flags & 0x000800) {
+        row += 4;
+    }
+    if (row > 0) {
+        if (sample_count > (end - offset) / row) {
+            pm_cmaf_fail(status, PM_CMAF_TRUNCATED, 0);
+            return false;
+        }
+    }
+
+    uint32_t first_size = 0;
+    bool has_first_size = false;
+    if (flags & 0x000200) {
+        int32_t size_at = offset;
+        if (flags & 0x000100) {
+            size_at += 4;
+        }
+        first_size = pm_iso_load_u32(data, size_at);
+        has_first_size = true;
+    } else if (tfhd->has_size) {
+        first_size = tfhd->default_size;
+        has_first_size = true;
+    } else if (has_default_size) {
+        first_size = default_size;
+        has_first_size = true;
+    }
+
+    const int32_t moof_based = moof->start + (has_data_offset ? data_offset : 0);
+    const bool start_inside = moof_based >= mdat_start && moof_based < mdat_end;
+    const bool first_fits = has_first_size
+        && (int64_t)moof_based + (int64_t)first_size <= mdat_end;
+    int32_t sample_offset = start_inside && first_fits ? moof_based : mdat_start;
+
+    int32_t cursor = offset;
+    for (int32_t index = 0; index < sample_count; index++) {
+        uint32_t duration = 0;
+        bool has_duration = false;
+        uint32_t size = 0;
+        bool has_size = false;
+        uint32_t sample_flags = 0;
+        bool has_flags = false;
+        int32_t cts = 0;
+        if (flags & 0x000100) {
+            duration = pm_iso_load_u32(data, cursor);
+            has_duration = true;
+            cursor += 4;
+        }
+        if (flags & 0x000200) {
+            size = pm_iso_load_u32(data, cursor);
+            has_size = true;
+            cursor += 4;
+        }
+        if (flags & 0x000400) {
+            sample_flags = pm_iso_load_u32(data, cursor);
+            has_flags = true;
+            cursor += 4;
+        }
+        if (flags & 0x000800) {
+            cts = pm_iso_load_i32(data, cursor);
+            cursor += 4;
+        }
+        if (!has_duration) {
+            if (tfhd->has_duration) {
+                duration = tfhd->default_duration;
+                has_duration = true;
+            } else if (has_default_duration) {
+                duration = default_duration;
+                has_duration = true;
+            }
+        }
+        if (!has_size) {
+            if (tfhd->has_size) {
+                size = tfhd->default_size;
+                has_size = true;
+            } else if (has_default_size) {
+                size = default_size;
+                has_size = true;
+            }
+        }
+        if (!has_size || size == 0) {
+            pm_cmaf_fail(status, PM_CMAF_MISSING_SIZE, 0);
+            return false;
+        }
+        const int32_t start = sample_offset;
+        if (size > (uint32_t)INT32_MAX
+            || start < mdat_start
+            || (int64_t)start + (int64_t)size > mdat_end) {
+            pm_cmaf_fail(status, PM_CMAF_SAMPLE_OUTSIDE, 0);
+            return false;
+        }
+
+        bool is_sync = true;
+        if (index == 0 && has_first_flags) {
+            is_sync = (first_flags & 0x00010000) == 0;
+        } else if (has_flags) {
+            is_sync = (sample_flags & 0x00010000) == 0;
+        } else if (tfhd->has_flags) {
+            is_sync = (tfhd->default_flags & 0x00010000) == 0;
+        } else if (has_default_flags) {
+            is_sync = (default_flags & 0x00010000) == 0;
+        }
+
+        pm_cmaf_sample sample;
+        sample.offset = start;
+        sample.size = (int32_t)size;
+        sample.decode_time = *decode_time;
+        sample.presentation_time = *decode_time + (int64_t)cts;
+        sample.duration = has_duration ? (int64_t)duration : 0;
+        sample.is_sync = is_sync;
+        if (!pm_cmaf_store_sample(out, out_capacity, written, sample, status)) {
+            return false;
+        }
+        *decode_time += sample.duration;
+        sample_offset += (int32_t)size;
+    }
+    return true;
+}
+
+static bool pm_cmaf_extract_traf(
+    const uint8_t *data,
+    int32_t length,
+    const pm_iso_box *traf,
+    const pm_iso_box *moof,
+    int32_t mdat_start,
+    int32_t mdat_end,
+    uint32_t track_id,
+    uint32_t default_duration,
+    bool has_default_duration,
+    uint32_t default_size,
+    bool has_default_size,
+    uint32_t default_flags,
+    bool has_default_flags,
+    int64_t *decode_time,
+    bool *has_decode_time,
+    pm_cmaf_sample *out,
+    int32_t out_capacity,
+    int32_t *written,
+    pm_cmaf_status *status
+) {
+    pm_iso_box children[PM_CMAF_BOX_CAP];
+    const int32_t child_count = pm_cmaf_walk_children(
+        data,
+        length,
+        traf,
+        children,
+        PM_CMAF_BOX_CAP,
+        status
+    );
+    if (child_count < 0) {
+        return false;
+    }
+    const pm_iso_box *tfhd_box = pm_cmaf_find_box(
+        children,
+        child_count,
+        PM_ISO_TFHD
+    );
+    if (tfhd_box == NULL) {
+        pm_cmaf_fail(status, PM_CMAF_MISSING_TFHD, 0);
+        return false;
+    }
+    pm_cmaf_tfhd tfhd;
+    if (!pm_cmaf_parse_tfhd(data, length, tfhd_box, &tfhd, status)) {
+        return false;
+    }
+    if (tfhd.track_id != track_id) {
+        pm_cmaf_fail(status, PM_CMAF_TRACK_MISMATCH, tfhd.track_id);
+        return false;
+    }
+
+    const pm_iso_box *tfdt_box = pm_cmaf_find_box(
+        children,
+        child_count,
+        PM_ISO_TFDT
+    );
+    if (tfdt_box != NULL) {
+        if (!pm_cmaf_parse_tfdt(data, length, tfdt_box, decode_time, status)) {
+            return false;
+        }
+        *has_decode_time = true;
+    } else if (!*has_decode_time) {
+        *decode_time = 0;
+        *has_decode_time = true;
+    }
+
+    bool saw_trun = false;
+    const int32_t before = *written;
+    for (int32_t index = 0; index < child_count; index++) {
+        if (children[index].type != PM_ISO_TRUN) {
+            continue;
+        }
+        saw_trun = true;
+        if (!pm_cmaf_extract_trun(
+                data,
+                length,
+                &children[index],
+                moof,
+                mdat_start,
+                mdat_end,
+                &tfhd,
+                default_duration,
+                has_default_duration,
+                default_size,
+                has_default_size,
+                default_flags,
+                has_default_flags,
+                decode_time,
+                out,
+                out_capacity,
+                written,
+                status
+            )) {
+            return false;
+        }
+    }
+    if (!saw_trun || *written == before) {
+        pm_cmaf_fail(status, PM_CMAF_MISSING_MDAT, 0);
+        return false;
+    }
+    return true;
+}
+
+int32_t pm_cmaf_extract_fragment(
+    const uint8_t *data,
+    int32_t length,
+    uint32_t track_id,
+    uint32_t default_duration,
+    bool has_default_duration,
+    uint32_t default_size,
+    bool has_default_size,
+    uint32_t default_flags,
+    bool has_default_flags,
+    int64_t *decode_time,
+    bool *has_decode_time,
+    pm_cmaf_sample *out,
+    int32_t out_capacity,
+    pm_cmaf_status *status
+) {
+    pm_cmaf_status local = {PM_CMAF_OK, 0};
+    pm_cmaf_status *st = status != NULL ? status : &local;
+    st->code = PM_CMAF_OK;
+    st->found_track_id = 0;
+    if (data == NULL || length < 16 || decode_time == NULL
+        || has_decode_time == NULL) {
+        pm_cmaf_fail(st, PM_CMAF_MISSING_MOOF, 0);
+        return 0;
+    }
+
+    pm_iso_box top[PM_CMAF_BOX_CAP];
+    pm_iso_status walk = {PM_ISO_OK, 0, 0};
+    const int32_t top_count = pm_iso_walk(
+        data,
+        length,
+        0,
+        length,
+        top,
+        PM_CMAF_BOX_CAP,
+        &walk
+    );
+    const pm_iso_box *moof = pm_cmaf_find_box(top, top_count, PM_ISO_MOOF);
+    const pm_iso_box *mdat = pm_cmaf_find_box(top, top_count, PM_ISO_MDAT);
+    if (moof == NULL) {
+        pm_cmaf_fail(st, PM_CMAF_MISSING_MOOF, 0);
+        return 0;
+    }
+    if (mdat == NULL) {
+        pm_cmaf_fail(st, PM_CMAF_MISSING_MDAT, 0);
+        return 0;
+    }
+
+    pm_iso_box moof_children[PM_CMAF_BOX_CAP];
+    const int32_t moof_count = pm_cmaf_walk_children(
+        data,
+        length,
+        moof,
+        moof_children,
+        PM_CMAF_BOX_CAP,
+        st
+    );
+    if (moof_count < 0) {
+        return 0;
+    }
+
+    const int32_t mdat_start = pm_cmaf_payload_start(mdat);
+    const int32_t mdat_end = pm_cmaf_payload_end(mdat);
+    int32_t written = 0;
+    int64_t running = *decode_time;
+    bool has_running = *has_decode_time;
+    bool saw_traf = false;
+    for (int32_t index = 0; index < moof_count; index++) {
+        if (moof_children[index].type != PM_ISO_TRAF) {
+            continue;
+        }
+        saw_traf = true;
+        if (!pm_cmaf_extract_traf(
+                data,
+                length,
+                &moof_children[index],
+                moof,
+                mdat_start,
+                mdat_end,
+                track_id,
+                default_duration,
+                has_default_duration,
+                default_size,
+                has_default_size,
+                default_flags,
+                has_default_flags,
+                &running,
+                &has_running,
+                out,
+                out_capacity,
+                &written,
+                st
+            )) {
+            return 0;
+        }
+    }
+    if (!saw_traf || written == 0) {
+        pm_cmaf_fail(st, PM_CMAF_MISSING_MDAT, 0);
+        return 0;
+    }
+    *decode_time = running;
+    *has_decode_time = has_running;
+    st->code = PM_CMAF_OK;
+    return written;
 }
 
 #pragma mark - VK unmask
