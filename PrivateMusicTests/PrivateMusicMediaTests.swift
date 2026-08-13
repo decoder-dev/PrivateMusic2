@@ -73,7 +73,7 @@ final class PrivateMusicMediaTests: XCTestCase {
             VKAudioURLResolver.resolve(masked, userID: 12_345)?.absoluteString,
             "https://psv4.userapi.com/audio.mp3"
         )
-        XCTAssertEqual(VKAudioURLResolver.resolve(masked, userID: nil), masked)
+        XCTAssertEqual(VKAudioURLResolver.resolve(masked, userID: nil), nil)
         XCTAssertNil(VKAudioURLResolver.resolve(masked, userID: 1))
     }
 
