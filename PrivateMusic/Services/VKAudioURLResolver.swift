@@ -1,90 +1,43 @@
 import Foundation
 
 enum VKAudioURLResolver {
-    private static let alphabet = Array(
-        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN0PQRSTUVWXYZO123456789+/="
-    )
-
     static func resolve(_ url: URL?, userID: Int?) -> URL? {
         guard let url else { return nil }
         let raw = url.absoluteString
-        guard raw.contains("audio_api_unavailable"),
-              let userID,
-              let unmasked = unmask(raw, userID: userID) else {
-            return url
-        }
-        return URL.secureRemoteURL(unmasked)
+        return raw.utf8.withContiguousStorageIfAvailable { buffer -> URL? in
+            unmask(bytes: buffer, userID: userID, original: url)
+        } ?? {
+            let bytes = Array(raw.utf8)
+            return bytes.withUnsafeBufferPointer { buffer in
+                unmask(bytes: buffer, userID: userID, original: url)
+            }
+        }()
     }
 
-    private static func unmask(_ value: String, userID: Int) -> String? {
-        guard let encoded = value.components(
-            separatedBy: "?extra="
-        ).dropFirst().first else {
-            return nil
-        }
-        let parts = encoded.components(separatedBy: "#")
-        guard parts.count >= 2,
-              let urlBytes = decode(parts[0]),
-              let keyBytes = decode(parts[1]),
-              let key = String(bytes: keyBytes, encoding: .utf8)?
-                .components(separatedBy: "\u{000B}")
-                .dropFirst()
-                .first,
-              let parsedKey = Int(key) else {
-            return nil
-        }
-
-        var characters = Array(
-            String(decoding: urlBytes, as: UTF8.self)
-        )
-        guard !characters.isEmpty else { return nil }
-
-        var state = parsedKey ^ userID
-        let length = characters.count
-        var indexes = [Int](repeating: 0, count: length)
-        if length > 0 {
-            for position in stride(
-                from: length - 1,
-                through: 0,
-                by: -1
-            ) {
-                state = ((length * (position + 1)) ^ (state + position))
-                    % length
-                indexes[position] = state
-            }
-        }
-        if length > 1 {
-            for position in 1..<length {
-                let target = indexes[length - 1 - position]
-                characters.swapAt(position, target)
-            }
-        }
-        return String(characters)
-    }
-
-    private static func decode(_ value: String) -> [UInt8]? {
-        var output: [UInt8] = []
-        var accumulator = 0
-        var position = 0
-
-        for character in value {
-            guard let index = alphabet.firstIndex(of: character) else {
-                continue
-            }
-            let raw = alphabet.distance(
-                from: alphabet.startIndex,
-                to: index
+    private static func unmask(
+        bytes: UnsafeBufferPointer<UInt8>,
+        userID: Int?,
+        original: URL
+    ) -> URL? {
+        guard let base = bytes.baseAddress else { return original }
+        guard let userID else { return original }
+        var output = [UInt8](repeating: 0, count: max(bytes.count, 16))
+        let written = output.withUnsafeMutableBufferPointer { buffer in
+            pm_vk_unmask(
+                base,
+                Int32(bytes.count),
+                Int32(clamping: userID),
+                buffer.baseAddress,
+                Int32(buffer.count)
             )
-            accumulator = position % 4 == 0
-                ? raw
-                : 64 * accumulator + raw
-            let previousPosition = position
-            position += 1
-            if previousPosition % 4 != 0 {
-                let shift = (-2 * position) & 6
-                output.append(UInt8((accumulator >> shift) & 255))
-            }
         }
-        return output.isEmpty ? nil : output
+        if written == PM_VK_UNMASK_NOT_MASKED || written <= 0 {
+            return original
+        }
+        let unmasked = String(
+            decoding: output.prefix(Int(written)),
+            as: UTF8.self
+        )
+        return URL.secureRemoteURL(unmasked)
     }
 }

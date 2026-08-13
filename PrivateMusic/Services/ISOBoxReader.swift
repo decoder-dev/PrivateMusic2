@@ -28,8 +28,6 @@ struct ISOBoxReader {
         }
     }
 
-    private let containerLimit = 4096
-
     // MARK: - Public API
 
     /// Iterates through every top-level box in the data.
@@ -133,94 +131,76 @@ struct ISOBoxReader {
     // MARK: - Internals
 
     private func walk(from start: Int, to end: Int) throws -> [ISOBox] {
-        guard start >= 0, start <= end, end <= data.count else {
-            throw ISOBoxReaderError.truncated(
-                expected: max(0, end - start),
-                available: max(0, data.count - start)
-            )
-        }
-        var result: [ISOBox] = []
-        var offset = start
-        var count = 0
-        while offset + 8 <= end, count < containerLimit {
-            count += 1
-            let box = try parseBox(at: offset, within: end)
-            result.append(box)
-            offset += box.range.count
-            if box.range.count == 0 { break }
-        }
-        return result
-    }
-
-    private func parseBox(at offset: Int, within limit: Int) throws -> ISOBox {
-        try require(offset: offset, byteCount: 8)
-        let size32 = try readUInt32BE(at: offset)
-        let type = asciiType(at: offset + 4)
-
-        if size32 == 0 {
-            // Box runs to the end of the containing buffer.
-            guard offset + 8 <= limit else {
+        try data.withUnsafeBytes { raw in
+            guard let base = raw.bindMemory(to: UInt8.self).baseAddress else {
                 throw ISOBoxReaderError.truncated(
-                    expected: 8,
-                    available: max(0, limit - offset)
+                    expected: max(0, end - start),
+                    available: 0
                 )
             }
-            return ISOBox(type: type, range: offset..<limit, headerSize: 8)
-        }
-        if size32 == 1 {
-            // Extended 64-bit size: [size=1][type][size64]...
-            try require(offset: offset, byteCount: 16)
-            let size64 = try readUInt64BE(at: offset + 8)
-            guard size64 <= UInt64(Int.max), size64 >= UInt64(16) else {
-                throw ISOBoxReaderError.invalidBox("invalid \(type) size \(size64)")
+            var status = pm_iso_status(code: 0, expected: 0, available: 0)
+            let total = pm_iso_walk(
+                base,
+                Int32(data.count),
+                Int32(start),
+                Int32(end),
+                nil,
+                0,
+                &status
+            )
+            try Self.throwIfNeeded(status)
+            guard total > 0 else { return [] }
+            var boxes = [pm_iso_box](
+                repeating: pm_iso_box(
+                    type: 0,
+                    start: 0,
+                    size: 0,
+                    header_size: 0
+                ),
+                count: Int(total)
+            )
+            let count = boxes.withUnsafeMutableBufferPointer { buffer in
+                pm_iso_walk(
+                    base,
+                    Int32(data.count),
+                    Int32(start),
+                    Int32(end),
+                    buffer.baseAddress,
+                    Int32(buffer.count),
+                    &status
+                )
             }
-            return try finishBox(
-                type: type,
-                offset: offset,
-                size: Int(size64),
-                headerSize: 16,
-                within: limit
-            )
+            try Self.throwIfNeeded(status)
+            return boxes.prefix(Int(count)).map { box in
+                ISOBox(
+                    type: Self.fourCCString(box.type),
+                    range: Int(box.start)..<(Int(box.start) + Int(box.size)),
+                    headerSize: Int(box.header_size)
+                )
+            }
         }
-
-        let size = Int(size32)
-        guard size >= 8 else {
-            throw ISOBoxReaderError.invalidBox("\(type) declares \(size) bytes")
-        }
-        return try finishBox(
-            type: type,
-            offset: offset,
-            size: size,
-            headerSize: 8,
-            within: limit
-        )
     }
 
-    private func asciiType(at offset: Int) -> String {
-        guard offset + 4 <= data.count else { return "" }
-        let bytes = data.subdata(in: offset..<offset + 4)
-        return String(bytes: bytes, encoding: .ascii) ?? ""
-    }
-
-    private func finishBox(
-        type: String,
-        offset: Int,
-        size: Int,
-        headerSize: Int,
-        within limit: Int
-    ) throws -> ISOBox {
-        let remaining = limit &- offset
-        guard remaining >= 0, size <= remaining else {
+    private static func throwIfNeeded(_ status: pm_iso_status) throws {
+        if status.code == PM_ISO_TRUNCATED {
             throw ISOBoxReaderError.truncated(
-                expected: size,
-                available: max(0, remaining)
+                expected: Int(status.expected),
+                available: Int(status.available)
             )
         }
-        return ISOBox(
-            type: type,
-            range: offset..<(offset + size),
-            headerSize: headerSize
-        )
+        if status.code == PM_ISO_INVALID {
+            throw ISOBoxReaderError.invalidBox("malformed")
+        }
+    }
+
+    private static func fourCCString(_ type: UInt32) -> String {
+        let bytes = [
+            UInt8((type >> 24) & 0xFF),
+            UInt8((type >> 16) & 0xFF),
+            UInt8((type >> 8) & 0xFF),
+            UInt8(type & 0xFF)
+        ]
+        return String(bytes: bytes, encoding: .ascii) ?? ""
     }
 
     private func require(offset: Int, byteCount: Int) throws {
