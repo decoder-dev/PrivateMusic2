@@ -472,10 +472,21 @@ final class ConnectionStabilityTests: XCTestCase {
             StreamURLLoadPolicy.shouldRetryMissingStream(attempts: 2)
         )
         XCTAssertTrue(
-            StreamFailureRetryPolicy.shouldAdvance(
+            StreamURLLoadPolicy.shouldAdvanceAfterMissingStream(
                 attempts: 2,
-                error: StreamURLLoadPolicy.missingStreamError,
                 advanceOnPlaybackError: true
+            )
+        )
+        XCTAssertFalse(
+            StreamURLLoadPolicy.shouldAdvanceAfterMissingStream(
+                attempts: 1,
+                advanceOnPlaybackError: true
+            )
+        )
+        XCTAssertFalse(
+            StreamURLLoadPolicy.shouldAdvanceAfterMissingStream(
+                attempts: 2,
+                advanceOnPlaybackError: false
             )
         )
         XCTAssertFalse(
@@ -485,6 +496,12 @@ final class ConnectionStabilityTests: XCTestCase {
             StreamURLLoadPolicy.isPlayableRemoteURL(
                 URL(string: "https://example.com/audio.mp3")
             )
+        )
+        XCTAssertTrue(
+            StreamURLLoadPolicy.isPlayableRemoteURL(
+                URL(fileURLWithPath: "/tmp/silent.wav")
+            ),
+            "local fixtures and offline files must still be playable"
         )
         XCTAssertFalse(
             StreamURLLoadPolicy.isPlayableRemoteURL(
