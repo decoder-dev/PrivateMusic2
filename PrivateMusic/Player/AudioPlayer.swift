@@ -980,12 +980,19 @@ enum StreamURLLoadPolicy {
 
     static func isPlayableRemoteURL(_ url: URL?) -> Bool {
         guard let url else { return false }
-        guard !isMaskedVKStream(url) else { return false }
-        return url.scheme?.lowercased() == "https"
+        return !isMaskedVKStream(url)
     }
 
     static func shouldRetryMissingStream(attempts: Int) -> Bool {
         attempts <= 1
+    }
+
+    static func shouldAdvanceAfterMissingStream(
+        attempts: Int,
+        advanceOnPlaybackError: Bool
+    ) -> Bool {
+        guard advanceOnPlaybackError else { return false }
+        return attempts > 1
     }
 
     /// Restored snapshots often still have a concrete https URL. Play that
@@ -2179,9 +2186,8 @@ final class AudioPlayer: ObservableObject {
                     )
                     return
                 }
-                if StreamFailureRetryPolicy.shouldAdvance(
+                if StreamURLLoadPolicy.shouldAdvanceAfterMissingStream(
                     attempts: streamRecoveryAttempts,
-                    error: StreamURLLoadPolicy.missingStreamError,
                     advanceOnPlaybackError: advanceOnPlaybackError
                 ),
                    advancePastFailedTrackIfPossible() {
