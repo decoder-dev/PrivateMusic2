@@ -376,6 +376,271 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    func testResumeReloadsAFailedOrMissingItemInsteadOfPlayingIt() {
+        XCTAssertEqual(
+            PlaybackResumePolicy.action(
+                requiresStreamRefresh: false,
+                hasPlayableStream: true,
+                canRefreshStream: true,
+                hasCurrentItem: true,
+                itemFailed: true,
+                loadedTrackMatchesCurrent: true
+            ),
+            .refreshStream,
+            "play after a failed item must fetch a new stream, not play() the dead item"
+        )
+        XCTAssertEqual(
+            PlaybackResumePolicy.action(
+                requiresStreamRefresh: false,
+                hasPlayableStream: true,
+                canRefreshStream: false,
+                hasCurrentItem: true,
+                itemFailed: true,
+                loadedTrackMatchesCurrent: true
+            ),
+            .reload
+        )
+        XCTAssertEqual(
+            PlaybackResumePolicy.action(
+                requiresStreamRefresh: false,
+                hasPlayableStream: true,
+                canRefreshStream: true,
+                hasCurrentItem: false,
+                itemFailed: false,
+                loadedTrackMatchesCurrent: true
+            ),
+            .reload
+        )
+        XCTAssertEqual(
+            PlaybackResumePolicy.action(
+                requiresStreamRefresh: false,
+                hasPlayableStream: true,
+                canRefreshStream: true,
+                hasCurrentItem: true,
+                itemFailed: false,
+                loadedTrackMatchesCurrent: false
+            ),
+            .reload
+        )
+        XCTAssertEqual(
+            PlaybackResumePolicy.action(
+                requiresStreamRefresh: true,
+                hasPlayableStream: false,
+                canRefreshStream: true,
+                hasCurrentItem: false,
+                itemFailed: false,
+                loadedTrackMatchesCurrent: false
+            ),
+            .refreshStream
+        )
+        XCTAssertEqual(
+            PlaybackResumePolicy.action(
+                requiresStreamRefresh: true,
+                hasPlayableStream: true,
+                canRefreshStream: true,
+                hasCurrentItem: false,
+                itemFailed: false,
+                loadedTrackMatchesCurrent: false
+            ),
+            .reload,
+            "a restored https URL must play immediately instead of waiting "
+                + "on getById"
+        )
+        XCTAssertEqual(
+            PlaybackResumePolicy.action(
+                requiresStreamRefresh: false,
+                hasPlayableStream: true,
+                canRefreshStream: true,
+                hasCurrentItem: true,
+                itemFailed: false,
+                loadedTrackMatchesCurrent: true
+            ),
+            .playExisting
+        )
+    }
+
+    func testMissingStreamIsNotAConnectivityTimeout() {
+        XCTAssertFalse(
+            StreamFailureRetryPolicy.isConnectivityFailure(
+                StreamURLLoadPolicy.missingStreamError
+            )
+        )
+        XCTAssertTrue(
+            StreamURLLoadPolicy.shouldRetryMissingStream(attempts: 1)
+        )
+        XCTAssertFalse(
+            StreamURLLoadPolicy.shouldRetryMissingStream(attempts: 2)
+        )
+        XCTAssertTrue(
+            StreamURLLoadPolicy.shouldAdvanceAfterMissingStream(
+                attempts: 2,
+                advanceOnPlaybackError: true
+            )
+        )
+        XCTAssertFalse(
+            StreamURLLoadPolicy.shouldAdvanceAfterMissingStream(
+                attempts: 1,
+                advanceOnPlaybackError: true
+            )
+        )
+        XCTAssertFalse(
+            StreamURLLoadPolicy.shouldAdvanceAfterMissingStream(
+                attempts: 2,
+                advanceOnPlaybackError: false
+            )
+        )
+        XCTAssertFalse(
+            StreamURLLoadPolicy.isPlayableRemoteURL(nil)
+        )
+        XCTAssertTrue(
+            StreamURLLoadPolicy.isPlayableRemoteURL(
+                URL(string: "https://example.com/audio.mp3")
+            )
+        )
+        XCTAssertTrue(
+            StreamURLLoadPolicy.isPlayableRemoteURL(
+                URL(fileURLWithPath: "/tmp/silent.wav")
+            ),
+            "local fixtures and offline files must still be playable"
+        )
+        XCTAssertFalse(
+            StreamURLLoadPolicy.isPlayableRemoteURL(
+                URL(string: "https://vk.com/mp3/audio_api_unavailable.mp3")
+            )
+        )
+        XCTAssertFalse(
+            StreamURLLoadPolicy.shouldBlockRestoreOnRefresh(
+                isRestored: true,
+                hasOfflineURL: false,
+                streamURL: URL(string: "https://example.com/audio.mp3")
+            ),
+            "a restored https URL must play immediately instead of waiting "
+                + "on getById"
+        )
+        XCTAssertTrue(
+            StreamURLLoadPolicy.shouldBlockRestoreOnRefresh(
+                isRestored: true,
+                hasOfflineURL: false,
+                streamURL: nil
+            )
+        )
+        XCTAssertFalse(
+            StreamURLLoadPolicy.shouldBlockRestoreOnRefresh(
+                isRestored: true,
+                hasOfflineURL: true,
+                streamURL: nil
+            )
+        )
+    }
+
+    func testStreamRefreshKeepsTheSlotWhenShuffleMovesTheIndex() {
+        XCTAssertTrue(
+            StreamRefreshApplyPolicy.shouldApply(
+                requestedTrackID: "7_42",
+                currentTrackID: "7_42"
+            )
+        )
+        XCTAssertFalse(
+            StreamRefreshApplyPolicy.shouldApply(
+                requestedTrackID: "7_42",
+                currentTrackID: "7_99"
+            )
+        )
+        XCTAssertTrue(
+            StreamRefreshApplyPolicy.shouldClearSlot(
+                taskGeneration: 4,
+                currentGeneration: 4
+            )
+        )
+        XCTAssertFalse(
+            StreamRefreshApplyPolicy.shouldClearSlot(
+                taskGeneration: 4,
+                currentGeneration: 5
+            ),
+            "a superseded refresh must not nil a newer task's slot"
+        )
+    }
+
+    func testStallRecoveryDoesNotRunWhileOffline() {
+        XCTAssertFalse(
+            StallRecoveryEligibilityPolicy.shouldRecover(
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                condition: .offline
+            )
+        )
+        XCTAssertTrue(
+            StallRecoveryEligibilityPolicy.shouldRecover(
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                condition: .nominal
+            )
+        )
+        XCTAssertFalse(
+            StallRecoveryEligibilityPolicy.shouldRecover(
+                playbackIntended: false,
+                hasCurrentTrack: true,
+                condition: .degraded
+            )
+        )
+    }
+
+    func testNetworkReturnKickReplacesFailureBackoff() {
+        XCTAssertTrue(
+            NetworkReturnKickPolicy.shouldCancelFailureBackoff(
+                from: .offline,
+                to: .nominal
+            )
+        )
+        XCTAssertFalse(
+            NetworkReturnKickPolicy.shouldCancelFailureBackoff(
+                from: .nominal,
+                to: .degraded
+            )
+        )
+        XCTAssertTrue(
+            NetworkReturnKickPolicy.shouldKick(
+                condition: .nominal,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isAudioInterrupted: false,
+                isPlaying: false,
+                isBuffering: true
+            )
+        )
+        XCTAssertFalse(
+            NetworkReturnKickPolicy.shouldKick(
+                condition: .offline,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isAudioInterrupted: false,
+                isPlaying: false,
+                isBuffering: true
+            )
+        )
+        XCTAssertFalse(
+            NetworkReturnKickPolicy.shouldKick(
+                condition: .nominal,
+                playbackIntended: true,
+                hasCurrentTrack: true,
+                isAudioInterrupted: false,
+                isPlaying: true,
+                isBuffering: false
+            ),
+            "healthy buffered playback must be left alone on reconnect"
+        )
+        XCTAssertFalse(
+            NetworkReturnKickPolicy.shouldKick(
+                condition: .nominal,
+                playbackIntended: false,
+                hasCurrentTrack: true,
+                isAudioInterrupted: false,
+                isPlaying: false,
+                isBuffering: true
+            )
+        )
+    }
+
     // Simulates a mid-track `.wifi → .cellular` transition: the item the
     // player was already playing keeps its buffer, but every item the
     // buffer/retry policy sizes *after* the transition requests the
@@ -619,6 +884,10 @@ final class ConnectionStabilityTests: XCTestCase {
         XCTAssertFalse(
             RequestRetryPolicy.playbackRecovery.shouldRetry(statusCode: 503)
         )
+        XCTAssertFalse(
+            RequestRetryPolicy.playbackRecovery.waitsForConnectivity
+        )
+        XCTAssertTrue(RequestRetryPolicy.transient.waitsForConnectivity)
     }
 
     func testMutationPolicyNeverRetries() {

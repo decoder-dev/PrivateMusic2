@@ -115,37 +115,120 @@ struct CMAFAudioDemuxer {
 
     /// Parses one `moof`/`mdat` fragment into compressed AAC samples.
     /// `runEnd` supplies a running decode timestamp for streams that omit
-    /// `tfdt` on later fragments.
+    /// `tfdt` on later fragments. `tfhd`/`trun`/`mdat` slicing runs in
+    /// `PrivateMusicMedia.c` so a fragment does not allocate per-sample
+    /// Swift arrays.
     func parseFragment(
         _ data: Data,
         initialization: InitializationInfo,
         decodeTime continuesFrom: inout Int64?
     ) throws -> [CompressedSample] {
-        let reader = ISOBoxReader(data)
-        let boxes = try reader.boxes()
-        guard let moof = boxes.first(where: { $0.type == "moof" }),
-              let mdat = boxes.first(where: { $0.type == "mdat" }) else {
+        try data.withUnsafeBytes { raw in
+            guard let base = raw.bindMemory(to: UInt8.self).baseAddress else {
+                throw CMAFError.missingMediaData
+            }
+            var decodeTime = continuesFrom ?? 0
+            var hasDecodeTime = continuesFrom != nil
+            let incomingDecodeTime = decodeTime
+            let incomingHasDecodeTime = hasDecodeTime
+            var status = pm_cmaf_status(code: 0, found_track_id: 0)
+            let total = pm_cmaf_extract_fragment(
+                base,
+                Int32(data.count),
+                initialization.trackID,
+                initialization.defaultSampleDuration ?? 0,
+                initialization.defaultSampleDuration != nil,
+                initialization.defaultSampleSize ?? 0,
+                initialization.defaultSampleSize != nil,
+                initialization.defaultSampleFlags ?? 0,
+                initialization.defaultSampleFlags != nil,
+                &decodeTime,
+                &hasDecodeTime,
+                nil,
+                0,
+                &status
+            )
+            try Self.throwIfNeeded(
+                status,
+                expectedTrackID: initialization.trackID
+            )
+            guard total > 0 else { throw CMAFError.missingMediaData }
+            var table = [pm_cmaf_sample](
+                repeating: pm_cmaf_sample(
+                    offset: 0,
+                    size: 0,
+                    decode_time: 0,
+                    presentation_time: 0,
+                    duration: 0,
+                    is_sync: false
+                ),
+                count: Int(total)
+            )
+            decodeTime = incomingDecodeTime
+            hasDecodeTime = incomingHasDecodeTime
+            let count = table.withUnsafeMutableBufferPointer { buffer in
+                pm_cmaf_extract_fragment(
+                    base,
+                    Int32(data.count),
+                    initialization.trackID,
+                    initialization.defaultSampleDuration ?? 0,
+                    initialization.defaultSampleDuration != nil,
+                    initialization.defaultSampleSize ?? 0,
+                    initialization.defaultSampleSize != nil,
+                    initialization.defaultSampleFlags ?? 0,
+                    initialization.defaultSampleFlags != nil,
+                    &decodeTime,
+                    &hasDecodeTime,
+                    buffer.baseAddress,
+                    Int32(buffer.count),
+                    &status
+                )
+            }
+            try Self.throwIfNeeded(
+                status,
+                expectedTrackID: initialization.trackID
+            )
+            guard count > 0 else { throw CMAFError.missingMediaData }
+            if hasDecodeTime {
+                continuesFrom = decodeTime
+            }
+            return table.prefix(Int(count)).map { sample in
+                let start = Int(sample.offset)
+                let end = start + Int(sample.size)
+                return CompressedSample(
+                    data: data.subdata(in: start..<end),
+                    decodeTime: sample.decode_time,
+                    presentationTime: sample.presentation_time,
+                    duration: sample.duration,
+                    isSync: sample.is_sync
+                )
+            }
+        }
+    }
+
+    private static func throwIfNeeded(
+        _ status: pm_cmaf_status,
+        expectedTrackID: UInt32
+    ) throws {
+        switch status.code {
+        case PM_CMAF_OK:
+            return
+        case PM_CMAF_MISSING_TFHD:
+            throw CMAFError.missingTrackFragmentHeader
+        case PM_CMAF_TRACK_MISMATCH:
+            throw CMAFError.trackIDMismatch(
+                expected: expectedTrackID,
+                found: status.found_track_id
+            )
+        case PM_CMAF_MISSING_SIZE:
+            throw CMAFError.missingSampleSize
+        case PM_CMAF_SAMPLE_OUTSIDE:
+            throw CMAFError.sampleOutsideMediaData
+        case PM_CMAF_MISSING_MDAT, PM_CMAF_OVERFLOW:
+            throw CMAFError.missingMediaData
+        default:
             throw CMAFError.missingMovieBox
         }
-
-        var samples: [CompressedSample] = []
-        for traf in try children(of: moof, in: reader)
-        where traf.type == "traf" {
-            samples.append(
-                contentsOf: try parseTraf(
-                    traf,
-                    in: reader,
-                    moofBox: moof,
-                    data: data,
-                    initialization: initialization,
-                    decodeTime: &continuesFrom
-                )
-            )
-        }
-        guard !samples.isEmpty else {
-            throw CMAFError.missingMediaData
-        }
-        return samples
     }
 
     // MARK: - Parsing internals
@@ -339,233 +422,6 @@ struct CMAFAudioDemuxer {
         )
     }
 
-    // MARK: - Fragment internals
-
-    private struct TFHD {
-        let trackID: UInt32
-        let defaultSampleDuration: UInt32?
-        let defaultSampleSize: UInt32?
-        let defaultSampleFlags: UInt32?
-        let defaultBaseIsMoof: Bool
-    }
-
-    private struct TRUN {
-        let dataOffset: Int64?
-        let firstSampleFlags: UInt32?
-        let durations: [UInt32?]
-        let sizes: [UInt32?]
-        let sync: [Bool?]
-        let cts: [Int32]
-    }
-
-    private func parseTraf(
-        _ traf: ISOBoxReader.ISOBox,
-        in reader: ISOBoxReader,
-        moofBox: ISOBoxReader.ISOBox,
-        data: Data,
-        initialization: InitializationInfo,
-        decodeTime: inout Int64?
-    ) throws -> [CompressedSample] {
-        let children = try self.children(of: traf, in: reader)
-        guard let tfhdBox = children.first(where: { $0.type == "tfhd" }) else {
-            throw CMAFError.missingTrackFragmentHeader
-        }
-        let tfhd = try parseTFHD(tfhdBox, reader: reader)
-        guard tfhd.trackID == initialization.trackID else {
-            throw CMAFError.trackIDMismatch(
-                expected: initialization.trackID,
-                found: tfhd.trackID
-            )
-        }
-
-        var decodeTimeValue: Int64?
-        if let tfdt = children.first(where: { $0.type == "tfdt" }) {
-            decodeTimeValue = try tfdtBaseTime(tfdt, reader: reader)
-        } else if let running = decodeTime {
-            decodeTimeValue = running
-        }
-        let baseDecodeTime = decodeTimeValue ?? 0
-        var decodeTime: Int64 = baseDecodeTime
-
-        // For our real HLS CMAF, every fragment is a moof followed by an mdat.
-        // Data offsets inside trun are relative to the byte-basis advertised
-        // by tfhd; when tfhd-default-base-is-moof (0x20000) is set,
-        // mdat.payload starts at moof + moof.len + 8.
-        let fragmentData = data
-        guard let mdat = try ISOBoxReader(fragmentData).boxes()
-            .first(where: { $0.type == "mdat" }) else {
-            throw CMAFError.missingMediaData
-        }
-        let mdatStart = mdat.payloadRange.lowerBound
-
-        var samples: [CompressedSample] = []
-        for trunBox in children where trunBox.type == "trun" {
-            let trun = try parseTRUN(trunBox, reader: reader)
-
-            let moofBasedStart = moofBox.range.lowerBound + (trun.dataOffset.map(Int.init) ?? 0)
-            // Use whichever anchor lands inside mdat; if both do, prefer the
-            // tfhd-implied one (authoritative for baseDataOffsetPresent).
-            let startInsideMoof = moofBasedStart >= mdatStart
-                && moofBasedStart < mdat.payloadRange.upperBound
-            let firstSampleSize = trun.sizes[safe: 0] ?? nil
-            let startInsideMoofNextSample: Bool
-            if let firstSize = firstSampleSize {
-                startInsideMoofNextSample = moofBasedStart + Int(firstSize) <= mdat.payloadRange.upperBound
-            } else {
-                startInsideMoofNextSample = false
-            }
-            let useMoofAnchor = startInsideMoof && startInsideMoofNextSample
-            var sampleOffset = useMoofAnchor ? moofBasedStart : mdatStart
-
-            for index in 0..<max(trun.durations.count, trun.sizes.count) {
-                let duration = trun.durations[safe: index] ?? nil
-                    ?? tfhd.defaultSampleDuration
-                    ?? initialization.defaultSampleDuration
-                let size = trun.sizes[safe: index] ?? nil
-                    ?? tfhd.defaultSampleSize
-                    ?? initialization.defaultSampleSize
-                guard let size else {
-                    throw CMAFError.missingSampleSize
-                }
-                guard size > 0 else {
-                    throw CMAFError.missingSampleSize
-                }
-
-                let start = sampleOffset
-                let end = start + Int(size)
-                guard start >= mdatStart, end <= mdat.payloadRange.upperBound
-                else {
-                    throw CMAFError.sampleOutsideMediaData
-                }
-
-                let isSync: Bool
-                if let sync = trun.sync[safe: index] ?? nil {
-                    isSync = sync
-                } else if let flags = tfhd.defaultSampleFlags {
-                    isSync = flags & 0x00010000 == 0
-                } else {
-                    isSync = true
-                }
-
-                let presentationTime = decodeTime + Int64(trun.cts[safe: index] ?? 0)
-                samples.append(CompressedSample(
-                    data: try reader.readBytes(at: start..<end),
-                    decodeTime: decodeTime,
-                    presentationTime: presentationTime,
-                    duration: Int64(duration ?? 0),
-                    isSync: isSync
-                ))
-                decodeTime += Int64(duration ?? 0)
-                sampleOffset += Int(size)
-            }
-        }
-
-        guard !samples.isEmpty else {
-            throw CMAFError.missingMediaData
-        }
-        return samples
-    }
-
-    private func parseTFHD(
-        _ box: ISOBoxReader.ISOBox,
-        reader: ISOBoxReader
-    ) throws -> TFHD {
-        let body = box.payloadRange.lowerBound
-        let flags = try reader.readUInt24BE(at: body + 1)
-        var offset = body + 8
-        let trackID = try reader.readUInt32BE(at: body + 4)
-
-        if flags & 0x000001 != 0 { offset += 8 }   // base-data-offset
-        if flags & 0x000002 != 0 { offset += 4 }   // sample-description-index
-        let defaultDuration = flags & 0x000008 != 0
-            ? try reader.readUInt32BE(at: offset) : nil
-        if flags & 0x000008 != 0 { offset += 4 }
-        let defaultSize = flags & 0x000010 != 0
-            ? try reader.readUInt32BE(at: offset) : nil
-        if flags & 0x000010 != 0 { offset += 4 }
-        let defaultFlags = flags & 0x000020 != 0
-            ? try reader.readUInt32BE(at: offset) : nil
-
-        return TFHD(
-            trackID: trackID,
-            defaultSampleDuration: defaultDuration,
-            defaultSampleSize: defaultSize,
-            defaultSampleFlags: defaultFlags,
-            defaultBaseIsMoof: flags & 0x020000 != 0
-        )
-    }
-
-    private func tfdtBaseTime(
-        _ box: ISOBoxReader.ISOBox,
-        reader: ISOBoxReader
-    ) throws -> Int64 {
-        let body = box.payloadRange.lowerBound
-        let version = try reader.readUInt8(at: body)
-        return version == 1
-            ? Int64(try reader.readUInt64BE(at: body + 4))
-            : Int64(try reader.readUInt32BE(at: body + 4))
-    }
-
-    private func parseTRUN(
-        _ box: ISOBoxReader.ISOBox,
-        reader: ISOBoxReader
-    ) throws -> TRUN {
-        let body = box.payloadRange.lowerBound
-        let flags = try reader.readUInt24BE(at: body + 1)
-        let sampleCount = Int(try reader.readUInt32BE(at: body + 4))
-        guard sampleCount > 0 else { throw CMAFError.missingMediaData }
-        var offset = body + 8
-
-        let dataOffset: Int64? = flags & 0x000001 != 0
-            ? Int64(try reader.readInt32BE(at: offset)) : nil
-        if flags & 0x000001 != 0 { offset += 4 }
-        let firstFlags: UInt32? = flags & 0x000004 != 0
-            ? try reader.readUInt32BE(at: offset) : nil
-        if flags & 0x000004 != 0 { offset += 4 }
-
-        var durations: [UInt32?] = []
-        var sizes: [UInt32?] = []
-        var sync: [Bool?] = []
-        var cts: [Int32] = []
-        for _ in 0..<sampleCount {
-            if flags & 0x000100 != 0 {
-                durations.append(try reader.readUInt32BE(at: offset))
-                offset += 4
-            } else {
-                durations.append(nil)
-            }
-            if flags & 0x000200 != 0 {
-                sizes.append(try reader.readUInt32BE(at: offset))
-                offset += 4
-            } else {
-                sizes.append(nil)
-            }
-            if flags & 0x000400 != 0 {
-                sync.append(try reader.readUInt32BE(at: offset) & 0x10000 == 0)
-                offset += 4
-            } else {
-                sync.append(nil)
-            }
-            if flags & 0x000800 != 0 {
-                cts.append(try reader.readInt32BE(at: offset))
-                offset += 4
-            } else {
-                cts.append(0)
-            }
-        }
-        if let firstFlags, !sync.isEmpty {
-            sync[0] = firstFlags & 0x10000 == 0
-        }
-        return TRUN(
-            dataOffset: dataOffset,
-            firstSampleFlags: firstFlags,
-            durations: durations,
-            sizes: sizes,
-            sync: sync,
-            cts: cts
-        )
-    }
-
     // MARK: - Shared box helpers
 
     private func children(
@@ -586,10 +442,4 @@ struct CMAFAudioDemuxer {
 
 private extension CMAFAudioDemuxer.InitializationInfo {
     var config: CMAFAudioDemuxer.InitializationInfo { self }
-}
-
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
-    }
 }
