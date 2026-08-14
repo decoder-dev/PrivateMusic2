@@ -64,6 +64,16 @@ if (watch / executable_name).stat().st_size == 0:
     fail("Watch app executable is empty")
 
 for key in ("CFBundleShortVersionString", "CFBundleVersion"):
+    value = watch_info.get(key)
+    if not value or not str(value).strip():
+        fail(f"Watch Info.plist missing {key}")
+
+if not phone_info.get("CFBundleShortVersionString") or not phone_info.get(
+    "CFBundleVersion"
+):
+    fail("iOS Info.plist is missing CFBundleShortVersionString or CFBundleVersion")
+
+for key in ("CFBundleShortVersionString", "CFBundleVersion"):
     if phone_info.get(key) != watch_info.get(key):
         fail(f"iOS and Watch {key} values differ")
 
