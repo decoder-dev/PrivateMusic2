@@ -38,8 +38,12 @@ final class WatchRemoteViewModel: NSObject {
         session.sendMessage(
             envelope.message,
             replyHandler: { [weak self] context in
+                let parsed = Self.parseReply(context)
                 Task { @MainActor in
-                    self?.applyReply(context)
+                    self?.applyReply(
+                        state: parsed.state,
+                        accepted: parsed.accepted
+                    )
                 }
             },
             errorHandler: { [weak self] _ in
@@ -50,16 +54,15 @@ final class WatchRemoteViewModel: NSObject {
         )
     }
 
-    private func receive(_ context: [String: Any]) {
-        guard let state = WatchRemoteState(context: context) else { return }
+    private func receive(_ state: WatchRemoteState) {
         self.state = state
     }
 
-    private func applyReply(_ context: [String: Any]) {
-        if let state = WatchRemoteState(context: context) {
+    private func applyReply(state: WatchRemoteState?, accepted: Bool?) {
+        if let state {
             self.state = state
         }
-        guard context[WatchRemoteMessageKey.accepted] as? Bool == true else {
+        guard accepted == true else {
             showCommandFailure()
             return
         }
@@ -76,6 +79,14 @@ final class WatchRemoteViewModel: NSObject {
             self?.commandFailed = false
         }
     }
+    private static nonisolated func parseReply(
+        _ context: [String: Any]
+    ) -> (state: WatchRemoteState?, accepted: Bool?) {
+        (
+            WatchRemoteState(context: context),
+            context[WatchRemoteMessageKey.accepted] as? Bool
+        )
+    }
 }
 
 extension WatchRemoteViewModel: WCSessionDelegate {
@@ -84,12 +95,12 @@ extension WatchRemoteViewModel: WCSessionDelegate {
         activationDidCompleteWith activationState: WCSessionActivationState,
         error: Error?
     ) {
+        let reachable = session.isReachable
+        let state = WatchRemoteState(context: session.receivedApplicationContext)
         Task { @MainActor [weak self] in
-            self?.isReachable = session.isReachable
-            if let state = WatchRemoteState(
-                context: session.receivedApplicationContext
-            ) {
-                self?.state = state
+            self?.isReachable = reachable
+            if let state {
+                self?.receive(state)
             }
         }
     }
@@ -98,14 +109,18 @@ extension WatchRemoteViewModel: WCSessionDelegate {
         _ session: WCSession,
         didReceiveApplicationContext applicationContext: [String: Any]
     ) {
+        guard let state = WatchRemoteState(context: applicationContext) else {
+            return
+        }
         Task { @MainActor [weak self] in
-            self?.receive(applicationContext)
+            self?.receive(state)
         }
     }
 
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
+        let reachable = session.isReachable
         Task { @MainActor [weak self] in
-            self?.isReachable = session.isReachable
+            self?.isReachable = reachable
         }
     }
 
