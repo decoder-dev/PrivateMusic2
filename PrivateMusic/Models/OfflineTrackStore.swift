@@ -171,14 +171,15 @@ struct StorageUsage: Sendable {
 }
 
 @MainActor
-final class OfflineTrackStore: ObservableObject {
+@Observable
+final class OfflineTrackStore {
     static let maximumTrackSize: Int64 = 150_000_000
     static let minimumLibrarySize: Int64 = 5_000_000_000
     static let maximumLibrarySize: Int64 = 100_000_000_000
 
-    @Published private(set) var records: [String: OfflineTrackRecord] = [:]
-    @Published private(set) var downloadingTrackIDs: Set<String> = []
-    @Published private(set) var storageLimitBytes =
+    private(set) var records: [String: OfflineTrackRecord] = [:]
+    private(set) var downloadingTrackIDs: Set<String> = []
+    private(set) var storageLimitBytes =
         OfflineTrackStore.minimumLibrarySize
 
     private let fileManager: FileManager

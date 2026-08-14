@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MixFeedbackManagerView: View {
-    @EnvironmentObject private var mixFeedbackStore: MixFeedbackStore
+    @Environment(MixFeedbackStore.self) private var mixFeedbackStore
     @State private var showsClearConfirm = false
 
     var body: some View {

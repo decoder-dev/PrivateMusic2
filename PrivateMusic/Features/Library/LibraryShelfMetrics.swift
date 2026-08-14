@@ -40,6 +40,30 @@ enum LibraryShelfMetrics {
     /// Share of a card occupied by artwork. Guards the regression: a shelf
     /// dominated by its caption is the text-tab layout users reported.
     static var artworkHeightRatio: CGFloat { artworkSize / cardHeight }
+
+    /// 136 on phone; larger on iPad via AdaptiveLayout (~18% width, cap 220).
+    static func artworkSize(for width: CGFloat) -> CGFloat {
+        guard AdaptiveLayout.isRegularWidth(width) else {
+            return artworkSize
+        }
+        return AdaptiveLayout.shelfCardWidth(
+            for: width,
+            compactMax: artworkSize,
+            regularMax: AdaptiveLayout.regularCardWidthCap
+        )
+    }
+
+    static func cardWidth(for width: CGFloat) -> CGFloat {
+        artworkSize(for: width)
+    }
+
+    static func cardHeight(for width: CGFloat) -> CGFloat {
+        artworkSize(for: width) + captionSpacing + captionHeight
+    }
+
+    static func shelfHeight(for width: CGFloat) -> CGFloat {
+        cardHeight(for: width) + shelfPadding * 2
+    }
 }
 
 extension View {

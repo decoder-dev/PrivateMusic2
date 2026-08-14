@@ -1,9 +1,10 @@
 import SwiftUI
 
 struct MixFiltersSettingsView: View {
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppSettings.self) private var settings
 
     var body: some View {
+        @Bindable var settings = settings
         Form {
             Section {
                 Picker(

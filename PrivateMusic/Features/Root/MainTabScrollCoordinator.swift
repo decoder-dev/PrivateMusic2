@@ -23,8 +23,9 @@ enum TabReselectionPolicy {
 }
 
 @MainActor
-final class MainTabScrollCoordinator: ObservableObject {
-    @Published private(set) var request: MainTabScrollRequest?
+@Observable
+final class MainTabScrollCoordinator {
+    private(set) var request: MainTabScrollRequest?
 
     func scrollToTop(_ destination: MainTabScrollDestination) {
         request = MainTabScrollRequest(

@@ -24,7 +24,7 @@ enum Brand {
 }
 
 struct PrimaryButtonStyle: ButtonStyle {
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {

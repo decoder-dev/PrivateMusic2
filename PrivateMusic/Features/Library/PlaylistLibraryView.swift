@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct PlaylistLibraryView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
-    @StateObject private var model = PlaylistLibraryViewModel()
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
+    @State private var model = PlaylistLibraryViewModel()
     @State private var showingEditor = false
     @State private var editingPlaylist: Playlist?
 
