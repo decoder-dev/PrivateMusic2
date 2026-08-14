@@ -1,8 +1,9 @@
 import Foundation
 
 @MainActor
-final class MusicLibraryStore: ObservableObject {
-    @Published private(set) var signatures = Set<String>()
+@Observable
+final class MusicLibraryStore {
+    private(set) var signatures = Set<String>()
     private var tracksBySignature: [String: Track] = [:]
     private var refreshGeneration = 0
     /// Tracks the user unliked since the last full walk. VK keeps serving

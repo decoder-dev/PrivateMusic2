@@ -1,17 +1,18 @@
 import Foundation
 
 @MainActor
-final class TrackCollectionViewModel: ObservableObject {
+@Observable
+final class TrackCollectionViewModel {
     enum Source {
         case library
         case recommendations
     }
 
-    @Published private(set) var tracks: [Track] = []
-    @Published private(set) var isLoading = false
-    @Published private(set) var isLoadingMore = false
-    @Published private(set) var totalCount = 0
-    @Published var errorMessage: String?
+    private(set) var tracks: [Track] = []
+    private(set) var isLoading = false
+    private(set) var isLoadingMore = false
+    private(set) var totalCount = 0
+    var errorMessage: String?
 
     /// Offset of the first page the list has not loaded yet, for the
     /// playback continuation that keeps a queue going in list order past the

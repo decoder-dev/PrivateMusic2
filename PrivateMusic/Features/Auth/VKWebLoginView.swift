@@ -3,7 +3,7 @@ import WebKit
 
 struct VKWebLoginView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var model = VKWebLoginModel()
+    @State private var model = VKWebLoginModel()
     @State private var isCompleting = false
     @State private var errorMessage: String?
 
@@ -207,12 +207,13 @@ private struct VKWebView: UIViewRepresentable {
 }
 
 @MainActor
-private final class VKWebLoginModel: NSObject, ObservableObject {
-    @Published private(set) var isLoading = true
-    @Published private(set) var loadError: String?
-    @Published private(set) var canGoBack = false
-    @Published private(set) var displayHost = "vk.ru"
-    @Published private(set) var sessionRevision = 0
+@Observable
+private final class VKWebLoginModel: NSObject {
+    private(set) var isLoading = true
+    private(set) var loadError: String?
+    private(set) var canGoBack = false
+    private(set) var displayHost = "vk.ru"
+    private(set) var sessionRevision = 0
 
     let webView: WKWebView
     private let authService = VKWebAuthService()

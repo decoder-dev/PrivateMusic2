@@ -20,14 +20,14 @@ struct SearchView: View {
         }
     }
 
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var settings: AppSettings
-    @EnvironmentObject private var libraryStore: MusicLibraryStore
-    @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
-    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(AppSettings.self) private var settings
+    @Environment(MusicLibraryStore.self) private var libraryStore
+    @Environment(LikedAlbumsStore.self) private var likedAlbumsStore
+    @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @StateObject private var model = SearchViewModel()
+    @State private var model = SearchViewModel()
     @State private var scope: Scope = .tracks
     @State private var pendingLibraryTrackIDs = Set<String>()
     @State private var pendingAlbumIDs = Set<String>()
@@ -86,7 +86,7 @@ struct SearchView: View {
     private var searchScrollRoot: some View {
         ScrollViewReader { proxy in
             searchLayout(showsCustomField: showsInlineSearchField)
-                .onReceive(scrollCoordinator.$request) { request in
+                .onChange(of: scrollCoordinator.request) { _, request in
                     guard request?.destination == .search else { return }
                     isSearchFocused = false
                     isSystemSearchPresented = false

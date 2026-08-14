@@ -127,34 +127,35 @@ enum EqualizerPreset: String, CaseIterable, Identifiable {
 }
 
 @MainActor
-final class AppSettings: ObservableObject {
-    @Published var theme: AppTheme {
+@Observable
+final class AppSettings {
+    var theme: AppTheme {
         didSet { defaults.set(theme.rawValue, forKey: Keys.theme) }
     }
-    @Published var appearance: AppearanceMode {
+    var appearance: AppearanceMode {
         didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) }
     }
-    @Published var textScale: AppTextScale {
+    var textScale: AppTextScale {
         didSet { defaults.set(textScale.rawValue, forKey: Keys.textScale) }
     }
-    @Published var equalizerEnabled: Bool {
+    var equalizerEnabled: Bool {
         didSet { defaults.set(equalizerEnabled, forKey: Keys.equalizer) }
     }
-    @Published var equalizerPreset: EqualizerPreset {
+    var equalizerPreset: EqualizerPreset {
         didSet { defaults.set(equalizerPreset.rawValue, forKey: Keys.preset) }
     }
-    @Published var equalizerGains: [Double] {
+    var equalizerGains: [Double] {
         didSet { defaults.set(equalizerGains, forKey: Keys.gains) }
     }
-    @Published var equalizerPreamp: Double {
+    var equalizerPreamp: Double {
         didSet { defaults.set(equalizerPreamp, forKey: Keys.preamp) }
     }
-    @Published var preferHighQuality: Bool {
+    var preferHighQuality: Bool {
         didSet {
             defaults.set(preferHighQuality, forKey: Keys.preferHighQuality)
         }
     }
-    @Published var mixMoodPreference: MixMoodPreference {
+    var mixMoodPreference: MixMoodPreference {
         didSet {
             defaults.set(
                 mixMoodPreference.rawValue,
@@ -162,7 +163,7 @@ final class AppSettings: ObservableObject {
             )
         }
     }
-    @Published var mixLanguagePreference: MixLanguagePreference {
+    var mixLanguagePreference: MixLanguagePreference {
         didSet {
             defaults.set(
                 mixLanguagePreference.rawValue,
@@ -170,7 +171,7 @@ final class AppSettings: ObservableObject {
             )
         }
     }
-    @Published var mixFamiliarityPreference: MixFamiliarityPreference {
+    var mixFamiliarityPreference: MixFamiliarityPreference {
         didSet {
             defaults.set(
                 mixFamiliarityPreference.rawValue,
@@ -178,7 +179,7 @@ final class AppSettings: ObservableObject {
             )
         }
     }
-    @Published var loudnessNormalization: Bool {
+    var loudnessNormalization: Bool {
         didSet {
             defaults.set(
                 loudnessNormalization,
@@ -186,7 +187,7 @@ final class AppSettings: ObservableObject {
             )
         }
     }
-    @Published var dynamicRangeCompression: Bool {
+    var dynamicRangeCompression: Bool {
         didSet {
             defaults.set(
                 dynamicRangeCompression,
@@ -194,7 +195,7 @@ final class AppSettings: ObservableObject {
             )
         }
     }
-    @Published var spatialAudioEnabled: Bool {
+    var spatialAudioEnabled: Bool {
         didSet {
             defaults.set(
                 spatialAudioEnabled,
@@ -202,7 +203,7 @@ final class AppSettings: ObservableObject {
             )
         }
     }
-    @Published var spatialAudioIntensity: Double {
+    var spatialAudioIntensity: Double {
         didSet {
             let normalized = min(max(spatialAudioIntensity, 0), 1)
             if spatialAudioIntensity != normalized {
@@ -212,7 +213,7 @@ final class AppSettings: ObservableObject {
             defaults.set(normalized, forKey: Keys.spatialAudioIntensity)
         }
     }
-    @Published var resumeOnBluetoothConnection: Bool {
+    var resumeOnBluetoothConnection: Bool {
         didSet {
             defaults.set(
                 resumeOnBluetoothConnection,
@@ -220,7 +221,7 @@ final class AppSettings: ObservableObject {
             )
         }
     }
-    @Published var pauseAtMinimumVolume: Bool {
+    var pauseAtMinimumVolume: Bool {
         didSet {
             defaults.set(
                 pauseAtMinimumVolume,
@@ -228,7 +229,7 @@ final class AppSettings: ObservableObject {
             )
         }
     }
-    @Published var appVolume: Double {
+    var appVolume: Double {
         didSet {
             let normalized = min(max(appVolume, 0), 1)
             if appVolume != normalized {
@@ -238,7 +239,7 @@ final class AppSettings: ObservableObject {
             defaults.set(normalized, forKey: Keys.appVolume)
         }
     }
-    @Published var advanceOnPlaybackError: Bool {
+    var advanceOnPlaybackError: Bool {
         didSet {
             defaults.set(
                 advanceOnPlaybackError,
@@ -246,7 +247,7 @@ final class AppSettings: ObservableObject {
             )
         }
     }
-    @Published var offlineStorageLimitGB: Int {
+    var offlineStorageLimitGB: Int {
         didSet {
             let normalized = Self.normalizedOfflineStorageLimit(
                 offlineStorageLimitGB
@@ -257,7 +258,7 @@ final class AppSettings: ObservableObject {
             defaults.set(normalized, forKey: Keys.offlineStorageLimitGB)
         }
     }
-    @Published var automaticOfflineCacheEnabled: Bool {
+    var automaticOfflineCacheEnabled: Bool {
         didSet {
             defaults.set(
                 automaticOfflineCacheEnabled,
@@ -265,7 +266,7 @@ final class AppSettings: ObservableObject {
             )
         }
     }
-    @Published var hapticsEnabled: Bool {
+    var hapticsEnabled: Bool {
         didSet {
             defaults.set(hapticsEnabled, forKey: Keys.hapticsEnabled)
             Haptics.isEnabled = hapticsEnabled

@@ -96,12 +96,12 @@ struct OfflineDeleteAllPresentation: Equatable {
 }
 
 struct SettingsView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var settings: AppSettings
-    @EnvironmentObject private var player: AudioPlayer
-    @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var networkMonitor: NetworkMonitor
-    @EnvironmentObject private var offlineStore: OfflineTrackStore
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(AppSettings.self) private var settings
+    @Environment(AudioPlayer.self) private var player
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(NetworkMonitor.self) private var networkMonitor
+    @Environment(OfflineTrackStore.self) private var offlineStore
 
     var body: some View {
         Form {
@@ -202,9 +202,10 @@ struct SettingsView: View {
 // MARK: - Appearance
 
 private struct AppearanceSettingsView: View {
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppSettings.self) private var settings
 
     var body: some View {
+        @Bindable var settings = settings
         Form {
             Section(L10n.text("theme")) {
                 themePicker
@@ -314,11 +315,12 @@ private struct AppearanceSettingsView: View {
 // MARK: - Player & Audio
 
 private struct PlayerAudioSettingsView: View {
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppSettings.self) private var settings
     @State private var showRouteHint = false
     @State private var routeHintToken = UUID()
 
     var body: some View {
+        @Bindable var settings = settings
         Form {
             Section(L10n.text("audio_quality")) {
                 Toggle(
@@ -476,7 +478,7 @@ private struct PlayerAudioSettingsView: View {
 // MARK: - Equalizer
 
 struct EqualizerSettingsView: View {
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppSettings.self) private var settings
     @Environment(\.dismiss) private var dismiss
     @State private var showRouteHint = false
     @State private var routeHintToken = UUID()
@@ -487,6 +489,7 @@ struct EqualizerSettingsView: View {
     ]
 
     var body: some View {
+        @Bindable var settings = settings
         Form {
             Section {
                 Toggle(L10n.text("audio_processing"),
@@ -624,15 +627,16 @@ struct EqualizerSettingsView: View {
 // MARK: - Offline & Storage
 
 private struct OfflineStorageSettingsView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var settings: AppSettings
-    @EnvironmentObject private var offlineStore: OfflineTrackStore
-    @ObservedObject private var offlinePlaylists =
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(AppSettings.self) private var settings
+    @Environment(OfflineTrackStore.self) private var offlineStore
+    private let offlinePlaylists =
         OfflinePlaylistStore.shared
     @State private var deleteAllPhase: OfflineDeleteAllPhase = .idle
     @State private var showsDeleteAllConfirmation = false
 
     var body: some View {
+        @Bindable var settings = settings
         let usage = offlineStore.storageUsage
         Form {
             Section(L10n.text("storage_2")) {
@@ -1002,7 +1006,7 @@ private struct OfflineStorageSettingsView: View {
 // MARK: - Sleep Timer
 
 private struct SleepTimerSettingsView: View {
-    @EnvironmentObject private var player: AudioPlayer
+    @Environment(AudioPlayer.self) private var player
 
     var body: some View {
         Form {
@@ -1056,9 +1060,9 @@ private struct SleepTimerSettingsView: View {
 // MARK: - Connection
 
 private struct ConnectionSettingsView: View {
-    @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var networkMonitor: NetworkMonitor
-    @EnvironmentObject private var environment: AppEnvironment
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(NetworkMonitor.self) private var networkMonitor
+    @Environment(AppEnvironment.self) private var environment
     @State private var isRefreshing = false
     @State private var refreshError: String?
 

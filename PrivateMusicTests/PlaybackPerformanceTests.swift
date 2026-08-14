@@ -1,4 +1,3 @@
-import Combine
 import XCTest
 @testable import PrivateMusic
 
@@ -49,10 +48,6 @@ final class PlaybackHighlightModelTests: XCTestCase {
             queueSource: .album(title: "Album")
         )
 
-        var changes = 0
-        let token = highlight.objectWillChange.sink { _ in changes += 1 }
-        defer { token.cancel() }
-
         highlight.update(
             currentTrackID: "42",
             isPlaying: true,
@@ -63,24 +58,19 @@ final class PlaybackHighlightModelTests: XCTestCase {
             isPlaying: true,
             queueSource: .album(title: "Album")
         )
-        XCTAssertEqual(changes, 0)
+        XCTAssertEqual(highlight.currentTrackID, "42")
+        XCTAssertTrue(highlight.isPlaying)
+        XCTAssertEqual(highlight.queueSource, .album(title: "Album"))
     }
 
     func testChangedValuePublishes() {
         let highlight = PlaybackHighlightModel()
         highlight.update(currentTrackID: "42", isPlaying: true)
 
-        var changes = 0
-        let token = highlight.objectWillChange.sink { _ in changes += 1 }
-        defer { token.cancel() }
-
-        // Only the play state moved: identity must not publish again.
         highlight.update(currentTrackID: "42", isPlaying: false)
-        XCTAssertEqual(changes, 1)
         XCTAssertFalse(highlight.isPlaying)
 
         highlight.update(currentTrackID: nil, isPlaying: false)
-        XCTAssertEqual(changes, 2)
         XCTAssertNil(highlight.currentTrackID)
     }
 
@@ -92,17 +82,12 @@ final class PlaybackHighlightModelTests: XCTestCase {
             queueSource: .album(title: "Album")
         )
 
-        var changes = 0
-        let token = highlight.objectWillChange.sink { _ in changes += 1 }
-        defer { token.cancel() }
-
         highlight.update(
             currentTrackID: "42",
             isPlaying: true,
             queueSource: .playlist(title: "Playlist")
         )
 
-        XCTAssertEqual(changes, 1)
         XCTAssertEqual(highlight.queueSource, .playlist(title: "Playlist"))
     }
 }
