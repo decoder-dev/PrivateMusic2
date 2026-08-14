@@ -214,8 +214,12 @@ enum WatchStatePushCoalescingPolicy {
     }
 }
 
-private struct WatchRemoteReplyPayload: @unchecked Sendable {
-    let values: [String: Any]
+private struct WatchRemoteReplyHandler: @unchecked Sendable {
+    let call: ([String: Any]) -> Void
+
+    func send(_ values: [String: Any]) {
+        call(values)
+    }
 }
 
 extension WatchRemoteCoordinator: @preconcurrency WCSessionDelegate {
@@ -248,23 +252,17 @@ extension WatchRemoteCoordinator: @preconcurrency WCSessionDelegate {
         replyHandler: @escaping ([String: Any]) -> Void
     ) {
         let envelope = WatchRemoteCommandEnvelope(message: message)
-        Task { [weak self] in
-            let payload = await MainActor.run { [weak self] () -> WatchRemoteReplyPayload in
-                guard let self else {
-                    return WatchRemoteReplyPayload(
-                        values: [WatchRemoteMessageKey.accepted: false]
-                    )
-                }
-                guard let envelope else {
-                    return WatchRemoteReplyPayload(
-                        values: self.reply(accepted: false)
-                    )
-                }
-                return WatchRemoteReplyPayload(
-                    values: self.handle(envelope)
-                )
+        let handler = WatchRemoteReplyHandler(call: replyHandler)
+        Task { @MainActor [weak self] in
+            let values: [String: Any]
+            if let self, let envelope {
+                values = self.handle(envelope)
+            } else if let self {
+                values = self.reply(accepted: false)
+            } else {
+                values = [WatchRemoteMessageKey.accepted: false]
             }
-            replyHandler(payload.values)
+            handler.send(values)
         }
     }
 
@@ -275,10 +273,8 @@ extension WatchRemoteCoordinator: @preconcurrency WCSessionDelegate {
         guard let envelope = WatchRemoteCommandEnvelope(message: message) else {
             return
         }
-        Task { [weak self] in
-            await MainActor.run { [weak self] in
-                _ = self?.handle(envelope)
-            }
+        Task { @MainActor [weak self] in
+            _ = self?.handle(envelope)
         }
     }
 
