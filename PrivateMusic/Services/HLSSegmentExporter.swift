@@ -1352,47 +1352,20 @@ actor HLSSegmentExporter {
     /// Bounded ISO BMFF box walker: handles 32-bit sizes, extended 64-bit
     /// sizes and a zero size (box runs to the end of the data).
     static func containsBox(_ data: Data, types: [String]) -> Bool {
-        var found = Set(types)
-        var offset = 0
-        let count = data.count
-        while offset + 8 <= count {
-            let size32 = data.withUnsafeBytes { raw in
-                raw.loadUnaligned(
-                    fromByteOffset: offset,
-                    as: UInt32.self
-                ).bigEndian
+        let codes = types.map { pm_iso_fourcc($0) }
+        return data.withUnsafeBytes { raw -> Bool in
+            guard let base = raw.bindMemory(to: UInt8.self).baseAddress else {
+                return types.isEmpty
             }
-            let type = String(
-                data: data.subdata(
-                    in: offset + 4..<offset + 8
-                ),
-                encoding: .ascii
-            ) ?? ""
-            let boxSize: Int
-            if size32 == 1 {
-                guard offset + 16 <= count else { break }
-                let size64 = data.withUnsafeBytes { raw in
-                    raw.loadUnaligned(
-                        fromByteOffset: offset + 8,
-                        as: UInt64.self
-                    ).bigEndian
-                }
-                boxSize = size64 > Int.max ? count - offset : Int(size64)
-            } else if size32 == 0 {
-                boxSize = count - offset
-            } else {
-                boxSize = Int(size32)
-            }
-            if found.contains(type) {
-                found.remove(type)
-            }
-            guard boxSize >= 8 else { break }
-            offset += boxSize
-            if found.isEmpty {
-                return true
+            return codes.withUnsafeBufferPointer { buffer in
+                pm_iso_contains_types(
+                    base,
+                    Int32(data.count),
+                    buffer.baseAddress,
+                    Int32(buffer.count)
+                )
             }
         }
-        return found.isEmpty
     }
 
     static func looksLikeMPEGTS(_ data: Data) -> Bool {
