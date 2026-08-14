@@ -5,6 +5,75 @@ enum WatchRemoteCommand: String, Codable, Sendable {
     case next
     case previous
     case likeCurrent
+    case unlikeCurrent
+    case playQueueItem
+}
+
+struct WatchQueueItem: Codable, Equatable, Sendable {
+    let trackID: String
+    let title: String
+    let artist: String
+}
+
+/// Caps the Watch application-context payload. A library queue can hold
+/// thousands of tracks; WCSession context cannot.
+enum WatchQueueSnapshotPolicy {
+    static let maxCount = 20
+
+    /// Contiguous window around `currentIndex`, at most `maxCount` items.
+    /// Near either end the window slides so it stays inside `items` and
+    /// still contains the current track.
+    static func window<Item>(
+        items: [Item],
+        currentIndex: Int?,
+        maxCount: Int = maxCount
+    ) -> (items: [Item], currentIndex: Int?) {
+        guard !items.isEmpty else { return ([], nil) }
+        let count = min(max(maxCount, 0), items.count)
+        guard count > 0 else { return ([], nil) }
+
+        guard let current = currentIndex, items.indices.contains(current) else {
+            return (Array(items.prefix(count)), nil)
+        }
+
+        let leading = count / 2
+        var start = max(0, current - leading)
+        var end = start + count
+        if end > items.count {
+            end = items.count
+            start = max(0, end - count)
+        }
+        return (Array(items[start..<end]), current - start)
+    }
+}
+
+/// Age + track-binding rules for Watch → iPhone command envelopes.
+enum WatchRemoteCommandValidationPolicy {
+    static let maximumAge: TimeInterval = 15
+    static let issuedAtSkew: TimeInterval = 5
+
+    static func isValid(
+        command: WatchRemoteCommand,
+        issuedAt: Date,
+        trackID: String?,
+        at date: Date,
+        currentTrackID: String?,
+        queuedTrackIDs: [String],
+        maximumAge: TimeInterval = maximumAge
+    ) -> Bool {
+        let age = date.timeIntervalSince(issuedAt)
+        guard ((-issuedAtSkew)...maximumAge).contains(age) else {
+            return false
+        }
+        switch command {
+        case .playQueueItem:
+            guard let trackID else { return false }
+            return queuedTrackIDs.contains(trackID)
+                && trackID != currentTrackID
+        case .togglePlayPause, .next, .previous, .likeCurrent, .unlikeCurrent:
+            return trackID == currentTrackID
+        }
+    }
 }
 
 struct WatchRemoteState: Codable, Equatable, Sendable {
@@ -19,6 +88,8 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
     let snapshotDate: Date
     let isLiked: Bool
     let isMixQueue: Bool
+    let queue: [WatchQueueItem]
+    let currentQueueIndex: Int?
 
     /// `snapshotDate` is only used for Watch-side elapsed interpolation; it
     /// must not defeat push deduplication or every half-second player tick
@@ -35,6 +106,8 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
             && lhs.duration == rhs.duration
             && lhs.isLiked == rhs.isLiked
             && lhs.isMixQueue == rhs.isMixQueue
+            && lhs.queue == rhs.queue
+            && lhs.currentQueueIndex == rhs.currentQueueIndex
     }
 
     /// Matches phone-side Watch drift correction cadence.
@@ -56,7 +129,9 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
         duration: 0,
         snapshotDate: .distantPast,
         isLiked: false,
-        isMixQueue: false
+        isMixQueue: false,
+        queue: [],
+        currentQueueIndex: nil
     )
 
     var context: [String: Any] {
@@ -86,7 +161,9 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
         duration: TimeInterval,
         snapshotDate: Date = Date(),
         isLiked: Bool = false,
-        isMixQueue: Bool = false
+        isMixQueue: Bool = false,
+        queue: [WatchQueueItem] = [],
+        currentQueueIndex: Int? = nil
     ) {
         self.trackID = trackID
         self.title = title
@@ -99,6 +176,8 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
         self.snapshotDate = snapshotDate
         self.isLiked = isLiked
         self.isMixQueue = isMixQueue
+        self.queue = queue
+        self.currentQueueIndex = currentQueueIndex
     }
 
     init(from decoder: Decoder) throws {
@@ -115,6 +194,14 @@ struct WatchRemoteState: Codable, Equatable, Sendable {
             ?? .distantPast
         isLiked = try container.decodeIfPresent(Bool.self, forKey: .isLiked) ?? false
         isMixQueue = try container.decodeIfPresent(Bool.self, forKey: .isMixQueue) ?? false
+        queue = try container.decodeIfPresent(
+            [WatchQueueItem].self,
+            forKey: .queue
+        ) ?? []
+        currentQueueIndex = try container.decodeIfPresent(
+            Int.self,
+            forKey: .currentQueueIndex
+        )
     }
 
     func displayedElapsed(at date: Date) -> TimeInterval {
@@ -162,11 +249,31 @@ struct WatchRemoteCommandEnvelope: Codable, Equatable, Sendable {
     func isValid(
         at date: Date,
         currentTrackID: String?,
-        maximumAge: TimeInterval = 15
+        maximumAge: TimeInterval = WatchRemoteCommandValidationPolicy.maximumAge
     ) -> Bool {
-        let age = date.timeIntervalSince(issuedAt)
-        return (-5.0...maximumAge).contains(age)
-            && trackID == currentTrackID
+        isValid(
+            at: date,
+            currentTrackID: currentTrackID,
+            queuedTrackIDs: [],
+            maximumAge: maximumAge
+        )
+    }
+
+    func isValid(
+        at date: Date,
+        currentTrackID: String?,
+        queuedTrackIDs: [String],
+        maximumAge: TimeInterval = WatchRemoteCommandValidationPolicy.maximumAge
+    ) -> Bool {
+        WatchRemoteCommandValidationPolicy.isValid(
+            command: command,
+            issuedAt: issuedAt,
+            trackID: trackID,
+            at: date,
+            currentTrackID: currentTrackID,
+            queuedTrackIDs: queuedTrackIDs,
+            maximumAge: maximumAge
+        )
     }
 }
 

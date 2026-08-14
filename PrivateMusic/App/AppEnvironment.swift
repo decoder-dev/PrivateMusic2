@@ -243,6 +243,25 @@ final class AppEnvironment: ObservableObject {
                 } catch {
                     return false
                 }
+            },
+            unlikeCurrent: { [weak self] track in
+                guard let self else { return false }
+                do {
+                    let stored = self.libraryStore.storedTrack(for: track)
+                        ?? track
+                    try await self.withAuthorizedToken { token in
+                        try await self.musicService.removeFromLibrary(
+                            stored,
+                            accessToken: token
+                        )
+                    }
+                    self.libraryStore.markRemoved(track)
+                    self.libraryStore.markRemoved(stored)
+                    MusicLibraryEvents.postRemoved(stored)
+                    return true
+                } catch {
+                    return false
+                }
             }
         )
         watchRemoteCoordinator.start()

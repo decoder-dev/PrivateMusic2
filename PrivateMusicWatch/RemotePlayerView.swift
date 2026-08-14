@@ -51,6 +51,8 @@ struct RemotePlayerView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
+
+                queueList
             }
             .padding(.horizontal, 6)
         }
@@ -157,11 +159,13 @@ struct RemotePlayerView: View {
             .padding(.vertical, 4)
 
             Button {
-                remote.send(.likeCurrent)
+                remote.send(
+                    remote.state.isLiked ? .unlikeCurrent : .likeCurrent
+                )
             } label: {
                 Label(
                     WatchL10n.text(
-                        remote.state.isLiked ? "liked_track" : "like_track"
+                        remote.state.isLiked ? "unlike_track" : "like_track"
                     ),
                     systemImage: remote.state.isLiked
                         ? "heart.fill"
@@ -171,10 +175,59 @@ struct RemotePlayerView: View {
             }
             .buttonStyle(.bordered)
             .tint(remote.state.isLiked ? .pink : .white)
-            .disabled(remote.state.isLiked)
         }
         .disabled(!remote.isReachable || remote.state.isBuffering)
         .opacity(remote.isReachable ? 1 : 0.45)
+    }
+
+    private var queueList: some View {
+        let items = remote.state.queue
+        return Group {
+            if !items.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(WatchL10n.text("queue"))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    ForEach(
+                        Array(items.enumerated()),
+                        id: \.offset
+                    ) { index, item in
+                        let isCurrent = index == remote.state.currentQueueIndex
+                        Button {
+                            remote.send(
+                                .playQueueItem,
+                                trackID: item.trackID
+                            )
+                        } label: {
+                            VStack(alignment: .leading, spacing: 1) {
+                                if isCurrent {
+                                    Text(WatchL10n.text("now_playing_row"))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text(item.title)
+                                    .font(
+                                        .caption.weight(
+                                            isCurrent ? .semibold : .regular
+                                        )
+                                    )
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(item.artist)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isCurrent || !remote.isReachable)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
     }
 
     private var emptyState: some View {

@@ -8,6 +8,9 @@
 "next_track" = "Next track";
 "like_track" = "Like";
 "liked_track" = "Liked";
+"unlike_track" = "Unlike";
 "open_on_iphone" = "Open Private Music on iPhone";
 "start_track_hint" = "Start a track and it will appear here.";
 "mix_queue" = "Mix";
+"queue" = "Queue";
+"now_playing_row" = "Now playing";

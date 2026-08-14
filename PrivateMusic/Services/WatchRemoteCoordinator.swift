@@ -15,6 +15,7 @@ final class WatchRemoteCoordinator: NSObject {
     private var canControlPlayback: @MainActor () -> Bool = { true }
     private var isLiked: @MainActor (Track) -> Bool = { _ in false }
     private var likeCurrent: (@MainActor (Track) async -> Bool)?
+    private var unlikeCurrent: (@MainActor (Track) async -> Bool)?
 
     init(player: AudioPlayer) {
         self.player = player
@@ -79,10 +80,12 @@ final class WatchRemoteCoordinator: NSObject {
 
     func configureLibrary(
         isLiked: @escaping @MainActor (Track) -> Bool,
-        likeCurrent: @escaping @MainActor (Track) async -> Bool
+        likeCurrent: @escaping @MainActor (Track) async -> Bool,
+        unlikeCurrent: @escaping @MainActor (Track) async -> Bool
     ) {
         self.isLiked = isLiked
         self.likeCurrent = likeCurrent
+        self.unlikeCurrent = unlikeCurrent
     }
 
     private func currentState() -> WatchRemoteState {
@@ -93,6 +96,16 @@ final class WatchRemoteCoordinator: NSObject {
             if case .mix = player.queueSource { return true }
             return false
         }()
+        let snapshot = WatchQueueSnapshotPolicy.window(
+            items: player.queue.map { queued in
+                WatchQueueItem(
+                    trackID: queued.id,
+                    title: queued.title,
+                    artist: queued.artist
+                )
+            },
+            currentIndex: player.currentIndex
+        )
         return WatchRemoteState(
             trackID: track.id,
             title: track.title,
@@ -104,7 +117,9 @@ final class WatchRemoteCoordinator: NSObject {
             duration: player.duration > 0 ? player.duration : track.duration,
             snapshotDate: Date(),
             isLiked: isLiked(track),
-            isMixQueue: mixQueue
+            isMixQueue: mixQueue,
+            queue: snapshot.items,
+            currentQueueIndex: snapshot.currentIndex
         )
     }
 
@@ -156,7 +171,8 @@ final class WatchRemoteCoordinator: NSObject {
         }
         guard envelope.isValid(
             at: Date(),
-            currentTrackID: player.currentTrack?.id
+            currentTrackID: player.currentTrack?.id,
+            queuedTrackIDs: player.queue.map(\.id)
         ) else {
             return reply(accepted: false)
         }
@@ -185,6 +201,25 @@ final class WatchRemoteCoordinator: NSObject {
                 _ = await likeCurrent(track)
                 self?.markNeedsPush(force: true)
             }
+            return reply(accepted: true)
+        case .unlikeCurrent:
+            guard let track = player.currentTrack,
+                  let unlikeCurrent else {
+                return reply(accepted: false)
+            }
+            Task { @MainActor [weak self] in
+                _ = await unlikeCurrent(track)
+                self?.markNeedsPush(force: true)
+            }
+            return reply(accepted: true)
+        case .playQueueItem:
+            guard let trackID = envelope.trackID,
+                  let index = player.queue.firstIndex(where: { $0.id == trackID })
+            else {
+                return reply(accepted: false)
+            }
+            player.jump(to: index)
+            markNeedsPush(force: true)
             return reply(accepted: true)
         }
     }

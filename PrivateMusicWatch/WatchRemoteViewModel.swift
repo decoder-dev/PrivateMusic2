@@ -23,14 +23,16 @@ final class WatchRemoteViewModel: NSObject, ObservableObject {
         isReachable = session?.isReachable ?? false
     }
 
-    func send(_ command: WatchRemoteCommand) {
+    func send(_ command: WatchRemoteCommand, trackID: String? = nil) {
         guard let session, session.isReachable else {
             showCommandFailure()
             return
         }
         let envelope = WatchRemoteCommandEnvelope(
             command: command,
-            trackID: state.trackID
+            trackID: command == .playQueueItem
+                ? trackID
+                : (trackID ?? state.trackID)
         )
         session.sendMessage(
             envelope.message,
