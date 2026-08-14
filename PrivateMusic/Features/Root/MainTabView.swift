@@ -1,11 +1,13 @@
 import SwiftUI
 
-private enum MainTab: CaseIterable, Hashable {
+private enum MainTab: CaseIterable, Hashable, Identifiable {
     case home
     case mix
     case library
     case search
     case profile
+
+    var id: Self { self }
 
     var title: String {
         switch self {
@@ -86,13 +88,14 @@ struct MainTabView: View {
 
     /// iPad / regular-width sidebar. Used on iOS 26 as well — compact
     /// widths keep `SystemLiquidGlassTabView`.
+    ///
+    /// `List(selection:content:)` is macOS-only; iOS needs the collection
+    /// initializer with an optional `Binding<SelectionValue?>`.
     private var regularWidthSplitView: some View {
         NavigationSplitView {
-            List(selection: $selectedTab) {
-                ForEach(sidebarTabs, id: \.self) { tab in
-                    Label(tab.title, systemImage: tab.image)
-                        .tag(tab)
-                }
+            List(sidebarTabs, selection: sidebarSelection) { tab in
+                Label(tab.title, systemImage: tab.image)
+                    .tag(tab)
             }
             .navigationTitle(L10n.text("private_music"))
             .listStyle(.sidebar)
@@ -104,6 +107,13 @@ struct MainTabView: View {
                     )
                 }
         }
+    }
+
+    private var sidebarSelection: Binding<MainTab?> {
+        Binding(
+            get: { selectedTab },
+            set: { if let tab = $0 { selectedTab = tab } }
+        )
     }
 
     @ViewBuilder
