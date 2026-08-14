@@ -1297,6 +1297,8 @@ for required_setting in (
     'watchOS: "10.0"',
     'SWIFT_VERSION: "6.0"',
     "SWIFT_STRICT_CONCURRENCY: complete",
+    "CURRENT_PROJECT_VERSION: 150",
+    "MARKETING_VERSION: 3.28.78",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2.watchkitapp",
     "INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.dec.privatemusic2",
@@ -1308,6 +1310,20 @@ for required_setting in (
 ):
     if required_setting not in project_yml:
         fail(f"missing project setting: {required_setting}")
+
+options_section = project_yml.split("options:", 1)[1].split("\ntargets:", 1)[0]
+if re.search(r"^\s+settings:", options_section, re.MULTILINE):
+    fail("project.yml must keep settings at top level, not under options")
+
+info_plist_source = (
+    SOURCE / "Resources" / "Info.plist"
+).read_text(encoding="utf-8")
+for required_plist_token in (
+    "$(MARKETING_VERSION)",
+    "$(CURRENT_PROJECT_VERSION)",
+):
+    if required_plist_token not in info_plist_source:
+        fail(f"Info.plist must reference build setting {required_plist_token}")
 
 watch_bundle_validator = (
     ROOT / "scripts" / "validate_watch_bundle.py"
