@@ -32,6 +32,11 @@ struct RootView: View {
                     }
             }
         }
+        .onContinueUserActivity(
+            NowPlayingUserActivityPolicy.activityType
+        ) { activity in
+            player.handleNowPlayingUserActivity(activity)
+        }
         .task(id: sessionStore.sessionRevision) {
             environment.configureOfflineAccount()
             await maintainSession()

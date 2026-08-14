@@ -1,10 +1,14 @@
+import CoreSpotlight
 import MediaPlayer
 import UIKit
+import UniformTypeIdentifiers
 
 @MainActor
 final class NowPlayingController {
     private let center = MPNowPlayingInfoCenter.default()
     private var artworkTask: Task<Void, Never>?
+    private var userActivity: NSUserActivity?
+    private var userActivityTrackID: String?
 
     func update(
         track: Track,
@@ -36,6 +40,7 @@ final class NowPlayingController {
 
         center.nowPlayingInfo = info
         center.playbackState = rate > 0 ? .playing : .paused
+        publishUserActivity(for: track)
 
         artworkTask?.cancel()
         guard let artworkURL = track.artworkURL else {
@@ -92,6 +97,45 @@ final class NowPlayingController {
         artworkTask = nil
         center.nowPlayingInfo = nil
         center.playbackState = .stopped
+        resignUserActivity()
+    }
+
+    private func publishUserActivity(for track: Track) {
+        if userActivityTrackID == track.id, let userActivity {
+            userActivity.becomeCurrent()
+            return
+        }
+        resignUserActivity()
+        let activity = NSUserActivity(
+            activityType: NowPlayingUserActivityPolicy.activityType
+        )
+        activity.title = NowPlayingUserActivityPolicy.activityTitle(for: track)
+        activity.isEligibleForHandoff = true
+        activity.isEligibleForSearch = true
+        activity.isEligibleForPublicIndexing = false
+        activity.persistentIdentifier = track.id
+        activity.userInfo = NowPlayingUserActivityPolicy.userInfo(for: track)
+        activity.requiredUserInfoKeys = [
+            NowPlayingUserActivityPolicy.trackIDKey
+        ]
+        let attributes = CSSearchableItemAttributeSet(
+            contentType: UTType.audio
+        )
+        attributes.title = track.title
+        attributes.artist = track.artist
+        if let albumTitle = track.albumTitle, !albumTitle.isEmpty {
+            attributes.album = albumTitle
+        }
+        activity.contentAttributeSet = attributes
+        activity.becomeCurrent()
+        userActivity = activity
+        userActivityTrackID = track.id
+    }
+
+    private func resignUserActivity() {
+        userActivity?.invalidate()
+        userActivity = nil
+        userActivityTrackID = nil
     }
 }
 
