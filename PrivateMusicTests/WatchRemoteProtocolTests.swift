@@ -41,6 +41,7 @@ final class WatchRemoteProtocolTests: XCTestCase {
             WatchRemoteCommand.playQueueItem.rawValue,
             "playQueueItem"
         )
+        XCTAssertEqual(WatchRemoteCommand.seek.rawValue, "seek")
     }
 
     func testLegacyStateDecodesWithoutLikeFields() throws {
@@ -393,5 +394,63 @@ final class WatchRemoteProtocolTests: XCTestCase {
             currentQueueIndex: 0
         )
         XCTAssertNotEqual(base, differentQueue)
+    }
+
+    func testSeekEnvelopeRoundTripsAndBindsToCurrentTrack() {
+        let envelope = WatchRemoteCommandEnvelope(
+            command: .seek,
+            issuedAt: Date(timeIntervalSince1970: 100),
+            trackID: "1_2",
+            seekTime: 45
+        )
+
+        XCTAssertEqual(
+            WatchRemoteCommandEnvelope(message: envelope.message),
+            envelope
+        )
+        XCTAssertTrue(
+            envelope.isValid(
+                at: Date(timeIntervalSince1970: 110),
+                currentTrackID: "1_2"
+            )
+        )
+        XCTAssertFalse(
+            envelope.isValid(
+                at: Date(timeIntervalSince1970: 110),
+                currentTrackID: "9_9"
+            )
+        )
+        XCTAssertFalse(
+            WatchRemoteCommandEnvelope(
+                command: .seek,
+                issuedAt: Date(timeIntervalSince1970: 100),
+                trackID: "1_2"
+            ).isValid(
+                at: Date(timeIntervalSince1970: 110),
+                currentTrackID: "1_2"
+            )
+        )
+    }
+
+    func testLegacyCommandEnvelopeDecodesWithoutSeekTime() throws {
+        let encoded = try JSONEncoder().encode(
+            WatchRemoteCommandEnvelope(
+                command: .next,
+                issuedAt: Date(timeIntervalSince1970: 100),
+                trackID: "1_2"
+            )
+        )
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object.removeValue(forKey: "seekTime")
+        let legacy = try JSONSerialization.data(withJSONObject: object)
+        let envelope = try JSONDecoder().decode(
+            WatchRemoteCommandEnvelope.self,
+            from: legacy
+        )
+        XCTAssertEqual(envelope.command, .next)
+        XCTAssertNil(envelope.seekTime)
+        XCTAssertEqual(envelope.trackID, "1_2")
     }
 }
