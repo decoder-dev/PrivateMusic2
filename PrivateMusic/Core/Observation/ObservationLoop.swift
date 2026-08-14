@@ -6,6 +6,19 @@ enum ObservationLoop {
     @MainActor
     final class Token {
         var isCancelled = false
+        fileprivate var apply: (() -> Void)?
+
+        fileprivate func tick() {
+            guard !isCancelled, let apply else { return }
+            withObservationTracking {
+                guard !isCancelled else { return }
+                apply()
+            } onChange: { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.tick()
+                }
+            }
+        }
     }
 
     @MainActor
@@ -13,18 +26,8 @@ enum ObservationLoop {
         _ apply: @escaping @MainActor () -> Void
     ) -> Token {
         let token = Token()
-        func tick() {
-            guard !token.isCancelled else { return }
-            withObservationTracking {
-                guard !token.isCancelled else { return }
-                apply()
-            } onChange: {
-                Task { @MainActor in
-                    tick()
-                }
-            }
-        }
-        tick()
+        token.apply = apply
+        token.tick()
         return token
     }
 }
