@@ -18,11 +18,11 @@ struct PlaylistDetailView: View {
     var body: some View {
         Group {
             if model.tracks.isEmpty && (!model.hasLoaded || model.isLoading) {
-                ProgressView(L10n.text("Загружаем треки…"))
+                ProgressView(L10n.text("loading_tracks"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = model.errorMessage, model.tracks.isEmpty {
                 EmptyStateView(
-                    title: "Не удалось открыть плейлист",
+                    title: "could_not_open_playlist",
                     systemImage: "wifi.exclamationmark",
                     description: error
                 )
@@ -30,7 +30,7 @@ struct PlaylistDetailView: View {
                 EmptyStateView(
                     title: playlist.title,
                     systemImage: "music.note",
-                    description: "В плейлисте пока нет доступных треков."
+                    description: "this_playlist_has_no_available_tracks"
                 )
             } else {
                 playlistList
@@ -63,7 +63,7 @@ struct PlaylistDetailView: View {
                         Image(systemName: "ellipsis.circle")
                     }
                     .disabled(isDeletingPlaylist)
-                    .accessibilityLabel(L10n.text("Действия с плейлистом"))
+                    .accessibilityLabel(L10n.text("playlist_actions"))
                 }
             }
         }
@@ -75,18 +75,18 @@ struct PlaylistDetailView: View {
             Button(deleteActionTitle, role: .destructive) {
                 Task { await deletePlaylist() }
             }
-            Button(L10n.text("Отмена"), role: .cancel) {}
+            Button(L10n.text("action.cancel"), role: .cancel) {}
         } message: {
             Text(deleteConfirmationMessage)
         }
         .alert(
-            L10n.text("Не удалось удалить плейлист"),
+            L10n.text("couldn_t_delete_playlist"),
             isPresented: Binding(
                 get: { deleteErrorMessage != nil },
                 set: { if !$0 { deleteErrorMessage = nil } }
             )
         ) {
-            Button(L10n.text("ОК"), role: .cancel) {}
+            Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
             Text(deleteErrorMessage ?? "")
         }
@@ -112,24 +112,24 @@ struct PlaylistDetailView: View {
     private var deleteActionTitle: String {
         L10n.text(
             isOwnedPlaylist
-                ? "Удалить плейлист"
-                : "Убрать из медиатеки"
+                ? "remove_playlist"
+                : "remove_from_library_2"
         )
     }
 
     private var deleteConfirmationTitle: String {
         L10n.text(
             isOwnedPlaylist
-                ? "Удалить плейлист?"
-                : "Убрать плейлист из медиатеки?"
+                ? "delete_playlist"
+                : "remove_playlist_from_library"
         )
     }
 
     private var deleteConfirmationMessage: String {
         L10n.text(
             isOwnedPlaylist
-                ? "Плейлист будет удалён из VK. Это действие нельзя отменить."
-                : "Плейлист исчезнет из вашей медиатеки, но останется у автора."
+                ? "the_playlist_will_be_deleted_from_vk_this_can_t_be_undone"
+                : "the_playlist_will_leave_your_library_but_stay_with_its_owner"
         )
     }
 
@@ -155,7 +155,7 @@ struct PlaylistDetailView: View {
                                 await remove(track)
                             }
                         } label: {
-                            Label("Убрать", systemImage: "minus")
+                            Label(L10n.text("remove"), systemImage: "minus")
                         }
                     }
                 }
@@ -194,7 +194,7 @@ struct PlaylistDetailView: View {
                     .heroTitleScrollAnchor()
                 Label(
                     L10n.format(
-                        "Импортировано из %@",
+                        "imported_from_0",
                         playlist.source.title
                     ),
                     systemImage: "arrow.down.circle"
@@ -238,11 +238,11 @@ struct PlaylistDetailView: View {
     /// A play icon inside a wide Label pushes the text off-center (the
     /// icon+text group is centered as a unit, but the icon's width isn't
     /// mirrored on the trailing side). Centering the text on its own and
-    /// pinning the icon to the leading edge keeps "Слушать" dead-center
+    /// pinning the icon to the leading edge keeps "listen" dead-center
     /// regardless of button width.
     private var listenButtonLabel: some View {
         ZStack {
-            Text(L10n.text(listenAction == .pause ? "Пауза" : "Слушать"))
+            Text(L10n.text(listenAction == .pause ? "pause_2" : "listen"))
                 .font(.headline)
             HStack {
                 Image(systemName: listenAction.systemImage)
@@ -285,7 +285,7 @@ struct PlaylistDetailView: View {
         }
         .buttonStyle(.borderless)
         .disabled(model.tracks.isEmpty)
-        .accessibilityLabel(L10n.text("Перемешать"))
+        .accessibilityLabel(L10n.text("shuffle"))
     }
 
     private var currentSource: QueueSource {
@@ -360,14 +360,14 @@ struct PlaylistDetailView: View {
             Button {
                 offlinePlaylists.cancelDownload(for: playlist)
             } label: {
-                Label("Отменить загрузку", systemImage: "xmark.circle")
+                Label(L10n.text("cancel_download"), systemImage: "xmark.circle")
             }
         case .downloaded:
             Menu {
                 Button(role: .destructive) {
                     offlinePlaylists.remove(playlist)
                 } label: {
-                    Label("Удалить плейлист", systemImage: "trash")
+                    Label(L10n.text("remove_playlist"), systemImage: "trash")
                 }
             } label: {
                 Image(systemName: "arrow.down.circle.fill")
@@ -376,7 +376,7 @@ struct PlaylistDetailView: View {
             Button {
                 startOfflineDownload()
             } label: {
-                Label("Скачать плейлист", systemImage: "arrow.down.circle")
+                Label(L10n.text("download_playlist"), systemImage: "arrow.down.circle")
             }
         }
     }

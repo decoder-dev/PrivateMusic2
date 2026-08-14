@@ -302,7 +302,7 @@ actor TrackShareService {
     private var fileTooLargeError: APIError {
         APIError.server(
             code: 413,
-            message: L10n.text("Файл больше 150 МБ.")
+            message: L10n.text("the_file_is_larger_than_150_mb")
         )
     }
 
@@ -310,7 +310,7 @@ actor TrackShareService {
         APIError.server(
             code: 415,
             message: L10n.text(
-                "VK не предоставил прямой аудиофайл для этого трека."
+                "vk_did_not_provide_a_direct_audio_file_for_this_track"
             )
         )
     }
@@ -319,7 +319,7 @@ actor TrackShareService {
         APIError.server(
             code: 415,
             message: L10n.text(
-                "Этот трек нельзя экспортировать в MP3."
+                "this_track_cannot_be_exported_as_an_mp3"
             )
         )
     }
@@ -507,7 +507,7 @@ actor TrackShareService {
         APIError.server(
             code: 415,
             message: L10n.text(
-                "Этот поток нельзя экспортировать в аудиофайл."
+                "this_stream_cannot_be_exported_as_an_audio_file"
             )
         )
     }
@@ -537,6 +537,6 @@ actor TrackShareService {
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let shortened = String(collapsed.prefix(90))
-        return shortened.isEmpty ? "Private Music" : shortened
+        return shortened.isEmpty ? "private_music" : shortened
     }
 }

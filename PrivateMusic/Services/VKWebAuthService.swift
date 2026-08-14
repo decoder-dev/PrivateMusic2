@@ -18,15 +18,15 @@ enum VKWebAuthError: LocalizedError {
         switch self {
         case .noSession:
             return L10n.text(
-                "Сначала завершите вход по номеру телефона на странице VK."
+                "complete_sign_in_on_the_vk_page_first"
             )
         case let .rejected(message):
             return message.isEmpty
-                ? L10n.text("VK не подтвердил веб-сессию.")
+                ? L10n.text("vk_did_not_confirm_the_web_session")
                 : message
         case .invalidResponse:
             return L10n.text(
-                "VK вернул некорректный ответ авторизации."
+                "vk_returned_an_invalid_authentication_response"
             )
         }
     }

@@ -58,7 +58,7 @@ struct ArtistView: View {
     private var topBar: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(L10n.text("Исполнитель"))
+                Text(L10n.text("artist"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Text(artist)
@@ -80,7 +80,7 @@ struct ArtistView: View {
                     )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(L10n.text("Закрыть"))
+            .accessibilityLabel(L10n.text("action.close"))
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
@@ -132,7 +132,7 @@ struct ArtistView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button(L10n.text("Готово")) {
+                        Button(L10n.text("done")) {
                             showsAllTracks = false
                         }
                     }
@@ -154,7 +154,7 @@ struct ArtistView: View {
     private var tracksSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(L10n.text("Треки исполнителя"))
+                Text(L10n.text("artist_tracks"))
                     .font(.headline)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -168,7 +168,7 @@ struct ArtistView: View {
                         showsAllTracks = true
                     } label: {
                         HStack(spacing: 2) {
-                            Text(L10n.text("Все"))
+                            Text(L10n.text("see_all"))
                             Image(systemName: "chevron.right")
                                 .font(.caption2.weight(.semibold))
                         }
@@ -193,7 +193,7 @@ struct ArtistView: View {
 
     private var albumsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.text("Альбомы"))
+            Text(L10n.text("library.albums"))
                 .font(.headline)
                 .padding(.horizontal, 18)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -208,7 +208,7 @@ struct ArtistView: View {
                                 Text(
                                     Album.isUsableTitle(album.title)
                                         ? album.title
-                                        : L10n.text("Альбом")
+                                        : L10n.text("album")
                                 )
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
@@ -243,8 +243,8 @@ struct ArtistView: View {
                     .minimumScaleFactor(0.82)
                 Text(
                     resolvedArtist == nil
-                        ? L10n.text("Музыка")
-                        : L10n.text("Исполнитель VK")
+                        ? L10n.text("generic.music")
+                        : L10n.text("vk_artist")
                 )
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -259,10 +259,10 @@ struct ArtistView: View {
 
     private var emptyContent: some View {
         ArtistMessageView(
-            title: L10n.text("Исполнитель недоступен"),
+            title: L10n.text("artist_unavailable"),
             description: errorMessage
                 ?? L10n.text(
-                    "Для этого исполнителя VK не вернул доступных треков."
+                    "vk_did_not_return_any_available_tracks_for_this_artist"
                 ),
             systemImage: errorMessage == nil
                 ? "music.note.list"
@@ -284,7 +284,7 @@ struct ArtistView: View {
         guard sessionStore.accessToken != nil else {
             isLoading = false
             errorMessage = L10n.text(
-                "Подключите VK, чтобы открыть страницу исполнителя."
+                "connect_vk_to_open_the_artist_page"
             )
             return
         }
@@ -560,7 +560,7 @@ private struct ArtistLoadingView: View {
                 .padding(.vertical, 18)
 
                 HStack {
-                    Text(L10n.text("Загружаем исполнителя…"))
+                    Text(L10n.text("loading_artist"))
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -579,7 +579,7 @@ private struct ArtistLoadingView: View {
         }
         .scrollDisabled(true)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(L10n.text("Загружаем исполнителя…"))
+        .accessibilityLabel(L10n.text("loading_artist"))
     }
 }
 
@@ -630,7 +630,7 @@ private struct ArtistMessageView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 320)
             if let retry {
-                Button(L10n.text("Повторить"), action: retry)
+                Button(L10n.text("action.retry"), action: retry)
                     .buttonStyle(.borderedProminent)
                     .padding(.top, 4)
             }
@@ -653,7 +653,7 @@ private struct ArtistInlineError: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
             Spacer(minLength: 8)
-            Button(L10n.text("Повторить"), action: retry)
+            Button(L10n.text("action.retry"), action: retry)
                 .font(.caption.weight(.semibold))
         }
         .padding(12)

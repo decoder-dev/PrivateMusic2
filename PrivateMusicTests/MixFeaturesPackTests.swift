@@ -77,7 +77,7 @@ final class MixQueueFilterTests: XCTestCase {
         )
         XCTAssertFalse(
             MixQueueFilter.shelfMatchesMood(
-                "Новые релизы",
+                "new_releases",
                 mood: .love
             )
         )

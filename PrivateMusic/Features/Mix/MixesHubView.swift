@@ -11,8 +11,8 @@ struct MixesHubView: View {
 
         var title: String {
             switch self {
-            case .selena: L10n.text("Селена")
-            case .vk: L10n.text("VK Миксы")
+            case .selena: L10n.text("selena.name")
+            case .vk: L10n.text("vk_mixes_2")
             }
         }
     }
@@ -70,13 +70,13 @@ struct MixesHubView: View {
                         titleHeader
                             .id(MainTabScrollDestination.mix)
 
-                        Picker(L10n.text("Микс"), selection: $hubTab) {
+                        Picker(L10n.text("tab.mix"), selection: $hubTab) {
                             ForEach(HubTab.allCases) { tab in
                                 Text(tab.title).tag(tab)
                             }
                         }
                         .pickerStyle(.segmented)
-                        .accessibilityLabel(L10n.text("Раздел миксов"))
+                        .accessibilityLabel(L10n.text("mix_sections"))
 
                         listenLaterBanner
 
@@ -158,10 +158,10 @@ struct MixesHubView: View {
                 mix: personalMix,
                 tracks: selenaTracks,
                 rationale: selenaRationale,
-                rationaleTitle: L10n.text("Почему Селена"),
+                rationaleTitle: L10n.text("selena.why"),
                 heroSubtitle: selenaHeroSubtitle,
                 tracksSubtitle: L10n.text(
-                    "Подобрано по вашим прослушиваниям VK"
+                    "selected_by_decoder_dev_s_neural_network_from_your_vk_listening"
                 ),
                 metrics: metrics,
                 picker: {
@@ -198,7 +198,7 @@ struct MixesHubView: View {
                 mix: mix,
                 tracks: vkTracks,
                 rationale: vkRationale,
-                rationaleTitle: L10n.text("Почему этот микс"),
+                rationaleTitle: L10n.text("why_this_mix"),
                 heroSubtitle: cardSubtitle(for: mix),
                 tracksSubtitle: vkTracksSubtitle(for: mix),
                 metrics: metrics,
@@ -231,7 +231,7 @@ struct MixesHubView: View {
             ProgressView()
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 72)
-                .accessibilityLabel(L10n.text("Загружаем рекомендации и миксы"))
+                .accessibilityLabel(L10n.text("loading_recommendations_and_mixes"))
         } else {
             playHero(
                 mix: mix,
@@ -273,8 +273,8 @@ struct MixesHubView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             PremiumSectionHeader(
-                "Ваши VK Миксы",
-                subtitle: "Тот же экран — просто смените подборку"
+                "your_vk_mixes",
+                subtitle: "same_screen_just_switch_the_mix"
             )
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -356,7 +356,7 @@ struct MixesHubView: View {
                 .buttonStyle(PremiumPressStyle())
                 .padding(8)
                 .disabled(loadingMixID != nil)
-                .accessibilityLabel(L10n.text("Воспроизвести микс"))
+                .accessibilityLabel(L10n.text("play_mix"))
                 .accessibilityValue(mix.title)
             }
 
@@ -396,12 +396,12 @@ struct MixesHubView: View {
             Button {
                 selectVKMix(mix, andPlay: true)
             } label: {
-                Label("Воспроизвести микс", systemImage: "play.fill")
+                Label(L10n.text("play_mix"), systemImage: "play.fill")
             }
             Button {
                 selectVKMix(mix)
             } label: {
-                Label("Открыть здесь", systemImage: "list.bullet")
+                Label(L10n.text("open_here"), systemImage: "list.bullet")
             }
         }
     }
@@ -411,9 +411,9 @@ struct MixesHubView: View {
         if !officialShelves.isEmpty {
             VStack(alignment: .leading, spacing: 14) {
                 PremiumSectionHeader(
-                    L10n.text("Журнал VK Миксов"),
+                    L10n.text("vk_mix_magazine"),
                     subtitle: L10n.text(
-                        "Полки каталога с быстрым запуском и превью треков"
+                        "catalog_shelves_with_quick_launch_and_track_previews"
                     )
                 )
 
@@ -426,7 +426,7 @@ struct MixesHubView: View {
                                     .lineLimit(2)
                                 Text(
                                     L10n.format(
-                                        "%d миксов",
+                                        "d0_mixes",
                                         shelf.mixes.count
                                     )
                                 )
@@ -437,7 +437,7 @@ struct MixesHubView: View {
                             Button {
                                 openVibeShelf(shelf)
                             } label: {
-                                Text(L10n.text("Открыть"))
+                                Text(L10n.text("open"))
                                     .font(.caption.weight(.semibold))
                             }
                             .buttonStyle(.bordered)
@@ -515,7 +515,7 @@ struct MixesHubView: View {
                 Button {
                     selectVKMix(mix, andPlay: true)
                 } label: {
-                    Label(L10n.text("Слушать"), systemImage: "play.fill")
+                    Label(L10n.text("listen"), systemImage: "play.fill")
                         .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.borderedProminent)
@@ -524,7 +524,7 @@ struct MixesHubView: View {
                 Button {
                     selectVKMix(mix)
                 } label: {
-                    Label(L10n.text("Открыть"), systemImage: "list.bullet")
+                    Label(L10n.text("open"), systemImage: "list.bullet")
                         .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.bordered)
@@ -536,12 +536,12 @@ struct MixesHubView: View {
             Button {
                 selectVKMix(mix, andPlay: true)
             } label: {
-                Label("Воспроизвести микс", systemImage: "play.fill")
+                Label(L10n.text("play_mix"), systemImage: "play.fill")
             }
             Button {
                 selectVKMix(mix)
             } label: {
-                Label("Открыть здесь", systemImage: "list.bullet")
+                Label(L10n.text("open_here"), systemImage: "list.bullet")
             }
         }
     }
@@ -549,7 +549,7 @@ struct MixesHubView: View {
     // MARK: - Chrome
 
     private var titleHeader: some View {
-        Text(L10n.text("Микс"))
+        Text(L10n.text("tab.mix"))
             .font(.largeTitle.weight(.bold))
             .foregroundStyle(.primary)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -565,7 +565,7 @@ struct MixesHubView: View {
                 HStack(spacing: 12) {
                     AsyncArtwork(url: pin.artworkURL, size: 52)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(L10n.text("Слушать позже"))
+                        Text(L10n.text("listen_later"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         Text(pin.mixTitle)
@@ -575,7 +575,7 @@ struct MixesHubView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         Text(
                             L10n.format(
-                                "%d треков · продолжить",
+                                "d0_tracks_resume",
                                 pin.tracks.count
                             )
                         )
@@ -599,15 +599,15 @@ struct MixesHubView: View {
             .buttonStyle(PremiumPressStyle())
             .contextMenu {
                 Button { resumePinned(pin) } label: {
-                    Label("Продолжить", systemImage: "play.fill")
+                    Label(L10n.text("resume"), systemImage: "play.fill")
                 }
                 Button(role: .destructive) {
                     pinnedMixStore.clear()
                 } label: {
-                    Label("Убрать", systemImage: "bookmark.slash")
+                    Label(L10n.text("remove"), systemImage: "bookmark.slash")
                 }
             }
-            .accessibilityLabel(L10n.text("Слушать позже"))
+            .accessibilityLabel(L10n.text("listen_later"))
             .accessibilityValue(
                 "\(pin.mixTitle), \(L10n.trackCount(pin.tracks.count))"
             )
@@ -660,13 +660,13 @@ struct MixesHubView: View {
                         }
                         .buttonStyle(.plain)
                     } else if mix.id == MusicMix.common.id {
-                        Text(L10n.text("Персональный микс"))
+                        Text(L10n.text("personal_mix"))
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.78))
                             .textCase(.uppercase)
                             .tracking(0.55)
                     } else if mix.isSocial {
-                        Text(L10n.text("Социальный микс"))
+                        Text(L10n.text("social_mix"))
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.78))
                             .textCase(.uppercase)
@@ -723,22 +723,22 @@ struct MixesHubView: View {
         }
         .buttonStyle(PremiumPressStyle())
         .disabled(loadingMixID != nil)
-        .accessibilityLabel(L10n.text("Воспроизвести микс"))
+        .accessibilityLabel(L10n.text("play_mix"))
         .accessibilityValue(mix.title)
         .contextMenu {
             Button { start(mix) } label: {
-                Label("Воспроизвести микс", systemImage: "play.fill")
+                Label(L10n.text("play_mix"), systemImage: "play.fill")
             }
             Button {
                 shuffle(mix)
             } label: {
-                Label("Перемешать", systemImage: "shuffle")
+                Label(L10n.text("shuffle"), systemImage: "shuffle")
             }
             .disabled(tracks.isEmpty)
             Button {
                 pin(mix: mix, tracks: tracks)
             } label: {
-                Label("Слушать позже", systemImage: "bookmark")
+                Label(L10n.text("listen_later"), systemImage: "bookmark")
             }
             .disabled(tracks.isEmpty)
             if let seed = tracks.first {
@@ -776,13 +776,13 @@ struct MixesHubView: View {
                         systemImage: "clock"
                     )
                     metadataChip(
-                        L10n.format("%d%% новизны", stats.noveltyPercent),
+                        L10n.format("d0_novelty", stats.noveltyPercent),
                         systemImage: "sparkles"
                     )
                 }
                 if let percent = mix.matchPercent {
                     metadataChip(
-                        L10n.format("совпадение %d%%", percent),
+                        L10n.format("d0_match", percent),
                         systemImage: "person.2"
                     )
                 }
@@ -844,19 +844,16 @@ struct MixesHubView: View {
     ) -> some View {
         let selectedMode = player.mixRadioMode
         return VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.text("Радио микса"))
+            Text(L10n.text("mix_radio"))
                 .font(.headline)
             Text(
-                L10n.text(
-                    "Разбавляет очередь и при «Ближе к треку» / «Больше новизны» "
-                        + "подтягивает рекомендации VK по текущему треку"
-                )
+                L10n.text("diversifies_the_queue_and_on_closer_to_track_more_novelty_pulls_vk_recom")
             )
             .font(.caption)
             .foregroundStyle(.secondary)
 
             Picker(
-                L10n.text("Режим"),
+                L10n.text("mode"),
                 selection: Binding(
                     get: { player.mixRadioMode },
                     set: { applyRadio($0, mix: mix) }
@@ -878,7 +875,7 @@ struct MixesHubView: View {
             HStack(spacing: 10) {
                 Button { start(mix) } label: {
                     Label(
-                        L10n.text("Слушать всё"),
+                        L10n.text("play_all"),
                         systemImage: "play.fill"
                     )
                     .font(.subheadline.weight(.semibold))
@@ -892,7 +889,7 @@ struct MixesHubView: View {
                     shuffle(mix)
                 } label: {
                     Label(
-                        L10n.text("Перемешать"),
+                        L10n.text("shuffle"),
                         systemImage: "shuffle"
                     )
                     .font(.subheadline.weight(.semibold))
@@ -909,8 +906,8 @@ struct MixesHubView: View {
                 } label: {
                     Label(
                         pinnedMixStore.pin?.mixID == mix.id
-                            ? L10n.text("Сохранено")
-                            : L10n.text("Сохранить"),
+                            ? L10n.text("saved")
+                            : L10n.text("action.save"),
                         systemImage: pinnedMixStore.pin?.mixID == mix.id
                             ? "bookmark.fill"
                             : "bookmark"
@@ -931,7 +928,7 @@ struct MixesHubView: View {
                         )
                     } label: {
                         Label(
-                            L10n.text("Скрыть первый трек"),
+                            L10n.text("hide_first_track"),
                             systemImage: "hand.thumbsdown"
                         )
                     }
@@ -943,13 +940,13 @@ struct MixesHubView: View {
                         )
                     } label: {
                         Label(
-                            L10n.text("Скрыть исполнителя первого трека"),
+                            L10n.text("hide_first_track_artist"),
                             systemImage: "person.badge.minus"
                         )
                     }
                 } label: {
                     Label(
-                        L10n.text("Не нравится"),
+                        L10n.text("dislike"),
                         systemImage: "hand.thumbsdown"
                     )
                     .font(.subheadline.weight(.semibold))
@@ -966,7 +963,7 @@ struct MixesHubView: View {
                         MixFiltersSettingsView()
                     } label: {
                         Label(
-                            L10n.text("Фильтры микса"),
+                            L10n.text("mix_filters"),
                             systemImage: "line.3.horizontal.decrease.circle"
                         )
                         .font(.subheadline.weight(.semibold))
@@ -977,7 +974,7 @@ struct MixesHubView: View {
                         MixFeedbackManagerView()
                     } label: {
                         Label(
-                            L10n.text("Скрытое"),
+                            L10n.text("hidden"),
                             systemImage: "eye.slash"
                         )
                         .font(.subheadline.weight(.semibold))
@@ -988,7 +985,7 @@ struct MixesHubView: View {
                         openQueue(mix)
                     } label: {
                         Label(
-                            L10n.text("Очередь"),
+                            L10n.text("player.queue"),
                             systemImage: "list.bullet"
                         )
                         .font(.subheadline.weight(.semibold))
@@ -1009,7 +1006,7 @@ struct MixesHubView: View {
                 Image(systemName: "slider.horizontal.3")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Text(L10n.text("Быстрые фильтры"))
+                Text(L10n.text("quick_filters"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -1039,7 +1036,7 @@ struct MixesHubView: View {
         } label: {
             filterChip(
                 title: settings.mixMoodPreference.title,
-                prefix: L10n.text("Вайб"),
+                prefix: L10n.text("vibe"),
                 isActive: settings.mixMoodPreference != .any
             )
         }
@@ -1061,7 +1058,7 @@ struct MixesHubView: View {
         } label: {
             filterChip(
                 title: settings.mixLanguagePreference.title,
-                prefix: L10n.text("Язык"),
+                prefix: L10n.text("language"),
                 isActive: settings.mixLanguagePreference != .any
             )
         }
@@ -1083,7 +1080,7 @@ struct MixesHubView: View {
         } label: {
             filterChip(
                 title: settings.mixFamiliarityPreference.title,
-                prefix: L10n.text("Узнаваемость"),
+                prefix: L10n.text("familiarity"),
                 isActive: settings.mixFamiliarityPreference != .any
             )
         }
@@ -1146,7 +1143,7 @@ struct MixesHubView: View {
         return VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 12) {
                 PremiumSectionHeader(
-                    L10n.text("Для вас"),
+                    L10n.text("for_you"),
                     subtitle: subtitle
                 )
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -1167,9 +1164,9 @@ struct MixesHubView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         PremiumSectionHeader(
-                            L10n.text("Продолжить поток"),
+                            L10n.text("continue_selection"),
                             subtitle: L10n.format(
-                                "%d ещё в очереди",
+                                "d0_more_in_queue",
                                 remainder.count
                             )
                         )
@@ -1182,8 +1179,8 @@ struct MixesHubView: View {
                         } label: {
                             Text(
                                 isExpanded
-                                    ? L10n.text("Свернуть")
-                                    : L10n.text("Показать ещё")
+                                    ? L10n.text("collapse")
+                                    : L10n.text("show_more")
                             )
                             .font(.caption.weight(.semibold))
                         }
@@ -1249,7 +1246,7 @@ struct MixesHubView: View {
             .font(.caption.weight(.semibold))
         }
         .buttonStyle(.bordered)
-        .accessibilityLabel(L10n.text("Переключить вид списка"))
+        .accessibilityLabel(L10n.text("toggle_list_layout"))
     }
 
     private func trackGridCell(
@@ -1308,7 +1305,7 @@ struct MixesHubView: View {
         .buttonStyle(PremiumPressStyle())
         .contextMenu {
             Button { player.playNext(track) } label: {
-                Label("Играть следующим", systemImage: "text.badge.plus")
+                Label(L10n.text("play_next"), systemImage: "text.badge.plus")
             }
             TrackMixActions.menuButtons(
                 for: track,
@@ -1375,21 +1372,20 @@ struct MixesHubView: View {
         .buttonStyle(PremiumPressStyle())
         .contextMenu {
             Button { player.playNext(track) } label: {
-                Label("Играть следующим", systemImage: "text.badge.plus")
+                Label(L10n.text("play_next"), systemImage: "text.badge.plus")
             }
             Button {
                 playTrack(track, queue: queue, mix: mix)
                 player.presentPlayer()
             } label: {
-                Label("Открыть плеер", systemImage: "play.circle")
+                Label(L10n.text("open_player"), systemImage: "play.circle")
             }
             TrackMixActions.menuButtons(
                 for: track,
                 environment: environment
             )
             Button { sharingTrack = track } label: {
-                Label(
-                    "Поделиться аудиофайлом",
+                Label(L10n.text("share_audio_file"),
                     systemImage: "square.and.arrow.up"
                 )
             }
@@ -1404,9 +1400,9 @@ struct MixesHubView: View {
         let seeds = recentSeedTracks
         return VStack(alignment: .leading, spacing: 12) {
             PremiumSectionHeader(
-                L10n.text("Селена как личная станция"),
+                L10n.text("selena.personal_station"),
                 subtitle: L10n.text(
-                    "Окно слушания обновляется из истории, рекомендаций и VK микса"
+                    "decoder_dev_s_neural_network_refreshes_the_window_from_history_recommend"
                 )
             )
 
@@ -1418,22 +1414,22 @@ struct MixesHubView: View {
                 spacing: 10
             ) {
                 stationStatCard(
-                    title: L10n.text("В окне"),
+                    title: L10n.text("in_window"),
                     value: L10n.trackCount(selenaTracks.count),
                     systemImage: "music.note.list"
                 )
                 stationStatCard(
-                    title: L10n.text("Длительность"),
+                    title: L10n.text("duration"),
                     value: stats.duration.formattedDuration,
                     systemImage: "clock"
                 )
                 stationStatCard(
-                    title: L10n.text("Новые артисты"),
+                    title: L10n.text("new_artists"),
                     value: "\(stats.noveltyPercent)%",
                     systemImage: "sparkles"
                 )
                 stationStatCard(
-                    title: L10n.text("Артисты"),
+                    title: L10n.text("artists_2"),
                     value: String(stats.artistCount),
                     systemImage: "music.mic"
                 )
@@ -1456,7 +1452,7 @@ struct MixesHubView: View {
 
             if !seeds.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.text("Недавние сиды"))
+                    Text(L10n.text("recent_seeds"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -1554,11 +1550,11 @@ struct MixesHubView: View {
 
     private var selenaQuickStarts: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.text("Как начать"))
+            Text(L10n.text("how_to_start"))
                 .font(.headline)
             Text(
                 L10n.text(
-                    "То, что в официальном VK Music зовут миксом по музыке и по треку"
+                    "what_the_official_vk_music_app_calls_a_mix_from_your_music_and_a_mix_fro"
                 )
             )
             .font(.caption)
@@ -1567,19 +1563,19 @@ struct MixesHubView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     quickStartChip(
-                        title: L10n.text("Селена"),
+                        title: L10n.text("selena.name"),
                         systemImage: "sparkles"
                     ) {
                         start(personalMix)
                     }
                     quickStartChip(
-                        title: L10n.text("По моей музыке"),
+                        title: L10n.text("from_my_music"),
                         systemImage: "music.note.list"
                     ) {
                         Task { await environment.startMixFromMyMusic() }
                     }
                     quickStartChip(
-                        title: L10n.text("Микс по треку"),
+                        title: L10n.text("mix_from_track"),
                         systemImage: "dot.radiowaves.up.forward"
                     ) {
                         if let seed = history.entries.first?.track
@@ -1589,12 +1585,12 @@ struct MixesHubView: View {
                             }
                         } else {
                             actionError = L10n.text(
-                                "Нужен хотя бы один недавний трек"
+                                "at_least_one_recent_track_is_required"
                             )
                         }
                     }
                     quickStartChip(
-                        title: L10n.text("Больше новизны"),
+                        title: L10n.text("more_novelty"),
                         systemImage: "shuffle"
                     ) {
                         start(personalMix, applying: .moreNovel)
@@ -1624,11 +1620,11 @@ struct MixesHubView: View {
 
     private func vibeShelfBlock(metrics: MixHubMetrics) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.text("Вайбы из VK"))
+            Text(L10n.text("vibes_from_vk"))
                 .font(.headline)
             Text(
                 L10n.text(
-                    "Настроения и тематические полки из каталога — как в приложении VK"
+                    "moods_and_themed_shelves_from_the_catalog_just_like_in_the_vk_app"
                 )
             )
             .font(.caption)
@@ -1647,7 +1643,7 @@ struct MixesHubView: View {
                                     .lineLimit(2)
                                 Text(
                                     L10n.format(
-                                        "%d миксов",
+                                        "d0_mixes",
                                         shelf.mixes.count
                                     )
                                 )
@@ -1733,16 +1729,16 @@ struct MixesHubView: View {
     private var selenaHeroSubtitle: String {
         if let name = sessionStore.profile?.firstName,
            !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return L10n.format("Селена подготовила подборку для %@", name)
+            return L10n.format("selena.prepared_for", name)
         }
-        return L10n.text("Селена подготовила подборку специально для вас")
+        return L10n.text("selena.prepared_generic")
     }
 
     private func cardSubtitle(for mix: MusicMix) -> String {
         if let curator = mix.curator, curator.isUsable {
             if let percent = mix.matchPercent {
                 return L10n.format(
-                    "%@ · совпадение %d%%",
+                    "n_0_d1_match",
                     curator.displayName,
                     percent
                 )
@@ -1750,10 +1746,10 @@ struct MixesHubView: View {
             return curator.displayName
         }
         if mix.isSocial, let percent = mix.matchPercent {
-            return L10n.format("совпадение с вашим вкусом · %d%%", percent)
+            return L10n.format("match_with_your_taste_d0", percent)
         }
         if mix.isSocial {
-            return L10n.text("совпадение с вашим вкусом")
+            return L10n.text("match_with_your_taste")
         }
         if let section = mix.sectionTitle,
            !section.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -1769,12 +1765,12 @@ struct MixesHubView: View {
 
     private func vkTracksSubtitle(for mix: MusicMix) -> String {
         if mix.isSocial {
-            return L10n.text("Подобрано по пересечению вкусов")
+            return L10n.text("matched_from_overlapping_tastes")
         }
         if mix.sectionTitle != nil {
-            return L10n.text("Официальная подборка VK")
+            return L10n.text("official_vk_selection")
         }
-        return L10n.text("Подобрано алгоритмами VK")
+        return L10n.text("picked_by_vk_algorithms")
     }
 
     private func tracks(for mix: MusicMix) -> [Track] {
@@ -1792,12 +1788,12 @@ struct MixesHubView: View {
             Image(systemName: "sparkles")
                 .font(.system(size: 32))
                 .foregroundStyle(.secondary)
-            Text(L10n.text("Пока доступен только персональный микс"))
+            Text(L10n.text("only_your_personal_mix_is_available_right_now"))
                 .font(.subheadline.weight(.semibold))
                 .multilineTextAlignment(.center)
             Text(
                 L10n.text(
-                    "VK ещё не подготовил тематические подборки для вашего аккаунта — загляните позже или откройте Селену."
+                    "vk_has_not_prepared_themed_mixes_for_your_account_yet_check_back_later_o"
                 )
             )
             .font(.caption)
@@ -1807,7 +1803,7 @@ struct MixesHubView: View {
                 Button {
                     hubTab = .selena
                 } label: {
-                    Text(L10n.text("Открыть Селену"))
+                    Text(L10n.text("open_selena"))
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
@@ -1816,7 +1812,7 @@ struct MixesHubView: View {
                 Button {
                     Task { await load(force: true) }
                 } label: {
-                    Text(L10n.text("Обновить"))
+                    Text(L10n.text("action.refresh"))
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
@@ -1834,7 +1830,7 @@ struct MixesHubView: View {
             Image(systemName: "wifi.exclamationmark")
                 .font(.system(size: 32))
                 .foregroundStyle(.secondary)
-            Text(L10n.text("Не удалось загрузить миксы"))
+            Text(L10n.text("could_not_load_mixes"))
                 .font(.subheadline.weight(.semibold))
             Text(message)
                 .font(.caption)
@@ -1843,7 +1839,7 @@ struct MixesHubView: View {
             Button {
                 Task { await load(force: true) }
             } label: {
-                Text(L10n.text("Обновить"))
+                Text(L10n.text("action.refresh"))
                     .font(.subheadline.weight(.semibold))
             }
             .buttonStyle(.bordered)
@@ -1884,7 +1880,7 @@ struct MixesHubView: View {
             }
         }
         .redacted(reason: .placeholder)
-        .accessibilityLabel(L10n.text("Загружаем рекомендации и миксы"))
+        .accessibilityLabel(L10n.text("loading_recommendations_and_mixes"))
     }
 
     private func actionErrorRow(_ message: String) -> some View {
@@ -1922,18 +1918,18 @@ struct MixesHubView: View {
 
     private func mixTypeTitle(for mix: MusicMix) -> String {
         if mix.id == MusicMix.common.id {
-            return L10n.text("Станция Селены")
+            return L10n.text("selena_station")
         }
         if mix.curator?.isUsable == true {
-            return L10n.text("Кураторский")
+            return L10n.text("curated")
         }
         if mix.isSocial {
-            return L10n.text("Социальный")
+            return L10n.text("social")
         }
         if mix.sectionTitle != nil {
-            return L10n.text("Полка VK")
+            return L10n.text("vk_shelf")
         }
-        return L10n.text("Алгоритмы VK")
+        return L10n.text("vk_algorithms")
     }
 
     private func mixTypeIcon(for mix: MusicMix) -> String {

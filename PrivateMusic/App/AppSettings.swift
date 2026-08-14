@@ -7,7 +7,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var title: String {
-        L10n.text(self == .dark ? "Тёмная" : "Светлая")
+        L10n.text(self == .dark ? "appearance.dark" : "appearance.light")
     }
 
     var colors: [Color] {
@@ -42,9 +42,9 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .system: L10n.text("Системная")
-        case .dark: L10n.text("Тёмная")
-        case .light: L10n.text("Светлая")
+        case .system: L10n.text("appearance.system")
+        case .dark: L10n.text("appearance.dark")
+        case .light: L10n.text("appearance.light")
         }
     }
 
@@ -67,10 +67,10 @@ enum AppTextScale: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .compact: L10n.text("Компактный")
-        case .system: L10n.text("Системный")
-        case .large: L10n.text("Крупный")
-        case .extraLarge: L10n.text("Очень крупный")
+        case .compact: L10n.text("text_scale.compact")
+        case .system: L10n.text("text_scale.system")
+        case .large: L10n.text("text_scale.large")
+        case .extraLarge: L10n.text("text_scale.extra_large")
         }
     }
 
@@ -105,12 +105,12 @@ enum EqualizerPreset: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .flat: L10n.text("Без обработки")
-        case .bass: L10n.text("Больше баса")
-        case .vocal: L10n.text("Вокал")
-        case .electronic: L10n.text("Электроника")
-        case .rock: L10n.text("Рок")
-        case .custom: L10n.text("Своя")
+        case .flat: L10n.text("flat")
+        case .bass: L10n.text("bass_boost")
+        case .vocal: L10n.text("vocal")
+        case .electronic: L10n.text("electronic")
+        case .rock: L10n.text("rock")
+        case .custom: L10n.text("custom")
         }
     }
 
