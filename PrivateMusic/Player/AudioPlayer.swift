@@ -1031,6 +1031,7 @@ final class AudioPlayer {
     private let nowPlaying = NowPlayingController()
     private let equalizer = EqualizerDSP()
     private let historyStore: ListeningHistoryStore
+    @ObservationIgnored
     private let settings: AppSettings
     private var timeObserver: Any?
     private var notificationObservers: [NSObjectProtocol] = []
@@ -1234,10 +1235,11 @@ final class AudioPlayer {
         // unity so the system volume slider is the only attenuation.
         advanceOnPlaybackError = settings.advanceOnPlaybackError
         preferHighQuality = settings.preferHighQuality
-        shufflePreference = PlaybackShufflePreference.resolve(
+        let initialShuffle = PlaybackShufflePreference.resolve(
             defaults: defaults
         )
-        shuffleEnabled = shufflePreference
+        shufflePreference = initialShuffle
+        shuffleEnabled = initialShuffle
         repeatMode = RepeatMode(
             rawValue: defaults.string(forKey: "player.repeat") ?? ""
         ) ?? .off
