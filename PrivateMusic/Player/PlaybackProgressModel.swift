@@ -1,12 +1,12 @@
-import Combine
 import Foundation
 
 /// Fine-grained playback clock isolated from `AudioPlayer`'s EnvironmentObject
 /// fan-out. Catalog / library rows observe the player for track identity and
 /// play state only; scrubbers, mini player, and lyrics observe this model.
 @MainActor
-final class PlaybackProgressModel: ObservableObject {
-    @Published private(set) var elapsedTime: TimeInterval = 0
+@Observable
+final class PlaybackProgressModel {
+    private(set) var elapsedTime: TimeInterval = 0
 
     /// Minimum delta before SwiftUI is notified. Keeps ~4 Hz UI updates while
     /// the AVPlayer observer can sample faster for listening metrics.
@@ -34,13 +34,14 @@ final class PlaybackProgressModel: ObservableObject {
 /// isolates the clock: buffering / duration / shuffle changes on the player
 /// must not invalidate every visible row.
 @MainActor
-final class PlaybackHighlightModel: ObservableObject {
-    @Published private(set) var currentTrackID: String?
-    @Published private(set) var isPlaying = false
+@Observable
+final class PlaybackHighlightModel {
+    private(set) var currentTrackID: String?
+    private(set) var isPlaying = false
     /// What started the current queue, so shelves (library/catalog cards)
     /// can flip their play chip to a pause chip without observing the full
     /// `AudioPlayer` and rebuilding on every buffering / duration tick.
-    @Published private(set) var queueSource: QueueSource?
+    private(set) var queueSource: QueueSource?
 
     /// No-op when nothing changed: the player mirrors its state here on every
     /// queue / index / transport mutation, and most of those repeat the same

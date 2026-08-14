@@ -1,15 +1,15 @@
 import SwiftUI
 
 struct PlaylistDetailView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var settings: AppSettings
-    @EnvironmentObject private var player: AudioPlayer
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(AppSettings.self) private var settings
+    @Environment(AudioPlayer.self) private var player
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var offlinePlaylists =
+    private let offlinePlaylists =
         OfflinePlaylistStore.shared
     let playlist: Playlist
-    @StateObject private var model = PlaylistDetailViewModel()
+    @State private var model = PlaylistDetailViewModel()
     @State private var showsNavTitle = false
     @State private var showsDeleteConfirmation = false
     @State private var isDeletingPlaylist = false
@@ -465,12 +465,13 @@ struct PlaylistDetailView: View {
 }
 
 @MainActor
-private final class PlaylistDetailViewModel: ObservableObject {
-    @Published private(set) var tracks: [Track] = []
-    @Published private(set) var isLoading = false
-    @Published private(set) var isLoadingMore = false
-    @Published private(set) var hasLoaded = false
-    @Published var errorMessage: String?
+@Observable
+private final class PlaylistDetailViewModel {
+    private(set) var tracks: [Track] = []
+    private(set) var isLoading = false
+    private(set) var isLoadingMore = false
+    private(set) var hasLoaded = false
+    var errorMessage: String?
     private var nextOffset: Int?
 
     func load(

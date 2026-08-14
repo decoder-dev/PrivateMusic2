@@ -26,7 +26,8 @@ required = {
     "PrivateMusic/App/PrivateMusicApp.swift",
     "PrivateMusic/Player/AudioPlayer.swift",
     "PrivateMusic/Player/NowPlayingController.swift",
-    "PrivateMusic/Core/Security/KeychainStore.swift",
+    "PrivateMusic/Core/Observation/ObservationLoop.swift",
+    "PrivateMusic/Features/Shared/AdaptiveLayout.swift",
     "PrivateMusic/Core/Networking/APIClient.swift",
     "PrivateMusic/Services/VKWebAuthService.swift",
     "PrivateMusic/Services/VKAudioURLResolver.swift",
@@ -145,6 +146,10 @@ if "player.allowsExternalPlayback = true" in audio_player_source:
     fail("external AVPlayer handoff must not bypass active audio processing")
 if ".preroll(" in audio_player_source:
     fail("track preloading must not use exception-prone AVPlayer preroll")
+if "@Observable" not in audio_player_source:
+    fail("AudioPlayer must use the Observation @Observable macro")
+if "ObservationLoop.start" not in audio_player_source:
+    fail("AudioPlayer must observe settings through ObservationLoop")
 for forbidden_legacy_all_tabs_symbol in (
     "ForEach(MainTab.allCases",
 ):
@@ -367,6 +372,8 @@ for required_shelf_symbol in (
     "enum LibraryShelfMetrics",
     "static let artworkSize",
     "static var shelfHeight",
+    "func artworkSize(for width: CGFloat)",
+    "func shelfHeight(for width: CGFloat)",
     "func librarySectionSpacing()",
 ):
     if required_shelf_symbol not in shelf_metrics_source:
@@ -378,8 +385,8 @@ for required_shelf_card_symbol in (
     "func playlistCard(",
     "func albumCard(",
     "PlaylistArtworkView(",
-    "size: LibraryShelfMetrics.artworkSize",
-    ".frame(height: LibraryShelfMetrics.shelfHeight)",
+    "size: LibraryShelfMetrics.artworkSize(for:",
+    ".frame(height: LibraryShelfMetrics.shelfHeight(for:",
 ):
     if required_shelf_card_symbol not in library_view_source:
         fail(
@@ -588,7 +595,7 @@ for required_playlist_paging_symbol in (
             f"{required_playlist_paging_symbol}"
         )
 playlist_shelf_body = library_view_source.split(
-    "private var playlistShelf: some View {", 1
+    "private func playlistShelf(width: CGFloat) -> some View {", 1
 )
 if len(playlist_shelf_body) < 2:
     fail("LibraryView must keep the playlist shelf")
@@ -1065,10 +1072,10 @@ feature_source = (
 ).read_text(encoding="utf-8")
 if "enum OfflineDownloadsFeature" not in feature_source:
     fail("offline downloads feature flag is missing")
-if "productionEnabled = false" not in feature_source:
+if "productionEnabled = true" not in feature_source:
     fail(
-        "offline downloads must stay disabled for the stable build "
-        "(OfflineDownloadsFeature.productionEnabled = false)"
+        "offline downloads must stay enabled for production "
+        "(OfflineDownloadsFeature.productionEnabled = true)"
     )
 if "MPEGTSAudioExtractor" not in all_source:
     fail("MPEG-TS demux for HLS share export is missing")
@@ -1286,12 +1293,14 @@ for forbidden_demo in (
 
 project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
 for required_setting in (
-    'iOS: "16.0"',
+    'iOS: "17.0"',
     'watchOS: "10.0"',
+    'SWIFT_VERSION: "6.0"',
+    "SWIFT_STRICT_CONCURRENCY: complete",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2.watchkitapp",
     "INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.dec.privatemusic2",
-    "INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: NO",
+    "INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: YES",
     "TARGETED_DEVICE_FAMILY: 4",
     "postGenCommand: python3 scripts/fix_watch_embedding.py",
     "GENERATE_INFOPLIST_FILE: NO",

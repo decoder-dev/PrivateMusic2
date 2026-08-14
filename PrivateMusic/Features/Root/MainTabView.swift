@@ -53,17 +53,20 @@ private struct PlaybackDockHeightKey: PreferenceKey {
 }
 
 struct MainTabView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedTab: MainTab = .home
-    @StateObject private var scrollCoordinator = MainTabScrollCoordinator()
+    @State private var scrollCoordinator = MainTabScrollCoordinator()
     @State private var dockHeight: CGFloat = 0
     let playerNamespace: Namespace.ID
 
     var body: some View {
         Group {
-            if #available(iOS 26.0, *) {
+            if horizontalSizeClass == .regular {
+                regularWidthSplitView
+            } else if #available(iOS 26.0, *) {
                 SystemLiquidGlassTabView(
                     selection: $selectedTab,
                     playerNamespace: playerNamespace
@@ -72,13 +75,57 @@ struct MainTabView: View {
                 legacyTabStack
             }
         }
-        .environmentObject(scrollCoordinator)
+        .environment(scrollCoordinator)
         .task(id: sessionStore.accessToken) {
             async let library: Void = environment.refreshLibraryIndex()
             async let albums: Void = environment.refreshLikedAlbums()
             async let home: Void = environment.refreshHomeCatalog()
             _ = await (library, albums, home)
         }
+    }
+
+    /// iPad / regular-width sidebar. Used on iOS 26 as well — compact
+    /// widths keep `SystemLiquidGlassTabView`.
+    private var regularWidthSplitView: some View {
+        NavigationSplitView {
+            List(selection: $selectedTab) {
+                ForEach(sidebarTabs, id: \.self) { tab in
+                    Label(tab.title, systemImage: tab.image)
+                        .tag(tab)
+                }
+            }
+            .navigationTitle(L10n.text("private_music"))
+            .listStyle(.sidebar)
+        } detail: {
+            regularTabDetail
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    RegularWidthPlaybackBar(
+                        playerNamespace: playerNamespace
+                    )
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var regularTabDetail: some View {
+        switch selectedTab {
+        case .home:
+            NavigationStack { CatalogView() }
+        case .mix:
+            NavigationStack { MixesHubView() }
+        case .library:
+            NavigationStack { LibraryView() }
+        case .search:
+            NavigationStack {
+                SearchView(isActive: selectedTab == .search)
+            }
+        case .profile:
+            NavigationStack { ProfileView() }
+        }
+    }
+
+    private var sidebarTabs: [MainTab] {
+        [.home, .mix, .library, .search, .profile]
     }
 
     /// Custom floating dock for iOS 16–25. iOS 26.0+ uses the system
@@ -159,7 +206,7 @@ struct MainTabView: View {
 
 @available(iOS 26.0, *)
 private struct SystemLiquidGlassTabView: View {
-    @EnvironmentObject private var player: AudioPlayer
+    @Environment(AudioPlayer.self) private var player
     @Binding var selection: MainTab
     let playerNamespace: Namespace.ID
 
@@ -242,7 +289,7 @@ private struct PlaybackAccessoryModifier: ViewModifier {
 
 @available(iOS 26.0, *)
 private struct SystemPlaybackAccessory: View {
-    @EnvironmentObject private var player: AudioPlayer
+    @Environment(AudioPlayer.self) private var player
     @Environment(\.tabViewBottomAccessoryPlacement) private var accessoryPlacement
     let playerNamespace: Namespace.ID
 
@@ -287,12 +334,40 @@ private extension MiniPlayerAccessoryMode {
     }
 }
 
+// MARK: - Regular-width mini player (iPad / Plus landscape)
+
+private struct RegularWidthPlaybackBar: View {
+    @Environment(AudioPlayer.self) private var player
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let playerNamespace: Namespace.ID
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if player.currentTrack != nil {
+                MiniPlayerView(playerNamespace: playerNamespace)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .padding(.bottom, 5)
+                    .transition(
+                        .move(edge: .bottom).combined(with: .opacity)
+                    )
+            }
+        }
+        .animation(
+            reduceMotion
+                ? nil
+                : .spring(response: 0.34, dampingFraction: 0.86),
+            value: player.currentTrack?.id
+        )
+    }
+}
+
 // MARK: - Legacy custom dock (iOS 16–25)
 
 private struct PlaybackTabDock: View {
-    @EnvironmentObject private var player: AudioPlayer
-    @EnvironmentObject private var settings: AppSettings
-    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
+    @Environment(AudioPlayer.self) private var player
+    @Environment(AppSettings.self) private var settings
+    @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selection: MainTab
     let playerNamespace: Namespace.ID

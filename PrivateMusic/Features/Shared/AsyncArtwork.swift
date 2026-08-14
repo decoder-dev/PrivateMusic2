@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AsyncArtwork: View {
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppSettings.self) private var settings
     @Environment(\.displayScale) private var displayScale
     let url: URL?
     var size: CGFloat

@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct ProfileView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingLogoutConfirmation = false
@@ -54,7 +54,7 @@ struct ProfileView: View {
                 .id(MainTabScrollDestination.profile)
                 .padding()
             }
-            .onReceive(scrollCoordinator.$request) { request in
+            .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .profile else { return }
                 if reduceMotion {
                     proxy.scrollTo(MainTabScrollDestination.profile, anchor: .top)

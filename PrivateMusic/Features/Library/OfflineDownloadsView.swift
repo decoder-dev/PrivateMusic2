@@ -1,14 +1,14 @@
 import SwiftUI
 
 struct OfflineDownloadsView: View {
-    @EnvironmentObject private var environment: AppEnvironment
+    @Environment(AppEnvironment.self) private var environment
     /// Highlight only: observing `AudioPlayer` here would rebuild the whole
     /// downloads list on every buffering / duration tick. Playback actions go
     /// through `environment.player`.
-    @EnvironmentObject private var highlight: PlaybackHighlightModel
-    @EnvironmentObject private var offlineStore: OfflineTrackStore
-    @EnvironmentObject private var sessionStore: SessionStore
-    @ObservedObject private var offlinePlaylists =
+    @Environment(PlaybackHighlightModel.self) private var highlight
+    @Environment(OfflineTrackStore.self) private var offlineStore
+    @Environment(SessionStore.self) private var sessionStore
+    private let offlinePlaylists =
         OfflinePlaylistStore.shared
 
     private enum DownloadsSection: String, CaseIterable, Identifiable {
@@ -632,7 +632,7 @@ struct OfflineDownloadsView: View {
     // MARK: - Playlist detail
 
     private struct PlaylistDownloadsDetailView: View {
-        @EnvironmentObject private var highlight: PlaybackHighlightModel
+        @Environment(PlaybackHighlightModel.self) private var highlight
 
         let title: String
         let records: [OfflineTrackRecord]

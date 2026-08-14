@@ -6,8 +6,9 @@ import SwiftUI
 /// system volume slider (icon / percent). The slider itself is an
 /// `MPVolumeView` so it drives hardware volume like Apple Music.
 @MainActor
-final class SystemVolumeObserver: ObservableObject {
-    @Published private(set) var volume: Float
+@Observable
+final class SystemVolumeObserver {
+    private(set) var volume: Float
 
     private var observation: NSKeyValueObservation?
 
