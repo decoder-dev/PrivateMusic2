@@ -3,6 +3,9 @@ import SwiftUI
 
 struct RemotePlayerView: View {
     @Environment(WatchRemoteViewModel.self) private var remote
+    @State private var crownElapsed: Double = 0
+    @State private var isScrubbing = false
+    @State private var seekTask: Task<Void, Never>?
 
     var body: some View {
         Group {
@@ -13,6 +16,13 @@ struct RemotePlayerView: View {
             }
         }
         .containerBackground(.black.gradient, for: .navigation)
+        .onChange(of: remote.state.trackID) { _, _ in
+            isScrubbing = false
+            crownElapsed = remote.state.elapsed
+        }
+        .onAppear {
+            crownElapsed = remote.state.elapsed
+        }
     }
 
     private var player: some View {
@@ -78,31 +88,71 @@ struct RemotePlayerView: View {
     }
 
     private func progress(at date: Date) -> some View {
-        let elapsed = remote.state.displayedElapsed(at: date)
+        let duration = max(remote.state.duration, 0)
+        let elapsed = isScrubbing
+            ? crownElapsed
+            : remote.state.displayedElapsed(at: date)
         return VStack(spacing: 3) {
-            if remote.state.duration > 0 {
+            if duration > 0 {
                 ProgressView(
-                    value: elapsed,
-                    total: remote.state.duration
+                    value: min(max(elapsed, 0), duration),
+                    total: duration
                 )
                 .tint(.white)
+                .focusable()
+                .digitalCrownRotation(
+                    $crownElapsed,
+                    from: 0,
+                    through: duration,
+                    by: 1,
+                    sensitivity: .medium,
+                    isContinuous: false,
+                    isHapticFeedbackEnabled: true
+                )
+                .onChange(of: crownElapsed) { _, value in
+                    let displayed = remote.state.displayedElapsed(at: .now)
+                    if !isScrubbing, abs(value - displayed) < 1 {
+                        return
+                    }
+                    scheduleSeek(value)
+                }
                 .accessibilityLabel(WatchL10n.text("playback_progress"))
                 .accessibilityValue(
-                    "\(format(elapsed)) / \(format(remote.state.duration))"
+                    "\(format(elapsed)) / \(format(duration))"
                 )
+                .accessibilityAdjustableAction { direction in
+                    let step: Double = direction == .increment ? 5 : -5
+                    scheduleSeek(
+                        min(max(elapsed + step, 0), duration)
+                    )
+                }
                 HStack {
                     Text(format(elapsed))
                     Spacer()
-                    Text("-\(format(max(0, remote.state.duration - elapsed)))")
+                    Text("-\(format(max(0, duration - elapsed)))")
                 }
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             } else {
                 ProgressView()
                     .accessibilityLabel(WatchL10n.text("loading"))
             }
         }
         .padding(.horizontal, 4)
+    }
+
+    private func scheduleSeek(_ seconds: TimeInterval) {
+        guard remote.isReachable, remote.state.duration > 0 else { return }
+        isScrubbing = true
+        crownElapsed = seconds
+        seekTask?.cancel()
+        seekTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(280))
+            guard !Task.isCancelled else { return }
+            remote.send(.seek, seekTime: seconds)
+            isScrubbing = false
+        }
     }
 
     private var controls: some View {
@@ -223,6 +273,26 @@ struct RemotePlayerView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(isCurrent || !remote.isReachable)
+                        .accessibilityLabel(
+                            String(
+                                format: WatchL10n.text("spoken_metadata_0_1"),
+                                item.title,
+                                item.artist
+                            )
+                        )
+                        .accessibilityValue(
+                            isCurrent
+                                ? WatchL10n.text("now_playing_row")
+                                : ""
+                        )
+                        .accessibilityAddTraits(
+                            isCurrent ? .isSelected : []
+                        )
+                        .accessibilityHint(
+                            isCurrent || !remote.isReachable
+                                ? ""
+                                : WatchL10n.text("play_from_queue")
+                        )
                     }
                 }
                 .padding(.top, 4)

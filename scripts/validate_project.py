@@ -26,6 +26,7 @@ required = {
     "PrivateMusic/App/PrivateMusicApp.swift",
     "PrivateMusic/Player/AudioPlayer.swift",
     "PrivateMusic/Player/NowPlayingController.swift",
+    "PrivateMusic/Player/NowPlayingUserActivity.swift",
     "PrivateMusic/Core/Observation/ObservationLoop.swift",
     "PrivateMusic/Features/Shared/AdaptiveLayout.swift",
     "PrivateMusic/Core/Networking/APIClient.swift",
@@ -150,6 +151,23 @@ if "@Observable" not in audio_player_source:
     fail("AudioPlayer must use the Observation @Observable macro")
 if "ObservationLoop.start" not in audio_player_source:
     fail("AudioPlayer must observe settings through ObservationLoop")
+if "handleNowPlayingUserActivity" not in audio_player_source:
+    fail("AudioPlayer must continue now-playing NSUserActivity")
+if "NowPlayingUserActivityPolicy.activityType" not in root_view_source:
+    fail("RootView must continue now-playing Handoff/Spotlight activity")
+now_playing_source = (
+    SOURCE / "Player" / "NowPlayingController.swift"
+).read_text(encoding="utf-8")
+for required_now_playing_activity in (
+    "isEligibleForHandoff = true",
+    "isEligibleForSearch = true",
+    "CSSearchableItemAttributeSet",
+):
+    if required_now_playing_activity not in now_playing_source:
+        fail(
+            "Now Playing must publish a Spotlight/Handoff activity: "
+            f"{required_now_playing_activity}"
+        )
 for forbidden_legacy_all_tabs_symbol in (
     "ForEach(MainTab.allCases",
 ):
@@ -176,6 +194,21 @@ for forbidden_system_tab_search_chrome in (
             "iOS 26+ Search must be a regular fifth labeled tab, "
             "not detached search chrome: "
             f"{forbidden_system_tab_search_chrome}"
+        )
+if "tab.switch_hint" not in main_tab_source:
+    fail("iPad sidebar tabs must expose a VoiceOver switch hint")
+watch_remote_view = (
+    ROOT / "PrivateMusicWatch" / "RemotePlayerView.swift"
+).read_text(encoding="utf-8")
+for required_watch_chrome in (
+    "digitalCrownRotation",
+    "play_from_queue",
+    "accessibilityAddTraits",
+):
+    if required_watch_chrome not in watch_remote_view:
+        fail(
+            "Watch remote must keep Digital Crown seek and queue VoiceOver: "
+            f"{required_watch_chrome}"
         )
 if ".searchable(" not in search_view_source:
     fail("SearchView must bind system .searchable for the Search tab")
@@ -1165,6 +1198,8 @@ with plist_path.open("rb") as stream:
     plist = plistlib.load(stream)
 if plist.get("UIBackgroundModes") != ["audio"]:
     fail("Info.plist must contain only the audio background mode")
+if plist.get("NSUserActivityTypes") != ["com.dec.privatemusic2.now-playing"]:
+    fail("Info.plist must declare the now-playing NSUserActivity type")
 scene_manifest = plist.get("UIApplicationSceneManifest")
 if not isinstance(scene_manifest, dict):
     fail(

@@ -722,3 +722,4 @@
 "track_singular" = "Track";
 "percent_d0" = "%d%%";
 "spoken_metadata_0_1" = "%@, %@";
+"tab.switch_hint" = "Switches the selected tab";

@@ -7,6 +7,7 @@ enum WatchRemoteCommand: String, Codable, Sendable {
     case likeCurrent
     case unlikeCurrent
     case playQueueItem
+    case seek
 }
 
 struct WatchQueueItem: Codable, Equatable, Sendable {
@@ -56,6 +57,7 @@ enum WatchRemoteCommandValidationPolicy {
         command: WatchRemoteCommand,
         issuedAt: Date,
         trackID: String?,
+        seekTime: TimeInterval?,
         at date: Date,
         currentTrackID: String?,
         queuedTrackIDs: [String],
@@ -70,6 +72,11 @@ enum WatchRemoteCommandValidationPolicy {
             guard let trackID else { return false }
             return queuedTrackIDs.contains(trackID)
                 && trackID != currentTrackID
+        case .seek:
+            guard let trackID, let seekTime else { return false }
+            return trackID == currentTrackID
+                && seekTime.isFinite
+                && seekTime >= 0
         case .togglePlayPause, .next, .previous, .likeCurrent, .unlikeCurrent:
             return trackID == currentTrackID
         }
@@ -217,15 +224,18 @@ struct WatchRemoteCommandEnvelope: Codable, Equatable, Sendable {
     let command: WatchRemoteCommand
     let issuedAt: Date
     let trackID: String?
+    let seekTime: TimeInterval?
 
     init(
         command: WatchRemoteCommand,
         issuedAt: Date = Date(),
-        trackID: String?
+        trackID: String?,
+        seekTime: TimeInterval? = nil
     ) {
         self.command = command
         self.issuedAt = issuedAt
         self.trackID = trackID
+        self.seekTime = seekTime
     }
 
     var message: [String: Any] {
@@ -269,6 +279,7 @@ struct WatchRemoteCommandEnvelope: Codable, Equatable, Sendable {
             command: command,
             issuedAt: issuedAt,
             trackID: trackID,
+            seekTime: seekTime,
             at: date,
             currentTrackID: currentTrackID,
             queuedTrackIDs: queuedTrackIDs,

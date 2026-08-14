@@ -96,6 +96,14 @@ struct MainTabView: View {
             List(sidebarTabs, selection: sidebarSelection) { tab in
                 Label(tab.title, systemImage: tab.image)
                     .tag(tab)
+                    .accessibilityAddTraits(
+                        tab == selectedTab ? .isSelected : []
+                    )
+                    .accessibilityHint(
+                        tab == selectedTab
+                            ? ""
+                            : L10n.text("tab.switch_hint")
+                    )
             }
             .navigationTitle(L10n.text("private_music"))
             .listStyle(.sidebar)
@@ -485,6 +493,7 @@ private struct PlaybackTabDock: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(tab.title)
         .accessibilityAddTraits(selection == tab ? .isSelected : [])
     }
 

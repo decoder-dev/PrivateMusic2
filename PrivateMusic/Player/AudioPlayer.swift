@@ -1210,6 +1210,25 @@ final class AudioPlayer {
         isPlayerPresented = true
     }
 
+    func handleNowPlayingUserActivity(_ activity: NSUserActivity) {
+        let trackID = NowPlayingUserActivityPolicy.trackID(
+            fromUserInfo: activity.userInfo
+        )
+        if let index = NowPlayingUserActivityPolicy.queueIndexToResume(
+            activityTrackID: trackID,
+            queueIDs: queue.map(\.id),
+            currentIndex: currentIndex
+        ) {
+            jump(to: index)
+        }
+        guard NowPlayingUserActivityPolicy.shouldPresentPlayer(
+            currentTrackID: currentTrack?.id
+        ) else {
+            return
+        }
+        presentPlayer()
+    }
+
     /// Present the full-screen player and open the queue sheet.
     func presentQueue() {
         pendingPlayerSheet = .queue

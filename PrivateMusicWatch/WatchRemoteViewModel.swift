@@ -24,16 +24,22 @@ final class WatchRemoteViewModel: NSObject {
         isReachable = session?.isReachable ?? false
     }
 
-    func send(_ command: WatchRemoteCommand, trackID: String? = nil) {
+    func send(
+        _ command: WatchRemoteCommand,
+        trackID: String? = nil,
+        seekTime: TimeInterval? = nil
+    ) {
         guard let session, session.isReachable else {
             showCommandFailure()
             return
         }
+        playCommandHaptic(command)
         let envelope = WatchRemoteCommandEnvelope(
             command: command,
             trackID: command == .playQueueItem
                 ? trackID
-                : (trackID ?? state.trackID)
+                : (trackID ?? state.trackID),
+            seekTime: command == .seek ? seekTime : nil
         )
         session.sendMessage(
             envelope.message,
@@ -52,6 +58,17 @@ final class WatchRemoteViewModel: NSObject {
                 }
             }
         )
+    }
+
+    private func playCommandHaptic(_ command: WatchRemoteCommand) {
+        switch command {
+        case .likeCurrent:
+            WKInterfaceDevice.current().play(.success)
+        case .unlikeCurrent:
+            WKInterfaceDevice.current().play(.click)
+        case .togglePlayPause, .next, .previous, .playQueueItem, .seek:
+            break
+        }
     }
 
     private func receive(_ state: WatchRemoteState) {

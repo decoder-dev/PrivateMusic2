@@ -200,6 +200,13 @@ final class WatchRemoteCoordinator: NSObject {
             player.jump(to: index)
             markNeedsPush(force: true)
             return reply(accepted: true)
+        case .seek:
+            guard let seekTime = envelope.seekTime else {
+                return reply(accepted: false)
+            }
+            player.seek(to: seekTime)
+            markNeedsPush(force: true)
+            return reply(accepted: true)
         }
     }
 }
