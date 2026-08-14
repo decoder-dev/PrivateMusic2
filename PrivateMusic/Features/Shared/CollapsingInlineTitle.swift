@@ -54,18 +54,21 @@ extension View {
     }
 }
 
+@MainActor
 private enum CollapsingNavMetrics {
     /// Status bar + inline nav bar — hero title crossing this line
     /// means the large in-content title is no longer readable.
     static var titleRevealThreshold: CGFloat {
         let scenes = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
-        let inset = scenes
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow)?
-            .safeAreaInsets.top
-            ?? scenes.first?.windows.first?.safeAreaInsets.top
-            ?? 47
-        return inset + 52
+        for scene in scenes {
+            for window in scene.windows where window.isKeyWindow {
+                return window.safeAreaInsets.top + 52
+            }
+        }
+        if let fallback = scenes.first?.windows.first {
+            return fallback.safeAreaInsets.top + 52
+        }
+        return 47 + 52
     }
 }
