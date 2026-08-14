@@ -16,21 +16,21 @@ struct AlbumDetailView: View {
     var body: some View {
         Group {
             if model.tracks.isEmpty && (!model.hasLoaded || model.isLoading) {
-                ProgressView(L10n.text("Загружаем альбом…"))
+                ProgressView(L10n.text("loading_album"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if model.hasLoaded && model.tracks.isEmpty {
                 VStack(spacing: 12) {
                     EmptyStateView(
                         title: model.errorMessage == nil
-                            ? "В альбоме нет доступных треков"
-                            : "Не удалось открыть альбом",
+                            ? "album_has_no_available_tracks"
+                            : "could_not_open_album",
                         systemImage: model.errorMessage == nil
                             ? "music.note.list"
                             : "lock.fill",
                         description: model.errorMessage
-                            ?? "VK не вернул доступные аудиозаписи."
+                            ?? "vk_returned_no_available_audio"
                     )
-                    Button("Повторить") {
+                    Button(L10n.text("action.retry")) {
                         Task { await load(force: true) }
                     }
                     .buttonStyle(.borderedProminent)
@@ -49,13 +49,13 @@ struct AlbumDetailView: View {
         .task { await load(force: false) }
         .refreshable { await load(force: true) }
         .alert(
-            "Не удалось изменить альбом",
+            "could_not_update_album",
             isPresented: Binding(
                 get: { actionErrorMessage != nil },
                 set: { if !$0 { actionErrorMessage = nil } }
             )
         ) {
-            Button("ОК", role: .cancel) {}
+            Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
             Text(actionErrorMessage ?? "")
         }
@@ -84,7 +84,7 @@ struct AlbumDetailView: View {
             if model.isLoadingMore {
                 HStack {
                     Spacer()
-                    ProgressView("Загружаем ещё…")
+                    ProgressView(L10n.text("loading_more"))
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
@@ -163,8 +163,8 @@ struct AlbumDetailView: View {
                 .accessibilityLabel(
                     L10n.text(
                         isFollowed
-                            ? "Удалить альбом из медиатеки"
-                            : "Добавить альбом в медиатеку"
+                            ? "remove_album_from_library"
+                            : "add_album_to_library"
                     )
                 )
                 .accessibilityAddTraits(isFollowed ? .isSelected : [])
@@ -178,7 +178,7 @@ struct AlbumDetailView: View {
                             .adaptiveGlass(in: Circle(), interactive: true)
                     }
                     .buttonStyle(.borderless)
-                    .accessibilityLabel(L10n.text("Поделиться альбомом"))
+                    .accessibilityLabel(L10n.text("share_album"))
                 }
             }
         }
@@ -189,11 +189,11 @@ struct AlbumDetailView: View {
     /// A play icon inside a wide Label pushes the text off-center (the
     /// icon+text group is centered as a unit, but the icon's width isn't
     /// mirrored on the trailing side). Centering the text on its own and
-    /// pinning the icon to the leading edge keeps "Слушать" dead-center
+    /// pinning the icon to the leading edge keeps "listen" dead-center
     /// regardless of button width.
     private var listenButtonLabel: some View {
         ZStack {
-            Text(L10n.text(listenAction == .pause ? "Пауза" : "Слушать"))
+            Text(L10n.text(listenAction == .pause ? "pause_2" : "listen"))
                 .font(.headline)
             HStack {
                 Image(systemName: listenAction.systemImage)
@@ -236,7 +236,7 @@ struct AlbumDetailView: View {
         }
         .buttonStyle(.borderless)
         .disabled(model.tracks.isEmpty)
-        .accessibilityLabel(L10n.text("Перемешать"))
+        .accessibilityLabel(L10n.text("shuffle"))
     }
 
     private var isFollowed: Bool {
@@ -258,7 +258,7 @@ struct AlbumDetailView: View {
     private var displayedTitle: String {
         Album.isUsableTitle(displayedAlbum.title)
             ? displayedAlbum.title
-            : L10n.text("Альбом")
+            : L10n.text("album")
     }
 
     private var currentSource: QueueSource {

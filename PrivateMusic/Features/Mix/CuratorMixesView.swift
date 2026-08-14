@@ -11,9 +11,9 @@ struct CuratorMixesView: View {
 
         var title: String {
             switch self {
-            case .default: L10n.text("По умолчанию")
-            case .match: L10n.text("По совпадению")
-            case .trackCount: L10n.text("По числу треков")
+            case .default: L10n.text("default")
+            case .match: L10n.text("by_match")
+            case .trackCount: L10n.text("by_track_count")
             }
         }
     }
@@ -37,7 +37,7 @@ struct CuratorMixesView: View {
                             .lineLimit(2)
                         Text(
                             L10n.format(
-                                "%d миксов со вкусом",
+                                "d0_mixes_in_their_taste",
                                 mixes.count
                             )
                         )
@@ -49,7 +49,7 @@ struct CuratorMixesView: View {
             }
 
             Section {
-                Picker(L10n.text("Сортировка"), selection: $sortOption) {
+                Picker(L10n.text("sort"), selection: $sortOption) {
                     ForEach(SortOption.allCases) { option in
                         Text(option.title).tag(option)
                     }
@@ -60,7 +60,7 @@ struct CuratorMixesView: View {
                 .padding(.vertical, 4)
             }
 
-            Section(L10n.text("Слушайте друг друга")) {
+            Section(L10n.text("listen_together")) {
                 ForEach(sortedMixes) { mix in
                     Button {
                         onPlay(mix)
@@ -79,7 +79,7 @@ struct CuratorMixesView: View {
                                 if let percent = mix.matchPercent {
                                     Text(
                                         L10n.format(
-                                            "совпадение %d%%",
+                                            "d0_match",
                                             percent
                                         )
                                     )

@@ -534,7 +534,7 @@ final class AppEnvironment: ObservableObject {
             throw APIError.server(
                 code: 503,
                 message: L10n.text(
-                    "Офлайн-загрузки временно отключены. Используйте «Поделиться»."
+                    "offline_downloads_are_temporarily_disabled_use_share_instead"
                 )
             )
         }
@@ -815,7 +815,7 @@ final class AppEnvironment: ObservableObject {
                 seedTracks: [track] + queue,
                 knownTracks: queue
             )
-            let title = L10n.format("Микс по «%@»", track.title)
+            let title = L10n.format("mix_based_on_0", track.title)
             player.play(
                 track,
                 in: queue,
@@ -867,7 +867,7 @@ final class AppEnvironment: ObservableObject {
             )
             guard let first = blended.first else {
                 mixActionError = L10n.text(
-                    "Не удалось собрать микс по медиатеке"
+                    "could_not_build_a_mix_from_your_library"
                 )
                 return
             }
@@ -888,7 +888,7 @@ final class AppEnvironment: ObservableObject {
                     }
                     return self.filteredMixTracks(more)
                 },
-                source: .mix(title: L10n.text("Микс по моей музыке"))
+                source: .mix(title: L10n.text("mix_from_my_music"))
             )
             Haptics.success()
         } catch is CancellationError {
@@ -909,7 +909,7 @@ final class AppEnvironment: ObservableObject {
             }
             let cleaned = filteredMixTracks(bootstrap)
             guard let first = cleaned.first else {
-                mixActionError = L10n.text("Микс пока пуст")
+                mixActionError = L10n.text("the_mix_is_empty_for_now")
                 return
             }
             let cursor = MixTrackContinuationCursor(mix: mix)

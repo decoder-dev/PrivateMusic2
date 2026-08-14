@@ -29,14 +29,13 @@ struct ConnectView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .alert(
-            "Не удалось подключить",
+        .alert(L10n.text("could_not_connect"),
             isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
             )
         ) {
-            Button("ОК", role: .cancel) {}
+            Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
         }
@@ -62,11 +61,11 @@ struct ConnectView: View {
                 .shadow(color: .black.opacity(0.12), radius: 20, y: 10)
 
             VStack(spacing: 5) {
-                Text("Private Music")
+                Text(L10n.text("private_music"))
                     .font(.system(size: 34, weight: .bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
-                Text("Музыка из вашей медиатеки VK в одном плеере")
+                Text(L10n.text("music_from_your_vk_library_in_a_single_player"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -78,10 +77,9 @@ struct ConnectView: View {
     private var loginCard: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Подключите VK")
+                Text(L10n.text("connect_vk"))
                     .font(.title3.bold())
-                Text(
-                    "Вход откроется на официальной странице VK."
+                Text(L10n.text("sign_in_opens_on_the_official_vk_page")
                 )
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -89,11 +87,11 @@ struct ConnectView: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                benefit("phone.fill", "Вход по номеру телефона")
-                benefit("lock.shield.fill", "Пароль остаётся на стороне VK")
+                benefit("phone.fill", "sign_in_with_your_phone_number")
+                benefit("lock.shield.fill", "your_password_stays_with_vk")
                 benefit(
                     "key.fill",
-                    "Данные сессии хранятся в системном Keychain"
+                    "session_data_is_stored_in_the_system_keychain"
                 )
             }
 
@@ -109,8 +107,8 @@ struct ConnectView: View {
                     Text(
                         L10n.text(
                             isConnecting
-                                ? "Подключаем аккаунт…"
-                                : "Продолжить с VK"
+                                ? "connecting_account"
+                                : "continue_with_vk"
                         )
                     )
                 }
@@ -140,12 +138,7 @@ struct ConnectView: View {
             Image(systemName: "checkmark.shield")
                 .foregroundStyle(.green)
             Text(
-                L10n.text(
-                    "Private Music не читает поля формы входа и не отправляет "
-                        + "пароль или код подтверждения на собственный сервер. "
-                        + "Полученные данные сессии сохраняются в системном "
-                        + "Keychain этого устройства."
-                )
+                L10n.text("private_music_does_not_read_sign_in_fields_or_send_your_password_or_veri")
             )
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -155,8 +148,7 @@ struct ConnectView: View {
     }
 
     private var manualImport: some View {
-        DisclosureGroup(
-            "Есть готовая сессия?",
+        DisclosureGroup(L10n.text("have_an_existing_session"),
             isExpanded: $showsManualImport
         ) {
             VStack(spacing: 12) {
@@ -173,7 +165,7 @@ struct ConnectView: View {
                         )
                     )
 
-                TextField("User-Agent из VKpyMusic", text: $userAgent)
+                TextField(L10n.text("user_agent_from_vkpymusic"), text: $userAgent)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .padding()
@@ -188,8 +180,7 @@ struct ConnectView: View {
                 Button {
                     Task { await connectImportedSession() }
                 } label: {
-                    Label(
-                        "Импортировать",
+                    Label(L10n.text("import"),
                         systemImage: "square.and.arrow.down"
                     )
                     .frame(maxWidth: .infinity)

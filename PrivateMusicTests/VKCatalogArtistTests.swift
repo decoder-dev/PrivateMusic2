@@ -58,12 +58,12 @@ final class VKCatalogArtistTests: XCTestCase {
         )
         let mood = CatalogSectionRef(
             id: "sec-mood",
-            title: "Настроение",
+            title: "mood",
             url: "https://vk.com/audios0?section=moods"
         )
         let releases = CatalogSectionRef(
             id: "sec-new",
-            title: "Новые релизы",
+            title: "new_releases",
             url: "https://vk.com/audios0?section=new_albums"
         )
         let other = CatalogSectionRef(
@@ -85,8 +85,8 @@ final class VKCatalogArtistTests: XCTestCase {
             title: "Вечер",
             subtitle: "Спокойное",
             artworkURL: nil
-        ).withSectionTitle("Настроение")
-        XCTAssertEqual(mix.sectionTitle, "Настроение")
+        ).withSectionTitle("mood")
+        XCTAssertEqual(mix.sectionTitle, "mood")
     }
 
     func testCatalogSectionsParsedFromGetAudioShape() throws {
@@ -97,12 +97,12 @@ final class VKCatalogArtistTests: XCTestCase {
             "sections": [
               {
                 "id": "sec-mix",
-                "title": "Миксы",
+                "title": "mixes",
                 "url": "https://vk.com/audios1?section=mixes"
               },
               {
                 "id": "sec-new",
-                "title": "Новые релизы",
+                "title": "new_releases",
                 "url": "https://vk.com/audios1?section=new"
               }
             ]

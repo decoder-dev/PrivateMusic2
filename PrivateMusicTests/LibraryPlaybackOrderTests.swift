@@ -72,7 +72,7 @@ final class LibraryPlaybackOrderTests: XCTestCase {
         XCTAssertEqual(context.player.queueSource, .library)
         XCTAssertEqual(
             context.player.queueContextTitle,
-            L10n.text("Ваши треки")
+            L10n.text("library.your_tracks")
         )
     }
 
@@ -89,7 +89,7 @@ final class LibraryPlaybackOrderTests: XCTestCase {
         XCTAssertEqual(context.player.queueSource, .library)
         XCTAssertEqual(
             context.player.queueContextTitle,
-            L10n.text("Ваши треки")
+            L10n.text("library.your_tracks")
         )
         XCTAssertEqual(
             Set(context.player.queue.map(\.id)),

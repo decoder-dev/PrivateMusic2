@@ -84,25 +84,23 @@ struct RootView: View {
         .background(ThemeBackground())
         .preferredColorScheme(settings.theme.colorScheme)
         .appTextScale(settings.textScale)
-        .alert(
-            "Ошибка воспроизведения",
+        .alert(L10n.text("playback_error"),
             isPresented: Binding(
                 get: { player.errorMessage != nil },
                 set: { if !$0 { player.errorMessage = nil } }
             )
         ) {
-            Button("ОК", role: .cancel) {}
+            Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
             Text(player.errorMessage ?? "")
         }
-        .alert(
-            "Ошибка сессии",
+        .alert(L10n.text("session_error"),
             isPresented: Binding(
                 get: { sessionStore.errorMessage != nil },
                 set: { if !$0 { sessionStore.errorMessage = nil } }
             )
         ) {
-            Button("ОК", role: .cancel) {}
+            Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
             Text(sessionStore.errorMessage ?? "")
         }
@@ -113,13 +111,13 @@ struct RootView: View {
         if networkMonitor.state == .offline {
             ConnectionBanner(
                 icon: "wifi.slash",
-                message: "Нет сети — сессия сохранена",
+                message: "offline_session_saved",
                 tint: .orange
             )
         } else if environment.isRecoveringSession {
             ConnectionBanner(
                 icon: nil,
-                message: "Обновляем подключение VK…",
+                message: "refreshing_vk_connection",
                 tint: settings.theme.accent,
                 showsProgress: true
             )
@@ -186,14 +184,14 @@ struct RootView: View {
               session.canRefresh else {
             refreshNeedsLogin = true
             refreshError =
-                "Автовосстановление VK недоступно — откройте профиль"
+                "automatic_recovery_is_unavailable_open_profile"
             return
         }
         let mustReplaceToken =
             tokenWasRejected || refreshRequiresReplacement
 
         if mustReplaceToken {
-            refreshError = "Восстанавливаем сессию VK…"
+            refreshError = "recovering_vk_session"
         } else {
             refreshError = nil
         }
@@ -213,7 +211,7 @@ struct RootView: View {
                 return
             case .retry:
                 refreshRequiresReplacement = mustReplaceToken
-                refreshError = "VK пока не отвечает — сессия сохранена"
+                refreshError = "vk_is_not_responding_session_saved"
                 scheduleAutomaticRetry(usingWebSession: true)
             case .requiresLogin:
                 automaticRetryTask?.cancel()
@@ -221,7 +219,7 @@ struct RootView: View {
                 refreshRequiresReplacement = true
                 refreshNeedsLogin = true
                 refreshError =
-                    "VK отклонил сохранённый вход — подключите аккаунт снова"
+                    "vk_rejected_the_saved_sign_in_connect_your_account_again"
             }
         }
     }
@@ -298,7 +296,7 @@ struct RootView: View {
             case .ignore:
                 return
             case .retry:
-                refreshError = "VK пока не отвечает — сессия сохранена"
+                refreshError = "vk_is_not_responding_session_saved"
                 scheduleAutomaticRetry(usingWebSession: false)
             case .requiresLogin:
                 automaticRetryTask?.cancel()
@@ -306,7 +304,7 @@ struct RootView: View {
                 refreshRequiresReplacement = true
                 refreshNeedsLogin = true
                 refreshError =
-                    "VK отклонил сохранённый вход — подключите аккаунт снова"
+                    "vk_rejected_the_saved_sign_in_connect_your_account_again"
             }
         }
     }
@@ -334,7 +332,7 @@ private struct ConnectionBanner: View {
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let retry {
-                Button("Повторить", action: retry)
+                Button(L10n.text("action.retry"), action: retry)
                     .font(.footnote.weight(.bold))
             }
         }
