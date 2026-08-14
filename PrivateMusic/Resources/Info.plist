@@ -52,6 +52,10 @@
   <array>
     <string>audio</string>
   </array>
+  <key>NSUserActivityTypes</key>
+  <array>
+    <string>com.dec.privatemusic2.now-playing</string>
+  </array>
   <key>UISupportedInterfaceOrientations</key>
   <array>
     <string>UIInterfaceOrientationPortrait</string>
