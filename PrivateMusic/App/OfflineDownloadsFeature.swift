@@ -8,7 +8,13 @@ enum OfflineDownloadsFeature {
 
     /// Test seam so offline unit tests can exercise the download stack while
     /// production builds keep downloads hidden.
-    static var testingOverride: Bool?
+    private static let testingLock = NSLock()
+    private static var _testingOverride: Bool?
+
+    static var testingOverride: Bool? {
+        get { testingLock.withLock { _testingOverride } }
+        set { testingLock.withLock { _testingOverride = newValue } }
+    }
 
     static var isEnabled: Bool {
         testingOverride ?? productionEnabled
