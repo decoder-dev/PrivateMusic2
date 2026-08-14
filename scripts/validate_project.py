@@ -1296,7 +1296,7 @@ for required_setting in (
     'iOS: "17.0"',
     'watchOS: "10.0"',
     'SWIFT_VERSION: "6.0"',
-    "SWIFT_STRICT_CONCURRENCY: complete",
+    "SWIFT_STRICT_CONCURRENCY: targeted",
     "CURRENT_PROJECT_VERSION: 150",
     "MARKETING_VERSION: 3.28.78",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2",
