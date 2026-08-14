@@ -1,11 +1,11 @@
 import SwiftUI
 
 struct RootView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var player: AudioPlayer
-    @EnvironmentObject private var settings: AppSettings
-    @EnvironmentObject private var networkMonitor: NetworkMonitor
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(AudioPlayer.self) private var player
+    @Environment(AppSettings.self) private var settings
+    @Environment(NetworkMonitor.self) private var networkMonitor
     @Environment(\.scenePhase) private var scenePhase
     @State private var refreshError: String?
     @State private var automaticRetryTask: Task<Void, Never>?
@@ -16,6 +16,7 @@ struct RootView: View {
     @Namespace private var playerNamespace
 
     var body: some View {
+        @Bindable var player = player
         Group {
             if sessionStore.session == nil {
                 ConnectView()
@@ -311,7 +312,7 @@ struct RootView: View {
 }
 
 private struct ConnectionBanner: View {
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppSettings.self) private var settings
     let icon: String?
     let message: String
     let tint: Color

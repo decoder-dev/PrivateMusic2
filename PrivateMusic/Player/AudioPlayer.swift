@@ -1,5 +1,4 @@
 import AVFoundation
-import Combine
 import MediaPlayer
 
 enum RepeatMode: String, CaseIterable {
@@ -936,7 +935,8 @@ enum StreamRecoveryDelayPolicy {
 }
 
 @MainActor
-final class AudioPlayer: ObservableObject {
+@Observable
+final class AudioPlayer {
     private final class PreloadedPlayback {
         let trackID: String
         let url: URL
@@ -970,7 +970,7 @@ final class AudioPlayer: ObservableObject {
     /// Observers mirror track identity / source / play state into `highlight`
     /// so list rows never have to observe the player itself (see
     /// `syncHighlight`).
-    @Published private(set) var queue: [Track] = [] {
+    private(set) var queue: [Track] = [] {
         didSet {
             syncHighlight()
             if PlaybackPreloadPolicy.hasQueueChanged(oldValue, queue) {
@@ -978,38 +978,38 @@ final class AudioPlayer: ObservableObject {
             }
         }
     }
-    @Published private(set) var currentIndex: Int? {
+    private(set) var currentIndex: Int? {
         didSet { syncHighlight() }
     }
-    @Published private(set) var queueSource: QueueSource? {
+    private(set) var queueSource: QueueSource? {
         didSet { syncHighlight() }
     }
-    @Published private(set) var queueSeedTrackTitle: String?
+    private(set) var queueSeedTrackTitle: String?
     /// Active mix radio ordering. Owned here because it describes the
     /// live queue: every surface offering the control (mix hub, queue
     /// sheet) reads one value instead of keeping its own `@State`, which
     /// let two pickers disagree about the current ordering.
-    @Published private(set) var mixRadioMode: MixRadioMode = .balanced
-    @Published private(set) var isPlaying = false {
+    private(set) var mixRadioMode: MixRadioMode = .balanced
+    private(set) var isPlaying = false {
         didSet { syncHighlight() }
     }
-    @Published private(set) var isBuffering = false
+    private(set) var isBuffering = false
     /// Exact transport clock. Not `@Published` — UI observes `progress` so
     /// catalog/library EnvironmentObject consumers are not invalidated at 2 Hz.
     private(set) var elapsedTime: TimeInterval = 0
-    @Published private(set) var duration: TimeInterval = 0
+    private(set) var duration: TimeInterval = 0
     /// Shuffle mode of the queue that is playing right now.
-    @Published private(set) var shuffleEnabled: Bool
-    @Published private(set) var repeatMode: RepeatMode
-    @Published private(set) var sleepTimerEndDate: Date?
+    private(set) var shuffleEnabled: Bool
+    private(set) var repeatMode: RepeatMode
+    private(set) var sleepTimerEndDate: Date?
     /// Active sleep-timer mode. Minutes keep `sleepTimerEndDate` for the
     /// countdown UI; end-of-track / end-of-queue are event-driven and
     /// leave the date nil.
-    @Published private(set) var sleepTimerMode: SleepTimerMode?
-    @Published var isPlayerPresented = false
+    private(set) var sleepTimerMode: SleepTimerMode?
+    var isPlayerPresented = false
     /// One-shot sheet request honored by `PlayerView` after presentation.
-    @Published var pendingPlayerSheet: PendingPlayerSheet?
-    @Published var errorMessage: String?
+    var pendingPlayerSheet: PendingPlayerSheet?
+    var errorMessage: String?
 
     /// Scrubber / mini-player / lyrics clock (see `PlaybackProgressModel`).
     let progress = PlaybackProgressModel()
@@ -1034,7 +1034,8 @@ final class AudioPlayer: ObservableObject {
     private var timeObserver: Any?
     private var notificationObservers: [NSObjectProtocol] = []
     private let defaults: UserDefaults
-    private var cancellables = Set<AnyCancellable>()
+    private var settingsObservation: ObservationLoop.Token?
+    private var equalizerApplyTask: Task<Void, Never>?
     private var remoteCommandTokens: [Any] = []
     private var sleepTask: Task<Void, Never>?
     private var streamUserAgent: String?
@@ -1243,79 +1244,7 @@ final class AudioPlayer: ObservableObject {
         updateOutputToneProfile(reloadIfNeeded: false)
         configureRemoteCommands()
         observePlayer()
-        Publishers.CombineLatest4(
-            settings.$equalizerEnabled,
-            settings.$equalizerGains,
-            settings.$equalizerPreamp,
-            settings.$loudnessNormalization
-        )
-        .combineLatest(
-            Publishers.CombineLatest3(
-                settings.$dynamicRangeCompression,
-                settings.$spatialAudioEnabled,
-                settings.$spatialAudioIntensity
-            )
-        )
-            // Slider drags publish on nearly every UI frame; rebuilding
-            // biquad coefficients (sin/cos/pow under the same lock the
-            // real-time audio tap uses) at that rate burns CPU for no
-            // audible benefit, so coalesce to the latest value.
-            .throttle(
-                for: .milliseconds(80),
-                scheduler: RunLoop.main,
-                latest: true
-            )
-            .sink { [weak self] equalizerSettings, effectsSettings in
-                let (enabled, gains, preamp, loudness) = equalizerSettings
-                let (drc, spatialAudio, spatialIntensity) = effectsSettings
-                guard let self else { return }
-                let requiredTap = self.equalizer.requiresAudioTap
-                self.equalizer.update(
-                    enabled: enabled,
-                    gains: gains,
-                    preamp: preamp,
-                    loudnessNorm: loudness,
-                    dynamicRangeCompression: drc,
-                    spatialAudio: spatialAudio,
-                    spatialIntensity: spatialIntensity
-                )
-                let requiresAudioTap = self.equalizer.requiresAudioTap
-                self.player.allowsExternalPlayback = AudioProcessingRoutePolicy
-                    .allowsExternalPlayback(
-                        requiresAudioTap: requiresAudioTap
-                    )
-                if requiredTap != requiresAudioTap,
-                   self.player.currentItem != nil {
-                    self.reloadCurrentItemForAudioProcessing()
-                }
-            }
-            .store(in: &cancellables)
-        settings.$resumeOnBluetoothConnection
-            .sink { [weak self] enabled in
-                self?.resumeOnBluetoothConnection = enabled
-            }
-            .store(in: &cancellables)
-        settings.$pauseAtMinimumVolume
-            .sink { [weak self] enabled in
-                guard let self else { return }
-                self.pauseAtMinimumVolume = enabled
-                self.handleOutputVolume(
-                    AVAudioSession.sharedInstance().outputVolume
-                )
-            }
-            .store(in: &cancellables)
-        settings.$advanceOnPlaybackError
-            .sink { [weak self] enabled in
-                self?.advanceOnPlaybackError = enabled
-            }
-            .store(in: &cancellables)
-        settings.$preferHighQuality
-            .sink { [weak self] enabled in
-                guard let self else { return }
-                self.preferHighQuality = enabled
-                self.applyStreamQualityPreference()
-            }
-            .store(in: &cancellables)
+        observeSettings()
         restorePlayback()
     }
 
@@ -2597,6 +2526,56 @@ final class AudioPlayer: ObservableObject {
             .allowsExternalPlayback(
                 requiresAudioTap: equalizer.requiresAudioTap
             )
+    }
+
+    private func observeSettings() {
+        settingsObservation = ObservationLoop.start { [weak self] in
+            guard let self else { return }
+            let enabled = self.settings.equalizerEnabled
+            let gains = self.settings.equalizerGains
+            let preamp = self.settings.equalizerPreamp
+            let loudness = self.settings.loudnessNormalization
+            let drc = self.settings.dynamicRangeCompression
+            let spatialAudio = self.settings.spatialAudioEnabled
+            let spatialIntensity = self.settings.spatialAudioIntensity
+            self.resumeOnBluetoothConnection =
+                self.settings.resumeOnBluetoothConnection
+            self.pauseAtMinimumVolume = self.settings.pauseAtMinimumVolume
+            self.advanceOnPlaybackError = self.settings.advanceOnPlaybackError
+            let highQuality = self.settings.preferHighQuality
+            self.handleOutputVolume(
+                AVAudioSession.sharedInstance().outputVolume
+            )
+
+            self.equalizerApplyTask?.cancel()
+            self.equalizerApplyTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(80))
+                guard !Task.isCancelled, let self else { return }
+                let requiredTap = self.equalizer.requiresAudioTap
+                self.equalizer.update(
+                    enabled: enabled,
+                    gains: gains,
+                    preamp: preamp,
+                    loudnessNorm: loudness,
+                    dynamicRangeCompression: drc,
+                    spatialAudio: spatialAudio,
+                    spatialIntensity: spatialIntensity
+                )
+                let requiresAudioTap = self.equalizer.requiresAudioTap
+                self.player.allowsExternalPlayback = AudioProcessingRoutePolicy
+                    .allowsExternalPlayback(
+                        requiresAudioTap: requiresAudioTap
+                    )
+                if requiredTap != requiresAudioTap,
+                   self.player.currentItem != nil {
+                    self.reloadCurrentItemForAudioProcessing()
+                }
+                if self.preferHighQuality != highQuality {
+                    self.preferHighQuality = highQuality
+                    self.applyStreamQualityPreference()
+                }
+            }
+        }
     }
 
     private func observePlayer() {

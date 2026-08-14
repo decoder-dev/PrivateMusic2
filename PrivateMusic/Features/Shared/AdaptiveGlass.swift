@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 struct ThemeBackground: View {
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppSettings.self) private var settings
 
     var body: some View {
         LinearGradient(
