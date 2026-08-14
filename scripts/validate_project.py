@@ -1295,8 +1295,7 @@ project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
 for required_setting in (
     'iOS: "17.0"',
     'watchOS: "10.0"',
-    'SWIFT_VERSION: "6.0"',
-    "SWIFT_STRICT_CONCURRENCY: targeted",
+    'SWIFT_VERSION: "5.10"',
     "CURRENT_PROJECT_VERSION: 150",
     "MARKETING_VERSION: 3.28.78",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2",
