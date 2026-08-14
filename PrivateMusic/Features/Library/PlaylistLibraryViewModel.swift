@@ -1,11 +1,12 @@
 import Foundation
 
 @MainActor
-final class PlaylistLibraryViewModel: ObservableObject {
-    @Published private(set) var playlists: [Playlist] = []
-    @Published private(set) var isLoading = false
-    @Published private(set) var isLoadingMore = false
-    @Published var errorMessage: String?
+@Observable
+final class PlaylistLibraryViewModel {
+    private(set) var playlists: [Playlist] = []
+    private(set) var isLoading = false
+    private(set) var isLoadingMore = false
+    var errorMessage: String?
     private var nextOffset: Int?
     private var ownerID: Int?
     /// A prefetch cut short by cancellation (tab switch, token change) must

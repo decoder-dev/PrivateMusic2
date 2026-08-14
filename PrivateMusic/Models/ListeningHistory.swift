@@ -8,10 +8,11 @@ struct ListeningHistoryEntry: Codable, Hashable, Identifiable, Sendable {
 }
 
 @MainActor
-final class ListeningHistoryStore: ObservableObject {
+@Observable
+final class ListeningHistoryStore {
     static let maximumEntries = 250
 
-    @Published private(set) var entries: [ListeningHistoryEntry]
+    private(set) var entries: [ListeningHistoryEntry]
 
     private let defaults: UserDefaults
     private let key = "listening.history.v1"

@@ -3,13 +3,13 @@ import UIKit
 import AVKit
 
 struct PlayerView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var player: AudioPlayer
-    @EnvironmentObject private var progress: PlaybackProgressModel
-    @EnvironmentObject private var settings: AppSettings
-    @EnvironmentObject private var libraryStore: MusicLibraryStore
-    @EnvironmentObject private var offlineStore: OfflineTrackStore
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(AudioPlayer.self) private var player
+    @Environment(PlaybackProgressModel.self) private var progress
+    @Environment(AppSettings.self) private var settings
+    @Environment(MusicLibraryStore.self) private var libraryStore
+    @Environment(OfflineTrackStore.self) private var offlineStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @GestureState private var artworkDrag: CGSize = .zero
@@ -836,6 +836,7 @@ struct PlayerView: View {
 
     @ViewBuilder
     private func presentedSheetContent(_ sheet: PlayerSheet) -> some View {
+        @Bindable var settings = settings
         switch sheet {
         case .queue:
             QueueView()
@@ -1537,8 +1538,8 @@ private struct PlayerActionsSheet: View {
     @Binding var equalizerEnabled: Bool
     @Binding var spatialAudioEnabled: Bool
     @Binding var preferHighQuality: Bool
-    @EnvironmentObject private var player: AudioPlayer
-    @StateObject private var systemVolume = SystemVolumeObserver()
+    @Environment(AudioPlayer.self) private var player
+    @State private var systemVolume = SystemVolumeObserver()
     @State private var showsSleepTimerOptions = false
     let onDismiss: () -> Void
     let onLibrary: () -> Void
@@ -2174,7 +2175,7 @@ private struct CompactPlayerSlider: UIViewRepresentable {
 
 private struct PlayerControlStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppSettings.self) private var settings
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

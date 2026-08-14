@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct TrackCollectionScreen: View {
-    @EnvironmentObject private var sessionStore: SessionStore
+    @Environment(SessionStore.self) private var sessionStore
     let title: String
     let emptyMessage: String
-    @ObservedObject var model: TrackCollectionViewModel
+    var model: TrackCollectionViewModel
 
     var body: some View {
         Group {

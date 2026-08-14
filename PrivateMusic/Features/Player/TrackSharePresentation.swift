@@ -8,7 +8,8 @@ struct TrackShareFailure: Equatable, Sendable {
 }
 
 @MainActor
-final class TrackShareViewModel: ObservableObject {
+@Observable
+final class TrackShareViewModel {
     enum State: Equatable {
         case idle
         case preparing(TrackExportProgress)
@@ -16,7 +17,7 @@ final class TrackShareViewModel: ObservableObject {
         case failed(TrackShareFailure)
     }
 
-    @Published private(set) var state: State = .idle
+    private(set) var state: State = .idle
 
     private var task: Task<Void, Never>?
     private var payload: TrackSharePayload?
@@ -211,12 +212,12 @@ extension TrackExportProgress {
 // MARK: - Flow view
 
 struct TrackShareFlowView: View {
-    @EnvironmentObject private var environment: AppEnvironment
+    @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
 
     let track: Track
 
-    @StateObject private var model = TrackShareViewModel()
+    @State private var model = TrackShareViewModel()
 
     var body: some View {
         Group {
