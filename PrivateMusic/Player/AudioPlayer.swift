@@ -1031,6 +1031,7 @@ final class AudioPlayer {
     private let nowPlaying = NowPlayingController()
     private let equalizer = EqualizerDSP()
     private let historyStore: ListeningHistoryStore
+    private let settings: AppSettings
     private var timeObserver: Any?
     private var notificationObservers: [NSObjectProtocol] = []
     private let defaults: UserDefaults
@@ -1225,6 +1226,7 @@ final class AudioPlayer {
     ) {
         self.defaults = defaults
         self.historyStore = historyStore
+        self.settings = settings
         self.streamUserAgent = userAgent
         resumeOnBluetoothConnection = settings.resumeOnBluetoothConnection
         pauseAtMinimumVolume = settings.pauseAtMinimumVolume

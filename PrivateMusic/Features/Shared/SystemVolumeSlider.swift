@@ -10,7 +10,9 @@ import SwiftUI
 final class SystemVolumeObserver {
     private(set) var volume: Float
 
-    private var observation: NSKeyValueObservation?
+    /// KVO token is invalidated from `deinit`, which is nonisolated.
+    @ObservationIgnored
+    nonisolated(unsafe) private var observation: NSKeyValueObservation?
 
     init(session: AVAudioSession = .sharedInstance()) {
         volume = session.outputVolume
