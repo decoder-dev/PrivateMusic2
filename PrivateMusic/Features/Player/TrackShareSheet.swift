@@ -49,10 +49,7 @@ actor TrackShareService {
 
     private func hlsExporterInstance() -> HLSSegmentExporter {
         if let hlsExporter { return hlsExporter }
-        let created = HLSSegmentExporter(
-            session: session,
-            fileManager: fileManager
-        )
+        let created = HLSSegmentExporter(session: session)
         hlsExporter = created
         return created
     }

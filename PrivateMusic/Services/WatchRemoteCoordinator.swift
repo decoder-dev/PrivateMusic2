@@ -1,5 +1,5 @@
 import Foundation
-import WatchConnectivity
+@preconcurrency import WatchConnectivity
 
 /// Mirrors the phone player's latest state to the paired Apple Watch and
 /// routes transport commands back to the existing `AudioPlayer`.
@@ -215,7 +215,7 @@ enum WatchStatePushCoalescingPolicy {
     }
 }
 
-extension WatchRemoteCoordinator: WCSessionDelegate {
+extension WatchRemoteCoordinator: @preconcurrency WCSessionDelegate {
     nonisolated func session(
         _ session: WCSession,
         activationDidCompleteWith activationState: WCSessionActivationState,
