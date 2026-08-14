@@ -43,8 +43,8 @@ if watch_info.get("WKCompanionAppBundleIdentifier") != "com.dec.privatemusic2":
     fail("Watch companion bundle identifier does not match iOS app")
 if watch_info.get("WKApplication") is not True:
     fail("Watch bundle is not marked as a Watch application")
-if watch_info.get("WKRunsIndependentlyOfCompanionApp") is not False:
-    fail("Watch bundle must be associated with the iPhone companion")
+if watch_info.get("WKRunsIndependentlyOfCompanionApp") is not True:
+    fail("Watch bundle must run independently of the iPhone companion")
 if watch_info.get("CFBundlePackageType") != "APPL":
     fail("embedded Watch bundle is not an application")
 
