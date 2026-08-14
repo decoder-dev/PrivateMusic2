@@ -943,6 +943,140 @@ private struct IsolatedPlayerItem: @unchecked Sendable {
     let error: Error?
 }
 
+/// Play/lock-screen/headphones resume must never call `play()` on a
+/// `.failed` or missing `AVPlayerItem`. After same-track retries run out
+/// the item stays failed and KVO is deduped, so tapping play used to be a
+/// silent no-op.
+enum PlaybackResumePolicy {
+    enum Action: Equatable {
+        case refreshStream
+        case reload
+        case playExisting
+    }
+
+    static func action(
+        requiresStreamRefresh: Bool,
+        hasPlayableStream: Bool,
+        canRefreshStream: Bool,
+        hasCurrentItem: Bool,
+        itemFailed: Bool,
+        loadedTrackMatchesCurrent: Bool
+    ) -> Action {
+        if itemFailed && canRefreshStream {
+            return .refreshStream
+        }
+        if requiresStreamRefresh && !hasPlayableStream {
+            return .refreshStream
+        }
+        if !hasCurrentItem || itemFailed || !loadedTrackMatchesCurrent {
+            return .reload
+        }
+        return .playExisting
+    }
+}
+
+/// Missing or still-masked VK URLs are not connectivity timeouts. Treating
+/// them as `timedOut` burned the 8–12 attempt budget and left the track
+/// hanging on “loading…”. One getById refresh, then skip or surface
+/// “no stream”.
+enum StreamURLLoadPolicy {
+    static let missingStreamError = APIError.invalidResponse
+
+    static func isMaskedVKStream(_ url: URL) -> Bool {
+        url.absoluteString.contains("audio_api_unavailable")
+    }
+
+    static func isPlayableRemoteURL(_ url: URL?) -> Bool {
+        guard let url else { return false }
+        return !isMaskedVKStream(url)
+    }
+
+    static func shouldRetryMissingStream(attempts: Int) -> Bool {
+        attempts <= 1
+    }
+
+    static func shouldAdvanceAfterMissingStream(
+        attempts: Int,
+        advanceOnPlaybackError: Bool
+    ) -> Bool {
+        guard advanceOnPlaybackError else { return false }
+        return attempts > 1
+    }
+
+    /// Restored snapshots often still have a concrete https URL. Play that
+    /// immediately and let failure recovery refresh if it is stale. Only
+    /// block on getById when there is nothing playable.
+    static func shouldBlockRestoreOnRefresh(
+        isRestored: Bool,
+        hasOfflineURL: Bool,
+        streamURL: URL?
+    ) -> Bool {
+        guard isRestored, !hasOfflineURL else { return false }
+        return !isPlayableRemoteURL(streamURL)
+    }
+}
+
+/// A refresh whose index no longer matches (shuffle / play-next) used to
+/// return without nilling `streamRefreshTask`, so every later play, restore
+/// and network-return no-op'd on `guard streamRefreshTask == nil`.
+enum StreamRefreshApplyPolicy {
+    static func shouldApply(
+        requestedTrackID: String,
+        currentTrackID: String?
+    ) -> Bool {
+        currentTrackID == requestedTrackID
+    }
+
+    static func shouldClearSlot(
+        taskGeneration: Int,
+        currentGeneration: Int
+    ) -> Bool {
+        taskGeneration == currentGeneration
+    }
+}
+
+/// Stall recovery while `.offline` spends the same-track budget and parks a
+/// failure-backoff timer in the recovery slot, so the offline→online kick
+/// sees a busy slot and refuses the short network-return window.
+enum StallRecoveryEligibilityPolicy {
+    static func shouldRecover(
+        playbackIntended: Bool,
+        hasCurrentTrack: Bool,
+        condition: NetworkCondition
+    ) -> Bool {
+        playbackIntended && hasCurrentTrack && condition != .offline
+    }
+}
+
+/// Network-return kick is independent of an in-flight failure backoff: that
+/// timer belongs to the dead path and must be replaced, not waited out.
+enum NetworkReturnKickPolicy {
+    static func shouldKick(
+        condition: NetworkCondition,
+        playbackIntended: Bool,
+        hasCurrentTrack: Bool,
+        isAudioInterrupted: Bool,
+        isPlaying: Bool,
+        isBuffering: Bool
+    ) -> Bool {
+        condition != .offline
+            && playbackIntended
+            && hasCurrentTrack
+            && !isAudioInterrupted
+            && (!isPlaying || isBuffering)
+    }
+
+    static func shouldCancelFailureBackoff(
+        from previous: NetworkCondition,
+        to current: NetworkCondition
+    ) -> Bool {
+        StreamRecoveryNetworkTransitionPolicy.action(
+            from: previous,
+            to: current
+        ) == .recover
+    }
+}
+
 @MainActor
 @Observable
 final class AudioPlayer {
@@ -1370,6 +1504,10 @@ final class AudioPlayer {
     ) {
         let previous = currentNetworkCondition
         currentNetworkCondition = condition
+        player.currentItem?.preferredForwardBufferDuration =
+            NetworkAdaptiveBufferPolicy.preferredForwardBuffer(
+                for: condition
+            )
         switch StreamRecoveryNetworkTransitionPolicy.action(
             from: previous,
             to: condition
@@ -1380,6 +1518,12 @@ final class AudioPlayer {
             cancelStreamRefresh()
             stallStartedAt = nil
         case .recover:
+            if NetworkReturnKickPolicy.shouldCancelFailureBackoff(
+                from: previous,
+                to: condition
+            ) {
+                streamRecoveryAttempts = 0
+            }
             kickRecoveryAfterNetworkReturn()
         case .none:
             break
@@ -1390,13 +1534,18 @@ final class AudioPlayer {
     /// Recover a failed or visibly stalled current item when reachability
     /// returns. Healthy buffered playback is left alone.
     func kickRecoveryAfterNetworkReturn() {
-        guard currentNetworkCondition != .offline,
-              playbackIntended,
-              currentTrack != nil,
-              !isAudioInterrupted,
-              streamRecoveryTask == nil,
-              streamRefreshTask == nil,
-              !isPlaying || isBuffering else {
+        guard NetworkReturnKickPolicy.shouldKick(
+            condition: currentNetworkCondition,
+            playbackIntended: playbackIntended,
+            hasCurrentTrack: currentTrack != nil,
+            isAudioInterrupted: isAudioInterrupted,
+            isPlaying: isPlaying,
+            isBuffering: isBuffering
+        ) else {
+            return
+        }
+        cancelStreamRecovery()
+        if streamRefreshTask != nil {
             return
         }
         if streamRecoveryAttempts == 0 {
@@ -1727,13 +1876,30 @@ final class AudioPlayer {
         }
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
-        if requiresStreamRefresh {
+        switch PlaybackResumePolicy.action(
+            requiresStreamRefresh: requiresStreamRefresh,
+            hasPlayableStream: currentTrack.map { track in
+                offlineURLProvider?(track) != nil
+                    || StreamURLLoadPolicy.isPlayableRemoteURL(track.streamURL)
+            } ?? false,
+            canRefreshStream: streamRefreshProvider != nil,
+            hasCurrentItem: player.currentItem != nil,
+            itemFailed: player.currentItem?.status == .failed,
+            loadedTrackMatchesCurrent: loadedTrackID == currentTrack?.id
+        ) {
+        case .refreshStream:
+            if streamRefreshTask != nil {
+                cancelStreamRefresh()
+                requiresStreamRefresh = true
+            }
             refreshCurrentStream(autoplay: true)
             return
-        }
-        guard player.currentItem != nil else {
+        case .reload:
+            lastFailedItemIdentifier = nil
             loadCurrentAndPlay()
             return
+        case .playExisting:
+            break
         }
         if duration > 0, elapsedTime >= duration - 0.25 {
             seek(to: 0)
@@ -1764,6 +1930,10 @@ final class AudioPlayer {
         interruptionResumeTask = nil
         routeSettleTask?.cancel()
         routeSettleTask = nil
+        // A deliberate pause outranks in-flight same-track recovery: otherwise
+        // the timer still fires with captured `autoplay: true` and starts the
+        // track the user just stopped.
+        cancelStreamRefresh()
         pausePreservingIntent()
     }
 
@@ -1929,8 +2099,11 @@ final class AudioPlayer {
         minimumVolumeResumeSuppressed = false
         playbackIntended = true
         if let track = currentTrack,
-           restoredTrackIDs.contains(track.id),
-           offlineURLProvider?(track) == nil {
+           StreamURLLoadPolicy.shouldBlockRestoreOnRefresh(
+            isRestored: restoredTrackIDs.contains(track.id),
+            hasOfflineURL: offlineURLProvider?(track) != nil,
+            streamURL: track.streamURL
+           ) {
             requiresStreamRefresh = true
             didAttemptStreamRefresh = false
             refreshCurrentStream(autoplay: true)
@@ -1958,23 +2131,24 @@ final class AudioPlayer {
         }
         guard let track = currentTrack else { return }
         let offlineURL = offlineURLProvider?(track)
-        guard let url = offlineURL ?? track.streamURL else {
+        let remoteURL = track.streamURL.flatMap { url in
+            StreamURLLoadPolicy.isPlayableRemoteURL(url) ? url : nil
+        }
+        guard let url = offlineURL ?? remoteURL else {
             if streamRefreshProvider != nil {
                 streamRecoveryAttempts += 1
-                if StreamFailureRetryPolicy.shouldRetrySameTrack(
-                    attempts: streamRecoveryAttempts,
-                    error: APIError.timedOut,
-                    condition: currentNetworkCondition
+                if StreamURLLoadPolicy.shouldRetryMissingStream(
+                    attempts: streamRecoveryAttempts
                 ) {
+                    requiresStreamRefresh = true
                     scheduleSameTrackRecovery(
                         autoplay: autoplay,
                         automatic: true
                     )
                     return
                 }
-                if StreamFailureRetryPolicy.shouldAdvance(
+                if StreamURLLoadPolicy.shouldAdvanceAfterMissingStream(
                     attempts: streamRecoveryAttempts,
-                    error: APIError.invalidResponse,
                     advanceOnPlaybackError: advanceOnPlaybackError
                 ),
                    advancePastFailedTrackIfPossible() {
@@ -1988,6 +2162,7 @@ final class AudioPlayer {
                 "no_playable_audio_stream_is_available_for_this_track"
             )
             isPlaying = false
+            isBuffering = false
             nowPlaying.update(
                 track: track,
                 elapsedTime: 0,
@@ -3473,7 +3648,8 @@ final class AudioPlayer {
             self.streamRecoveryID = nil
             guard !Task.isCancelled,
                   generation == self.playbackGeneration,
-                  self.currentTrack?.id == trackID else {
+                  self.currentTrack?.id == trackID,
+                  self.playbackIntended else {
                 return
             }
             self.didAttemptStreamRefresh = false
@@ -3493,7 +3669,11 @@ final class AudioPlayer {
     }
 
     private func recoverFromExtendedStall() {
-        guard playbackIntended, currentTrack != nil else {
+        guard StallRecoveryEligibilityPolicy.shouldRecover(
+            playbackIntended: playbackIntended,
+            hasCurrentTrack: currentTrack != nil,
+            condition: currentNetworkCondition
+        ) else {
             extendedStallGuardBlockedSince = nil
             return
         }
@@ -3606,22 +3786,34 @@ final class AudioPlayer {
         isBuffering = true
         streamRefreshGeneration += 1
         let generation = streamRefreshGeneration
-        streamRefreshTask = Task { [weak self] in
+        streamRefreshTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            defer {
+                if StreamRefreshApplyPolicy.shouldClearSlot(
+                    taskGeneration: generation,
+                    currentGeneration: self.streamRefreshGeneration
+                ) {
+                    self.streamRefreshTask = nil
+                }
+            }
             do {
                 let refreshed = try await provider(track)
                 guard !Task.isCancelled,
                       generation == self.streamRefreshGeneration,
-                      self.currentIndex == index,
-                      self.currentTrack?.id == track.id else {
+                      StreamRefreshApplyPolicy.shouldApply(
+                        requestedTrackID: track.id,
+                        currentTrackID: self.currentTrack?.id
+                      ),
+                      let currentIndex = self.currentIndex,
+                      self.queue.indices.contains(currentIndex),
+                      self.queue[currentIndex].id == track.id else {
                     return
                 }
-                self.queue[index] = refreshed
+                self.queue[currentIndex] = refreshed
                 self.restoredTrackIDs.remove(track.id)
                 self.requiresStreamRefresh = false
-                self.streamRefreshTask = nil
                 self.loadCurrent(
-                    autoplay: autoplay,
+                    autoplay: autoplay && self.playbackIntended,
                     startAt: position,
                     automatic: automatic
                 )
@@ -3629,13 +3821,11 @@ final class AudioPlayer {
                 guard generation == self.streamRefreshGeneration else {
                     return
                 }
-                self.streamRefreshTask = nil
                 self.isBuffering = false
             } catch {
                 guard generation == self.streamRefreshGeneration else {
                     return
                 }
-                self.streamRefreshTask = nil
                 // Re-enter the same-track retry budget instead of skipping
                 // after the first flaky refresh.
                 self.handleItemFailure(error)
@@ -4158,29 +4348,36 @@ final class AudioPlayer {
         markCurrentTrackListenedIfNeeded()
     }
 
-    /// Feed the C buffer-health estimator from `loadedTimeRanges` so a
-    /// future adaptive policy can react to measured underruns, not only
-    /// to the coarse NetworkMonitor state.
+    /// Fold `loadedTimeRanges` in C and feed the rolling buffer-health
+    /// estimator. The observer must not allocate an Array or walk
+    /// `CMTimeSubtract` in Swift.
     private func sampleBufferHealth() {
         guard let item = player.currentItem else { return }
         let ranges = item.loadedTimeRanges
         guard !ranges.isEmpty else { return }
         let position = item.currentTime()
-        var loadedAhead: TimeInterval = 0
-        for value in ranges {
-            let range = value.timeRangeValue
-            let end = CMTimeRangeGetEnd(range)
-            guard CMTIME_IS_NUMERIC(end), CMTIME_IS_NUMERIC(position) else {
-                continue
+        guard CMTIME_IS_NUMERIC(position) else { return }
+        let positionSeconds = CMTimeGetSeconds(position)
+        let count = min(ranges.count, 32)
+        let loadedAhead = withUnsafeTemporaryAllocation(
+            of: Double.self,
+            capacity: count
+        ) { ends -> Double in
+            for index in 0..<count {
+                let end = CMTimeRangeGetEnd(ranges[index].timeRangeValue)
+                ends[index] = CMTIME_IS_NUMERIC(end)
+                    ? CMTimeGetSeconds(end)
+                    : Double.nan
             }
-            let ahead = CMTimeGetSeconds(CMTimeSubtract(end, position))
-            if ahead.isFinite {
-                loadedAhead = max(loadedAhead, ahead)
-            }
+            return pm_buffer_max_loaded_ahead(
+                positionSeconds,
+                ends.baseAddress,
+                Int32(count)
+            )
         }
         bufferHealthEstimator.observe(
             now: ProcessInfo.processInfo.systemUptime,
-            loadedAheadSeconds: max(0, loadedAhead)
+            loadedAheadSeconds: loadedAhead
         )
     }
 

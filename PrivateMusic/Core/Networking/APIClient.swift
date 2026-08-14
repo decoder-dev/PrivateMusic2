@@ -22,6 +22,16 @@ enum RequestRetryPolicy: Sendable, Equatable {
         }
     }
 
+    /// Stream refresh must fail immediately when there is no path. Waiting
+    /// for connectivity here stacked under AudioPlayer's same-track loop
+    /// and left tracks on “loading…” for the full timeout.
+    var waitsForConnectivity: Bool {
+        switch self {
+        case .playbackRecovery: false
+        case .transient, .never: true
+        }
+    }
+
     func shouldRetry(_ code: URLError.Code) -> Bool {
         guard self == .transient else { return false }
         return [
@@ -66,7 +76,7 @@ actor APIClient {
             let configuration = URLSessionConfiguration.ephemeral
             configuration.timeoutIntervalForRequest = 30
             configuration.timeoutIntervalForResource = 45
-            configuration.waitsForConnectivity = true
+            configuration.waitsForConnectivity = false
             configuration.allowsCellularAccess = true
             configuration.allowsExpensiveNetworkAccess = true
             configuration.allowsConstrainedNetworkAccess = true
