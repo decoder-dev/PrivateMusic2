@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct NewReleasesView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var highlight: PlaybackHighlightModel
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(PlaybackHighlightModel.self) private var highlight
     let albums: [Album]
 
     @State private var loadingPlayAlbumID: String?

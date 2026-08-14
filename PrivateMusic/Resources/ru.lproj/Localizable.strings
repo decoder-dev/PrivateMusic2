@@ -163,7 +163,7 @@
 "text_size" = "Масштаб текста";
 "settings.preview" = "Пример";
 "liquid_glass" = "Liquid Glass";
-"ios_26_uses_the_system_interactive_glass_effect_ios_16_25_use_a_compatib" = "На iOS 26+ используется системное интерактивное стекло. На iOS 16–25 — совместимый эффект системного материала.";
+"ios_26_uses_the_system_interactive_glass_effect_ios_16_25_use_a_compatib" = "На iOS 26+ используется системное интерактивное стекло. На iOS 17–25 — совместимый эффект системного материала.";
 "reset_appearance" = "Сбросить оформление";
 "player_audio" = "Плеер и аудио";
 "resume_on_bluetooth_connection" = "Продолжать при подключении Bluetooth";

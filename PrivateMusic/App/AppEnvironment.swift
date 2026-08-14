@@ -1,8 +1,8 @@
-import Combine
 import Foundation
 
 @MainActor
-final class AppEnvironment: ObservableObject {
+@Observable
+final class AppEnvironment {
     let configuration: AppConfiguration
     let settings: AppSettings
     let sessionStore: SessionStore
@@ -19,11 +19,11 @@ final class AppEnvironment: ObservableObject {
     let watchRemoteCoordinator: WatchRemoteCoordinator
     let musicService: any MusicService
     let webAuthService: VKWebAuthService
-    @Published private(set) var isRecoveringSession = false
+    private(set) var isRecoveringSession = false
     /// While a share export is active, offline downloads and automatic
     /// caching are paused and hidden so the share transfer gets bandwidth.
-    @Published private(set) var isShareSessionActive = false
-    @Published var mixActionError: String?
+    private(set) var isShareSessionActive = false
+    var mixActionError: String?
     private var snippetTask: Task<Void, Never>?
     private struct SessionRecovery {
         let id: UUID
@@ -31,7 +31,6 @@ final class AppEnvironment: ObservableObject {
     }
     private var sessionRecovery: SessionRecovery?
     private var shareSessionDepth = 0
-    private var cancellables = Set<AnyCancellable>()
     private var automaticCacheTask: Task<Void, Never>?
     private var pendingAutomaticCacheTrack: Track?
     /// The library-wide walks that more than one screen can ask for.
@@ -40,6 +39,7 @@ final class AppEnvironment: ObservableObject {
         case likedAlbums
     }
     private var refreshTasks: [RefreshSlot: Task<Void, Never>] = [:]
+    private var settingsObservation: ObservationLoop.Token?
 
     init(
         configuration: AppConfiguration = .current,
@@ -164,42 +164,22 @@ final class AppEnvironment: ObservableObject {
             self?.scheduleAutomaticCache(for: track)
             self?.schedulePredictivePreDownload()
         }
-        settings.$offlineStorageLimitGB
-            .removeDuplicates()
-            .sink { [weak offlineStore] limitGB in
-                offlineStore?.configureStorage(limitGB: limitGB)
+        settingsObservation = ObservationLoop.start { [weak self] in
+            guard let self else { return }
+            let limitGB = self.settings.offlineStorageLimitGB
+            self.offlineStore.configureStorage(limitGB: limitGB)
+            if !self.settings.automaticOfflineCacheEnabled {
+                self.pendingAutomaticCacheTrack = nil
             }
-            .store(in: &cancellables)
-        settings.$automaticOfflineCacheEnabled
-            .removeDuplicates()
-            .sink { [weak self] enabled in
-                guard !enabled else { return }
-                self?.pendingAutomaticCacheTrack = nil
+            let state = self.networkMonitor.state
+            if state != .offline {
+                self.player.resumePreloading()
+            } else {
+                self.player.cancelPreloading()
             }
-            .store(in: &cancellables)
-        networkMonitor.$state
-            .removeDuplicates()
-            .sink { [weak player] state in
-                // Restart preloads whenever the network is usable again —
-                // including constrained cellular, not only unconstrained wifi.
-                if state != .offline {
-                    player?.resumePreloading()
-                } else {
-                    player?.cancelPreloading()
-                }
-            }
-            .store(in: &cancellables)
-        // `revision` only advances when `state` or `transport` actually
-        // changed (see `NetworkMonitor`), so this is the single signal
-        // for "the player's buffer/retry policy might need to react" —
-        // a transport flip alone (wifi → cellular on the same `.online`
-        // state) would not otherwise republish anything.
-        networkMonitor.$revision
-            .sink { [weak self, weak player] _ in
-                guard let self else { return }
-                player?.updateNetworkCondition(self.networkMonitor.condition)
-            }
-            .store(in: &cancellables)
+            _ = self.networkMonitor.revision
+            self.player.updateNetworkCondition(self.networkMonitor.condition)
+        }
 
         Task {
             await trackShareService.removeStaleExports()

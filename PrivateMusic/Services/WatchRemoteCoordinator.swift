@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 import WatchConnectivity
 
@@ -8,7 +7,8 @@ import WatchConnectivity
 final class WatchRemoteCoordinator: NSObject {
     private weak var player: AudioPlayer?
     private let session: WCSession?
-    private var cancellables = Set<AnyCancellable>()
+    private var playerObservation: ObservationLoop.Token?
+    private var driftTask: Task<Void, Never>?
     private var lastState: WatchRemoteState?
     private var pendingPushTask: Task<Void, Never>?
     private var pendingForcePush = false
@@ -24,52 +24,32 @@ final class WatchRemoteCoordinator: NSObject {
     }
 
     func start() {
-        guard let session, let player else { return }
+        guard let session, player != nil else { return }
         session.delegate = self
         session.activate()
 
-        Publishers.CombineLatest4(
-            player.$queue.removeDuplicates(by: { lhs, rhs in
-                lhs.map(\.id) == rhs.map(\.id)
-            }),
-            player.$currentIndex.removeDuplicates(),
-            player.$isPlaying.removeDuplicates(),
-            player.$duration
-                .map { ($0 * 4).rounded() / 4 }
-                .removeDuplicates()
-        )
-        .sink { [weak self] _, _, _, _ in
-            self?.markNeedsPush()
+        playerObservation = ObservationLoop.start { [weak self] in
+            guard let self, let player = self.player else { return }
+            _ = player.queue
+            _ = player.currentIndex
+            _ = player.isPlaying
+            _ = player.duration
+            _ = player.isBuffering
+            _ = player.queueSource
+            self.markNeedsPush()
         }
-        .store(in: &cancellables)
-
-        // Watch interpolates elapsed from `snapshotDate` + rate. Keep a slow
-        // drift correction only — 1 Hz context updates heat the radio link.
-        player.progress.$elapsedTime
-            .removeDuplicates()
-            .throttle(
-                for: .seconds(WatchStatePushCoalescingPolicy.driftCorrectionSeconds),
-                scheduler: RunLoop.main,
-                latest: true
-            )
-            .sink { [weak self] _ in
+        driftTask?.cancel()
+        driftTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(
+                    for: .seconds(
+                        WatchStatePushCoalescingPolicy.driftCorrectionSeconds
+                    )
+                )
+                guard !Task.isCancelled else { return }
                 self?.markNeedsPush()
             }
-            .store(in: &cancellables)
-
-        player.$isBuffering
-            .removeDuplicates()
-            .sink { [weak self] _ in
-                self?.markNeedsPush()
-            }
-            .store(in: &cancellables)
-
-        player.$queueSource
-            .removeDuplicates()
-            .sink { [weak self] _ in
-                self?.markNeedsPush()
-            }
-            .store(in: &cancellables)
+        }
     }
 
     func configureControlGate(

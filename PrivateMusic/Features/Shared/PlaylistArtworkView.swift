@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PlaylistArtworkView: View {
-    @ObservedObject private var offlinePlaylists =
+    private let offlinePlaylists =
         OfflinePlaylistStore.shared
     let playlist: Playlist
     var size: CGFloat

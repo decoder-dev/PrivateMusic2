@@ -1,23 +1,23 @@
 import SwiftUI
 
 struct LibraryView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
     /// Highlight only: observing `AudioPlayer` would rebuild the library
     /// list on every buffering / duration tick. Actions go through
     /// `environment.player`.
-    @EnvironmentObject private var highlight: PlaybackHighlightModel
-    @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
-    @EnvironmentObject private var offlineStore: OfflineTrackStore
-    @EnvironmentObject private var settings: AppSettings
-    @EnvironmentObject private var networkMonitor: NetworkMonitor
-    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
-    @EnvironmentObject private var pinnedMixStore: PinnedMixStore
+    @Environment(PlaybackHighlightModel.self) private var highlight
+    @Environment(LikedAlbumsStore.self) private var likedAlbumsStore
+    @Environment(OfflineTrackStore.self) private var offlineStore
+    @Environment(AppSettings.self) private var settings
+    @Environment(NetworkMonitor.self) private var networkMonitor
+    @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
+    @Environment(PinnedMixStore.self) private var pinnedMixStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ObservedObject private var offlinePlaylists =
+    private let offlinePlaylists =
         OfflinePlaylistStore.shared
-    @StateObject private var tracks = TrackCollectionViewModel(source: .library)
-    @StateObject private var playlists = PlaylistLibraryViewModel()
+    @State private var tracks = TrackCollectionViewModel(source: .library)
+    @State private var playlists = PlaylistLibraryViewModel()
     @State private var trackSearchQuery = ""
     @State private var showingEditor = false
     @State private var pendingCellularDownload: Track?
@@ -35,6 +35,12 @@ struct LibraryView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
+            GeometryReader { geometry in
+                // Zero-width proposals (some previews) must not produce
+                // empty frames — fall back to a compact-phone width.
+                let shelfWidth = geometry.size.width > 0
+                    ? geometry.size.width
+                    : 390
             ScrollView {
                 // Section gaps are per-section padding rather than stack
                 // spacing: the track rows share this stack (a nested lazy
@@ -44,14 +50,14 @@ struct LibraryView: View {
                     listenLaterSection
 
                     if playlists.isLoading && playlists.playlists.isEmpty {
-                        playlistSkeleton
+                        playlistSkeleton(width: shelfWidth)
                             .librarySectionSpacing()
                     } else if !playlists.playlists.isEmpty {
-                        playlistShelf
+                        playlistShelf(width: shelfWidth)
                             .librarySectionSpacing()
                     }
                     if !likedAlbumsStore.albums.isEmpty {
-                        albumShelf
+                        albumShelf(width: shelfWidth)
                             .librarySectionSpacing()
                     }
 
@@ -122,7 +128,7 @@ struct LibraryView: View {
                 // under the header.
                 .padding(.top, LibraryShelfMetrics.contentTopPadding)
             }
-            .onReceive(scrollCoordinator.$request) { request in
+            .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .library else { return }
                 if reduceMotion {
                     proxy.scrollTo(MainTabScrollDestination.library, anchor: .top)
@@ -134,6 +140,7 @@ struct LibraryView: View {
                         )
                     }
                 }
+            }
             }
         }
         .background(ThemeBackground())
@@ -663,7 +670,7 @@ struct LibraryView: View {
         .accentColor
     }
 
-    private var playlistShelf: some View {
+    private func playlistShelf(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("library.playlists"))
                 .font(.title2.weight(.bold))
@@ -687,7 +694,8 @@ struct LibraryView: View {
                         playlistCard(
                             playlist,
                             index: index,
-                            isLast: index == playlists.playlists.count - 1
+                            isLast: index == playlists.playlists.count - 1,
+                            width: width
                         )
                     }
                 }
@@ -695,14 +703,15 @@ struct LibraryView: View {
             }
             // A lazy row has no intrinsic height: pin it so the cards keep
             // their artwork instead of collapsing to caption-only chips.
-            .frame(height: LibraryShelfMetrics.shelfHeight)
+            .frame(height: LibraryShelfMetrics.shelfHeight(for: width))
         }
     }
 
     private func playlistCard(
         _ playlist: Playlist,
         index: Int,
-        isLast: Bool
+        isLast: Bool,
+        width: CGFloat
     ) -> some View {
         VStack(
             alignment: .leading,
@@ -714,7 +723,7 @@ struct LibraryView: View {
                 } label: {
                     PlaylistArtworkView(
                         playlist: playlist,
-                        size: LibraryShelfMetrics.artworkSize
+                        size: LibraryShelfMetrics.artworkSize(for: width)
                     )
                 }
                 .buttonStyle(PremiumPressStyle())
@@ -744,8 +753,8 @@ struct LibraryView: View {
             .buttonStyle(.plain)
         }
         .frame(
-            width: LibraryShelfMetrics.cardWidth,
-            height: LibraryShelfMetrics.cardHeight,
+            width: LibraryShelfMetrics.cardWidth(for: width),
+            height: LibraryShelfMetrics.cardHeight(for: width),
             alignment: .topLeading
         )
         .premiumAppear(delay: min(Double(index) * 0.025, 0.2))
@@ -810,7 +819,7 @@ struct LibraryView: View {
         )
     }
 
-    private var albumShelf: some View {
+    private func albumShelf(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("library.albums"))
                 .font(.title2.weight(.bold))
@@ -820,16 +829,16 @@ struct LibraryView: View {
                     spacing: LibraryShelfMetrics.cardSpacing
                 ) {
                     ForEach(likedAlbumsStore.albums) { album in
-                        albumCard(album)
+                        albumCard(album, width: width)
                     }
                 }
                 .padding(.vertical, LibraryShelfMetrics.shelfPadding)
             }
-            .frame(height: LibraryShelfMetrics.shelfHeight)
+            .frame(height: LibraryShelfMetrics.shelfHeight(for: width))
         }
     }
 
-    private func albumCard(_ album: Album) -> some View {
+    private func albumCard(_ album: Album, width: CGFloat) -> some View {
         VStack(
             alignment: .leading,
             spacing: LibraryShelfMetrics.captionSpacing
@@ -840,7 +849,7 @@ struct LibraryView: View {
                 } label: {
                     AsyncArtwork(
                         url: album.artworkURL,
-                        size: LibraryShelfMetrics.artworkSize
+                        size: LibraryShelfMetrics.artworkSize(for: width)
                     )
                 }
                 .buttonStyle(PremiumPressStyle())
@@ -874,8 +883,8 @@ struct LibraryView: View {
             .buttonStyle(.plain)
         }
         .frame(
-            width: LibraryShelfMetrics.cardWidth,
-            height: LibraryShelfMetrics.cardHeight,
+            width: LibraryShelfMetrics.cardWidth(for: width),
+            height: LibraryShelfMetrics.cardHeight(for: width),
             alignment: .topLeading
         )
     }
@@ -1158,7 +1167,7 @@ struct LibraryView: View {
         }
     }
 
-    private var playlistSkeleton: some View {
+    private func playlistSkeleton(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("library.playlists"))
                 .font(.title2.weight(.bold))
@@ -1174,14 +1183,14 @@ struct LibraryView: View {
                         )
                             .fill(.primary.opacity(0.08))
                             .frame(
-                                width: LibraryShelfMetrics.cardWidth,
-                                height: LibraryShelfMetrics.cardHeight
+                                width: LibraryShelfMetrics.cardWidth(for: width),
+                                height: LibraryShelfMetrics.cardHeight(for: width)
                             )
                     }
                 }
                 .padding(.vertical, LibraryShelfMetrics.shelfPadding)
             }
-            .frame(height: LibraryShelfMetrics.shelfHeight)
+            .frame(height: LibraryShelfMetrics.shelfHeight(for: width))
         }
         .redacted(reason: .placeholder)
     }

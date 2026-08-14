@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 struct RemotePlayerView: View {
-    @EnvironmentObject private var remote: WatchRemoteViewModel
+    @Environment(WatchRemoteViewModel.self) private var remote
 
     var body: some View {
         Group {
@@ -254,5 +254,5 @@ struct RemotePlayerView: View {
 
 #Preview {
     RemotePlayerView()
-        .environmentObject(WatchRemoteViewModel())
+        .environment(WatchRemoteViewModel())
 }

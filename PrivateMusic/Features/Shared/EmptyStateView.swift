@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct EmptyStateView: View {
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppSettings.self) private var settings
     let title: String
     let systemImage: String
     let description: String

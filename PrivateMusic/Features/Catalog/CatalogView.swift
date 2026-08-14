@@ -1,16 +1,16 @@
 import SwiftUI
 
 struct CatalogView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
     /// Highlight only: observing `AudioPlayer` would rebuild the home rails
     /// on every buffering / duration tick. Actions go through
     /// `environment.player`.
-    @EnvironmentObject private var highlight: PlaybackHighlightModel
-    @EnvironmentObject private var settings: AppSettings
-    @EnvironmentObject private var history: ListeningHistoryStore
-    @EnvironmentObject private var homeCatalog: HomeCatalogStore
-    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
+    @Environment(PlaybackHighlightModel.self) private var highlight
+    @Environment(AppSettings.self) private var settings
+    @Environment(ListeningHistoryStore.self) private var history
+    @Environment(HomeCatalogStore.self) private var homeCatalog
+    @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var actionErrorMessage: String?
     @State private var sharingTrack: Track?
@@ -80,7 +80,7 @@ struct CatalogView: View {
                     .padding(.top, 4)
                 }
             }
-            .onReceive(scrollCoordinator.$request) { request in
+            .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .home else { return }
                 scrollToTop(scrollProxy, destination: .home)
             }
@@ -107,7 +107,7 @@ struct CatalogView: View {
         // Liked-album mutations update `LikedAlbumsStore` in place. Reloading
         // the whole home snapshot here used to fan out recommendations /
         // mixes / playlists / releases for a single follow tap.
-        .onReceive(environment.$mixActionError) { error in
+        .onChange(of: environment.mixActionError) { _, error in
             guard let error else { return }
             actionErrorMessage = error
             environment.mixActionError = nil
@@ -964,11 +964,11 @@ struct CatalogView: View {
     }
 }
 
-private struct HomeMetrics {
+struct HomeMetrics {
     let containerWidth: CGFloat
 
     var horizontalPadding: CGFloat {
-        containerWidth <= 350 ? 14 : 16
+        AdaptiveLayout.horizontalPadding(for: containerWidth)
     }
 
     var cardSpacing: CGFloat {
@@ -976,19 +976,43 @@ private struct HomeMetrics {
     }
 
     var trackWidth: CGFloat {
-        min(max(containerWidth * 0.36, 114), 142)
+        AdaptiveLayout.shelfCardWidth(
+            for: containerWidth,
+            compactMax: 142,
+            regularMax: AdaptiveLayout.regularCardWidthCap,
+            fraction: 0.36,
+            compactMin: 114
+        )
     }
 
     var recentWidth: CGFloat {
-        min(max(containerWidth * 0.33, 108), 126)
+        AdaptiveLayout.shelfCardWidth(
+            for: containerWidth,
+            compactMax: 126,
+            regularMax: AdaptiveLayout.regularCardWidthCap,
+            fraction: 0.33,
+            compactMin: 108
+        )
     }
 
     var playlistWidth: CGFloat {
-        min(max(containerWidth * 0.35, 112), 140)
+        AdaptiveLayout.shelfCardWidth(
+            for: containerWidth,
+            compactMax: 140,
+            regularMax: AdaptiveLayout.regularCardWidthCap,
+            fraction: 0.35,
+            compactMin: 112
+        )
     }
 
     var newReleaseWidth: CGFloat {
-        min(max(containerWidth * 0.35, 112), 140)
+        AdaptiveLayout.shelfCardWidth(
+            for: containerWidth,
+            compactMax: 140,
+            regularMax: AdaptiveLayout.regularCardWidthCap,
+            fraction: 0.35,
+            compactMin: 112
+        )
     }
 }
 
@@ -1020,7 +1044,7 @@ private struct HomeSectionHeader: View {
 }
 
 private struct HomeTrackArtwork: View {
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppSettings.self) private var settings
     @Environment(\.displayScale) private var displayScale
     let url: URL?
     let size: CGFloat

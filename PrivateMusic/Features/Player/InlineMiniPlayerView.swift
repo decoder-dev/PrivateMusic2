@@ -3,7 +3,7 @@ import SwiftUI
 /// Compact mini player for the system tab-bar accessory when it collapses
 /// to the inline placement. Relies on system chrome — no own glass plate.
 struct InlineMiniPlayerView: View {
-    @EnvironmentObject private var player: AudioPlayer
+    @Environment(AudioPlayer.self) private var player
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let playerNamespace: Namespace.ID
 

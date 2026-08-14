@@ -79,10 +79,10 @@ final class PlayerActionSheetTests: XCTestCase {
         XCTAssertFalse(state.showsOfflineControls)
     }
 
-    func testVacationBuildKeepsShareAndHidesDownloads() {
-        XCTAssertFalse(
+    func testProductionBuildKeepsShareAndEnablesDownloads() {
+        XCTAssertTrue(
             OfflineDownloadsFeature.isEnabled,
-            "Offline downloads stay off for the stable vacation build"
+            "Offline downloads are on for production"
         )
         XCTAssertTrue(
             PlayerActionAvailability(

@@ -6,8 +6,8 @@ struct LikedTrackBadge: View {
         case artwork
     }
 
-    @EnvironmentObject private var libraryStore: MusicLibraryStore
-    @EnvironmentObject private var sessionStore: SessionStore
+    @Environment(MusicLibraryStore.self) private var libraryStore
+    @Environment(SessionStore.self) private var sessionStore
     let track: Track
     var style: Style = .compact
 

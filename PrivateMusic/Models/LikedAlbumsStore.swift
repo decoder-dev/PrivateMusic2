@@ -1,8 +1,9 @@
 import Foundation
 
 @MainActor
-final class LikedAlbumsStore: ObservableObject {
-    @Published private(set) var albums: [Album] = []
+@Observable
+final class LikedAlbumsStore {
+    private(set) var albums: [Album] = []
     private var accountID: Int?
     private var localOverrides: [String: Bool] = [:]
     private var isSynchronized = false

@@ -2,15 +2,15 @@ import SwiftUI
 import Foundation
 
 struct TrackRow: View {
-    @EnvironmentObject private var environment: AppEnvironment
+    @Environment(AppEnvironment.self) private var environment
     /// Rows deliberately do not observe `AudioPlayer`: its buffering /
     /// duration / shuffle updates would invalidate every visible cell.
     /// Identity + play state come from `highlight`, actions go through
     /// `environment.player`.
-    @EnvironmentObject private var highlight: PlaybackHighlightModel
-    @EnvironmentObject private var settings: AppSettings
-    @EnvironmentObject private var offlineStore: OfflineTrackStore
-    @EnvironmentObject private var mixFeedbackStore: MixFeedbackStore
+    @Environment(PlaybackHighlightModel.self) private var highlight
+    @Environment(AppSettings.self) private var settings
+    @Environment(OfflineTrackStore.self) private var offlineStore
+    @Environment(MixFeedbackStore.self) private var mixFeedbackStore
     let track: Track
     let queue: [Track]
     var source: QueueSource? = nil

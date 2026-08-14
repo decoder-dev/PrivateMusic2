@@ -15,9 +15,10 @@ struct BannedArtistRecord: Codable, Hashable, Identifiable, Sendable {
 /// Local «не нравится» memory for mix radio — VK's official mix relies on
 /// dislikes heavily, but the public API does not expose a feedback method.
 @MainActor
-final class MixFeedbackStore: ObservableObject {
-    @Published private(set) var bannedTracks: [BannedTrackRecord] = []
-    @Published private(set) var bannedArtistRecords: [BannedArtistRecord] = []
+@Observable
+final class MixFeedbackStore {
+    private(set) var bannedTracks: [BannedTrackRecord] = []
+    private(set) var bannedArtistRecords: [BannedArtistRecord] = []
 
     var bannedTrackIDs: Set<String> { Set(bannedTracks.map(\.id)) }
     var bannedArtists: Set<String> { Set(bannedArtistRecords.map(\.key)) }

@@ -3,10 +3,11 @@ import WatchConnectivity
 import WatchKit
 
 @MainActor
-final class WatchRemoteViewModel: NSObject, ObservableObject {
-    @Published private(set) var state: WatchRemoteState = .empty
-    @Published private(set) var isReachable = false
-    @Published private(set) var commandFailed = false
+@Observable
+final class WatchRemoteViewModel: NSObject {
+    private(set) var state: WatchRemoteState = .empty
+    private(set) var isReachable = false
+    private(set) var commandFailed = false
 
     private let session: WCSession?
     private var feedbackTask: Task<Void, Never>?

@@ -1,16 +1,17 @@
 import Foundation
 
 @MainActor
-final class HomeCatalogStore: ObservableObject {
+@Observable
+final class HomeCatalogStore {
     static let staleInterval: TimeInterval = 15 * 60
 
-    @Published private(set) var recommendations: [Track] = []
-    @Published private(set) var mixes: [MusicMix] = []
-    @Published private(set) var playlists: [Playlist] = []
-    @Published private(set) var newReleases: [Album] = []
-    @Published private(set) var isRefreshing = false
-    @Published private(set) var lastRefreshedAt: Date?
-    @Published var errorMessage: String?
+    private(set) var recommendations: [Track] = []
+    private(set) var mixes: [MusicMix] = []
+    private(set) var playlists: [Playlist] = []
+    private(set) var newReleases: [Album] = []
+    private(set) var isRefreshing = false
+    private(set) var lastRefreshedAt: Date?
+    var errorMessage: String?
     private var accountID: Int?
     private var lastAttemptedAt: Date?
     private var refreshGeneration = 0

@@ -4,12 +4,13 @@ options:
   minimumXcodeGenVersion: 2.46.0
   postGenCommand: python3 scripts/fix_watch_embedding.py
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "17.0"
     watchOS: "10.0"
   xcodeVersion: "27.0"
-settings:
-  base:
-    SWIFT_VERSION: "5.10"
+  settings:
+    base:
+      SWIFT_VERSION: "6.0"
+      SWIFT_STRICT_CONCURRENCY: complete
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     CURRENT_PROJECT_VERSION: 150
@@ -51,7 +52,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Private Music
         INFOPLIST_KEY_WKApplication: YES
         INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.dec.privatemusic2
-        INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: NO
+        INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SKIP_INSTALL: YES
         TARGETED_DEVICE_FAMILY: 4

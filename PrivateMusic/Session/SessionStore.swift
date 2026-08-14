@@ -1,11 +1,12 @@
 import Foundation
 
 @MainActor
-final class SessionStore: ObservableObject {
-    @Published private(set) var session: Session?
-    @Published private(set) var profile: UserProfile?
-    @Published var errorMessage: String?
-    @Published private(set) var sessionRevision = 0
+@Observable
+final class SessionStore {
+    private(set) var session: Session?
+    private(set) var profile: UserProfile?
+    var errorMessage: String?
+    private(set) var sessionRevision = 0
 
     private let keychain: KeychainStore
     private let sessionAccount = "vk-session-v2"

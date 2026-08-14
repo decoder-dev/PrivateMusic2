@@ -1,13 +1,13 @@
 import SwiftUI
 
 struct AlbumDetailView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var likedAlbumsStore: LikedAlbumsStore
-    @EnvironmentObject private var settings: AppSettings
-    @EnvironmentObject private var player: AudioPlayer
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(LikedAlbumsStore.self) private var likedAlbumsStore
+    @Environment(AppSettings.self) private var settings
+    @Environment(AudioPlayer.self) private var player
     let album: Album
-    @StateObject private var model = AlbumDetailViewModel()
+    @State private var model = AlbumDetailViewModel()
     @State private var resolvedAlbum: Album?
     @State private var isUpdatingFollow = false
     @State private var actionErrorMessage: String?
@@ -374,13 +374,14 @@ struct AlbumDetailView: View {
 }
 
 @MainActor
-private final class AlbumDetailViewModel: ObservableObject {
-    @Published private(set) var tracks: [Track] = []
-    @Published private(set) var isLoading = false
-    @Published private(set) var isLoadingMore = false
-    @Published private(set) var hasLoaded = false
-    @Published var errorMessage: String?
-    @Published var paginationErrorMessage: String?
+@Observable
+private final class AlbumDetailViewModel {
+    private(set) var tracks: [Track] = []
+    private(set) var isLoading = false
+    private(set) var isLoadingMore = false
+    private(set) var hasLoaded = false
+    var errorMessage: String?
+    var paginationErrorMessage: String?
     private var nextOffset: Int?
 
     func load(

@@ -24,16 +24,16 @@ struct MixesHubView: View {
         case grid
     }
 
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var player: AudioPlayer
-    @EnvironmentObject private var highlight: PlaybackHighlightModel
-    @EnvironmentObject private var homeCatalog: HomeCatalogStore
-    @EnvironmentObject private var scrollCoordinator: MainTabScrollCoordinator
-    @EnvironmentObject private var history: ListeningHistoryStore
-    @EnvironmentObject private var pinnedMixStore: PinnedMixStore
-    @EnvironmentObject private var mixFeedbackStore: MixFeedbackStore
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(AudioPlayer.self) private var player
+    @Environment(PlaybackHighlightModel.self) private var highlight
+    @Environment(HomeCatalogStore.self) private var homeCatalog
+    @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
+    @Environment(ListeningHistoryStore.self) private var history
+    @Environment(PinnedMixStore.self) private var pinnedMixStore
+    @Environment(MixFeedbackStore.self) private var mixFeedbackStore
+    @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var hubTab: HubTab = .selena
@@ -96,7 +96,7 @@ struct MixesHubView: View {
                     .padding(.bottom, 120)
                 }
             }
-            .onReceive(scrollCoordinator.$request) { request in
+            .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .mix else { return }
                 scrollHubToTop(proxy: proxy)
             }
@@ -133,7 +133,7 @@ struct MixesHubView: View {
                 ensureVKSelection()
             }
         }
-        .onReceive(environment.$mixActionError) { error in
+        .onChange(of: environment.mixActionError) { _, error in
             guard let error else { return }
             actionError = error
             environment.mixActionError = nil
@@ -1211,10 +1211,7 @@ struct MixesHubView: View {
                             .premiumCard()
                         case .grid:
                             LazyVGrid(
-                                columns: [
-                                    GridItem(.flexible(), spacing: 10),
-                                    GridItem(.flexible(), spacing: 10)
-                                ],
+                                columns: metrics.gridColumns,
                                 spacing: 10
                             ) {
                                 ForEach(expandedList) { track in
@@ -1222,7 +1219,7 @@ struct MixesHubView: View {
                                         track,
                                         mix: mix,
                                         queue: tracks,
-                                        width: (metrics.contentWidth - 10) / 2
+                                        width: metrics.gridCellWidth
                                     )
                                 }
                             }
@@ -1407,10 +1404,7 @@ struct MixesHubView: View {
             )
 
             LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 10),
-                    GridItem(.flexible(), spacing: 10)
-                ],
+                columns: metrics.gridColumns,
                 spacing: 10
             ) {
                 stationStatCard(
@@ -2428,19 +2422,49 @@ struct MixesHubView: View {
     }
 }
 
-private struct MixHubMetrics {
+struct MixHubMetrics {
     let width: CGFloat
 
-    var horizontalPadding: CGFloat { width <= 350 ? 14 : 16 }
+    var horizontalPadding: CGFloat {
+        AdaptiveLayout.horizontalPadding(for: width)
+    }
     var cardSpacing: CGFloat { width <= 350 ? 10 : 12 }
     var heroHeight: CGFloat { width <= 350 ? 176 : 200 }
     var contentWidth: CGFloat { max(0, width - horizontalPadding * 2) }
+    /// Phone keeps ~38% of the content width. iPad uses AdaptiveLayout
+    /// so cards grow past the old phone cap without becoming full-width.
     var cardWidth: CGFloat {
-        max(136, contentWidth * 0.38)
+        if AdaptiveLayout.isRegularWidth(width) {
+            return AdaptiveLayout.shelfCardWidth(
+                for: width,
+                compactMax: 148,
+                regularMax: AdaptiveLayout.regularCardWidthCap
+            )
+        }
+        return max(136, contentWidth * 0.38)
     }
     var cardHeight: CGFloat { cardWidth }
     var trackWidth: CGFloat {
-        min(max(width * 0.36, 114), 148)
+        AdaptiveLayout.shelfCardWidth(
+            for: width,
+            compactMax: 148,
+            regularMax: AdaptiveLayout.regularCardWidthCap,
+            fraction: 0.36,
+            compactMin: 114
+        )
+    }
+    var columnCount: Int {
+        AdaptiveLayout.columnCount(for: width)
+    }
+    var gridColumns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(), spacing: 10),
+            count: columnCount
+        )
+    }
+    var gridCellWidth: CGFloat {
+        let columns = CGFloat(columnCount)
+        return max(0, (contentWidth - 10 * (columns - 1)) / columns)
     }
 }
 

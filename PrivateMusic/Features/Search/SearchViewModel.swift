@@ -10,7 +10,8 @@ enum SearchViewState: Equatable {
 }
 
 @MainActor
-final class SearchViewModel: ObservableObject {
+@Observable
+final class SearchViewModel {
     typealias SearchOperation =
         (String, Int, Int) async throws -> MusicPage<Track>
     typealias AlbumSearchOperation =
@@ -21,22 +22,22 @@ final class SearchViewModel: ObservableObject {
 
     static let minimumQueryLength = 2
 
-    @Published var query = ""
-    @Published private(set) var tracks: [Track] = []
-    @Published private(set) var albums: [Album] = []
-    @Published private(set) var playlists: [Playlist] = []
-    @Published private(set) var isLoading = false
-    @Published private(set) var isLoadingMore = false
-    @Published private(set) var isLoadingAlbums = false
-    @Published private(set) var isLoadingMoreAlbums = false
-    @Published private(set) var isLoadingPlaylists = false
-    @Published private(set) var isLoadingMorePlaylists = false
-    @Published var albumErrorMessage: String?
-    @Published var playlistErrorMessage: String?
-    @Published private(set) var recentQueries: [String]
-    @Published private(set) var errorMessage: String?
-    @Published private(set) var paginationErrorMessage: String?
-    @Published var actionErrorMessage: String?
+    var query = ""
+    private(set) var tracks: [Track] = []
+    private(set) var albums: [Album] = []
+    private(set) var playlists: [Playlist] = []
+    private(set) var isLoading = false
+    private(set) var isLoadingMore = false
+    private(set) var isLoadingAlbums = false
+    private(set) var isLoadingMoreAlbums = false
+    private(set) var isLoadingPlaylists = false
+    private(set) var isLoadingMorePlaylists = false
+    var albumErrorMessage: String?
+    var playlistErrorMessage: String?
+    private(set) var recentQueries: [String]
+    private(set) var errorMessage: String?
+    private(set) var paginationErrorMessage: String?
+    var actionErrorMessage: String?
 
     private var searchTask: Task<Void, Never>?
     private var albumSearchTask: Task<Void, Never>?

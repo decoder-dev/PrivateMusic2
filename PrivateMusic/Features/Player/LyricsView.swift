@@ -2,10 +2,10 @@ import SwiftUI
 import UIKit
 
 struct LyricsView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var player: AudioPlayer
-    @EnvironmentObject private var progress: PlaybackProgressModel
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(AudioPlayer.self) private var player
+    @Environment(PlaybackProgressModel.self) private var progress
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let track: Track
     @State private var lyrics: Lyrics?

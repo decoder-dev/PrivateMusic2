@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct PlaylistEditorView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
     @Environment(\.dismiss) private var dismiss
     let playlist: Playlist?
     let onSaved: () -> Void

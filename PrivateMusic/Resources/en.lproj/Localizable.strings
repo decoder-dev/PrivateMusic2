@@ -163,7 +163,7 @@
 "text_size" = "Text Size";
 "settings.preview" = "Preview";
 "liquid_glass" = "Liquid Glass";
-"ios_26_uses_the_system_interactive_glass_effect_ios_16_25_use_a_compatib" = "iOS 26+ uses the system interactive glass effect. iOS 16–25 use a compatible system material effect.";
+"ios_26_uses_the_system_interactive_glass_effect_ios_16_25_use_a_compatib" = "iOS 26+ uses the system interactive glass effect. iOS 17–25 use a compatible system material effect.";
 "reset_appearance" = "Reset Appearance";
 "player_audio" = "Player & Audio";
 "resume_on_bluetooth_connection" = "Resume on Bluetooth Connection";

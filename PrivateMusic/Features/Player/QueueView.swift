@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct QueueView: View {
-    @EnvironmentObject private var player: AudioPlayer
-    @EnvironmentObject private var history: ListeningHistoryStore
+    @Environment(AudioPlayer.self) private var player
+    @Environment(ListeningHistoryStore.self) private var history
     @Environment(\.dismiss) private var dismiss
 
     private var isMixQueue: Bool {

@@ -4,7 +4,7 @@ import UIKit
 /// Artwork that keeps the previous bitmap visible until the next image is
 /// ready, then crossfades — avoiding the placeholder flash of `.id(track.id)`.
 struct MiniPlayerArtworkView: View {
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
 

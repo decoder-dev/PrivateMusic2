@@ -262,7 +262,8 @@ enum OfflinePlaylistStatus: Equatable, Sendable {
 }
 
 @MainActor
-final class OfflinePlaylistStore: ObservableObject {
+@Observable
+final class OfflinePlaylistStore {
     static let shared = OfflinePlaylistStore()
     static let maximumArtworkSize = 12 * 1_024 * 1_024
 
@@ -274,7 +275,7 @@ final class OfflinePlaylistStore: ObservableObject {
         let task: Task<Void, Never>
     }
 
-    @Published private(set) var records: [String: OfflinePlaylistRecord] = [:]
+    private(set) var records: [String: OfflinePlaylistRecord] = [:]
 
     private let fileManager: FileManager
     private let rootURL: URL

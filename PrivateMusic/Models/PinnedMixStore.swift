@@ -42,8 +42,9 @@ struct PinnedMixSnapshot: Codable, Equatable, Sendable, Identifiable {
 }
 
 @MainActor
-final class PinnedMixStore: ObservableObject {
-    @Published private(set) var pin: PinnedMixSnapshot?
+@Observable
+final class PinnedMixStore {
+    private(set) var pin: PinnedMixSnapshot?
 
     private let defaults: UserDefaults
     private var accountID: Int?

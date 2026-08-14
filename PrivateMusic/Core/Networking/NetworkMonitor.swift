@@ -2,7 +2,8 @@ import Foundation
 import Network
 
 @MainActor
-final class NetworkMonitor: ObservableObject {
+@Observable
+final class NetworkMonitor {
     enum State: Equatable {
         case online
         case constrained
@@ -17,9 +18,9 @@ final class NetworkMonitor: ObservableObject {
         case unavailable
     }
 
-    @Published private(set) var state: State = .online
-    @Published private(set) var transport: Transport = .other
-    @Published private(set) var revision = 0
+    private(set) var state: State = .online
+    private(set) var transport: Transport = .other
+    private(set) var revision = 0
 
     private let monitor: NWPathMonitor
     private let queue = DispatchQueue(

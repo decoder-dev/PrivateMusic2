@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct MiniPlayerView: View {
-    @EnvironmentObject private var player: AudioPlayer
-    @EnvironmentObject private var progress: PlaybackProgressModel
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AudioPlayer.self) private var player
+    @Environment(PlaybackProgressModel.self) private var progress
+    @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @GestureState private var dragOffset: CGSize = .zero
     let playerNamespace: Namespace.ID

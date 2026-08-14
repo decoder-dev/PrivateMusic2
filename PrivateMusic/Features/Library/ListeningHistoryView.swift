@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct ListeningHistoryView: View {
-    @EnvironmentObject private var history: ListeningHistoryStore
+    @Environment(ListeningHistoryStore.self) private var history
     /// Playback is only triggered from here — observing `AudioPlayer` would
     /// rebuild the whole history list on every buffering / duration tick.
-    @EnvironmentObject private var environment: AppEnvironment
+    @Environment(AppEnvironment.self) private var environment
     @State private var query = ""
     @State private var showingClearConfirmation = false
     @State private var sharingTrack: Track?

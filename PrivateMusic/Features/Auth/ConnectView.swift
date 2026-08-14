@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct ConnectView: View {
-    @EnvironmentObject private var environment: AppEnvironment
-    @EnvironmentObject private var sessionStore: SessionStore
-    @EnvironmentObject private var settings: AppSettings
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(SessionStore.self) private var sessionStore
+    @Environment(AppSettings.self) private var settings
     @State private var token = ""
     @State private var userAgent = ""
     @State private var isConnecting = false
