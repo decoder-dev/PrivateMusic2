@@ -36,15 +36,14 @@ struct DownloadedTrackDetailsView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    Label(
-                        "Доступно без интернета",
+                    Label(L10n.text("available_offline_2"),
                         systemImage: "checkmark.circle.fill"
                     )
                     .font(.subheadline.weight(.semibold))
 
                     VStack(spacing: 0) {
                         detailRow(
-                            title: "Формат",
+                            title: "format",
                             value: formatDescription
                         )
                         if let albumTitle = record.track.albumTitle?
@@ -52,18 +51,18 @@ struct DownloadedTrackDetailsView: View {
                            Album.isUsableTitle(albumTitle) {
                             Divider()
                             detailRow(
-                                title: "Альбом",
+                                title: "album",
                                 value: albumTitle
                             )
                         }
                         Divider()
                         detailRow(
-                            title: "Длительность",
+                            title: "duration",
                             value: record.track.duration.formattedDuration
                         )
                         Divider()
                         detailRow(
-                            title: "Размер",
+                            title: "size",
                             value: ByteCountFormatter.string(
                                 fromByteCount: record.byteCount,
                                 countStyle: .file
@@ -71,7 +70,7 @@ struct DownloadedTrackDetailsView: View {
                         )
                         Divider()
                         detailRow(
-                            title: "Сохранено",
+                            title: "saved",
                             value: record.downloadedAt.formatted(
                                 date: .abbreviated,
                                 time: .shortened
@@ -79,7 +78,7 @@ struct DownloadedTrackDetailsView: View {
                         )
                         Divider()
                         detailRow(
-                            title: "Хранение",
+                            title: "storage",
                             value: retentionDescription
                         )
                     }
@@ -97,8 +96,7 @@ struct DownloadedTrackDetailsView: View {
                             onPlay()
                             dismiss()
                         } label: {
-                            Label(
-                                "Воспроизвести",
+                            Label(L10n.text("play"),
                                 systemImage: "play.fill"
                             )
                             .frame(maxWidth: .infinity)
@@ -109,8 +107,7 @@ struct DownloadedTrackDetailsView: View {
                         Button {
                             onShare()
                         } label: {
-                            Label(
-                                "Поделиться аудиофайлом",
+                            Label(L10n.text("share_audio_file"),
                                 systemImage: "square.and.arrow.up"
                             )
                             .frame(maxWidth: .infinity)
@@ -121,8 +118,7 @@ struct DownloadedTrackDetailsView: View {
                         Button(role: .destructive) {
                             showsDeleteConfirmation = true
                         } label: {
-                            Label(
-                                "Удалить с устройства",
+                            Label(L10n.text("remove_from_device"),
                                 systemImage: "trash"
                             )
                             .frame(maxWidth: .infinity)
@@ -133,23 +129,22 @@ struct DownloadedTrackDetailsView: View {
                 .padding(24)
             }
             .background(ThemeBackground())
-            .navigationTitle("Аудиофайл")
+            .navigationTitle(L10n.text("audio_file"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Готово") { dismiss() }
+                    Button(L10n.text("done")) { dismiss() }
                 }
             }
-            .confirmationDialog(
-                "Удалить этот файл с устройства?",
+            .confirmationDialog(L10n.text("delete_this_file_from_the_device"),
                 isPresented: $showsDeleteConfirmation,
                 titleVisibility: .visible
             ) {
-                Button("Удалить", role: .destructive) {
+                Button(L10n.text("action.delete"), role: .destructive) {
                     onDelete()
                     dismiss()
                 }
-                Button("Отмена", role: .cancel) {}
+                Button(L10n.text("action.cancel"), role: .cancel) {}
             }
             .presentationDetents([.medium, .large])
         }
@@ -174,7 +169,7 @@ struct DownloadedTrackDetailsView: View {
         switch record.resolvedStorage {
         case .hlsPackage:
             return L10n.text(
-                "Потоковое аудио · при отправке создаётся M4A"
+                "streaming_audio_m4a_is_created_on_share"
             )
         case .directFile:
             let ext = localURL?.pathExtension.uppercased() ?? "AUDIO"
@@ -185,9 +180,9 @@ struct DownloadedTrackDetailsView: View {
     private var retentionDescription: String {
         switch record.resolvedRetention {
         case .manual:
-            return L10n.text("Сохранено вручную")
+            return L10n.text("saved_manually")
         case .automaticCache:
-            return L10n.text("Автокэш — может очищаться автоматически")
+            return L10n.text("auto_cache_may_be_cleared_automatically")
         }
     }
 }

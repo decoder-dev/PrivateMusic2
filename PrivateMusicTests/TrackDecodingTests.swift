@@ -8,7 +8,7 @@ final class TrackDecodingTests: XCTestCase {
           "id": 42,
           "owner_id": 7,
           "title": "No Trace",
-          "artist": "Private Music",
+          "artist": "private_music",
           "duration": 185,
           "url": "https://example.com/audio.mp3",
           "access_key": "sample",

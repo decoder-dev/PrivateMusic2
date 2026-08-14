@@ -10,11 +10,11 @@ enum MixRadioMode: String, CaseIterable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .balanced:
-            return L10n.text("Баланс")
+            return L10n.text("balanced")
         case .closerToSeed:
-            return L10n.text("Ближе к треку")
+            return L10n.text("closer_to_track")
         case .moreNovel:
-            return L10n.text("Больше новизны")
+            return L10n.text("more_novelty")
         }
     }
 
@@ -22,11 +22,11 @@ enum MixRadioMode: String, CaseIterable, Identifiable, Sendable {
     var compactTitle: String {
         switch self {
         case .balanced:
-            return L10n.text("Баланс")
+            return L10n.text("balanced")
         case .closerToSeed:
-            return L10n.text("Ближе")
+            return L10n.text("closer")
         case .moreNovel:
-            return L10n.text("Новизна")
+            return L10n.text("novelty")
         }
     }
 
@@ -34,15 +34,15 @@ enum MixRadioMode: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .balanced:
             return L10n.text(
-                "Перемешивает загруженные треки и держит артистов на расстоянии"
+                "shuffles_loaded_tracks_and_keeps_artists_spaced_out"
             )
         case .closerToSeed:
             return L10n.text(
-                "Сначала ставит музыку ближе к текущему треку и недавней истории"
+                "prioritizes_music_closer_to_the_current_track_and_recent_history"
             )
         case .moreNovel:
             return L10n.text(
-                "Даёт больше новых артистов и меньше повторов из недавнего"
+                "adds_more_new_artists_and_fewer_repeats_from_recent_listening"
             )
         }
     }

@@ -9,10 +9,10 @@ struct TrackCollectionScreen: View {
     var body: some View {
         Group {
             if model.isLoading && model.tracks.isEmpty {
-                ProgressView("Загружаем музыку…")
+                ProgressView(L10n.text("loading_music"))
             } else if let error = model.errorMessage, model.tracks.isEmpty {
                 EmptyStateView(
-                    title: "Не удалось загрузить",
+                    title: "could_not_load",
                     systemImage: "wifi.exclamationmark",
                     description: error
                 )
@@ -40,7 +40,7 @@ struct TrackCollectionScreen: View {
                                         )
                                     }
                                 } label: {
-                                    Label("Удалить", systemImage: "trash")
+                                    Label(L10n.text("action.delete"), systemImage: "trash")
                                 }
                             }
                     }

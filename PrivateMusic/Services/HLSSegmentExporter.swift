@@ -1877,15 +1877,15 @@ enum HLSExportError: LocalizedError {
         case .invalidPlaylist, .emptyPlaylist, .tooManySegments,
              .noAudioVariant, .unsupportedEncryptionMethod,
              .invalidEncryptionKey:
-            return L10n.text("VK вернул неподдерживаемый аудиопоток.")
+            return L10n.text("vk_returned_an_unsupported_audio_stream")
         case .network, .httpFailure, .emptyResponse:
-            return L10n.text("Не удалось скачать аудиопоток.")
+            return L10n.text("couldn_t_download_the_audio_stream")
         case .decryptionFailed, .encryptedInitializationRequiresExplicitIV:
-            return L10n.text("Не удалось расшифровать аудиопоток.")
+            return L10n.text("couldn_t_decrypt_the_audio_stream")
         case .cannotCreateStagingFile:
-            return L10n.text("Не удалось создать временный файл.")
+            return L10n.text("could_not_create_a_temporary_file")
         case .fileTooLarge:
-            return L10n.text("Файл больше 150 МБ.")
+            return L10n.text("the_file_is_larger_than_150_mb")
         case .invalidInitializationSection,
              .missingInitializationSection,
              .changingInitializationSection,
@@ -1898,7 +1898,7 @@ enum HLSExportError: LocalizedError {
              .writerAppendFailed, .writerFinishFailed,
              .invalidRangeResponse,
              .decryptedInitializationInvalid, .decryptedFragmentInvalid:
-            return L10n.text("Не удалось собрать аудиопоток.")
+            return L10n.text("couldn_t_assemble_the_audio_stream")
         }
     }
 }
@@ -1949,22 +1949,19 @@ struct HLSDiagnosticError: LocalizedError, Sendable {
         case .resolvingManifest,
              .downloadingInitialization,
              .downloadingSegment:
-            return L10n.text("Не удалось скачать аудиопоток.")
+            return L10n.text("couldn_t_download_the_audio_stream")
         case .decrypting:
-            return L10n.text("Не удалось расшифровать аудиопоток.")
+            return L10n.text("couldn_t_decrypt_the_audio_stream")
         case .openingLinearSource,
              .creatingReader,
              .startingReader,
              .validatingOutput:
             if publicCode == "HLS-SOURCE-11828" {
-                return L10n.text(
-                    "Не удалось разобрать собранный аудиопоток. "
-                        + "Попробуйте ещё раз или выберите другой трек."
-                )
+                return L10n.text("could_not_parse_the_assembled_audio_stream_try_again_or_choose_another_t")
             }
-            return L10n.text("Не удалось открыть собранный аудиопоток.")
+            return L10n.text("could_not_open_the_assembled_audio_stream")
         default:
-            return L10n.text("Не удалось создать аудиофайл из этого потока.")
+            return L10n.text("could_not_create_an_audio_file_from_this_stream")
         }
     }
 }

@@ -56,7 +56,7 @@ struct LibraryView: View {
                     }
 
                     HStack(spacing: 12) {
-                        Text("Треки")
+                        Text(L10n.text("library.tracks"))
                             .font(.title2.weight(.bold))
                         Spacer()
                         Text("\(tracks.totalCount)")
@@ -72,11 +72,11 @@ struct LibraryView: View {
                               tracks.tracks.isEmpty {
                         VStack(spacing: 14) {
                             EmptyStateView(
-                                title: "Не удалось загрузить треки",
+                                title: "could_not_load_tracks",
                                 systemImage: "wifi.exclamationmark",
                                 description: error
                             )
-                            Button("Повторить") {
+                            Button(L10n.text("action.retry")) {
                                 Task { await loadTracks(force: true) }
                             }
                             .buttonStyle(.borderedProminent)
@@ -84,16 +84,16 @@ struct LibraryView: View {
                         .frame(minHeight: 260)
                     } else if tracks.tracks.isEmpty {
                         EmptyStateView(
-                            title: "Медиатека пуста",
+                            title: "your_library_is_empty",
                             systemImage: "music.note",
-                            description: "Добавленные во VK треки появятся здесь."
+                            description: "tracks_added_to_your_vk_library_will_appear_here"
                         )
                         .frame(minHeight: 260)
                     } else if filteredTracks.isEmpty {
                         EmptyStateView(
-                            title: "Ничего не найдено",
+                            title: "no_results",
                             systemImage: "magnifyingglass",
-                            description: "Попробуйте изменить запрос."
+                            description: "try_changing_your_query"
                         )
                         .frame(minHeight: 220)
                         .premiumAppear()
@@ -137,13 +137,13 @@ struct LibraryView: View {
             }
         }
         .background(ThemeBackground())
-        .navigationTitle("Медиатека")
+        .navigationTitle(L10n.text("tab.library"))
         .navigationBarTitleDisplayMode(.inline)
         .dynamicTypeSize(...DynamicTypeSize.large)
         .searchable(
             text: $trackSearchQuery,
             placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Трек или исполнитель"
+            prompt: L10n.text("track_or_artist")
         )
         .trackShareSheet(track: $sharingTrack)
         .toolbar {
@@ -178,20 +178,20 @@ struct LibraryView: View {
                                     }
                                 }
                         }
-                        .accessibilityLabel(L10n.text("Загрузки"))
+                        .accessibilityLabel(L10n.text("downloads"))
                     }
                     NavigationLink {
                         ListeningHistoryView()
                     } label: {
                         Image(systemName: "clock.arrow.circlepath")
                     }
-                    .accessibilityLabel(L10n.text("История прослушивания"))
+                    .accessibilityLabel(L10n.text("listening_history"))
                     Button {
                         showingEditor = true
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .accessibilityLabel(L10n.text("Новый плейлист"))
+                    .accessibilityLabel(L10n.text("new_playlist"))
                 }
                 .tint(.primary)
             }
@@ -202,37 +202,33 @@ struct LibraryView: View {
             }
         }
         .alert(
-            L10n.text("Скачать через мобильную сеть?"),
+            L10n.text("download_over_cellular"),
             isPresented: Binding(
                 get: { pendingCellularDownload != nil },
                 set: { if !$0 { pendingCellularDownload = nil } }
             )
         ) {
-            Button(L10n.text("Скачать")) {
+            Button(L10n.text("download_2")) {
                 if let track = pendingCellularDownload {
                     pendingCellularDownload = nil
                     performDownload(track)
                 }
             }
-            Button(L10n.text("Отмена"), role: .cancel) {
+            Button(L10n.text("action.cancel"), role: .cancel) {
                 pendingCellularDownload = nil
             }
         } message: {
             Text(
-                L10n.text(
-                    "Сейчас используется мобильная сеть. "
-                        + "Загрузка может потребовать трафик."
-                )
+                L10n.text("you_are_on_a_cellular_network_downloading_may_use_mobile_data")
             )
         }
-        .alert(
-            "Не удалось начать воспроизведение",
+        .alert(L10n.text("could_not_start_playback"),
             isPresented: Binding(
                 get: { playbackErrorMessage != nil },
                 set: { if !$0 { playbackErrorMessage = nil } }
             )
         ) {
-            Button("ОК", role: .cancel) {}
+            Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
             Text(playbackErrorMessage ?? "")
         }
@@ -307,7 +303,7 @@ struct LibraryView: View {
                     Task { await deletePlaylist(playlist) }
                 }
             }
-            Button(L10n.text("Отмена"), role: .cancel) {
+            Button(L10n.text("action.cancel"), role: .cancel) {
                 playlistPendingDeletion = nil
             }
         } message: {
@@ -316,13 +312,13 @@ struct LibraryView: View {
             }
         }
         .alert(
-            L10n.text("Не удалось удалить плейлист"),
+            L10n.text("couldn_t_delete_playlist"),
             isPresented: Binding(
                 get: { playlistDeleteErrorMessage != nil },
                 set: { if !$0 { playlistDeleteErrorMessage = nil } }
             )
         ) {
-            Button(L10n.text("ОК"), role: .cancel) {}
+            Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
             Text(playlistDeleteErrorMessage ?? "")
         }
@@ -332,7 +328,7 @@ struct LibraryView: View {
     private var listenLaterSection: some View {
         if let pin = pinnedMixStore.pin, !pin.tracks.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                Text(L10n.text("Слушать позже"))
+                Text(L10n.text("listen_later"))
                     .font(.title2.weight(.bold))
                 Button {
                     resumePinned(pin)
@@ -347,7 +343,7 @@ struct LibraryView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(
                                 L10n.format(
-                                    "%d треков · продолжить",
+                                    "d0_tracks_resume",
                                     pin.tracks.count
                                 )
                             )
@@ -372,12 +368,12 @@ struct LibraryView: View {
                     Button {
                         resumePinned(pin)
                     } label: {
-                        Label("Продолжить", systemImage: "play.fill")
+                        Label(L10n.text("resume"), systemImage: "play.fill")
                     }
                     Button(role: .destructive) {
                         pinnedMixStore.clear()
                     } label: {
-                        Label("Убрать", systemImage: "bookmark.slash")
+                        Label(L10n.text("remove"), systemImage: "bookmark.slash")
                     }
                 }
             }
@@ -428,7 +424,7 @@ struct LibraryView: View {
             Haptics.selection()
             shuffleLibrary()
         } label: {
-            Label(L10n.text("Перемешать"), systemImage: "shuffle")
+            Label(L10n.text("shuffle"), systemImage: "shuffle")
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -437,9 +433,9 @@ struct LibraryView: View {
         .controlSize(.small)
         .tint(settings.theme.accent)
         .disabled(filteredTracks.isEmpty)
-        .accessibilityLabel(L10n.text("Перемешать"))
+        .accessibilityLabel(L10n.text("shuffle"))
         .accessibilityHint(
-            L10n.text("Начинает воспроизведение треков в случайном порядке")
+            L10n.text("starts_playing_tracks_in_random_order")
         )
     }
 
@@ -482,7 +478,7 @@ struct LibraryView: View {
     }
 
     private func albumPlaybackTitle(_ album: Album) -> String {
-        Album.isUsableTitle(album.title) ? album.title : L10n.text("Альбом")
+        Album.isUsableTitle(album.title) ? album.title : L10n.text("album")
     }
 
     private func albumPlaybackAction(
@@ -599,20 +595,20 @@ struct LibraryView: View {
 
     private var playlistDeleteConfirmationTitle: String {
         guard let playlist = playlistPendingDeletion else {
-            return L10n.text("Удалить плейлист?")
+            return L10n.text("delete_playlist")
         }
         return L10n.text(
             isOwnedPlaylist(playlist)
-                ? "Удалить плейлист?"
-                : "Убрать плейлист из медиатеки?"
+                ? "delete_playlist"
+                : "remove_playlist_from_library"
         )
     }
 
     private func playlistDeleteActionTitle(for playlist: Playlist) -> String {
         L10n.text(
             isOwnedPlaylist(playlist)
-                ? "Удалить плейлист"
-                : "Убрать из медиатеки"
+                ? "remove_playlist"
+                : "remove_from_library_2"
         )
     }
 
@@ -621,8 +617,8 @@ struct LibraryView: View {
     ) -> String {
         L10n.text(
             isOwnedPlaylist(playlist)
-                ? "Плейлист будет удалён из VK. Это действие нельзя отменить."
-                : "Плейлист исчезнет из вашей медиатеки, но останется у автора."
+                ? "the_playlist_will_be_deleted_from_vk_this_can_t_be_undone"
+                : "the_playlist_will_leave_your_library_but_stay_with_its_owner"
         )
     }
 
@@ -669,7 +665,7 @@ struct LibraryView: View {
 
     private var playlistShelf: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Плейлисты")
+            Text(L10n.text("library.playlists"))
                 .font(.title2.weight(.bold))
             ScrollView(.horizontal, showsIndicators: false) {
                 // Deliberately not lazy: nested inside the library's
@@ -761,7 +757,7 @@ struct LibraryView: View {
                 )
             } label: {
                 Label(
-                    L10n.text("Слушать"),
+                    L10n.text("listen"),
                     systemImage: "play.fill"
                 )
             }
@@ -809,14 +805,14 @@ struct LibraryView: View {
         )
         .accessibilityLabel(
             L10n.text(
-                action.accessibilityLabelKey(playKey: "Воспроизвести плейлист")
+                action.accessibilityLabelKey(playKey: "play_playlist")
             )
         )
     }
 
     private var albumShelf: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Альбомы")
+            Text(L10n.text("library.albums"))
                 .font(.title2.weight(.bold))
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(
@@ -858,7 +854,7 @@ struct LibraryView: View {
                     Text(
                         Album.isUsableTitle(album.title)
                             ? album.title
-                            : L10n.text("Альбом")
+                            : L10n.text("album")
                     )
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
@@ -909,7 +905,7 @@ struct LibraryView: View {
         )
         .accessibilityLabel(
             L10n.text(
-                action.accessibilityLabelKey(playKey: "Воспроизвести альбом")
+                action.accessibilityLabelKey(playKey: "play_album")
             )
         )
     }
@@ -976,14 +972,13 @@ struct LibraryView: View {
                 Button {
                     environment.player.playNext(track)
                 } label: {
-                    Label("Играть следующим", systemImage: "text.badge.plus")
+                    Label(L10n.text("play_next"), systemImage: "text.badge.plus")
                 }
                 Button {
                     Haptics.open()
                     sharingTrack = track
                 } label: {
-                    Label(
-                        "Поделиться аудиофайлом",
+                    Label(L10n.text("share_audio_file"),
                         systemImage: "square.and.arrow.up"
                     )
                 }
@@ -995,8 +990,8 @@ struct LibraryView: View {
                     } label: {
                         Label(
                             offlineStore.contains(track)
-                                ? "Удалить загрузку"
-                                : "Скачать офлайн",
+                                ? "remove_download"
+                                : "download",
                             systemImage: offlineStore.contains(track)
                                 ? "trash"
                                 : "arrow.down.circle"
@@ -1017,7 +1012,7 @@ struct LibraryView: View {
                         }
                     }
                 } label: {
-                    Label("Удалить", systemImage: "trash")
+                    Label(L10n.text("action.delete"), systemImage: "trash")
                 }
             } label: {
                 Image(systemName: "ellipsis")
@@ -1026,7 +1021,7 @@ struct LibraryView: View {
                     .frame(width: 32, height: 44)
                     .contentShape(Rectangle())
             }
-            .accessibilityLabel(L10n.text("Ещё"))
+            .accessibilityLabel(L10n.text("more"))
         }
         .padding(.vertical, 6)
     }
@@ -1120,10 +1115,10 @@ struct LibraryView: View {
 
     private func libraryRowAccessibilityHint(_ track: Track) -> String {
         guard isCurrent(track) else {
-            return L10n.text("Воспроизвести трек")
+            return L10n.text("play_track")
         }
         return L10n.text(
-            highlight.isPlaying ? "Поставить на паузу" : "Продолжить"
+            highlight.isPlaying ? "pause_now" : "resume_playback"
         )
     }
 
@@ -1153,7 +1148,7 @@ struct LibraryView: View {
             } catch {
                 Haptics.error()
                 environment.player.errorMessage = L10n.format(
-                    "Не удалось сохранить трек офлайн: %@",
+                    "could_not_save_the_track_offline_0",
                     error.localizedDescription
                 )
                 DownloadNotifications.notifyDownloadError(
@@ -1165,7 +1160,7 @@ struct LibraryView: View {
 
     private var playlistSkeleton: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Плейлисты")
+            Text(L10n.text("library.playlists"))
                 .font(.title2.weight(.bold))
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(
