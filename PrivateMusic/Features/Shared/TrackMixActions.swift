@@ -11,24 +11,23 @@ enum TrackMixActions {
         Button {
             Task { await environment.startMixFromTrack(track) }
         } label: {
-            Label("Микс по треку", systemImage: "dot.radiowaves.up.forward")
+            Label(L10n.text("mix_from_track"), systemImage: "dot.radiowaves.up.forward")
         }
         Button {
             Task { await environment.previewSnippet(track) }
         } label: {
-            Label("Сниппет", systemImage: "waveform")
+            Label(L10n.text("snippet"), systemImage: "waveform")
         }
         if includeDislike {
             Button(role: .destructive) {
                 environment.dislike(track, includeArtist: false)
             } label: {
-                Label("Не нравится", systemImage: "hand.thumbsdown")
+                Label(L10n.text("dislike"), systemImage: "hand.thumbsdown")
             }
             Button(role: .destructive) {
                 environment.dislike(track, includeArtist: true)
             } label: {
-                Label(
-                    "Скрыть исполнителя в миксах",
+                Label(L10n.text("hide_artist_in_mixes"),
                     systemImage: "person.badge.minus"
                 )
             }

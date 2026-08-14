@@ -189,11 +189,11 @@ private enum HLSOfflineDownloadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidManifest:
-            return L10n.text("VK не предоставил HLS-поток для загрузки.")
+            return L10n.text("vk_did_not_provide_an_hls_stream_to_download")
         case .cannotCreateTask:
-            return L10n.text("Не удалось начать загрузку HLS.")
+            return L10n.text("the_hls_download_could_not_be_started")
         case .missingDownloadedAsset:
-            return L10n.text("Системный загрузчик не сохранил аудио.")
+            return L10n.text("the_system_downloader_did_not_save_the_audio")
         }
     }
 }

@@ -15,8 +15,8 @@ final class SettingsDeleteAllPresentationTests: XCTestCase {
             formattedBytes: bytes
         )
 
-        XCTAssertEqual(presentation.title, L10n.text("Все сохранённые файлы удалены"))
-        XCTAssertEqual(presentation.subtitle, L10n.text("Готово"))
+        XCTAssertEqual(presentation.title, L10n.text("all_saved_files_have_been_removed"))
+        XCTAssertEqual(presentation.subtitle, L10n.text("done"))
         XCTAssertEqual(presentation.systemImage, "checkmark.circle.fill")
         XCTAssertFalse(presentation.isEnabled)
         XCTAssertFalse(presentation.showsProgress)
@@ -31,7 +31,7 @@ final class SettingsDeleteAllPresentationTests: XCTestCase {
             formattedBytes: bytes
         )
 
-        XCTAssertEqual(presentation.title, L10n.text("Удалить все сохранённые"))
+        XCTAssertEqual(presentation.title, L10n.text("remove_all_saved_files"))
         XCTAssertEqual(presentation.systemImage, "trash")
         XCTAssertTrue(presentation.isEnabled)
         XCTAssertFalse(presentation.showsProgress)
@@ -50,7 +50,7 @@ final class SettingsDeleteAllPresentationTests: XCTestCase {
 
         XCTAssertEqual(
             presentation.title,
-            L10n.text("Удаляем сохранённые файлы…")
+            L10n.text("removing_saved_files")
         )
         XCTAssertTrue(presentation.showsProgress)
         XCTAssertFalse(presentation.isEnabled)
@@ -65,8 +65,8 @@ final class SettingsDeleteAllPresentationTests: XCTestCase {
             formattedBytes: bytes
         )
 
-        XCTAssertEqual(presentation.title, L10n.text("Все сохранённые файлы удалены"))
-        XCTAssertEqual(presentation.subtitle, L10n.text("Готово"))
+        XCTAssertEqual(presentation.title, L10n.text("all_saved_files_have_been_removed"))
+        XCTAssertEqual(presentation.subtitle, L10n.text("done"))
         XCTAssertEqual(presentation.systemImage, "checkmark.circle.fill")
         XCTAssertFalse(presentation.isEnabled)
         XCTAssertFalse(presentation.showsProgress)
@@ -81,7 +81,7 @@ final class SettingsDeleteAllPresentationTests: XCTestCase {
             formattedBytes: bytes
         )
 
-        XCTAssertEqual(presentation.title, L10n.text("Удалено не всё"))
+        XCTAssertEqual(presentation.title, L10n.text("some_files_could_not_be_removed"))
         XCTAssertEqual(presentation.systemImage, "exclamationmark.triangle.fill")
         XCTAssertTrue(presentation.isEnabled)
         XCTAssertFalse(presentation.showsProgress)
@@ -98,7 +98,7 @@ final class SettingsDeleteAllPresentationTests: XCTestCase {
             formattedBytes: bytes
         )
 
-        XCTAssertEqual(presentation.title, L10n.text("Удалить все сохранённые"))
+        XCTAssertEqual(presentation.title, L10n.text("remove_all_saved_files"))
         XCTAssertEqual(presentation.systemImage, "trash")
         XCTAssertTrue(presentation.isEnabled)
     }

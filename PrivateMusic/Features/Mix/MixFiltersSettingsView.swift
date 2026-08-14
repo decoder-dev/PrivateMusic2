@@ -7,7 +7,7 @@ struct MixFiltersSettingsView: View {
         Form {
             Section {
                 Picker(
-                    L10n.text("Настроение"),
+                    L10n.text("mood"),
                     selection: $settings.mixMoodPreference
                 ) {
                     ForEach(MixMoodPreference.allCases) { mood in
@@ -15,7 +15,7 @@ struct MixFiltersSettingsView: View {
                     }
                 }
                 Picker(
-                    L10n.text("Язык"),
+                    L10n.text("language"),
                     selection: $settings.mixLanguagePreference
                 ) {
                     ForEach(MixLanguagePreference.allCases) { language in
@@ -23,7 +23,7 @@ struct MixFiltersSettingsView: View {
                     }
                 }
                 Picker(
-                    L10n.text("Узнаваемость"),
+                    L10n.text("familiarity"),
                     selection: $settings.mixFamiliarityPreference
                 ) {
                     ForEach(MixFamiliarityPreference.allCases) { familiarity in
@@ -32,16 +32,12 @@ struct MixFiltersSettingsView: View {
                 }
             } footer: {
                 Text(
-                    L10n.text(
-                        "Как фильтры VK Микса: применяются к очереди микса "
-                            + "и рекомендациям на устройстве. Серверные "
-                            + "параметры VK для этого не задокументированы."
-                    )
+                    L10n.text("like_vk_mix_filters_they_apply_to_the_mix_queue_and_to_recommendations_o")
                 )
             }
         }
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
-        .navigationTitle(L10n.text("Фильтры микса"))
+        .navigationTitle(L10n.text("mix_filters"))
     }
 }

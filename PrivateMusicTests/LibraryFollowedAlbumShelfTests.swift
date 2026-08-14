@@ -116,7 +116,7 @@ final class LibraryFollowedAlbumShelfTests: XCTestCase {
                   "title": "Сохранённый",
                   "original": {"playlist_id": 2, "owner_id": 300}
                 },
-                {"id": 3, "owner_id": 400, "title": "Плейлист", "album_type": "playlist"}
+                {"id": 3, "owner_id": 400, "title": "playlist", "album_type": "playlist"}
               ]
             }
             """

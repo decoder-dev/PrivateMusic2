@@ -27,8 +27,8 @@ final class TrackShareViewModelTests: XCTestCase {
 
         switch vm.state {
         case .failed(let failure):
-            XCTAssertEqual(failure.title, L10n.text("Не удалось подготовить аудиофайл."))
-            XCTAssertEqual(failure.message, L10n.text("Не удалось подготовить аудиофайл."))
+            XCTAssertEqual(failure.title, L10n.text("could_not_prepare_the_audio_file"))
+            XCTAssertEqual(failure.message, L10n.text("could_not_prepare_the_audio_file"))
             XCTAssertNotNil(failure.diagnosticCode)
         default:
             XCTFail("Expected failed state, got \(vm.state)")

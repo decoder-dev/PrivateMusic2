@@ -173,9 +173,9 @@ final class PlayerLayoutMetricsTests: XCTestCase {
         // Lookup by Russian keys — L10n may already resolve titles to English
         // on CI, so mode.compactTitle/title are not safe dictionary keys.
         let cases: [(mode: MixRadioMode, compactKey: String, titleKey: String)] = [
-            (.balanced, "Баланс", "Баланс"),
-            (.closerToSeed, "Ближе", "Ближе к треку"),
-            (.moreNovel, "Новизна", "Больше новизны"),
+            (.balanced, "balanced", "balanced"),
+            (.closerToSeed, "closer", "closer_to_track"),
+            (.moreNovel, "novelty", "more_novelty"),
         ]
         for item in cases {
             for locale in Self.shippedLocales {
@@ -198,11 +198,11 @@ final class PlayerLayoutMetricsTests: XCTestCase {
         }
 
         XCTAssertEqual(
-            try Self.localized("Баланс", locale: "en"),
+            try Self.localized("balanced", locale: "en"),
             "Balanced"
         )
         XCTAssertEqual(
-            try Self.localized("Баланс", locale: "en").count,
+            try Self.localized("balanced", locale: "en").count,
             8,
             "Balanced must remain within the segmented picker budget"
         )

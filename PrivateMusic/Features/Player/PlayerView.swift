@@ -36,9 +36,9 @@ struct PlayerView: View {
                     )
                 } else {
                     EmptyStateView(
-                        title: "Плеер",
+                        title: "player",
                         systemImage: "play.circle",
-                        description: "Выберите трек в медиатеке или миксе."
+                        description: "choose_a_track_from_your_library_or_a_mix"
                     )
                     .foregroundStyle(playerForeground)
                     .padding()
@@ -90,7 +90,7 @@ struct PlayerView: View {
                     AudioProcessingRouteHintBanner()
                 }
                 if showCopiedToast {
-                    Text(L10n.text("Ссылка скопирована"))
+                    Text(L10n.text("link_copied"))
                         .font(.subheadline.weight(.semibold))
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
@@ -260,7 +260,7 @@ struct PlayerView: View {
             // swipe-down / accessibility escape — no leading chevron.
             ZStack {
                 VStack(spacing: 2) {
-                    Text("СЕЙЧАС ИГРАЕТ")
+                    Text(L10n.text("player.now_playing_kicker"))
                         .font(.caption2.weight(.bold))
                         .tracking(1.1)
                         .foregroundStyle(playerSecondary)
@@ -296,7 +296,7 @@ struct PlayerView: View {
                             )
                             .accessibilityLabel(
                                 L10n.text(
-                                    "Выбрать устройство воспроизведения"
+                                    "choose_playback_device"
                                 )
                             )
                             .accessibilitySortPriority(3)
@@ -383,36 +383,33 @@ struct PlayerView: View {
             .gesture(artworkGesture)
             .accessibilityLabel(
                 L10n.format(
-                    "Обложка: %@ — %@",
+                    "artwork_0_1",
                     track.title,
                     track.artist
                 )
             )
             .accessibilityHint(
-                L10n.text(
-                    "Свайп в стороны меняет трек, вверх открывает очередь, "
-                        + "вниз закрывает плеер"
-                )
+                L10n.text("swipe_sideways_to_change_tracks_up_to_open_the_queue_or_down_to_close_th")
             )
             .accessibilityAction(
-                named: L10n.text("Следующий трек")
+                named: L10n.text("next_track")
             ) {
                 Haptics.trackChange()
                 player.next()
             }
             .accessibilityAction(
-                named: L10n.text("Предыдущий трек")
+                named: L10n.text("previous_track")
             ) {
                 Haptics.trackChange()
                 player.previous()
             }
             .accessibilityAction(
-                named: L10n.text("Очередь")
+                named: L10n.text("player.queue")
             ) {
                 present(.queue)
             }
             .accessibilityAction(
-                named: L10n.text("Закрыть плеер")
+                named: L10n.text("close_player")
             ) {
                 closePlayer()
             }
@@ -470,11 +467,11 @@ struct PlayerView: View {
                     ? playerForeground
                     : playerForeground.opacity(0.72),
                 accessibilityLabel: isInLibrary
-                    ? "Удалить из медиатеки"
-                    : "Добавить в медиатеку",
+                    ? "remove_from_library"
+                    : "add_to_library_2",
                 accessibilityValue: isInLibrary
-                    ? "Трек добавлен в медиатеку"
-                    : "Трек не добавлен в медиатеку",
+                    ? "track_is_in_your_library"
+                    : "track_is_not_in_your_library",
                 disabled: isUpdatingLibrary
             ) {
                 toggleLibrary(track)
@@ -498,7 +495,7 @@ struct PlayerView: View {
             )
             .frame(height: 20)
             .accessibilityLabel(
-                L10n.text("Позиция воспроизведения")
+                L10n.text("playback_position")
             )
             .accessibilityValue(
                 "\(displayedElapsedTime.formattedDuration) / "
@@ -519,7 +516,7 @@ struct PlayerView: View {
         playerGlassIconButton(
             systemImage: "ellipsis",
             font: .headline,
-            accessibilityLabel: "Действия с треком"
+            accessibilityLabel: "track_actions"
         ) {
             present(.actions(track))
         }
@@ -531,10 +528,10 @@ struct PlayerView: View {
                 secondaryButton(
                     "shuffle",
                     active: player.shuffleEnabled,
-                    label: "Перемешать",
+                    label: "shuffle",
                     accessibilityValue: player.shuffleEnabled
-                        ? "Перемешивание включено"
-                        : "Перемешивание выключено"
+                        ? "shuffle_on"
+                        : "shuffle_off"
                 ) {
                     Haptics.selection()
                     player.toggleShuffle()
@@ -542,7 +539,7 @@ struct PlayerView: View {
                 Spacer()
                 transportSkipButton(
                     systemImage: "backward.fill",
-                    accessibilityLabel: "Предыдущий трек"
+                    accessibilityLabel: "previous_track"
                 ) {
                     Haptics.trackChange()
                     player.previous()
@@ -552,7 +549,7 @@ struct PlayerView: View {
                 Spacer()
                 transportSkipButton(
                     systemImage: "forward.fill",
-                    accessibilityLabel: "Следующий трек"
+                    accessibilityLabel: "next_track"
                 ) {
                     Haptics.trackChange()
                     player.next()
@@ -561,7 +558,7 @@ struct PlayerView: View {
                 secondaryButton(
                     player.repeatMode.systemImage,
                     active: player.repeatMode != .off,
-                    label: "Повтор",
+                    label: "repeat",
                     accessibilityValue: repeatAccessibilityValue
                 ) {
                     Haptics.selection()
@@ -612,8 +609,8 @@ struct PlayerView: View {
     private var playPauseAccessibilityLabel: String {
         L10n.text(
             player.isPlaying
-                ? "Приостановить"
-                : "Продолжить воспроизведение"
+                ? "pause"
+                : "resume_playback"
         )
     }
 
@@ -789,11 +786,11 @@ struct PlayerView: View {
     private var repeatAccessibilityValue: String {
         switch player.repeatMode {
         case .off:
-            return "Повтор выключен"
+            return "repeat_off"
         case .all:
-            return "Повтор всей очереди"
+            return "repeat_queue"
         case .one:
-            return "Повтор одного трека"
+            return "repeat_one"
         }
     }
 
@@ -914,8 +911,8 @@ struct PlayerView: View {
                 },
                 showsMixFeedback: true,
                 qualityCaption: settings.preferHighQuality
-                    ? L10n.text("Качество: высокое (HQ / без лимита HLS)")
-                    : L10n.text("Качество: экономия трафика (~160 кбит/с)")
+                    ? L10n.text("quality_high_hq_no_hls_cap")
+                    : L10n.text("quality_data_saver_160_kbps")
             )
         }
     }
@@ -1109,8 +1106,8 @@ struct PlayerView: View {
             } catch {
                 player.errorMessage = L10n.format(
                     removing
-                        ? "Не удалось удалить трек: %@"
-                        : "Не удалось добавить трек: %@",
+                        ? "could_not_remove_the_track_0"
+                        : "could_not_add_the_track_0",
                     error.localizedDescription
                 )
             }
@@ -1139,7 +1136,7 @@ struct PlayerView: View {
                 return
             } catch {
                 player.errorMessage = L10n.format(
-                    "Не удалось сохранить трек офлайн: %@",
+                    "could_not_save_the_track_offline_0",
                     error.localizedDescription
                 )
             }
@@ -1515,10 +1512,10 @@ enum PlayerQuickAction: String, CaseIterable, Identifiable {
     /// Visible dock caption — keep short so four equal columns fit Russian.
     var title: String {
         switch self {
-        case .lyrics: "Текст"
-        case .queue: "Очередь"
-        case .playlist: "Плейлист"
-        case .share: "Поделиться"
+        case .lyrics: "lyrics"
+        case .queue: "player.queue"
+        case .playlist: "playlist"
+        case .share: "share"
         }
     }
 
@@ -1527,7 +1524,7 @@ enum PlayerQuickAction: String, CaseIterable, Identifiable {
         case .lyrics, .queue, .playlist:
             return title
         case .share:
-            return "Поделиться файлом"
+            return "share_file"
         }
     }
 }
@@ -1583,27 +1580,27 @@ private struct PlayerActionsSheet: View {
                     VStack(alignment: .leading, spacing: 0) {
                         libraryAction
 
-                        sectionTitle("Действия с треком")
+                        sectionTitle("track_actions")
                         LazyVGrid(columns: columns, spacing: 10) {
                             actionTile(
-                                "Исполнитель",
+                                "artist",
                                 systemImage: "person.wave.2",
                                 action: onArtist
                             )
                             actionTile(
-                                "Добавить в плейлист",
+                                "add_to_playlist",
                                 systemImage: "rectangle.stack.badge.plus",
                                 enabled: availability.canAddToPlaylist,
                                 action: onPlaylist
                             )
                             actionTile(
-                                "Поделиться аудиофайлом",
+                                "share_audio_file",
                                 systemImage: "square.and.arrow.up",
                                 enabled: availability.canShare,
                                 action: onShare
                             )
                             actionTile(
-                                "Скопировать ссылку VK",
+                                "copy_vk_link",
                                 systemImage: "link",
                                 action: onCopyLink
                             )
@@ -1616,35 +1613,35 @@ private struct PlayerActionsSheet: View {
                                 )
                             }
                             actionTile(
-                                "Микс по треку",
+                                "mix_from_track",
                                 systemImage: "dot.radiowaves.up.forward",
                                 action: onMixFromTrack
                             )
                             actionTile(
-                                "Сниппет",
+                                "snippet",
                                 systemImage: "waveform",
                                 action: onSnippet
                             )
                             if showsMixFeedback {
                                 actionTile(
-                                    "Не нравится",
+                                    "dislike",
                                     systemImage: "hand.thumbsdown",
                                     action: onDislikeTrack
                                 )
                                 actionTile(
-                                    "Скрыть исполнителя",
+                                    "hide_artist",
                                     systemImage: "person.badge.minus",
                                     action: onDislikeArtist
                                 )
                             }
                         }
 
-                        sectionTitle("Плеер и аудио")
+                        sectionTitle("player_audio")
                         Toggle(
                             isOn: $preferHighQuality
                         ) {
                             Label(
-                                L10n.text("Высокое качество"),
+                                L10n.text("high_quality"),
                                 systemImage: "waveform"
                             )
                         }
@@ -1669,15 +1666,15 @@ private struct PlayerActionsSheet: View {
         ])
         .presentationDragIndicator(.visible)
         .confirmationDialog(
-            L10n.text("Остановить воспроизведение через…"),
+            L10n.text("stop_playback_in"),
             isPresented: $showsSleepTimerOptions,
             titleVisibility: .visible
         ) {
-            Button(L10n.text("До конца трека")) {
+            Button(L10n.text("sleep.end_of_track")) {
                 player.scheduleSleepTimer(.endOfTrack)
                 Haptics.success()
             }
-            Button(L10n.text("До конца очереди")) {
+            Button(L10n.text("sleep.end_of_queue")) {
                 player.scheduleSleepTimer(.endOfQueue)
                 Haptics.success()
             }
@@ -1689,14 +1686,14 @@ private struct PlayerActionsSheet: View {
             }
             if player.sleepTimerMode != nil {
                 Button(
-                    L10n.text("Отключить таймер"),
+                    L10n.text("cancel_timer"),
                     role: .destructive
                 ) {
                     player.cancelSleepTimer()
                     Haptics.selection()
                 }
             }
-            Button(L10n.text("Отмена"), role: .cancel) {}
+            Button(L10n.text("action.cancel"), role: .cancel) {}
         }
     }
 
@@ -1718,7 +1715,7 @@ private struct PlayerActionsSheet: View {
                     tintColor: UIColor(named: "AccentColor") ?? .systemBlue
                 )
                 .frame(height: 28)
-                .accessibilityLabel(L10n.text("Громкость"))
+                .accessibilityLabel(L10n.text("volume"))
 
                 Text(
                     Double(systemVolume.volume),
@@ -1738,14 +1735,14 @@ private struct PlayerActionsSheet: View {
             Button(action: onSettings) {
                 HStack(spacing: 12) {
                     actionRowLabel(
-                        "Эквалайзер",
+                        "equalizer",
                         systemImage: "waveform"
                     )
                     Spacer()
                     Text(
                         equalizerEnabled
-                            ? L10n.text("Вкл")
-                            : L10n.text("Выкл")
+                            ? L10n.text("on")
+                            : L10n.text("off")
                     )
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -1758,11 +1755,11 @@ private struct PlayerActionsSheet: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PremiumPressStyle())
-            .accessibilityLabel(L10n.text("Эквалайзер"))
+            .accessibilityLabel(L10n.text("equalizer"))
             .accessibilityValue(
                 equalizerEnabled
-                    ? L10n.text("Вкл")
-                    : L10n.text("Выкл")
+                    ? L10n.text("on")
+                    : L10n.text("off")
             )
 
             Divider()
@@ -1770,7 +1767,7 @@ private struct PlayerActionsSheet: View {
 
             Toggle(isOn: spatialAudioBinding) {
                 actionRowLabel(
-                    "Пространственный звук",
+                    "spatial_audio",
                     systemImage: "dot.radiowaves.left.and.right"
                 )
             }
@@ -1787,7 +1784,7 @@ private struct PlayerActionsSheet: View {
             } label: {
                 HStack(spacing: 12) {
                     actionRowLabel(
-                        "Таймер сна",
+                        "sleep_timer",
                         systemImage: "moon.zzz"
                     )
                     Spacer()
@@ -1810,7 +1807,7 @@ private struct PlayerActionsSheet: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PremiumPressStyle())
-            .accessibilityLabel(L10n.text("Таймер сна"))
+            .accessibilityLabel(L10n.text("sleep_timer"))
         }
         .adaptiveGlass(in: RoundedRectangle(
                 cornerRadius: PremiumLayout.compactRadius,
@@ -1851,11 +1848,11 @@ private struct PlayerActionsSheet: View {
     private var offlineTitle: String {
         switch offlineState {
         case .remote:
-            return "Скачать офлайн"
+            return "download"
         case .downloading:
-            return "Загрузка…"
+            return "downloading_2"
         case .available:
-            return "Удалить загрузку"
+            return "remove_download"
         }
     }
 
@@ -1894,7 +1891,7 @@ private struct PlayerActionsSheet: View {
                     .adaptiveGlass(in: Circle(), interactive: true)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(L10n.text("Закрыть"))
+            .accessibilityLabel(L10n.text("action.close"))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -1926,8 +1923,8 @@ private struct PlayerActionsSheet: View {
                 Text(
                     L10n.text(
                         isInLibrary
-                            ? "Удалить из медиатеки"
-                            : "Добавить в медиатеку"
+                            ? "remove_from_library"
+                            : "add_to_library_2"
                     )
                 )
                 .font(.body.weight(.semibold))
@@ -2203,7 +2200,7 @@ struct AudioProcessingRouteHintBanner: View {
             Image(systemName: "airplayaudio")
                 .font(.subheadline.weight(.semibold))
                 .accessibilityHidden(true)
-            Text(L10n.text("Обработка звука может отключить AirPlay."))
+            Text(L10n.text("audio_processing_may_disable_airplay"))
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)

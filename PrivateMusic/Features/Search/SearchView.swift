@@ -2,10 +2,10 @@ import SwiftUI
 
 struct SearchView: View {
     private enum Scope: String, CaseIterable {
-        case tracks = "Треки"
-        case artists = "Исполнители"
-        case albums = "Альбомы"
-        case playlists = "Плейлисты"
+        case tracks = "library.tracks"
+        case artists = "artists"
+        case albums = "library.albums"
+        case playlists = "library.playlists"
 
         var title: String { L10n.text(rawValue) }
 
@@ -15,7 +15,7 @@ struct SearchView: View {
             case .tracks, .albums, .playlists:
                 return title
             case .artists:
-                return L10n.text("Артисты")
+                return L10n.text("artists_2")
             }
         }
     }
@@ -45,7 +45,7 @@ struct SearchView: View {
         // search field on iOS 26.0+ without detached tab-bar chrome.
         searchScrollRoot
             .background(ThemeBackground())
-            .navigationTitle("Поиск")
+            .navigationTitle(L10n.text("tab.search"))
             .navigationBarTitleDisplayMode(.inline)
             .modifier(SystemSearchTabModifier(
                 query: $model.query,
@@ -71,14 +71,13 @@ struct SearchView: View {
                 isSearchFocused = false
                 isSystemSearchPresented = false
             }
-            .alert(
-                "Не удалось изменить медиатеку",
+            .alert(L10n.text("could_not_update_library"),
                 isPresented: Binding(
                     get: { model.actionErrorMessage != nil },
                     set: { if !$0 { model.actionErrorMessage = nil } }
                 )
             ) {
-                Button("ОК", role: .cancel) {}
+                Button(L10n.text("action.ok"), role: .cancel) {}
             } message: {
                 Text(model.actionErrorMessage ?? "")
             }
@@ -138,7 +137,7 @@ struct SearchView: View {
                 .accessibilityHidden(true)
 
             TextField(
-                L10n.text("Трек, исполнитель, альбом или плейлист"),
+                L10n.text("track_artist_album_or_playlist"),
                 text: $model.query
             )
             .focused($isSearchFocused)
@@ -148,9 +147,9 @@ struct SearchView: View {
             .onSubmit {
                 submitSearch()
             }
-            .accessibilityLabel(L10n.text("Поисковый запрос"))
+            .accessibilityLabel(L10n.text("search_query"))
             .accessibilityHint(
-                L10n.text("Введите не менее двух символов")
+                L10n.text("enter_at_least_two_characters")
             )
 
             if !model.query.isEmpty {
@@ -163,7 +162,7 @@ struct SearchView: View {
                         .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(L10n.text("Очистить поиск"))
+                .accessibilityLabel(L10n.text("clear_search"))
             }
         }
         .padding(.horizontal, 13)
@@ -190,9 +189,9 @@ struct SearchView: View {
             searchLanding
         case .needsMoreCharacters:
             SearchStatusView(
-                title: "Введите ещё один символ",
+                title: "enter_one_more_character",
                 systemImage: "character.cursor.ibeam",
-                description: "Для поиска нужно минимум два символа."
+                description: "search_requires_at_least_two_characters"
             )
         case .loading:
             searchLoading
@@ -202,10 +201,10 @@ struct SearchView: View {
             searchResults
         case let .failure(message):
             SearchStatusView(
-                title: "Ошибка поиска",
+                title: "search_error",
                 systemImage: "wifi.exclamationmark",
                 description: message,
-                actionTitle: "Повторить",
+                actionTitle: "action.retry",
                 action: submitSearch
             )
         }
@@ -225,15 +224,12 @@ struct SearchView: View {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 8) {
                     Label(
-                        L10n.text("Найдите музыку"),
+                        L10n.text("find_music"),
                         systemImage: "music.note"
                     )
                     .font(.title2.weight(.bold))
                     Text(
-                        L10n.text(
-                            "Введите название трека или исполнителя. "
-                                + "Результаты появятся автоматически."
-                        )
+                        L10n.text("enter_a_track_title_or_artist_results_appear_automatically")
                     )
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -254,15 +250,15 @@ struct SearchView: View {
     private var recentQueries: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Недавние запросы")
+                Text(L10n.text("search.recent"))
                     .font(.headline)
                 Spacer()
-                Button("Очистить") {
+                Button(L10n.text("clear")) {
                     model.clearRecent()
                 }
                 .font(.caption.weight(.semibold))
                 .accessibilityLabel(
-                    L10n.text("Очистить недавние запросы")
+                    L10n.text("clear_recent_searches")
                 )
             }
             .padding(.bottom, 4)
@@ -288,7 +284,7 @@ struct SearchView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(
-                        L10n.format("Повторить поиск «%@»", query)
+                        L10n.format("search_again_for_0", query)
                     )
 
                     Button {
@@ -301,7 +297,7 @@ struct SearchView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(
-                        L10n.format("Удалить запрос «%@»", query)
+                        L10n.format("remove_search_0", query)
                     )
                 }
                 .frame(minHeight: 48)
@@ -315,7 +311,7 @@ struct SearchView: View {
         VStack(spacing: 14) {
             ProgressView()
                 .controlSize(.large)
-            Text("Ищем в VK…")
+            Text(L10n.text("search.searching"))
                 .font(.headline)
             Text(model.normalizedQuery)
                 .font(.subheadline)
@@ -325,12 +321,12 @@ struct SearchView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(L10n.text("Выполняется поиск"))
+        .accessibilityLabel(L10n.text("searching"))
     }
 
     private var searchResults: some View {
         VStack(spacing: 0) {
-            Picker("Тип поиска", selection: $scope) {
+            Picker(L10n.text("search_type"), selection: $scope) {
                 ForEach(Scope.allCases, id: \.self) {
                     Text($0.compactTitle).tag($0)
                 }
@@ -348,10 +344,10 @@ struct SearchView: View {
             if scope == .tracks {
                 if model.tracks.isEmpty {
                     SearchStatusView(
-                        title: "Треки не найдены",
+                        title: "no_tracks_found",
                         systemImage: "music.note",
                         description:
-                            "Попробуйте вкладку альбомов, исполнителей или плейлистов."
+                            "try_the_albums_artists_or_playlists_tab"
                     )
                 } else {
                     trackResults
@@ -359,9 +355,9 @@ struct SearchView: View {
             } else if scope == .artists {
                 if model.artists.isEmpty {
                     SearchStatusView(
-                        title: "Исполнители не найдены",
+                        title: "no_artists_found",
                         systemImage: "person.wave.2",
-                        description: "Попробуйте изменить запрос."
+                        description: "try_changing_your_query"
                     )
                 } else {
                     artistResults
@@ -372,17 +368,17 @@ struct SearchView: View {
                 } else if let error = model.albumErrorMessage,
                           model.albums.isEmpty {
                     SearchStatusView(
-                        title: "Ошибка поиска альбомов",
+                        title: "album_search_failed",
                         systemImage: "wifi.exclamationmark",
                         description: error,
-                        actionTitle: "Повторить",
+                        actionTitle: "action.retry",
                         action: submitSearch
                     )
                 } else if model.albums.isEmpty {
                     SearchStatusView(
-                        title: "Альбомы не найдены",
+                        title: "no_albums_found",
                         systemImage: "square.stack",
-                        description: "Попробуйте изменить запрос."
+                        description: "try_changing_your_query"
                     )
                 } else {
                     albumResults
@@ -393,17 +389,17 @@ struct SearchView: View {
                 } else if let error = model.playlistErrorMessage,
                           model.playlists.isEmpty {
                     SearchStatusView(
-                        title: "Ошибка поиска плейлистов",
+                        title: "playlist_search_failed",
                         systemImage: "wifi.exclamationmark",
                         description: error,
-                        actionTitle: "Повторить",
+                        actionTitle: "action.retry",
                         action: submitSearch
                     )
                 } else if model.playlists.isEmpty {
                     SearchStatusView(
-                        title: "Плейлисты не найдены",
+                        title: "no_playlists_found",
                         systemImage: "rectangle.stack",
-                        description: "Попробуйте изменить запрос."
+                        description: "try_changing_your_query"
                     )
                 } else {
                     playlistResults
@@ -430,8 +426,8 @@ struct SearchView: View {
                             Label(
                                 L10n.text(
                                     libraryStore.contains(track)
-                                        ? "Добавлено"
-                                        : "В медиатеку"
+                                        ? "added"
+                                        : "add_to_library"
                                 ),
                                 systemImage:
                                     libraryStore.contains(track)
@@ -450,7 +446,7 @@ struct SearchView: View {
             if model.isLoadingMore {
                 HStack {
                     Spacer()
-                    ProgressView("Загружаем ещё…")
+                    ProgressView(L10n.text("loading_more"))
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
@@ -485,7 +481,7 @@ struct SearchView: View {
             if model.isLoadingMore {
                 HStack {
                     Spacer()
-                    ProgressView("Загружаем ещё…")
+                    ProgressView(L10n.text("loading_more"))
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
@@ -513,7 +509,7 @@ struct SearchView: View {
                             Text(
                                 Album.isUsableTitle(album.title)
                                     ? album.title
-                                    : L10n.text("Альбом")
+                                    : L10n.text("album")
                             )
                                 .font(.headline)
                                 .lineLimit(2)
@@ -539,8 +535,8 @@ struct SearchView: View {
                     } label: {
                         Label(
                             likedAlbumsStore.isFollowed(album)
-                                ? "Удалить альбом из медиатеки"
-                                : "Добавить альбом в медиатеку",
+                                ? "remove_album_from_library"
+                                : "add_album_to_library",
                             systemImage: likedAlbumsStore.isFollowed(album)
                                 ? "heart.slash"
                                 : "heart"
@@ -549,8 +545,7 @@ struct SearchView: View {
                     .disabled(pendingAlbumIDs.contains(album.compositeID))
                     if let url = AlbumShareLinkBuilder.url(for: album) {
                         ShareLink(item: url) {
-                            Label(
-                                "Поделиться ссылкой",
+                            Label(L10n.text("share_link"),
                                 systemImage: "square.and.arrow.up"
                             )
                         }
@@ -565,7 +560,7 @@ struct SearchView: View {
             if model.isLoadingMoreAlbums {
                 HStack {
                     Spacer()
-                    ProgressView("Загружаем ещё…")
+                    ProgressView(L10n.text("loading_more"))
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
@@ -604,7 +599,7 @@ struct SearchView: View {
                                 .foregroundStyle(.secondary)
                             Text(
                                 L10n.format(
-                                    "Из %@",
+                                    "from_0",
                                     playlist.source.title
                                 )
                             )
@@ -632,7 +627,7 @@ struct SearchView: View {
             if model.isLoadingMorePlaylists {
                 HStack {
                     Spacer()
-                    ProgressView("Загружаем ещё…")
+                    ProgressView(L10n.text("loading_more"))
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
@@ -658,7 +653,7 @@ struct SearchView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
-            Button("Повторить", action: action)
+            Button(L10n.text("action.retry"), action: action)
                 .font(.caption.weight(.bold))
         }
         .padding(.horizontal, 16)
@@ -869,7 +864,7 @@ private struct SystemSearchTabModifier: ViewModifier {
                     placement: .automatic,
                     prompt: Text(
                         L10n.text(
-                            "Трек, исполнитель, альбом или плейлист"
+                            "track_artist_album_or_playlist"
                         )
                     )
                 )

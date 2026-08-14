@@ -69,7 +69,7 @@ final class TrackShareViewModel: ObservableObject {
     }
 
     private static func failure(from error: Error) -> TrackShareFailure {
-        let baseTitle = L10n.text("Не удалось подготовить аудиофайл.")
+        let baseTitle = L10n.text("could_not_prepare_the_audio_file")
         let nsError = error as NSError
 
         let baseMessage: String
@@ -78,15 +78,15 @@ final class TrackShareViewModel: ObservableObject {
         switch error {
         case let diagnostic as HLSDiagnosticError:
             baseMessage = diagnostic.errorDescription
-                ?? L10n.text("Не удалось подготовить аудиофайл.")
+                ?? L10n.text("could_not_prepare_the_audio_file")
             code = diagnostic.publicCode
         case let exporterError as HLSExportError:
             baseMessage = exporterError.errorDescription
-                ?? L10n.text("Не удалось подготовить аудиофайл.")
+                ?? L10n.text("could_not_prepare_the_audio_file")
             code = nil
         case let apiError as APIError:
             baseMessage = apiError.errorDescription
-                ?? L10n.text("Не удалось подготовить аудиофайл.")
+                ?? L10n.text("could_not_prepare_the_audio_file")
             if apiError == .timedOut {
                 code = "PM-NSURLErrorDomain--1001"
             } else {
@@ -94,16 +94,16 @@ final class TrackShareViewModel: ObservableObject {
             }
         case let urlError as URLError where urlError.code == .timedOut:
             baseMessage = APIError.timedOut.errorDescription
-                ?? L10n.text("Не удалось подготовить аудиофайл.")
+                ?? L10n.text("could_not_prepare_the_audio_file")
             code = "PM-\(NSURLErrorDomain)-\(URLError.timedOut.rawValue)"
         default:
             if nsError.domain == NSURLErrorDomain,
                nsError.code == NSURLErrorTimedOut {
                 baseMessage = APIError.timedOut.errorDescription
-                    ?? L10n.text("Не удалось подготовить аудиофайл.")
+                    ?? L10n.text("could_not_prepare_the_audio_file")
                 code = "PM-\(nsError.domain)-\(nsError.code)"
             } else {
-                baseMessage = L10n.text("Не удалось подготовить аудиофайл.")
+                baseMessage = L10n.text("could_not_prepare_the_audio_file")
                 code = "PM-\(nsError.domain)-\(nsError.code)"
             }
         }
@@ -186,22 +186,22 @@ extension TrackExportProgress {
     var title: String {
         switch self {
         case .resolvingSource:
-            return L10n.text("Проверяем аудиофайл…")
+            return L10n.text("checking_audio_file")
         case .copyingLocalFile:
-            return L10n.text("Подготавливаем сохранённый файл…")
+            return L10n.text("preparing_saved_file")
         case .downloadingDirectFile:
-            return L10n.text("Скачиваем аудиофайл…")
+            return L10n.text("downloading_audio_file")
         case .downloadingSegments:
-            return L10n.text("Собираем аудиопоток…")
+            return L10n.text("assembling_audio_stream")
         case .convertingToM4A:
-            return L10n.text("Создаём файл M4A…")
+            return L10n.text("creating_m4a_file")
         }
     }
 
     var detail: String? {
         switch self {
         case let .downloadingSegments(completed, total):
-            return L10n.format("%d из %d частей", completed, total)
+            return L10n.format("d0_of_d1_parts", completed, total)
         default:
             return nil
         }
@@ -263,7 +263,7 @@ struct TrackShareFlowView: View {
                         .lineLimit(1)
                 }
 
-                Text(L10n.text("Файл готов. Нажмите кнопку ниже."))
+                Text(L10n.text("the_file_is_ready_tap_the_button_below"))
                     .font(.subheadline.weight(.semibold))
                     .multilineTextAlignment(.center)
 
@@ -272,21 +272,21 @@ struct TrackShareFlowView: View {
                 // presentation while another sheet was transitioning.
                 ShareLink(item: payload.fileURL) {
                     Label(
-                        L10n.text("Поделиться"),
+                        L10n.text("share"),
                         systemImage: "square.and.arrow.up"
                     )
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
 
-                Button(L10n.text("Закрыть"), role: .cancel) {
+                Button(L10n.text("action.close"), role: .cancel) {
                     model.cancel(environment: environment)
                     dismiss()
                 }
                 .buttonStyle(.bordered)
             }
             .padding(24)
-            .navigationTitle(L10n.text("Поделиться файлом"))
+            .navigationTitle(L10n.text("share_file"))
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium, .large])
@@ -331,11 +331,7 @@ struct TrackShareFlowView: View {
                 }
 
                 Text(
-                    L10n.text(
-                        "После подготовки откроется стандартное меню iPhone. "
-                            + "Выберите «Сохранить в Файлы», AirDrop, мессенджер "
-                            + "или другое приложение."
-                    )
+                    L10n.text("when_the_file_is_ready_the_standard_iphone_menu_will_open_choose_save_to")
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -346,13 +342,13 @@ struct TrackShareFlowView: View {
                     model.cancel(environment: environment)
                     dismiss()
                 } label: {
-                    Text(L10n.text("Отменить"))
+                    Text(L10n.text("cancel"))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
             }
             .padding(24)
-            .navigationTitle(L10n.text("Поделиться файлом"))
+            .navigationTitle(L10n.text("share_file"))
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium, .large])
@@ -372,26 +368,26 @@ struct TrackShareFlowView: View {
                         UIPasteboard.general.string = Self.errorReport(code: code)
                     } label: {
                         Label(
-                            L10n.text("Скопировать код ошибки"),
+                            L10n.text("copy_error_code"),
                             systemImage: "doc.on.doc"
                         )
                     }
                     .buttonStyle(.bordered)
                 }
 
-                Button(L10n.text("Повторить")) {
+                Button(L10n.text("action.retry")) {
                     model.retry(track: track, environment: environment)
                 }
                 .buttonStyle(.borderedProminent)
 
-                Button(L10n.text("Закрыть"), role: .cancel) {
+                Button(L10n.text("action.close"), role: .cancel) {
                     model.cancel(environment: environment)
                     dismiss()
                 }
                 .buttonStyle(.bordered)
             }
             .padding(24)
-            .navigationTitle(L10n.text("Поделиться файлом"))
+            .navigationTitle(L10n.text("share_file"))
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium])

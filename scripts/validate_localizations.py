@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate that all shipped Localizable resources stay in sync."""
+"""Validate that shipped Localizable resources stay in sync and use stable keys."""
 
 from __future__ import annotations
 
@@ -12,48 +12,57 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RESOURCES = ROOT / "PrivateMusic" / "Resources"
 WATCH_RESOURCES = ROOT / "PrivateMusicWatch" / "Resources"
+SOURCE = ROOT / "PrivateMusic"
+TESTS = ROOT / "PrivateMusicTests"
 LOCALES = ("ru", "en")
 ENTRY = re.compile(r'^"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)";\s*$')
 PLACEHOLDER = re.compile(r"%(?:\d+\$)?[@d]")
+STABLE_KEY = re.compile(r"^[a-z][a-z0-9._]*$")
+CYRILLIC = re.compile(r"[А-Яа-яЁё]")
+L10N_KEY = re.compile(r'L10n\.(?:text|format)\(\s*"([^"]+)"')
+UI_HARDCODE = re.compile(
+    r'\b(?:Text|Button|Label|Section|Toggle|ProgressView|Picker|Menu|'
+    r'DisclosureGroup|navigationTitle|alert|LabeledContent)\(\s*"([^"]*[А-Яа-яЁё][^"]*)"'
+)
 REQUIRED_ACCESSIBILITY_KEYS = {
-    "Очистить недавние запросы",
-    "Удалить запрос «%@»",
-    "Загрузка результатов поиска",
-    "Открыть полноэкранный плеер",
-    "Предыдущий трек",
-    "Следующий трек",
-    "Приостановить",
-    "Продолжить воспроизведение",
-    "Сейчас играет",
-    "Воспроизвести трек",
-    "Воспроизвести из очереди",
-    "Перейти к этой строке",
-    "Скопировать строку",
-    "Строка скопирована",
-    "Закрыть плеер",
-    "Выбрать устройство воспроизведения",
-    "Меню действий открыто",
-    "Меню действий закрыто",
-    "Перемешивание включено",
-    "Перемешивание выключено",
-    "Повтор выключен",
-    "Повтор всей очереди",
-    "Повтор одного трека",
-    "Обложка: %@ — %@",
-    "Трек добавлен в медиатеку",
-    "Трек не добавлен в медиатеку",
-    "Не удалось изменить медиатеку",
-    "Поисковый запрос",
-    "Введите не менее двух символов",
-    "Очистить поиск",
-    "Введите ещё один символ",
-    "Для поиска нужно минимум два символа.",
-    "Найдите музыку",
-    "Введите название трека или исполнителя. Результаты появятся автоматически.",
-    "Повторить поиск «%@»",
-    "Ищем в VK…",
-    "Выполняется поиск",
-    "Загружаем ещё…",
+    "clear_recent_searches",
+    "remove_search_0",
+    "loading_search_results",
+    "open_full_screen_player",
+    "previous_track",
+    "next_track",
+    "pause",
+    "resume_playback",
+    "current_track",
+    "play_track",
+    "play_from_queue",
+    "seek_to_this_line",
+    "copy_line",
+    "line_copied",
+    "close_player",
+    "choose_playback_device",
+    "actions_menu_expanded",
+    "actions_menu_collapsed",
+    "shuffle_on",
+    "shuffle_off",
+    "repeat_off",
+    "repeat_queue",
+    "repeat_one",
+    "artwork_0_1",
+    "track_is_in_your_library",
+    "track_is_not_in_your_library",
+    "could_not_update_library",
+    "search_query",
+    "enter_at_least_two_characters",
+    "clear_search",
+    "enter_one_more_character",
+    "search_requires_at_least_two_characters",
+    "find_music",
+    "enter_a_track_title_or_artist_results_appear_automatically",
+    "search_again_for_0",
+    "search.searching",
+    "searching",
+    "loading_more",
 }
 
 
@@ -86,6 +95,10 @@ def read_stringsdict(locale: str) -> dict[str, object]:
     return result
 
 
+def collect_swift_files() -> list[Path]:
+    return sorted(SOURCE.rglob("*.swift")) + sorted(TESTS.rglob("*.swift"))
+
+
 def main() -> int:
     strings = {locale: read_strings(locale) for locale in LOCALES}
     dictionaries = {
@@ -103,9 +116,16 @@ def main() -> int:
                 f"{locale}: missing={missing!r}, extra={extra!r}"
             )
 
+    unstable = sorted(key for key in reference if not STABLE_KEY.match(key))
+    if unstable:
+        raise ValueError(
+            "localization keys must be stable identifiers "
+            f"(a-z, digits, dot, underscore), got {unstable[:12]!r}"
+        )
+
     for key in sorted(reference):
-        expected = PLACEHOLDER.findall(key)
-        for locale in LOCALES:
+        expected = PLACEHOLDER.findall(strings[LOCALES[0]][key])
+        for locale in LOCALES[1:]:
             actual = PLACEHOLDER.findall(strings[locale][key])
             if actual != expected:
                 raise ValueError(
@@ -131,6 +151,14 @@ def main() -> int:
             raise ValueError(
                 f"watch {locale}: keys differ from {LOCALES[0]}"
             )
+    watch_unstable = sorted(
+        key for key in watch_reference if not STABLE_KEY.match(key)
+    )
+    if watch_unstable:
+        raise ValueError(
+            "Watch localization keys must be stable identifiers, "
+            f"got {watch_unstable!r}"
+        )
 
     plural_reference = set(dictionaries[LOCALES[0]])
     for locale in LOCALES[1:]:
@@ -139,6 +167,33 @@ def main() -> int:
             raise ValueError(
                 f"{locale}: plural keys differ from {LOCALES[0]}"
             )
+
+    known = reference | plural_reference
+    missing_calls: list[str] = []
+    hardcoded: list[str] = []
+    for path in collect_swift_files():
+        relative = str(path.relative_to(ROOT))
+        text = path.read_text(encoding="utf-8")
+        for match in L10N_KEY.finditer(text):
+            key = match.group(1)
+            if key not in known:
+                line = text[: match.start()].count("\n") + 1
+                missing_calls.append(f"{relative}:{line}: {key}")
+        if "/Features/" in relative or relative.endswith("ConnectView.swift"):
+            for match in UI_HARDCODE.finditer(text):
+                line = text[: match.start()].count("\n") + 1
+                hardcoded.append(f"{relative}:{line}: {match.group(1)}")
+
+    if missing_calls:
+        raise ValueError(
+            "L10n keys missing from Localizable.strings: "
+            + "; ".join(missing_calls[:20])
+        )
+    if hardcoded:
+        raise ValueError(
+            "hardcoded Cyrillic UI strings must go through L10n: "
+            + "; ".join(hardcoded[:20])
+        )
 
     print(
         "Localization validation passed: "

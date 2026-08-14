@@ -22,7 +22,7 @@ struct VKWebLoginView: View {
                             .opacity(0.82)
                         VStack(spacing: 12) {
                             ProgressView()
-                            Text("Открываем страницу VK…")
+                            Text(L10n.text("auth.opening_vk"))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -31,13 +31,13 @@ struct VKWebLoginView: View {
                             Image(systemName: "wifi.exclamationmark")
                                 .font(.system(size: 42))
                                 .foregroundStyle(.secondary)
-                            Text("Страница не загрузилась")
+                            Text(L10n.text("auth.page_failed"))
                                 .font(.headline)
                             Text(loadError)
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
-                            Button("Повторить") {
+                            Button(L10n.text("action.retry")) {
                                 model.reload()
                             }
                             .buttonStyle(.borderedProminent)
@@ -49,7 +49,7 @@ struct VKWebLoginView: View {
                 browserBar
             }
             .background(Color(uiColor: .systemBackground))
-            .navigationTitle("Вход в VK")
+            .navigationTitle(L10n.text("auth.sign_in_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -61,7 +61,7 @@ struct VKWebLoginView: View {
                     } label: {
                         Image(systemName: "xmark")
                     }
-                    .accessibilityLabel(L10n.text("Закрыть"))
+                    .accessibilityLabel(L10n.text("action.close"))
                 }
             }
         }
@@ -71,14 +71,13 @@ struct VKWebLoginView: View {
             guard model.sessionRevision > 0, !isCompleting else { return }
             Task { await completeLogin(automatic: true) }
         }
-        .alert(
-            "Не удалось завершить вход",
+        .alert(L10n.text("could_not_complete_sign_in"),
             isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
             )
         ) {
-            Button("ОК", role: .cancel) {}
+            Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
         }
@@ -96,17 +95,16 @@ struct VKWebLoginView: View {
                 Text(
                     L10n.text(
                         isCompleting
-                            ? "Подтверждаем вход…"
-                            : "Официальная страница VK"
+                            ? "confirming_sign_in"
+                            : "official_vk_page"
                     )
                 )
                 .font(.subheadline.weight(.semibold))
                 Text(
                     L10n.text(
                         isCompleting
-                            ? "Проверяем данные сессии"
-                            : "Private Music не получает пароль и код "
-                                + "подтверждения"
+                            ? "checking_session_data"
+                            : "private_music_does_not_receive_password"
                     )
                 )
                 .font(.caption)
@@ -125,12 +123,12 @@ struct VKWebLoginView: View {
 
     private var browserBar: some View {
         HStack(spacing: 8) {
-            browserButton("chevron.backward", label: "Назад") {
+            browserButton("chevron.backward", label: "back") {
                 model.goBack()
             }
             .disabled(!model.canGoBack || isCompleting)
 
-            browserButton("arrow.clockwise", label: "Обновить") {
+            browserButton("arrow.clockwise", label: "action.refresh") {
                 model.reload()
             }
             .disabled(isCompleting)
@@ -160,7 +158,7 @@ struct VKWebLoginView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(isCompleting || model.isLoading)
-            .accessibilityLabel(L10n.text("Завершить вход"))
+            .accessibilityLabel(L10n.text("complete_sign_in"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

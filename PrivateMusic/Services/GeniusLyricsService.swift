@@ -12,7 +12,7 @@ struct GeniusLyricsService: Sendable {
               !text.isEmpty else {
             throw APIError.server(
                 code: 404,
-                message: "Genius не вернул текст этой песни."
+                message: L10n.text("genius_did_not_return_lyrics_for_this_song")
             )
         }
         return Lyrics(
@@ -83,7 +83,7 @@ struct GeniusLyricsService: Sendable {
               url.host?.lowercased().hasSuffix("genius.com") == true else {
             throw APIError.server(
                 code: 404,
-                message: L10n.text("Текст не найден на Genius.")
+                message: L10n.text("lyrics_were_not_found_on_genius")
             )
         }
         return url

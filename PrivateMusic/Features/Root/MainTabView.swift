@@ -9,11 +9,11 @@ private enum MainTab: CaseIterable, Hashable {
 
     var title: String {
         switch self {
-        case .home: L10n.text("Главная")
-        case .mix: L10n.text("Микс")
-        case .library: L10n.text("Медиатека")
-        case .search: L10n.text("Поиск")
-        case .profile: L10n.text("Профиль")
+        case .home: L10n.text("tab.home")
+        case .mix: L10n.text("tab.mix")
+        case .library: L10n.text("tab.library")
+        case .search: L10n.text("tab.search")
+        case .profile: L10n.text("tab.profile")
         }
     }
 

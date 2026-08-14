@@ -900,14 +900,14 @@ struct VKMusicService: MusicService {
             return .server(
                 code: code,
                 message: L10n.text(
-                    "Не удалось загрузить треки этого альбома. Попробуйте ещё раз или найдите его в поиске."
+                    "could_not_load_this_album_s_tracks_try_again_or_find_it_in_search"
                 )
             )
         }
         return .server(
             code: 15,
             message: L10n.text(
-                "Не удалось загрузить треки этого альбома. Попробуйте ещё раз или найдите его в поиске."
+                "could_not_load_this_album_s_tracks_try_again_or_find_it_in_search"
             )
         )
     }

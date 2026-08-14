@@ -97,7 +97,7 @@ final class MixSeedRadioTests: XCTestCase {
     func testVibeShelfDetection() {
         XCTAssertTrue(MixSeedRadio.looksLikeVibeShelf("Вайбы на вечер"))
         XCTAssertTrue(MixSeedRadio.looksLikeVibeShelf("Спокойное настроение"))
-        XCTAssertFalse(MixSeedRadio.looksLikeVibeShelf("Новые релизы"))
+        XCTAssertFalse(MixSeedRadio.looksLikeVibeShelf("new_releases"))
     }
 }
 
@@ -235,7 +235,7 @@ final class MixRationaleEnrichmentTests: XCTestCase {
         XCTAssertTrue(
             rationale.lines.contains(
                 L10n.format(
-                    "Около %d%% артистов — новые для недавней истории",
+                    "about_d0_of_the_artists_are_new_to_your_recent_history",
                     100
                 )
             )

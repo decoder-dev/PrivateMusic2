@@ -22,11 +22,10 @@ struct PlaylistEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Плейлист") {
-                    TextField("Название", text: $title)
+                Section(L10n.text("playlist")) {
+                    TextField(L10n.text("title"), text: $title)
                         .textInputAutocapitalization(.sentences)
-                    TextField(
-                        "Описание",
+                    TextField(L10n.text("description"),
                         text: $description,
                         axis: .vertical
                     )
@@ -37,18 +36,18 @@ struct PlaylistEditorView: View {
             .background(ThemeBackground())
             .navigationTitle(
                 L10n.text(
-                    playlist == nil ? "Новый плейлист" : "Редактирование"
+                    playlist == nil ? "new_playlist" : "edit_playlist"
                 )
             )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") { dismiss() }
+                    Button(L10n.text("action.cancel")) { dismiss() }
                         .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(
-                        L10n.text(isSaving ? "Сохраняем…" : "Сохранить")
+                        L10n.text(isSaving ? "saving" : "action.save")
                     ) {
                         Task { await save() }
                     }
@@ -61,14 +60,13 @@ struct PlaylistEditorView: View {
                 }
             }
         }
-        .alert(
-            "Не удалось сохранить",
+        .alert(L10n.text("could_not_save"),
             isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
             )
         ) {
-            Button("ОК", role: .cancel) {}
+            Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
         }

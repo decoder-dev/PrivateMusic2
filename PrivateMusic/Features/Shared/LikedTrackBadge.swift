@@ -25,7 +25,7 @@ struct LikedTrackBadge: View {
                         Circle().fill(.black.opacity(0.56))
                     }
                 }
-                .accessibilityLabel(L10n.text("Трек добавлен в медиатеку"))
+                .accessibilityLabel(L10n.text("track_is_in_your_library"))
         }
     }
 }

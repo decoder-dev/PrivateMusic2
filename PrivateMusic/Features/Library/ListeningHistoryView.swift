@@ -25,9 +25,9 @@ struct ListeningHistoryView: View {
         Group {
             if history.entries.isEmpty {
                 EmptyStateView(
-                    title: "История пуста",
+                    title: "history_is_empty",
                     systemImage: "clock.arrow.circlepath",
-                    description: "Прослушанные треки появятся здесь."
+                    description: "tracks_you_play_will_appear_here"
                 )
             } else {
                 List {
@@ -61,8 +61,7 @@ struct ListeningHistoryView: View {
                             Button {
                                 environment.player.playNext(entry.track)
                             } label: {
-                                Label(
-                                    "Играть следующим",
+                                Label(L10n.text("play_next"),
                                     systemImage:
                                         "text.line.first.and.arrowtriangle.forward"
                                 )
@@ -71,8 +70,7 @@ struct ListeningHistoryView: View {
                                 Haptics.open()
                                 sharingTrack = entry.track
                             } label: {
-                                Label(
-                                    "Поделиться аудиофайлом",
+                                Label(L10n.text("share_audio_file"),
                                     systemImage: "square.and.arrow.up"
                                 )
                             }
@@ -80,8 +78,7 @@ struct ListeningHistoryView: View {
                                 Haptics.open()
                                 playlistTarget = entry.track
                             } label: {
-                                Label(
-                                    "Добавить в плейлист",
+                                Label(L10n.text("add_to_playlist"),
                                     systemImage: "rectangle.stack.badge.plus"
                                 )
                             }
@@ -90,8 +87,7 @@ struct ListeningHistoryView: View {
                             Button {
                                 environment.player.playNext(entry.track)
                             } label: {
-                                Label(
-                                    "Играть следующим",
+                                Label(L10n.text("play_next"),
                                     systemImage: "text.badge.plus"
                                 )
                             }
@@ -99,8 +95,7 @@ struct ListeningHistoryView: View {
                             Button {
                                 playlistTarget = entry.track
                             } label: {
-                                Label(
-                                    "Добавить в плейлист",
+                                Label(L10n.text("add_to_playlist"),
                                     systemImage: "rectangle.stack.badge.plus"
                                 )
                             }
@@ -110,8 +105,7 @@ struct ListeningHistoryView: View {
                             Button {
                                 sharingTrack = entry.track
                             } label: {
-                                Label(
-                                    "Поделиться аудиофайлом",
+                                Label(L10n.text("share_audio_file"),
                                     systemImage: "square.and.arrow.up"
                                 )
                             }
@@ -119,7 +113,7 @@ struct ListeningHistoryView: View {
                             Button(role: .destructive) {
                                 history.remove(entry)
                             } label: {
-                                Label("Удалить", systemImage: "trash")
+                                Label(L10n.text("action.delete"), systemImage: "trash")
                             }
                         }
                     }
@@ -129,11 +123,11 @@ struct ListeningHistoryView: View {
             }
         }
         .background(ThemeBackground())
-        .navigationTitle("История")
+        .navigationTitle(L10n.text("library.history"))
         .searchable(
             text: $query,
             placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Трек или исполнитель"
+            prompt: L10n.text("track_or_artist")
         )
         .trackShareSheet(track: $sharingTrack)
         .sheet(item: $playlistTarget) { track in
@@ -141,15 +135,14 @@ struct ListeningHistoryView: View {
         }
         .toolbar {
             if !history.entries.isEmpty {
-                Button("Очистить") { showingClearConfirmation = true }
+                Button(L10n.text("clear")) { showingClearConfirmation = true }
             }
         }
-        .confirmationDialog(
-            "Очистить всю историю?",
+        .confirmationDialog(L10n.text("clear_all_history"),
             isPresented: $showingClearConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Очистить", role: .destructive) { history.clear() }
+            Button(L10n.text("clear"), role: .destructive) { history.clear() }
         }
     }
 

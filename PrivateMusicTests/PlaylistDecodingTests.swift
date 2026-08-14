@@ -22,7 +22,7 @@ final class PlaylistDecodingTests: XCTestCase {
         XCTAssertEqual(playlist.source, .vk)
         XCTAssertEqual(
             playlist.source.title,
-            L10n.text("VK Музыка")
+            L10n.text("vk_music")
         )
         XCTAssertEqual(playlist.source.shortTitle, "VK")
         XCTAssertEqual(

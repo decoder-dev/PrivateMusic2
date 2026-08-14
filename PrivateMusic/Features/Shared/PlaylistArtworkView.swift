@@ -19,7 +19,7 @@ struct PlaylistArtworkView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
                 L10n.format(
-                    "%@, импортировано из %@",
+                    "n_0_imported_from_1",
                     playlist.title,
                     playlist.source.title
                 )
@@ -87,7 +87,7 @@ struct PlaylistArtworkView: View {
             Text(playlist.source.shortTitle)
                 .font(.system(size: max(9, size * 0.08), weight: .bold))
             if size >= 100 {
-                Text("Музыка")
+                Text(L10n.text("generic.music"))
                     .font(.system(size: max(8, size * 0.07), weight: .semibold))
             }
         }

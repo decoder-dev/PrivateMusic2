@@ -79,7 +79,7 @@ final class LibraryPlaylistShelfTests: XCTestCase {
     }
 
     func testShelfKeepsDistinctUserPlaylistsWithNumberedTitles() throws {
-        let rock = try makePlaylist(id: 4, ownerID: 100, title: "Рок")
+        let rock = try makePlaylist(id: 4, ownerID: 100, title: "rock")
         let rockTwo = try makePlaylist(id: 5, ownerID: 100, title: "Рок (2)")
 
         let shelf = LibraryPlaylistShelfPolicy.normalized(
@@ -163,7 +163,7 @@ final class LibraryPlaylistShelfTests: XCTestCase {
     }
 
     func testShelfPreservesOrderOfUntouchedPlaylists() throws {
-        let first = try makePlaylist(id: 4, ownerID: 100, title: "Рок")
+        let first = try makePlaylist(id: 4, ownerID: 100, title: "rock")
         let liked = try makePlaylist(
             id: 1,
             ownerID: 100,

@@ -15,12 +15,12 @@ enum MixMoodPreference: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .any: L10n.text("Любое")
-        case .energetic: L10n.text("Активно")
-        case .calm: L10n.text("Спокойно")
-        case .sad: L10n.text("Грустно")
-        case .joyful: L10n.text("Радостно")
-        case .love: L10n.text("Любовь")
+        case .any: L10n.text("any")
+        case .energetic: L10n.text("energetic")
+        case .calm: L10n.text("calm")
+        case .sad: L10n.text("sad")
+        case .joyful: L10n.text("joyful")
+        case .love: L10n.text("love")
         }
     }
 
@@ -45,9 +45,9 @@ enum MixLanguagePreference: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .any: L10n.text("Любой язык")
-        case .russian: L10n.text("Русский")
-        case .foreign: L10n.text("Иностранный")
+        case .any: L10n.text("any_language")
+        case .russian: L10n.text("russian")
+        case .foreign: L10n.text("foreign")
         }
     }
 }
@@ -61,9 +61,9 @@ enum MixFamiliarityPreference: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .any: L10n.text("Любая узнаваемость")
-        case .hits: L10n.text("Больше хитов")
-        case .obscure: L10n.text("Больше находок")
+        case .any: L10n.text("any_familiarity")
+        case .hits: L10n.text("more_hits")
+        case .obscure: L10n.text("more_discoveries")
         }
     }
 }

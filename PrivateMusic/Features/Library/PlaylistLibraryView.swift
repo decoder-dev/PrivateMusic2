@@ -10,21 +10,20 @@ struct PlaylistLibraryView: View {
     var body: some View {
         Group {
             if model.isLoading && model.playlists.isEmpty {
-                ProgressView("Загружаем плейлисты…")
+                ProgressView(L10n.text("loading_playlists"))
             } else if let error = model.errorMessage,
                       model.playlists.isEmpty {
                 EmptyStateView(
-                    title: "Не удалось загрузить плейлисты",
+                    title: "could_not_load_playlists",
                     systemImage: "wifi.exclamationmark",
                     description: error
                 )
             } else if model.playlists.isEmpty {
                 EmptyStateView(
-                    title: "Плейлистов пока нет",
+                    title: "no_playlists_yet",
                     systemImage: "rectangle.stack",
                     description:
-                        "Созданные или сохранённые во VK плейлисты "
-                        + "появятся здесь."
+                        "vk_playlists_will_appear_here"
                 )
             } else {
                 List(model.playlists) { playlist in
@@ -45,7 +44,7 @@ struct PlaylistLibraryView: View {
                                     .foregroundStyle(.secondary)
                                 Text(
                                     L10n.format(
-                                        "Из %@",
+                                        "from_0",
                                         playlist.source.title
                                     )
                                 )
@@ -63,14 +62,13 @@ struct PlaylistLibraryView: View {
                                     await delete(playlist)
                                 }
                             } label: {
-                                Label("Удалить", systemImage: "trash")
+                                Label(L10n.text("action.delete"), systemImage: "trash")
                             }
                             Button {
                                 editingPlaylist = playlist
                                 showingEditor = true
                             } label: {
-                                Label(
-                                    "Изменить",
+                                Label(L10n.text("edit"),
                                     systemImage: "pencil"
                                 )
                             }

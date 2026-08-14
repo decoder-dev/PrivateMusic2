@@ -22,7 +22,7 @@ struct PlaybackIndicatorView: View {
         }
         .foregroundStyle(color)
         .accessibilityLabel(
-            L10n.text(isPlaying ? "Сейчас играет" : "На паузе")
+            L10n.text(isPlaying ? "current_track" : "paused")
         )
     }
 }

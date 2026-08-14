@@ -383,11 +383,11 @@ enum JSONValue: Codable, Sendable {
                !id.isEmpty {
                 let title = object["title"]?.stringValue
                     ?? object["name"]?.stringValue
-                    ?? L10n.text("VK Микс")
+                    ?? L10n.text("vk_mix")
                 let subtitle = object["subtitle"]?.stringValue
                     ?? object["description"]?.stringValue
                     ?? object["caption"]?.stringValue
-                    ?? L10n.text("Персональная подборка VK")
+                    ?? L10n.text("personalized_vk_selection")
                 let matchPercent = object.mixMatchPercent
                 let curator = object.mixCurator
                 let social = object.looksLikeSocialMix(

@@ -49,7 +49,7 @@ struct Album: Decodable, Hashable, Identifiable, Sendable {
     var id: String { compositeID }
     var compositeID: String { "\(ownerID)_\(albumID)" }
     var artistText: String {
-        artists.isEmpty ? L10n.text("Неизвестный исполнитель") : artists.joined(separator: ", ")
+        artists.isEmpty ? L10n.text("unknown_artist") : artists.joined(separator: ", ")
     }
 
     init(
@@ -261,7 +261,7 @@ struct Album: Decodable, Hashable, Identifiable, Sendable {
         return !trimmed.isEmpty
             && trimmed.caseInsensitiveCompare("unknown") != .orderedSame
             && trimmed.caseInsensitiveCompare(
-                L10n.text("Неизвестный исполнитель")
+                L10n.text("unknown_artist")
             ) != .orderedSame
     }
 

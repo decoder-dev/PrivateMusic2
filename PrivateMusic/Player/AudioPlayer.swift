@@ -22,9 +22,9 @@ enum SleepTimerMode: Equatable, Sendable {
         case let .afterMinutes(minutes):
             return L10n.minutes(minutes)
         case .endOfTrack:
-            return L10n.text("До конца трека")
+            return L10n.text("sleep.end_of_track")
         case .endOfQueue:
-            return L10n.text("До конца очереди")
+            return L10n.text("sleep.end_of_queue")
         }
     }
 }
@@ -1170,7 +1170,7 @@ final class AudioPlayer: ObservableObject {
     }
 
     /// Human-readable label for what's currently queued, shown under
-    /// "СЕЙЧАС ИГРАЕТ" in the full-screen player in place of a bare
+    /// "player.now_playing_kicker" in the full-screen player in place of a bare
     /// "N of M" position (that position now lives in the queue screen).
     var queueContextTitle: String {
         switch queueSource {
@@ -1181,15 +1181,15 @@ final class AudioPlayer: ObservableObject {
         case let .album(title) where QueueSourceTitle.isUsable(title):
             return title
         case .history:
-            return L10n.text("История прослушивания")
+            return L10n.text("listening_history")
         case .library:
-            return L10n.text("Ваши треки")
+            return L10n.text("library.your_tracks")
         default:
             if let seed = queueSeedTrackTitle,
                QueueSourceTitle.isUsable(seed) {
-                return L10n.format("Микс по «%@»", seed)
+                return L10n.format("mix_based_on_0", seed)
             }
-            return L10n.text("Ваша очередь")
+            return L10n.text("player.your_queue")
         }
     }
 
@@ -2024,7 +2024,7 @@ final class AudioPlayer: ObservableObject {
             updateElapsedTime(0, forceProgressPublish: true)
             duration = track.duration
             errorMessage = L10n.text(
-                "Для этого трека отсутствует доступный аудиопоток."
+                "no_playable_audio_stream_is_available_for_this_track"
             )
             isPlaying = false
             nowPlaying.update(
@@ -2451,7 +2451,7 @@ final class AudioPlayer: ObservableObject {
     private func activateAudioSession() -> Bool {
         guard audioSessionConfigured || configureAudioSession() else {
             errorMessage = L10n.text(
-                "Не удалось подготовить фоновое воспроизведение."
+                "could_not_prepare_background_playback"
             )
             return false
         }
@@ -2462,10 +2462,7 @@ final class AudioPlayer: ObservableObject {
             sessionActivationRetryTask = nil
             return true
         } catch {
-            errorMessage = L10n.text(
-                "Не удалось включить звук. Закройте другое аудиоприложение "
-                    + "и повторите попытку."
-            )
+            errorMessage = L10n.text("could_not_start_audio_close_the_other_audio_app_and_try_again")
             scheduleSessionActivationRetry()
             return false
         }
@@ -3215,7 +3212,7 @@ final class AudioPlayer: ObservableObject {
         )
         if !audioSessionRestored {
             errorMessage = L10n.text(
-                "Не удалось восстановить аудиовыход."
+                "the_audio_output_could_not_be_restored"
             )
         }
     }
@@ -3415,11 +3412,10 @@ final class AudioPlayer: ObservableObject {
         let urlError = error as? URLError
         errorMessage = L10n.text(
             StreamFailureRetryPolicy.isConnectivityFailure(error)
-                ? "Слабое соединение. Плеер продолжает пробовать этот трек."
+                ? "weak_connection_the_player_keeps_retrying_this_track"
                 : urlError?.code == .cancelled
-                    ? "Аудиопоток был прерван. Повторите воспроизведение."
-                    : "Не удалось воспроизвести этот трек. "
-                        + "Проверьте подключение и попробуйте ещё раз."
+                    ? "the_audio_stream_was_interrupted_start_playback_again"
+                    : "playback_failed_check_connection"
         )
         isBuffering = StreamFailureRetryPolicy.isConnectivityFailure(error)
         Haptics.error()

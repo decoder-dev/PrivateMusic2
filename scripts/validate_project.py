@@ -234,10 +234,15 @@ ru_strings = (
 en_strings = (
     SOURCE / "Resources" / "en.lproj" / "Localizable.strings"
 ).read_text(encoding="utf-8")
-if "нейросеть Decoder Dev" not in ru_strings:
-    fail("Selena Russian copy must brand it as Decoder Dev's neural network")
-if "Decoder Dev's neural network" not in en_strings:
-    fail("Selena English copy must brand it as Decoder Dev's neural network")
+if "нейросеть" in ru_strings.lower() or "neural network" in en_strings.lower():
+    fail(
+        "Selena copy must describe ranking over VK recommendations, "
+        "not a neural network"
+    )
+if "ранжир" not in ru_strings.lower():
+    fail("Selena Russian copy must describe ranking")
+if "rank" not in en_strings.lower():
+    fail("Selena English copy must describe ranking")
 native_dsp_header = SOURCE / "Native" / "PrivateMusicDSP.h"
 native_dsp_source = SOURCE / "Native" / "PrivateMusicDSP.c"
 native_core_header = SOURCE / "Native" / "PrivateMusicCore.h"
@@ -812,7 +817,7 @@ if "buttonStyle(.borderless)" not in (
 ).read_text(encoding="utf-8"):
     fail("album follow control must remain tappable inside List rows")
 for required_library_resilience_symbol in (
-    "Не удалось загрузить треки",
+    "could_not_load_tracks",
     "libraryStore.beginRefresh()",
     "libraryAudioItems",
 ):
@@ -918,7 +923,7 @@ for required_inline_symbol in (
     "MiniPlayerArtworkView",
     "showsBufferingIndicator",
     "tapTarget",
-    "Открыть полноэкранный плеер",
+    "open_full_screen_player",
 ):
     if required_inline_symbol not in inline_mini_player_source:
         fail(
@@ -1001,7 +1006,7 @@ else:
 for required_queue_symbol in (
     "func removeFromQueue(at index: Int)",
     ".swipeActions(",
-    "Удалить из очереди",
+    "remove_from_queue",
 ):
     if required_queue_symbol not in all_source:
         fail(f"queue swipe removal is missing: {required_queue_symbol}")

@@ -53,13 +53,13 @@ struct TrackRow: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .accessibilityLabel(
-                                    L10n.text("Доступно офлайн")
+                                    L10n.text("available_offline")
                                 )
                         } else if offlineStore.downloadingTrackIDs
                             .contains(track.id) {
                             ProgressView()
                                 .controlSize(.small)
-                                .accessibilityLabel(L10n.text("Загрузка"))
+                                .accessibilityLabel(L10n.text("downloading"))
                         }
                     }
 
@@ -88,14 +88,13 @@ struct TrackRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .modifier(CurrentTrackAccessibilityValueModifier(isCurrent: isCurrent))
-        .accessibilityHint(L10n.text("Воспроизвести трек"))
+        .accessibilityHint(L10n.text("play_track"))
         .trackShareSheet(track: $sharingTrack)
         .contextMenu {
             Button {
                 environment.player.playNext(track)
             } label: {
-                Label(
-                    "Играть следующим",
+                Label(L10n.text("play_next"),
                     systemImage: "text.line.first.and.arrowtriangle.forward"
                 )
             }
@@ -104,7 +103,7 @@ struct TrackRow: View {
                 environment.player.play(track, in: queue, source: source)
                 environment.player.presentPlayer()
             } label: {
-                Label("Открыть плеер", systemImage: "play.circle")
+                Label(L10n.text("open_player"), systemImage: "play.circle")
             }
             TrackMixActions.menuButtons(
                 for: track,
@@ -115,8 +114,7 @@ struct TrackRow: View {
                 Haptics.open()
                 sharingTrack = track
             } label: {
-                Label(
-                    "Поделиться аудиофайлом",
+                Label(L10n.text("share_audio_file"),
                     systemImage: "square.and.arrow.up"
                 )
             }
@@ -129,8 +127,8 @@ struct TrackRow: View {
                 } label: {
                     Label(
                         offlineStore.contains(track)
-                            ? "Удалить загрузку"
-                            : "Скачать офлайн",
+                            ? "remove_download"
+                            : "download",
                         systemImage: offlineStore.contains(track)
                             ? "trash"
                             : "arrow.down.circle"
@@ -161,7 +159,7 @@ struct TrackRow: View {
             .compactMap { $0 }
             .joined(separator: " — ")
         guard !metadata.isEmpty else { return spokenDuration }
-        return L10n.format("%@, %@", metadata, spokenDuration)
+        return L10n.format("spoken_metadata_0_1", metadata, spokenDuration)
     }
 
     private var spokenDuration: String {
@@ -178,7 +176,7 @@ struct TrackRow: View {
             return L10n.minutes(minutes)
         }
         return L10n.format(
-            "%@ %@",
+            "n_0_1_3",
             L10n.minutes(minutes),
             L10n.seconds(seconds)
         )
@@ -197,7 +195,7 @@ struct TrackRow: View {
                 return
             } catch {
                 environment.player.errorMessage = L10n.format(
-                    "Не удалось сохранить трек офлайн: %@",
+                    "could_not_save_the_track_offline_0",
                     error.localizedDescription
                 )
             }
@@ -216,7 +214,7 @@ private struct CurrentTrackAccessibilityValueModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if isCurrent {
-            content.accessibilityValue(L10n.text("Сейчас играет"))
+            content.accessibilityValue(L10n.text("current_track"))
         } else {
             content
         }

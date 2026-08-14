@@ -43,17 +43,17 @@ struct OfflineDeleteAllPresentation: Equatable {
         case .idle:
             guard hasContent else {
                 return OfflineDeleteAllPresentation(
-                    title: L10n.text("Все сохранённые файлы удалены"),
-                    subtitle: L10n.text("Готово"),
+                    title: L10n.text("all_saved_files_have_been_removed"),
+                    subtitle: L10n.text("done"),
                     systemImage: "checkmark.circle.fill",
                     isEnabled: false,
                     showsProgress: false
                 )
             }
             return OfflineDeleteAllPresentation(
-                title: L10n.text("Удалить все сохранённые"),
+                title: L10n.text("remove_all_saved_files"),
                 subtitle: L10n.format(
-                    "%d файлов · %@",
+                    "d0_files_1",
                     downloadedTrackCount,
                     formattedBytes(totalBytes)
                 ),
@@ -63,9 +63,9 @@ struct OfflineDeleteAllPresentation: Equatable {
             )
         case .deleting:
             return OfflineDeleteAllPresentation(
-                title: L10n.text("Удаляем сохранённые файлы…"),
+                title: L10n.text("removing_saved_files"),
                 subtitle: L10n.text(
-                    "Останавливаем загрузки и очищаем хранилище."
+                    "stopping_downloads_and_clearing_storage"
                 ),
                 systemImage: "trash",
                 isEnabled: false,
@@ -73,17 +73,17 @@ struct OfflineDeleteAllPresentation: Equatable {
             )
         case .completed:
             return OfflineDeleteAllPresentation(
-                title: L10n.text("Все сохранённые файлы удалены"),
-                subtitle: L10n.text("Готово"),
+                title: L10n.text("all_saved_files_have_been_removed"),
+                subtitle: L10n.text("done"),
                 systemImage: "checkmark.circle.fill",
                 isEnabled: false,
                 showsProgress: false
             )
         case let .incomplete(remainingBytes, remainingItems):
             return OfflineDeleteAllPresentation(
-                title: L10n.text("Удалено не всё"),
+                title: L10n.text("some_files_could_not_be_removed"),
                 subtitle: L10n.format(
-                    "Осталось: %d объектов · %@",
+                    "remaining_d0_items_1",
                     remainingItems,
                     formattedBytes(remainingBytes)
                 ),
@@ -109,8 +109,7 @@ struct SettingsView: View {
                 NavigationLink {
                     AppearanceSettingsView()
                 } label: {
-                    Label(
-                        "Оформление",
+                    Label(L10n.text("appearance"),
                         systemImage: "paintpalette"
                     )
                 }
@@ -118,8 +117,7 @@ struct SettingsView: View {
                 NavigationLink {
                     PlayerAudioSettingsView()
                 } label: {
-                    Label(
-                        "Плеер и аудио",
+                    Label(L10n.text("player_audio"),
                         systemImage: "waveform"
                     )
                 }
@@ -127,8 +125,7 @@ struct SettingsView: View {
                 NavigationLink {
                     EqualizerSettingsView()
                 } label: {
-                    Label(
-                        "Эквалайзер",
+                    Label(L10n.text("equalizer"),
                         systemImage: "slider.horizontal.3"
                     )
                 }
@@ -138,8 +135,7 @@ struct SettingsView: View {
                     NavigationLink {
                         OfflineStorageSettingsView()
                     } label: {
-                        Label(
-                            "Офлайн и хранилище",
+                        Label(L10n.text("offline_storage"),
                             systemImage: "externaldrive"
                         )
                     }
@@ -148,8 +144,7 @@ struct SettingsView: View {
                 NavigationLink {
                     SleepTimerSettingsView()
                 } label: {
-                    Label(
-                        "Таймер сна",
+                    Label(L10n.text("sleep_timer"),
                         systemImage: "moon.zzz"
                     )
                 }
@@ -157,8 +152,7 @@ struct SettingsView: View {
                 NavigationLink {
                     ConnectionSettingsView()
                 } label: {
-                    Label(
-                        "Подключение",
+                    Label(L10n.text("connection"),
                         systemImage: "network"
                     )
                 }
@@ -166,8 +160,7 @@ struct SettingsView: View {
                 NavigationLink {
                     MixFiltersSettingsView()
                 } label: {
-                    Label(
-                        "Фильтры микса",
+                    Label(L10n.text("mix_filters"),
                         systemImage: "line.3.horizontal.decrease.circle"
                     )
                 }
@@ -175,26 +168,24 @@ struct SettingsView: View {
                 NavigationLink {
                     MixFeedbackManagerView()
                 } label: {
-                    Label(
-                        "Скрытое в миксах",
+                    Label(L10n.text("hidden_in_mixes"),
                         systemImage: "hand.thumbsdown"
                     )
                 }
             }
 
-            Section("О приложении") {
-                LabeledContent("Приложение", value: "Private Music")
-                LabeledContent("Версия", value: version)
-                LabeledContent("Разработчик", value: "decoder-dev")
-                LabeledContent(
-                    "Аналитика",
-                    value: L10n.text("Не используется")
+            Section(L10n.text("about")) {
+                LabeledContent(L10n.text("app"), value: L10n.text("private_music"))
+                LabeledContent(L10n.text("version"), value: version)
+                LabeledContent(L10n.text("developer"), value: "decoder-dev")
+                LabeledContent(L10n.text("analytics"),
+                    value: L10n.text("not_used")
                 )
             }
         }
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
-        .navigationTitle("Настройки")
+        .navigationTitle(L10n.text("tab.settings"))
     }
 
     private var version: String {
@@ -215,13 +206,13 @@ private struct AppearanceSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Тема") {
+            Section(L10n.text("theme")) {
                 themePicker
             }
 
-            Section("Масштаб текста") {
+            Section(L10n.text("text_size")) {
                 Picker(
-                    "Масштаб",
+                    L10n.text("text_scale_picker"),
                     selection: $settings.textScale
                 ) {
                     ForEach(AppTextScale.allCases) { scale in
@@ -231,7 +222,7 @@ private struct AppearanceSettingsView: View {
                 }
 
                 HStack {
-                    Text("Пример")
+                    Text(L10n.text("settings.preview"))
                         .font(.headline)
                     Spacer()
                     Text(settings.textScale.subtitle)
@@ -239,14 +230,14 @@ private struct AppearanceSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Button("Сбросить оформление") {
+                Button(L10n.text("reset_appearance")) {
                     withAnimation(.easeInOut(duration: 0.25)) {
                         settings.resetAppearance()
                     }
                 }
             }
 
-            Section("Отклик") {
+            Section(L10n.text("feedback")) {
                 Toggle(
                     isOn: Binding(
                         get: { settings.hapticsEnabled },
@@ -259,16 +250,12 @@ private struct AppearanceSettingsView: View {
                         }
                     )
                 ) {
-                    Label(
-                        "Тактильный отклик",
+                    Label(L10n.text("haptic_feedback"),
                         systemImage: "hand.tap"
                     )
                 }
                 Text(
-                    L10n.text(
-                        "Лёгкая вибрация при переключении треков, "
-                            + "действиях в медиатеке и других жестах."
-                    )
+                    L10n.text("a_light_vibration_when_switching_tracks_acting_on_your_library_and_other")
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -276,7 +263,7 @@ private struct AppearanceSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
-        .navigationTitle("Оформление")
+        .navigationTitle(L10n.text("appearance"))
     }
 
     private var themePicker: some View {
@@ -333,21 +320,16 @@ private struct PlayerAudioSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Качество звука") {
+            Section(L10n.text("audio_quality")) {
                 Toggle(
                     isOn: $settings.preferHighQuality
                 ) {
-                    Label(
-                        "Высокое качество",
+                    Label(L10n.text("high_quality"),
                         systemImage: "waveform"
                     )
                 }
                 Text(
-                    L10n.text(
-                        "Предпочитает HQ-потоки VK и не ограничивает "
-                            + "битрейт HLS. Выключите, чтобы экономить трафик "
-                            + "(~160 кбит/с). Lossless у VK нет."
-                    )
+                    L10n.text("prefers_vk_hq_streams_and_does_not_cap_the_hls_bitrate_turn_it_off_to_sa")
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -355,17 +337,12 @@ private struct PlayerAudioSettingsView: View {
                 Toggle(
                     isOn: $settings.loudnessNormalization
                 ) {
-                    Label(
-                        "Нормализация громкости",
+                    Label(L10n.text("volume_normalization"),
                         systemImage: "speaker.wave.2"
                     )
                 }
                 Text(
-                    L10n.text(
-                        "Сглаживает скачки громкости между треками. "
-                            + "Работает на прогрессивных потоках; для HLS "
-                            + "обработка на устройстве недоступна."
-                    )
+                    L10n.text("smooths_volume_jumps_between_tracks_works_on_progressive_streams_on_devi")
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -373,16 +350,12 @@ private struct PlayerAudioSettingsView: View {
                 Toggle(
                     isOn: $settings.dynamicRangeCompression
                 ) {
-                    Label(
-                        "Компрессия динамики",
+                    Label(L10n.text("dynamic_range_compression"),
                         systemImage: "waveform.path"
                     )
                 }
                 Text(
-                    L10n.text(
-                        "Делает тихие места слышнее в шумной обстановке "
-                            + "(наушники в метро, колонка в машине)."
-                    )
+                    L10n.text("makes_quiet_passages_audible_in_noisy_places_headphones_on_the_subway_a_")
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -392,17 +365,12 @@ private struct PlayerAudioSettingsView: View {
                 Toggle(
                     isOn: $settings.resumeOnBluetoothConnection
                 ) {
-                    Label(
-                        "Продолжать при подключении Bluetooth",
+                    Label(L10n.text("resume_on_bluetooth_connection"),
                         systemImage: "dot.radiowaves.left.and.right"
                     )
                 }
                 Text(
-                    L10n.text(
-                        "Если в очереди есть текущий трек, приложение "
-                            + "возобновит воспроизведение после подключения "
-                            + "совместимых наушников или колонки."
-                    )
+                    L10n.text("if_the_queue_has_a_current_track_playback_resumes_after_compatible_headp")
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -410,17 +378,12 @@ private struct PlayerAudioSettingsView: View {
                 Toggle(
                     isOn: $settings.pauseAtMinimumVolume
                 ) {
-                    Label(
-                        "Пауза при минимальной громкости",
+                    Label(L10n.text("pause_at_minimum_volume"),
                         systemImage: "speaker.slash"
                     )
                 }
                 Text(
-                    L10n.text(
-                        "При снижении системной громкости до нуля "
-                            + "воспроизведение приостанавливается на текущей "
-                            + "позиции."
-                    )
+                    L10n.text("playback_pauses_at_the_current_position_when_system_volume_reaches_zero")
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -428,35 +391,29 @@ private struct PlayerAudioSettingsView: View {
                 Toggle(
                     isOn: $settings.advanceOnPlaybackError
                 ) {
-                    Label(
-                        "Пропускать недоступный трек",
+                    Label(L10n.text("skip_unavailable_tracks"),
                         systemImage: "forward.end"
                     )
                 }
                 Text(
-                    L10n.text(
-                        "После нескольких неудачных попыток обновить поток "
-                            + "плеер перейдёт к следующему треку. При слабой "
-                            + "сети текущий трек пробуется снова без пропуска."
-                    )
+                    L10n.text("after_several_failed_stream_refresh_attempts_the_player_moves_to_the_nex")
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             }
 
-            Section("Пространственный звук") {
+            Section(L10n.text("spatial_audio")) {
                 Toggle(
                     isOn: spatialAudioBinding
                 ) {
-                    Label(
-                        "Расширенная стереосцена",
+                    Label(L10n.text("expanded_stereo_soundstage"),
                         systemImage: "dot.radiowaves.left.and.right"
                     )
                 }
 
                 VStack(spacing: 8) {
                     HStack {
-                        Text("Интенсивность")
+                        Text(L10n.text("settings.intensity"))
                         Spacer()
                         Text(
                             settings.spatialAudioIntensity,
@@ -474,11 +431,7 @@ private struct PlayerAudioSettingsView: View {
                 .disabled(!settings.spatialAudioEnabled)
 
                 Text(
-                    L10n.text(
-                        "Расширяет сцену в наушниках. На авто и колонках "
-                            + "бас остаётся по центру и слегка подчищается "
-                            + "«бочка», чтобы звук не гудел."
-                    )
+                    L10n.text("widens_the_soundstage_on_headphones_in_the_car_and_on_speakers_bass_stay")
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -486,7 +439,7 @@ private struct PlayerAudioSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
-        .navigationTitle("Плеер и аудио")
+        .navigationTitle(L10n.text("player_audio"))
         .audioProcessingRouteHintOverlay(isPresented: $showRouteHint)
     }
 
@@ -536,23 +489,19 @@ struct EqualizerSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle(
-                    "Обработка звука",
+                Toggle(L10n.text("audio_processing"),
                     isOn: equalizerEnabledBinding
                 )
-                Toggle(
-                    "Нормализация громкости",
+                Toggle(L10n.text("volume_normalization"),
                     isOn: $settings.loudnessNormalization
                 )
-                Toggle(
-                    "Компрессия динамики",
+                Toggle(L10n.text("dynamic_range_compression"),
                     isOn: $settings.dynamicRangeCompression
                 )
             }
 
-            Section("Профиль") {
-                Picker(
-                    "Профиль",
+            Section(L10n.text("equalizer_preset")) {
+                Picker(L10n.text("equalizer_preset"),
                     selection: Binding(
                         get: { settings.equalizerPreset },
                         set: { settings.selectPreset($0) }
@@ -564,10 +513,10 @@ struct EqualizerSettingsView: View {
                 }
             }
 
-            Section("Предусилитель") {
+            Section(L10n.text("preamp")) {
                 VStack(spacing: 5) {
                     HStack {
-                        Text("Уровень")
+                        Text(L10n.text("settings.level"))
                         Spacer()
                         Text(
                             settings.equalizerPreamp,
@@ -575,7 +524,7 @@ struct EqualizerSettingsView: View {
                                 .fractionLength(1)
                             )
                         )
-                        Text("дБ")
+                        Text(L10n.text("settings.db"))
                     }
                     .font(.subheadline.monospacedDigit())
                     Slider(
@@ -593,7 +542,7 @@ struct EqualizerSettingsView: View {
                         HStack {
                             Text(
                                 L10n.format(
-                                    "%@ Гц",
+                                    "n_0_hz",
                                     frequencies[index]
                                 )
                             )
@@ -604,7 +553,7 @@ struct EqualizerSettingsView: View {
                                     .fractionLength(1)
                                 )
                             )
-                            Text("дБ")
+                            Text(L10n.text("settings.db"))
                         }
                         .font(.subheadline.monospacedDigit())
 
@@ -624,23 +573,20 @@ struct EqualizerSettingsView: View {
                     .disabled(!settings.equalizerEnabled)
                 }
             } header: {
-                Text("Полосы частот")
+                Text(L10n.text("settings.eq_bands"))
             } footer: {
                 Text(
-                    L10n.text(
-                        "Обработка выполняется на устройстве и применяется "
-                            + "к наушникам, колонкам и CarKit / Bluetooth автомобиля."
-                    )
+                    L10n.text("processing_runs_on_device_and_applies_to_headphones_speakers_and_carkit_")
                 )
             }
         }
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
-        .navigationTitle("Эквалайзер")
+        .navigationTitle(L10n.text("equalizer"))
         .audioProcessingRouteHintOverlay(isPresented: $showRouteHint)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button(L10n.text("Готово")) { dismiss() }
+                Button(L10n.text("done")) { dismiss() }
             }
         }
     }
@@ -689,17 +635,16 @@ private struct OfflineStorageSettingsView: View {
     var body: some View {
         let usage = offlineStore.storageUsage
         Form {
-            Section("Хранилище") {
+            Section(L10n.text("storage_2")) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Label(
-                            "Использовано",
+                        Label(L10n.text("used"),
                             systemImage: "externaldrive"
                         )
                         Spacer()
                         Text(
                             L10n.format(
-                                "%@ / %d ГБ",
+                                "n_0_d1_gb",
                                 formattedBytes(usage.totalBytes),
                                 settings.offlineStorageLimitGB
                             )
@@ -784,8 +729,7 @@ private struct OfflineStorageSettingsView: View {
                             }
                         }
                         if usage.totalCount == 0 {
-                            Label(
-                                "Пусто",
+                            Label(L10n.text("empty"),
                                 systemImage: "tray"
                             )
                         }
@@ -796,14 +740,13 @@ private struct OfflineStorageSettingsView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Label(
-                            "Лимит",
+                        Label(L10n.text("limit"),
                             systemImage: "internaldrive"
                         )
                         Spacer()
                         Text(
                             L10n.format(
-                                "%d ГБ",
+                                "d0_gb",
                                 settings.offlineStorageLimitGB
                             )
                         )
@@ -837,7 +780,7 @@ private struct OfflineStorageSettingsView: View {
                     )
                     .accessibilityValue(
                         L10n.format(
-                            "%d ГБ",
+                            "d0_gb",
                             settings.offlineStorageLimitGB
                         )
                     )
@@ -845,7 +788,7 @@ private struct OfflineStorageSettingsView: View {
                     HStack {
                         Text(
                             L10n.format(
-                                "%d ГБ",
+                                "d0_gb",
                                 AppSettings
                                     .minimumOfflineStorageLimitGB
                             )
@@ -853,7 +796,7 @@ private struct OfflineStorageSettingsView: View {
                         Spacer()
                         Text(
                             L10n.format(
-                                "%d ГБ",
+                                "d0_gb",
                                 AppSettings
                                     .maximumOfflineStorageLimitGB
                             )
@@ -865,34 +808,26 @@ private struct OfflineStorageSettingsView: View {
             }
 
             if !environment.isShareSessionActive {
-                Section("Автокэширование") {
+                Section(L10n.text("automatic_caching")) {
                     Toggle(
                         isOn: $settings.automaticOfflineCacheEnabled
                     ) {
-                        Label(
-                            "Автокэширование",
+                        Label(L10n.text("automatic_caching"),
                             systemImage: "arrow.triangle.2.circlepath"
                         )
                     }
 
                     Text(
-                        L10n.text(
-                            "Прослушанные треки автоматически "
-                                + "сохраняются для повторного "
-                                + "воспроизведения без интернета. "
-                                + "При заполнении хранилища старый "
-                                + "автокэш очищается первым; ручные "
-                                + "загрузки сохраняются."
-                        )
+                        L10n.text("played_tracks_are_saved_automatically_for_replay_without_an_internet_con")
                     )
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 }
             }
 
-            Section("Управление") {
+            Section(L10n.text("manage")) {
                 if offlineStore.automaticCacheByteCount > 0 {
-                    Button("Очистить автокэш", role: .destructive) {
+                    Button(L10n.text("clear_automatic_cache"), role: .destructive) {
                         offlineStore.removeAutomaticCache()
                     }
                 }
@@ -942,29 +877,25 @@ private struct OfflineStorageSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
-        .navigationTitle("Офлайн и хранилище")
+        .navigationTitle(L10n.text("offline_storage"))
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(
-            L10n.text("Удалить все сохранённые файлы?"),
+            L10n.text("remove_all_saved_files_2"),
             isPresented: $showsDeleteAllConfirmation,
             titleVisibility: .visible
         ) {
             Button(
-                L10n.text("Удалить всё"),
+                L10n.text("delete_all"),
                 role: .destructive
             ) {
                 Task {
                     await deleteAllSavedContent()
                 }
             }
-            Button(L10n.text("Отмена"), role: .cancel) {}
+            Button(L10n.text("action.cancel"), role: .cancel) {}
         } message: {
             Text(
-                L10n.text(
-                    "Будут остановлены текущие загрузки и удалены "
-                        + "скачанные треки, плейлисты и автокэш. "
-                        + "Музыка в VK не изменится."
-                )
+                L10n.text("current_downloads_will_be_stopped_and_downloaded_tracks_playlists_and_au")
             )
         }
         .onChange(of: deleteAllContentSnapshot) { _ in
@@ -1078,31 +1009,28 @@ private struct SleepTimerSettingsView: View {
             Section {
                 if let mode = player.sleepTimerMode {
                     if let endDate = player.sleepTimerEndDate {
-                        LabeledContent(
-                            "Остановка",
+                        LabeledContent(L10n.text("stops_at"),
                             value: endDate.formatted(
                                 date: .omitted,
                                 time: .shortened
                             )
                         )
                     } else {
-                        LabeledContent(
-                            "Остановка",
+                        LabeledContent(L10n.text("stops_at"),
                             value: mode.statusLabel
                         )
                     }
-                    Button(
-                        "Отключить таймер",
+                    Button(L10n.text("cancel_timer"),
                         role: .destructive
                     ) {
                         player.cancelSleepTimer()
                     }
                 } else {
-                    Menu("Остановить воспроизведение через…") {
-                        Button(L10n.text("До конца трека")) {
+                    Menu(L10n.text("stop_playback_in")) {
+                        Button(L10n.text("sleep.end_of_track")) {
                             player.scheduleSleepTimer(.endOfTrack)
                         }
-                        Button(L10n.text("До конца очереди")) {
+                        Button(L10n.text("sleep.end_of_queue")) {
                             player.scheduleSleepTimer(.endOfQueue)
                         }
                         ForEach(
@@ -1121,7 +1049,7 @@ private struct SleepTimerSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
-        .navigationTitle("Таймер сна")
+        .navigationTitle(L10n.text("sleep_timer"))
     }
 }
 
@@ -1136,9 +1064,9 @@ private struct ConnectionSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Сеть") {
+            Section(L10n.text("network")) {
                 HStack(spacing: 12) {
-                    Text("Статус")
+                    Text(L10n.text("settings.status"))
                     Spacer(minLength: 16)
                     Label(
                         networkTitle,
@@ -1151,15 +1079,14 @@ private struct ConnectionSettingsView: View {
                 .padding(.vertical, 2)
             }
 
-            Section("Сессия VK") {
+            Section(L10n.text("vk_session")) {
                 LabeledContent(
-                    "Сессия",
+                    L10n.text("session_label"),
                     value: sessionTitle
                 )
                 if let expiresAt = sessionStore.session?
                     .expiresAt {
-                    LabeledContent(
-                        "Срок действия токена",
+                    LabeledContent(L10n.text("token_expires"),
                         value: expiresAt.formatted(
                             date: .abbreviated,
                             time: .shortened
@@ -1170,8 +1097,7 @@ private struct ConnectionSettingsView: View {
                     refreshSession()
                 } label: {
                     HStack {
-                        Label(
-                            "Обновить",
+                        Label(L10n.text("action.refresh"),
                             systemImage: "arrow.clockwise"
                         )
                         if isRefreshing {
@@ -1187,13 +1113,7 @@ private struct ConnectionSettingsView: View {
                         .foregroundStyle(.red)
                 }
                 Text(
-                    L10n.text(
-                        "При временном обрыве сети сохранённая "
-                            + "сессия остаётся в системном Keychain. "
-                            + "Если VK принимает данные веб-сессии, "
-                            + "приложение попробует обновить "
-                            + "подключение автоматически."
-                    )
+                    L10n.text("the_saved_session_remains_in_the_system_keychain_during_temporary_outage")
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -1201,7 +1121,7 @@ private struct ConnectionSettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
-        .navigationTitle("Подключение")
+        .navigationTitle(L10n.text("connection"))
     }
 
     private func refreshSession() {
@@ -1222,19 +1142,19 @@ private struct ConnectionSettingsView: View {
 
     private var networkTitle: String {
         guard networkMonitor.state != .offline else {
-            return L10n.text("Нет подключения")
+            return L10n.text("offline")
         }
         switch networkMonitor.transport {
         case .wifi:
-            return L10n.text("Wi‑Fi доступен")
+            return L10n.text("connected_via_wi_fi")
         case .cellular:
-            return L10n.text("Мобильная сеть")
+            return L10n.text("connected_via_cellular")
         case .wired:
-            return L10n.text("Проводная сеть")
+            return L10n.text("connected_via_ethernet")
         case .other:
-            return L10n.text("Сеть доступна")
+            return L10n.text("connected")
         case .unavailable:
-            return L10n.text("Нет подключения")
+            return L10n.text("offline")
         }
     }
 
@@ -1262,21 +1182,21 @@ private struct ConnectionSettingsView: View {
 
     private var sessionTitle: String {
         guard let session = sessionStore.session else {
-            return L10n.text("Не подключена")
+            return L10n.text("not_connected")
         }
         if session.needsRefresh {
             return session.canRefresh
                 ? L10n.text(
-                    "Доступно автоматическое обновление"
+                    "automatic_refresh_available"
                 )
                 : L10n.text(
-                    "Для обновления потребуется повторный вход"
+                    "sign_in_required_to_refresh"
                 )
         }
         return session.canRefresh
             ? L10n.text(
-                "Подключена · доступно автообновление"
+                "connected_automatic_refresh_available"
             )
-            : L10n.text("Подключена")
+            : L10n.text("connected_2")
     }
 }

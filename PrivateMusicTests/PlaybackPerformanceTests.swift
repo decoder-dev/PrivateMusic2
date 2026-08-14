@@ -128,7 +128,7 @@ final class QueueSourcePlaybackActionTests: XCTestCase {
 
         XCTAssertEqual(action, .resume)
         XCTAssertEqual(action.systemImage, "play.fill")
-        XCTAssertEqual(action.labelKey, "Воспроизвести")
+        XCTAssertEqual(action.labelKey, "play")
     }
 
     func testDifferentSourceStartsNewQueue() {
@@ -145,9 +145,9 @@ final class QueueSourcePlaybackActionTests: XCTestCase {
     func testPauseUsesLocalizedAccessibilityKey() {
         XCTAssertEqual(
             QueueSourcePlaybackAction.pause.accessibilityLabelKey(
-                playKey: "Воспроизвести альбом"
+                playKey: "play_album"
             ),
-            "Приостановить"
+            "pause"
         )
     }
 }

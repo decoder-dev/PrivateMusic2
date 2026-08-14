@@ -206,12 +206,12 @@ enum OfflinePlaylistStatus: Equatable, Sendable {
     var localizedText: String? {
         switch self {
         case .preparing:
-            return L10n.text("Подготовка…")
+            return L10n.text("preparing")
         case .queued:
-            return L10n.text("В очереди…")
+            return L10n.text("queued_2")
         case .downloading(let processed, let total, let succeeded, let failed):
             return L10n.format(
-                "Обработано %d из %d · Скачано %d · Ошибок %d",
+                "processed_d0_of_d1_downloaded_d2_errors_d3",
                 processed,
                 total,
                 succeeded,
@@ -220,11 +220,11 @@ enum OfflinePlaylistStatus: Equatable, Sendable {
         case .completed:
             return nil
         case .partial(let count, let total):
-            return L10n.format("Скачано %d из %d", count, total)
+            return L10n.format("downloaded_d0_of_d1", count, total)
         case .failed(let message):
-            return message ?? L10n.text("Не удалось скачать плейлист")
+            return message ?? L10n.text("couldn_t_download_the_playlist")
         case .cancelled:
-            return L10n.text("Загрузка отменена")
+            return L10n.text("download_cancelled")
         case .idle:
             return nil
         }
@@ -330,7 +330,7 @@ final class OfflinePlaylistStore: ObservableObject {
                 records.removeValue(forKey: id)
             } else {
                 record.state = .partial
-                record.errorMessage = L10n.text("Загрузка прервана")
+                record.errorMessage = L10n.text("download_interrupted")
                 records[id] = record
             }
             didNormalize = true
@@ -540,7 +540,7 @@ final class OfflinePlaylistStore: ObservableObject {
                 if localCount == 0 {
                     record.state = .failed
                     record.errorMessage = L10n.text(
-                        "Скачанные треки удалены. Скачайте плейлист заново."
+                        "downloaded_tracks_were_removed_please_download_the_playlist_again"
                     )
                     recordChanged = true
                 } else if localCount < record.tracks.count {
@@ -551,7 +551,7 @@ final class OfflinePlaylistStore: ObservableObject {
                 if localCount == 0 {
                     record.state = .failed
                     record.errorMessage = L10n.text(
-                        "Скачанные треки удалены. Скачайте плейлист заново."
+                        "downloaded_tracks_were_removed_please_download_the_playlist_again"
                     )
                     recordChanged = true
                 }
@@ -649,7 +649,7 @@ final class OfflinePlaylistStore: ObservableObject {
                 } else {
                     record.state = .failed
                     record.errorMessage = L10n.text(
-                        "Не удалось получить треки плейлиста"
+                        "couldn_t_fetch_the_playlist_tracks"
                     )
                     record.updatedAt = updatedNow()
                     records[identifier] = record
@@ -697,12 +697,12 @@ final class OfflinePlaylistStore: ObservableObject {
             } else if counts.completed > 0 {
                 finalRecord.state = .partial
                 finalRecord.errorMessage = L10n.format(
-                    "Не удалось скачать %d из %d треков",
+                    "couldn_t_download_d0_of_d1_tracks",
                     counts.failed,
                     storedTracks.count
                 )
                 let completedSubtitle = L10n.format(
-                    "Скачано %d из %d",
+                    "downloaded_d0_of_d1",
                     counts.completed,
                     storedTracks.count
                 )
@@ -712,7 +712,7 @@ final class OfflinePlaylistStore: ObservableObject {
             } else {
                 finalRecord.state = .failed
                 finalRecord.errorMessage = L10n.text(
-                    "Не удалось скачать плейлист"
+                    "couldn_t_download_the_playlist"
                 )
                 DownloadNotifications.notifyDownloadError(title: name)
             }
@@ -1023,7 +1023,7 @@ final class OfflinePlaylistStore: ObservableObject {
                 || record.state == .queued
                 || record.state == .downloading {
                 record.state = record.completedCount > 0 ? .partial : .cancelled
-                record.errorMessage = L10n.text("Загрузка прервана")
+                record.errorMessage = L10n.text("download_interrupted")
                 result[id] = record
             }
         }

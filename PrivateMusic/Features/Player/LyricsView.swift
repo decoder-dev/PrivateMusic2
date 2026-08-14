@@ -18,7 +18,7 @@ struct LyricsView: View {
         NavigationStack {
             Group {
                 if isLoading {
-                    ProgressView("Загружаем текст…")
+                    ProgressView(L10n.text("loading_lyrics"))
                 } else if let lyrics, !lyrics.lines.isEmpty {
                     syncedLyrics(lyrics)
                 } else if let lyrics {
@@ -38,12 +38,12 @@ struct LyricsView: View {
                 } else {
                     VStack(spacing: 18) {
                         EmptyStateView(
-                            title: "Текст недоступен",
+                            title: "lyrics_unavailable",
                             systemImage: "quote.bubble",
                             description: errorMessage
-                                ?? "Для этого трека текст не найден."
+                                ?? "no_lyrics_were_found_for_this_track"
                         )
-                        geniusLink(title: "Найти текст на Genius")
+                        geniusLink(title: "find_lyrics_on_genius")
                     }
                 }
             }
@@ -90,10 +90,10 @@ struct LyricsView: View {
                         .id(line.id)
                         .accessibilityLabel(line.text)
                         .accessibilityHint(
-                            L10n.text("Перейти к этой строке")
+                            L10n.text("seek_to_this_line")
                         )
                         .accessibilityAction(
-                            named: Text(L10n.text("Скопировать строку"))
+                            named: Text(L10n.text("copy_line"))
                         ) {
                             copy(line)
                         }
@@ -135,13 +135,13 @@ struct LyricsView: View {
 
     private func source(_ lyrics: Lyrics) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.format("Источник: %@", lyrics.source))
+            Text(L10n.format("source_0", lyrics.source))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             geniusLink(
                 title: lyrics.source == "Genius"
-                    ? "Открыть оригинал на Genius"
-                    : "Проверить текст на Genius",
+                    ? "open_original_on_genius"
+                    : "check_lyrics_on_genius",
                 destination: lyrics.sourceURL
             )
         }
@@ -185,7 +185,7 @@ struct LyricsView: View {
         Haptics.selection()
         UIAccessibility.post(
             notification: .announcement,
-            argument: L10n.text("Строка скопирована")
+            argument: L10n.text("line_copied")
         )
     }
 

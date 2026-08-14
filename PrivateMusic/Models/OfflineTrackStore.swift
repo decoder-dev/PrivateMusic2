@@ -464,7 +464,7 @@ final class OfflineTrackStore: ObservableObject {
         guard allowedExtensions.contains(
             temporaryURL.pathExtension.lowercased()
         ) else {
-            throw offlineError("Файл слишком большой для офлайн-загрузки.")
+            throw offlineError("the_file_is_too_large_for_offline_download")
         }
 
         let attributes = try fileManager.attributesOfItem(
@@ -474,7 +474,7 @@ final class OfflineTrackStore: ObservableObject {
             (attributes[.size] as? NSNumber)?.int64Value ?? 0
         guard byteCount > 0,
               byteCount <= Self.maximumTrackSize else {
-            throw offlineError("Файл слишком большой для офлайн-загрузки.")
+            throw offlineError("the_file_is_too_large_for_offline_download")
         }
         try makeSpace(for: byteCount)
         try createProtectedDirectory(rootURL)
@@ -931,7 +931,7 @@ final class OfflineTrackStore: ObservableObject {
         )
         if let capacity = values.volumeAvailableCapacityForImportantUsage,
            capacity < byteCount + 100_000_000 {
-            throw offlineError("На устройстве недостаточно свободного места.")
+            throw offlineError("there_is_not_enough_free_storage_on_this_device")
         }
     }
 
@@ -953,7 +953,7 @@ final class OfflineTrackStore: ObservableObject {
         }
         guard totalByteCount + incomingByteCount <= storageLimitBytes else {
             throw offlineError(
-                "Достигнут выбранный лимит офлайн-хранилища."
+                "the_selected_offline_storage_limit_has_been_reached"
             )
         }
     }

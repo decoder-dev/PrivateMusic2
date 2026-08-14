@@ -15,16 +15,16 @@ struct QueueView: View {
             Group {
                 if player.queue.isEmpty {
                     EmptyStateView(
-                        title: "Очередь пуста",
+                        title: "queue_is_empty",
                         systemImage: "text.line.first.and.arrowtriangle.forward",
-                        description: "Выберите трек, чтобы начать воспроизведение."
+                        description: "choose_a_track_to_start_playback"
                     )
                 } else {
                     List {
                         if isMixQueue {
                             Section {
                                 Picker(
-                                    L10n.text("Радио микса"),
+                                    L10n.text("mix_radio"),
                                     selection: Binding(
                                         get: { player.mixRadioMode },
                                         set: { mode in
@@ -46,20 +46,17 @@ struct QueueView: View {
                                 .pickerStyle(.segmented)
                                 .listRowBackground(Color.clear)
                             } header: {
-                                Text(L10n.text("Радио микса"))
+                                Text(L10n.text("mix_radio"))
                             } footer: {
                                 Text(
-                                    L10n.text(
-                                        "Разбавляет очередь; «Ближе к треку» и «Больше новизны» "
-                                            + "подтягивают рекомендации VK"
-                                    )
+                                    L10n.text("diversifies_the_queue_closer_to_track_and_more_novelty_pull_vk_recommend")
                                 )
                             }
                         }
                         if let index = player.currentIndex {
                             Text(
                                 L10n.format(
-                                    "Трек %d из %d",
+                                    "track_d0_of_d1",
                                     index + 1,
                                     player.queue.count
                                 )
@@ -115,7 +112,7 @@ struct QueueView: View {
                                 )
                             )
                             .accessibilityHint(
-                                L10n.text("Воспроизвести из очереди")
+                                L10n.text("play_from_queue")
                             )
                             .accessibilityAddTraits(
                                 index == player.currentIndex
@@ -123,7 +120,7 @@ struct QueueView: View {
                                     : []
                             )
                             .accessibilityAction(
-                                named: L10n.text("Удалить из очереди")
+                                named: L10n.text("remove_from_queue")
                             ) {
                                 removeFromQueue(at: index)
                             }
@@ -135,7 +132,7 @@ struct QueueView: View {
                                     removeFromQueue(at: index)
                                 } label: {
                                     Label(
-                                        L10n.text("Удалить из очереди"),
+                                        L10n.text("remove_from_queue"),
                                         systemImage: "trash"
                                     )
                                 }
@@ -147,10 +144,10 @@ struct QueueView: View {
                 }
             }
             .background(ThemeBackground())
-            .navigationTitle("Очередь")
+            .navigationTitle(L10n.text("player.queue"))
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Готово") { dismiss() }
+                    Button(L10n.text("done")) { dismiss() }
                 }
             }
         }
@@ -172,7 +169,7 @@ struct QueueView: View {
         ]
             .compactMap { $0 }
             .joined(separator: " — ")
-        return metadata.isEmpty ? L10n.text("Трек") : metadata
+        return metadata.isEmpty ? L10n.text("track_singular") : metadata
     }
 
     private func usableMetadata(_ value: String) -> String? {
@@ -187,7 +184,7 @@ private struct CurrentQueueItemAccessibilityValueModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if isCurrent {
-            content.accessibilityValue(L10n.text("Сейчас играет"))
+            content.accessibilityValue(L10n.text("current_track"))
         } else {
             content
         }

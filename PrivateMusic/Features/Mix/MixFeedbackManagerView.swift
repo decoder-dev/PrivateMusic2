@@ -9,30 +9,26 @@ struct MixFeedbackManagerView: View {
             Section {
                 if mixFeedbackStore.bannedTracks.isEmpty,
                    mixFeedbackStore.bannedArtistRecords.isEmpty {
-                    Text(L10n.text("Пока ничего не скрыто"))
+                    Text(L10n.text("nothing_is_hidden_yet"))
                         .foregroundStyle(.secondary)
                 } else {
                     Button(role: .destructive) {
                         showsClearConfirm = true
                     } label: {
                         Label(
-                            L10n.text("Очистить всё"),
+                            L10n.text("clear_all"),
                             systemImage: "trash"
                         )
                     }
                 }
             } footer: {
                 Text(
-                    L10n.text(
-                        "Скрытые треки и исполнители не попадают в миксы "
-                            + "на этом устройстве. VK API для дизлайков нет — "
-                            + "память локальная."
-                    )
+                    L10n.text("hidden_tracks_and_artists_stay_out_of_mixes_on_this_device_vk_has_no_dis")
                 )
             }
 
             if !mixFeedbackStore.bannedTracks.isEmpty {
-                Section(L10n.text("Скрытые треки")) {
+                Section(L10n.text("hidden_tracks")) {
                     ForEach(mixFeedbackStore.bannedTracks) { record in
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
@@ -47,7 +43,7 @@ struct MixFeedbackManagerView: View {
                                 }
                             }
                             Spacer(minLength: 12)
-                            Button(L10n.text("Вернуть")) {
+                            Button(L10n.text("restore")) {
                                 mixFeedbackStore.unbanTrack(id: record.id)
                                 Haptics.selection()
                             }
@@ -62,13 +58,13 @@ struct MixFeedbackManagerView: View {
             }
 
             if !mixFeedbackStore.bannedArtistRecords.isEmpty {
-                Section(L10n.text("Скрытые исполнители")) {
+                Section(L10n.text("hidden_artists")) {
                     ForEach(mixFeedbackStore.bannedArtistRecords) { record in
                         HStack {
                             Text(record.displayName)
                                 .lineLimit(2)
                             Spacer(minLength: 12)
-                            Button(L10n.text("Вернуть")) {
+                            Button(L10n.text("restore")) {
                                 mixFeedbackStore.unbanArtist(key: record.key)
                                 Haptics.selection()
                             }
@@ -81,17 +77,17 @@ struct MixFeedbackManagerView: View {
         }
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
-        .navigationTitle(L10n.text("Скрытое в миксах"))
+        .navigationTitle(L10n.text("hidden_in_mixes"))
         .confirmationDialog(
-            L10n.text("Очистить все скрытия?"),
+            L10n.text("clear_everything_you_hid"),
             isPresented: $showsClearConfirm,
             titleVisibility: .visible
         ) {
-            Button(L10n.text("Очистить"), role: .destructive) {
+            Button(L10n.text("clear"), role: .destructive) {
                 mixFeedbackStore.clear()
                 Haptics.success()
             }
-            Button(L10n.text("Отмена"), role: .cancel) {}
+            Button(L10n.text("action.cancel"), role: .cancel) {}
         }
     }
 }

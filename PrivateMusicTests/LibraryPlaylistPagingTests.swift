@@ -55,7 +55,7 @@ final class LibraryPlaylistPagingTests: XCTestCase {
         let page = makeService().playlistPage(value, offset: 0)
 
         XCTAssertEqual(page.items.map(\.playlistID), [1, 2])
-        XCTAssertEqual(page.items.first?.title, L10n.text("Плейлист"))
+        XCTAssertEqual(page.items.first?.title, L10n.text("playlist"))
     }
 
     // Only an entry with no owner-scoped id at all is unusable.
@@ -461,7 +461,7 @@ final class LibraryPlaylistPagingTests: XCTestCase {
                 "items": [
                   {"id": 1, "owner_id": 100, "title": "Дорога"},
                   {"id": 2, "owner_id": 100, "title": "Джаз"},
-                  {"id": 3, "owner_id": 100, "title": "Рок"}
+                  {"id": 3, "owner_id": 100, "title": "rock"}
                 ]
               }
             }
@@ -533,7 +533,7 @@ final class LibraryPlaylistPagingTests: XCTestCase {
               "sections": [
                 {
                   "items": [
-                    {"playlist": {"id": 1, "owner_id": 100, "title": "Рок"}}
+                    {"playlist": {"id": 1, "owner_id": 100, "title": "rock"}}
                   ]
                 }
               ]
@@ -614,7 +614,7 @@ final class LibraryPlaylistPagingTests: XCTestCase {
                     {
                       "type": "music_playlist",
                       "playlist": {
-                        "id": 4, "owner_id": 100, "title": "Рок", "count": 9
+                        "id": 4, "owner_id": 100, "title": "rock", "count": 9
                       }
                     },
                     {
@@ -689,7 +689,7 @@ final class LibraryPlaylistPagingTests: XCTestCase {
               ],
               "playlists": {
                 "items": [
-                  {"id": 3, "owner_id": 100, "title": "Рок"},
+                  {"id": 3, "owner_id": 100, "title": "rock"},
                   {"id": 4, "owner_id": 100, "title": "Классика"}
                 ]
               }

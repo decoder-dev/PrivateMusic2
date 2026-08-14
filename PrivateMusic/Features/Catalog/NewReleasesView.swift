@@ -58,7 +58,7 @@ struct NewReleasesView: View {
                             .accessibilityLabel(
                                 L10n.text(
                                     playbackAction.accessibilityLabelKey(
-                                        playKey: "Воспроизвести альбом"
+                                        playKey: "play_album"
                                     )
                                 )
                             )
@@ -70,7 +70,7 @@ struct NewReleasesView: View {
                                 Text(
                                     Album.isUsableTitle(album.title)
                                         ? album.title
-                                        : L10n.text("Альбом")
+                                        : L10n.text("album")
                                 )
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
@@ -94,16 +94,15 @@ struct NewReleasesView: View {
             .padding(16)
         }
         .background(ThemeBackground())
-        .navigationTitle(L10n.text("Новые релизы"))
+        .navigationTitle(L10n.text("new_releases"))
         .navigationBarTitleDisplayMode(.inline)
-        .alert(
-            "Не удалось воспроизвести альбом",
+        .alert(L10n.text("could_not_play_album"),
             isPresented: Binding(
                 get: { actionErrorMessage != nil },
                 set: { if !$0 { actionErrorMessage = nil } }
             )
         ) {
-            Button("ОК", role: .cancel) {}
+            Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
             Text(actionErrorMessage ?? "")
         }
@@ -136,7 +135,7 @@ struct NewReleasesView: View {
     }
 
     private func albumPlaybackTitle(_ album: Album) -> String {
-        Album.isUsableTitle(album.title) ? album.title : L10n.text("Альбом")
+        Album.isUsableTitle(album.title) ? album.title : L10n.text("album")
     }
 
     private func playAlbum(_ album: Album) {

@@ -20,9 +20,9 @@ struct OfflineDownloadsView: View {
 
         var title: String {
             switch self {
-            case .tracks: return L10n.text("Треки")
-            case .playlists: return L10n.text("Плейлисты")
-            case .cache: return L10n.text("Автокэш")
+            case .tracks: return L10n.text("library.tracks")
+            case .playlists: return L10n.text("library.playlists")
+            case .cache: return L10n.text("auto_cache")
             }
         }
     }
@@ -60,11 +60,11 @@ struct OfflineDownloadsView: View {
                     HStack(spacing: 12) {
                         ProgressView()
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(L10n.text("Идёт загрузка"))
+                            Text(L10n.text("downloading_3"))
                                 .font(.subheadline.weight(.semibold))
                             Text(
                                 L10n.format(
-                                    "Активные загрузки: %d",
+                                    "active_downloads_d0",
                                     activeDownloadCount
                                 )
                             )
@@ -76,7 +76,7 @@ struct OfflineDownloadsView: View {
             }
 
             Section {
-                Picker(L10n.text("Раздел"), selection: $section) {
+                Picker(L10n.text("section"), selection: $section) {
                     ForEach(DownloadsSection.allCases) { value in
                         Text(value.title).tag(value)
                     }
@@ -103,12 +103,12 @@ struct OfflineDownloadsView: View {
         .searchable(
             text: $searchText,
             placement: .navigationBarDrawer(displayMode: .always),
-            prompt: L10n.text("Название или исполнитель")
+            prompt: L10n.text("title_or_artist")
         )
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 if selection != nil {
-                    Button(L10n.text("Отмена")) {
+                    Button(L10n.text("action.cancel")) {
                         exitSelection()
                     }
                 }
@@ -118,12 +118,12 @@ struct OfflineDownloadsView: View {
                     Button(role: .destructive) {
                         showsDeleteConfirmation = true
                     } label: {
-                        Label("Удалить", systemImage: "trash")
+                        Label(L10n.text("action.delete"), systemImage: "trash")
                     }
                     .disabled(selection?.isEmpty != false)
                 } else if section != .playlists,
                           !recordsForCurrentSection.isEmpty {
-                    Button(L10n.text("Выбрать")) {
+                    Button(L10n.text("select")) {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             selection = []
                         }
@@ -156,63 +156,60 @@ struct OfflineDownloadsView: View {
         }
         .confirmationDialog(
             L10n.format(
-                "Удалить выбранные (%d)?",
+                "delete_selected_d0",
                 selection?.count ?? 0
             ),
             isPresented: $showsDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button(L10n.text("Удалить"), role: .destructive) {
+            Button(L10n.text("action.delete"), role: .destructive) {
                 removeSelectedTracks()
             }
-            Button(L10n.text("Отмена"), role: .cancel) {}
+            Button(L10n.text("action.cancel"), role: .cancel) {}
         }
         .confirmationDialog(
-            L10n.text("Удалить все загрузки с устройства?"),
+            L10n.text("delete_all_downloads_from_this_device"),
             isPresented: $showsDeleteAllConfirmation,
             titleVisibility: .visible
         ) {
-            Button(L10n.text("Удалить всё"), role: .destructive) {
+            Button(L10n.text("delete_all"), role: .destructive) {
                 deleteAll()
             }
-            Button(L10n.text("Отмена"), role: .cancel) {}
+            Button(L10n.text("action.cancel"), role: .cancel) {}
         }
         .confirmationDialog(
-            L10n.text("Очистить все автокэш-файлы?"),
+            L10n.text("clear_all_auto_cache_files"),
             isPresented: $showsClearCacheConfirmation,
             titleVisibility: .visible
         ) {
-            Button(L10n.text("Очистить"), role: .destructive) {
+            Button(L10n.text("clear"), role: .destructive) {
                 clearAutomaticCache()
             }
-            Button(L10n.text("Отмена"), role: .cancel) {}
+            Button(L10n.text("action.cancel"), role: .cancel) {}
         }
         .confirmationDialog(
-            L10n.text("Удалить плейлист?"),
+            L10n.text("delete_playlist"),
             isPresented: $showsDeletePlaylistConfirmation,
             titleVisibility: .visible
         ) {
-            Button(L10n.text("Удалить плейлист"), role: .destructive) {
+            Button(L10n.text("remove_playlist"), role: .destructive) {
                 removePlaylist(pendingPlaylistRemoval)
             }
             if let section = pendingPlaylistRemoval,
                hasUnusedLocalFiles(in: section) {
                 Button(
-                    L10n.text("Удалить плейлист и аудиофайлы"),
+                    L10n.text("delete_playlist_and_audio_files"),
                     role: .destructive
                 ) {
                     removePlaylistAndFiles(pendingPlaylistRemoval)
                 }
             }
-            Button(L10n.text("Отмена"), role: .cancel) {
+            Button(L10n.text("action.cancel"), role: .cancel) {
                 pendingPlaylistRemoval = nil
             }
         } message: {
             Text(
-                L10n.text(
-                    "Аудиофайлы останутся в разделе «Треки», "
-                        + "если удалить только плейлист."
-                )
+                L10n.text("audio_files_will_remain_in_the_tracks_section_if_you_only_delete_the_pla")
             )
         }
         .task(id: sessionStore.resolvedOfflineAccountID) {
@@ -342,12 +339,12 @@ struct OfflineDownloadsView: View {
         if records.isEmpty {
             emptySection(
                 title: searchText.isEmpty
-                    ? "Нет сохранённых треков"
-                    : "Ничего не найдено",
+                    ? "no_saved_tracks"
+                    : "no_results",
                 systemImage: "music.note",
                 description: searchText.isEmpty
-                    ? "Скачанные треки появятся здесь."
-                    : "Измените запрос поиска."
+                    ? "downloaded_tracks_will_appear_here"
+                    : "try_a_different_search_query"
             )
         } else {
             Section {
@@ -365,13 +362,12 @@ struct OfflineDownloadsView: View {
         if records.isEmpty {
             emptySection(
                 title: searchText.isEmpty
-                    ? "Автокэш пуст"
-                    : "Ничего не найдено",
+                    ? "auto_cache_is_empty"
+                    : "no_results",
                 systemImage: "bolt.horizontal",
                 description: searchText.isEmpty
-                    ? "Прослушанные треки сохраняются сюда "
-                        + "временно и очищаются автоматически."
-                    : "Измените запрос поиска."
+                    ? "listened_tracks_saved_temporarily"
+                    : "try_a_different_search_query"
             )
         } else {
             Section {
@@ -389,12 +385,12 @@ struct OfflineDownloadsView: View {
         if active.isEmpty && done.isEmpty {
             emptySection(
                 title: searchText.isEmpty
-                    ? "Нет плейлистов"
-                    : "Ничего не найдено",
+                    ? "no_playlists"
+                    : "no_results",
                 systemImage: "rectangle.stack",
                 description: searchText.isEmpty
-                    ? "Загруженные плейлисты появятся здесь."
-                    : "Измените запрос поиска."
+                    ? "downloaded_playlists_will_appear_here"
+                    : "try_a_different_search_query"
             )
         } else {
             if !active.isEmpty {
@@ -404,7 +400,7 @@ struct OfflineDownloadsView: View {
                             .transition(.opacity)
                     }
                 } header: {
-                    Text(L10n.text("Активные загрузки"))
+                    Text(L10n.text("active_downloads"))
                 }
             }
             if !done.isEmpty {
@@ -414,7 +410,7 @@ struct OfflineDownloadsView: View {
                             .transition(.opacity)
                     }
                 } header: {
-                    Text(L10n.text("Скачанные плейлисты"))
+                    Text(L10n.text("downloaded_playlists"))
                 }
             }
         }
@@ -579,26 +575,26 @@ struct OfflineDownloadsView: View {
                     switch status {
                     case .partial(let count, let total):
                         Text(
-                            L10n.format("Скачано %d из %d", count, total)
+                            L10n.format("downloaded_d0_of_d1", count, total)
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     case .failed(let message):
                         Text(
                             message
-                                ?? L10n.text("Не удалось скачать плейлист")
+                                ?? L10n.text("couldn_t_download_the_playlist")
                         )
                         .font(.caption)
                         .foregroundStyle(.red)
                         .lineLimit(2)
                     case .cancelled:
-                        Text(L10n.text("Загрузка отменена"))
+                        Text(L10n.text("download_cancelled"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     default:
                         Text(
                             L10n.format(
-                                "%d из %d",
+                                "d0_of_d1_2",
                                 section.tracks.count,
                                 section.allTracks.count
                             )
@@ -611,7 +607,7 @@ struct OfflineDownloadsView: View {
                 if section.record.state == .partial
                     || section.record.state == .failed
                     || section.record.state == .cancelled {
-                    Button(L10n.text("Повторить")) {
+                    Button(L10n.text("action.retry")) {
                         retryDownload(section)
                     }
                     .font(.caption.weight(.semibold))
@@ -628,7 +624,7 @@ struct OfflineDownloadsView: View {
                 pendingPlaylistRemoval = section
                 showsDeletePlaylistConfirmation = true
             } label: {
-                Label("Удалить", systemImage: "trash")
+                Label(L10n.text("action.delete"), systemImage: "trash")
             }
         }
     }
@@ -650,11 +646,10 @@ struct OfflineDownloadsView: View {
                 if records.isEmpty {
                     Section {
                         EmptyStateView(
-                            title: "Нет доступных треков",
+                            title: "no_available_tracks",
                             systemImage: "music.note",
                             description:
-                                "В этом плейлисте пока нет файлов "
-                                    + "на устройстве."
+                                "playlist_has_no_local_files"
                         )
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
@@ -784,9 +779,9 @@ struct OfflineDownloadsView: View {
 
     private var navigationTitle: String {
         guard let selection else {
-            return L10n.text("Загрузки")
+            return L10n.text("downloads")
         }
-        return L10n.format("Выбрано: %d", selection.count)
+        return L10n.format("selected_d0", selection.count)
     }
 
     private func toggleSelection(_ track: Track) {
@@ -902,8 +897,8 @@ private struct DownloadedTrackRow: View {
                             Text("·")
                             Text(
                                 record.resolvedRetention == .manual
-                                    ? L10n.text("Скачано")
-                                    : L10n.text("Автокэш")
+                                    ? L10n.text("downloaded")
+                                    : L10n.text("auto_cache")
                             )
                         }
                         .font(.caption2)
@@ -930,22 +925,20 @@ private struct DownloadedTrackRow: View {
             if !isSelectionMode {
                 Menu {
                     Button(action: onPlay) {
-                        Label("Воспроизвести", systemImage: "play.fill")
+                        Label(L10n.text("play"), systemImage: "play.fill")
                     }
                     Button(action: onShare) {
-                        Label(
-                            "Поделиться аудиофайлом",
+                        Label(L10n.text("share_audio_file"),
                             systemImage: "square.and.arrow.up"
                         )
                     }
                     Button(action: onInfo) {
-                        Label(
-                            "Сведения о файле",
+                        Label(L10n.text("file_details"),
                             systemImage: "info.circle"
                         )
                     }
                     Button(role: .destructive, action: onDelete) {
-                        Label("Удалить загрузку", systemImage: "trash")
+                        Label(L10n.text("remove_download"), systemImage: "trash")
                     }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -957,7 +950,7 @@ private struct DownloadedTrackRow: View {
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             if !isSelectionMode {
                 Button(action: onShare) {
-                    Label("Поделиться", systemImage: "square.and.arrow.up")
+                    Label(L10n.text("share"), systemImage: "square.and.arrow.up")
                 }
                 .tint(.accentColor)
             }
@@ -965,7 +958,7 @@ private struct DownloadedTrackRow: View {
         .swipeActions(edge: .trailing) {
             if !isSelectionMode {
                 Button(role: .destructive, action: onDelete) {
-                    Label("Удалить", systemImage: "trash")
+                    Label(L10n.text("action.delete"), systemImage: "trash")
                 }
             }
         }
@@ -995,20 +988,20 @@ enum DownloadStorageText {
         let overheadBytes = max(0, usage.totalBytes - usage.audioBytes)
         return (
             subtitle: L10n.format(
-                "%@ из %@",
+                "n_0_of_1",
                 formatBytes(usage.audioBytes),
                 formatBytes(usage.limitBytes)
             ),
             manual: L10n.format(
-                "Мои загрузки: %@",
+                "my_downloads_0_2",
                 formatBytes(usage.manualBytes)
             ),
             cache: L10n.format(
-                "Автокэш: %@",
+                "automatic_cache_0",
                 formatBytes(usage.automaticBytes)
             ),
             overhead: L10n.format(
-                "Служебные данные: %@",
+                "service_data_0",
                 formatBytes(overheadBytes)
             )
         )
@@ -1057,7 +1050,7 @@ private struct DownloadStorageSummary: View {
             }
             .frame(height: 6)
 
-            Text(L10n.text("Доступны без интернета"))
+            Text(L10n.text("available_offline_3"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -1101,7 +1094,7 @@ private struct DownloadStorageSummary: View {
     }
 
     private var storageTitle: some View {
-        Text(L10n.text("Загрузки на устройстве"))
+        Text(L10n.text("downloads_on_this_device"))
             .font(.headline)
     }
 
@@ -1114,7 +1107,7 @@ private struct DownloadStorageSummary: View {
     private var clearCacheButton: some View {
         Button(action: onClearCache) {
             Label(
-                L10n.text("Очистить автокэш"),
+                L10n.text("clear_automatic_cache"),
                 systemImage: "broom"
             )
             .font(.caption.weight(.semibold))
@@ -1127,7 +1120,7 @@ private struct DownloadStorageSummary: View {
     private var deleteAllButton: some View {
         Button(role: .destructive, action: onDeleteAll) {
             Label(
-                L10n.text("Удалить всё"),
+                L10n.text("delete_all"),
                 systemImage: "trash"
             )
             .font(.caption.weight(.semibold))

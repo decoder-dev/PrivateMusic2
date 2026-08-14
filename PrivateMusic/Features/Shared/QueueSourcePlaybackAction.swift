@@ -17,9 +17,9 @@ enum QueueSourcePlaybackAction: Equatable, Sendable {
     var labelKey: String {
         switch self {
         case .start, .resume:
-            return "Воспроизвести"
+            return "play"
         case .pause:
-            return "Приостановить"
+            return "pause"
         }
     }
 

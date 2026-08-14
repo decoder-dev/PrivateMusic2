@@ -473,7 +473,7 @@ final class MixQueueRankerNativeParityTests: XCTestCase {
         ]
         let albums: [String?] = [
             "Album One", nil, "Album One", "Album Two", nil,
-            "Альбом", "Album Two", nil, "Альбом", "Album One"
+            "album", "Album Two", nil, "album", "Album One"
         ]
         return artists.indices.map { index in
             Track(

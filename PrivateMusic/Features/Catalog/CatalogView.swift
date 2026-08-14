@@ -43,9 +43,9 @@ struct CatalogView: View {
                             }
                             if !chartMixes.isEmpty {
                                 shelfMixesSection(
-                                    title: L10n.text("Чарты и хиты"),
+                                    title: L10n.text("charts_and_hits"),
                                     subtitle: L10n.text(
-                                        "Полки каталога VK"
+                                        "vk_catalog_shelves"
                                     ),
                                     mixes: chartMixes,
                                     metrics: metrics
@@ -53,9 +53,9 @@ struct CatalogView: View {
                             }
                             if !kidsMixes.isEmpty {
                                 shelfMixesSection(
-                                    title: L10n.text("Детям"),
+                                    title: L10n.text("for_kids"),
                                     subtitle: L10n.text(
-                                        "Сказки, колыбельные и семейные миксы"
+                                        "tales_lullabies_and_family_mixes"
                                     ),
                                     mixes: kidsMixes,
                                     metrics: metrics
@@ -86,7 +86,7 @@ struct CatalogView: View {
             }
         }
         .background(ThemeBackground())
-        .navigationTitle("Главная")
+        .navigationTitle(L10n.text("tab.home"))
         .navigationBarTitleDisplayMode(.inline)
         .dynamicTypeSize(...DynamicTypeSize.large)
         .trackShareSheet(track: $sharingTrack)
@@ -120,13 +120,13 @@ struct CatalogView: View {
             Task { await load(force: true) }
         }
         .alert(
-            "Не удалось открыть альбом",
+            "could_not_open_album",
             isPresented: Binding(
                 get: { actionErrorMessage != nil },
                 set: { if !$0 { actionErrorMessage = nil } }
             )
         ) {
-            Button("ОК", role: .cancel) {}
+            Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
             Text(actionErrorMessage ?? "")
         }
@@ -195,7 +195,7 @@ struct CatalogView: View {
                     .tracking(0.55)
                 Text(
                     sessionStore.profile?.firstName
-                        ?? L10n.text("Слушатель")
+                        ?? L10n.text("listener")
                 )
                     .font(.headline.weight(.bold))
                     .lineLimit(1)
@@ -213,18 +213,18 @@ struct CatalogView: View {
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
         return switch hour {
-        case 5..<12: L10n.text("Доброе утро")
-        case 12..<18: L10n.text("Добрый день")
-        case 18..<23: L10n.text("Добрый вечер")
-        default: L10n.text("Доброй ночи")
+        case 5..<12: L10n.text("good_morning")
+        case 12..<18: L10n.text("good_afternoon")
+        case 18..<23: L10n.text("good_evening")
+        default: L10n.text("good_night")
         }
     }
 
     private var vibeChipsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HomeSectionHeader(
-                L10n.text("Какой сейчас вайб"),
-                subtitle: L10n.text("Быстрый старт по настроению")
+                L10n.text("what_is_the_vibe_right_now"),
+                subtitle: L10n.text("a_quick_start_based_on_your_mood")
             )
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -253,8 +253,8 @@ struct CatalogView: View {
 
     private func mixesSection(metrics: HomeMetrics) -> some View {
         shelfMixesSection(
-            title: L10n.text("Миксы"),
-            subtitle: L10n.text("Селена, социальные и алгоритмические подборки"),
+            title: L10n.text("mixes"),
+            subtitle: L10n.text("selena.catalog_subtitle"),
             mixes: homeMixes,
             metrics: metrics
         )
@@ -292,7 +292,7 @@ struct CatalogView: View {
                                     )
                                 if let percent = mix.matchPercent {
                                     Text(
-                                        L10n.format("%d%%", percent)
+                                        L10n.format("percent_d0", percent)
                                     )
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
@@ -311,8 +311,7 @@ struct CatalogView: View {
                                     await environment.startCatalogMix(mix)
                                 }
                             } label: {
-                                Label(
-                                    "Слушать",
+                                Label(L10n.text("listen"),
                                     systemImage: "play.fill"
                                 )
                             }
@@ -351,8 +350,8 @@ struct CatalogView: View {
     private func recommendationsSection(metrics: HomeMetrics) -> some View {
         VStack(alignment: .leading, spacing: 11) {
             HomeSectionHeader(
-                "Для вас",
-                subtitle: "Рекомендации на основе прослушиваний VK"
+                "for_you",
+                subtitle: "recommendations_based_on_vk_data"
             )
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(
@@ -377,8 +376,8 @@ struct CatalogView: View {
     private func recentlyPlayedSection(metrics: HomeMetrics) -> some View {
         VStack(alignment: .leading, spacing: 11) {
             HomeSectionHeader(
-                "Недавно слушали",
-                subtitle: "История сохраняется только на этом устройстве"
+                "recently_played",
+                subtitle: "history_is_stored_only_on_this_device"
             )
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(
@@ -408,8 +407,8 @@ struct CatalogView: View {
     private var trackListSection: some View {
         VStack(alignment: .leading, spacing: 11) {
             HomeSectionHeader(
-                "Ещё для вас",
-                subtitle: "Продолжение рекомендаций"
+                "more_for_you",
+                subtitle: "more_recommendations"
             )
             VStack(spacing: 0) {
                 ForEach(
@@ -435,8 +434,8 @@ struct CatalogView: View {
             } label: {
                 HStack {
                     HomeSectionHeader(
-                        "Новые релизы",
-                        subtitle: "Свежие альбомы"
+                        "new_releases",
+                        subtitle: "fresh_albums"
                     )
                     Spacer()
                     Image(systemName: "chevron.right")
@@ -493,7 +492,7 @@ struct CatalogView: View {
                                 .accessibilityLabel(
                                     L10n.text(
                                         playbackAction.accessibilityLabelKey(
-                                            playKey: "Воспроизвести альбом"
+                                            playKey: "play_album"
                                         )
                                     )
                                 )
@@ -503,7 +502,7 @@ struct CatalogView: View {
                                     Text(
                                         Album.isUsableTitle(album.title)
                                             ? album.title
-                                            : L10n.text("Альбом")
+                                            : L10n.text("album")
                                     )
                                         .font(.footnote.weight(.semibold))
                                         .foregroundStyle(.primary)
@@ -534,9 +533,9 @@ struct CatalogView: View {
     private func playlistsSection(metrics: HomeMetrics) -> some View {
         VStack(alignment: .leading, spacing: 11) {
             HomeSectionHeader(
-                "Ваши плейлисты",
+                "your_playlists",
                 subtitle: L10n.format(
-                    "%@ в медиатеке",
+                    "n_0_in_your_library",
                     L10n.playlistCount(playlists.count)
                 )
             )
@@ -564,7 +563,7 @@ struct CatalogView: View {
                                     )
                                 Text(
                                     L10n.format(
-                                        "%@ • %@",
+                                        "n_0_1",
                                         L10n.trackCount(playlist.count),
                                         playlist.source.shortTitle
                                     )
@@ -638,7 +637,7 @@ struct CatalogView: View {
             }
         }
         .redacted(reason: .placeholder)
-        .accessibilityLabel(L10n.text("Загружаем рекомендации и миксы"))
+        .accessibilityLabel(L10n.text("loading_recommendations_and_mixes"))
     }
 
     private func homeTrackCard(
@@ -725,7 +724,7 @@ struct CatalogView: View {
             }
             .buttonStyle(PremiumPressStyle())
             .offset(x: artworkSize - 39, y: artworkSize - 39)
-            .accessibilityLabel(L10n.text("Воспроизвести трек"))
+            .accessibilityLabel(L10n.text("play_track"))
         }
         .frame(width: artworkSize, alignment: .topLeading)
     }
@@ -788,7 +787,7 @@ struct CatalogView: View {
         guard let title = track.albumTitle,
               Album.isUsableTitle(title) else {
             actionErrorMessage = L10n.text(
-                "VK не вернул данные альбома для этого трека."
+                "vk_did_not_return_album_data_for_this_track"
             )
             return
         }
@@ -831,7 +830,7 @@ struct CatalogView: View {
                 return
             } catch {
                 actionErrorMessage = L10n.format(
-                    "Не удалось открыть альбом: %@",
+                    "could_not_open_album_0",
                     error.localizedDescription
                 )
             }
@@ -893,7 +892,7 @@ struct CatalogView: View {
     }
 
     private func albumPlaybackTitle(_ album: Album) -> String {
-        Album.isUsableTitle(album.title) ? album.title : L10n.text("Альбом")
+        Album.isUsableTitle(album.title) ? album.title : L10n.text("album")
     }
 
     @ViewBuilder
@@ -905,13 +904,13 @@ struct CatalogView: View {
         Button {
             environment.player.playNext(track)
         } label: {
-            Label("Играть следующим", systemImage: "text.badge.plus")
+            Label(L10n.text("play_next"), systemImage: "text.badge.plus")
         }
         Button {
             environment.player.play(track, in: queue, source: source)
             environment.player.presentPlayer()
         } label: {
-            Label("Открыть плеер", systemImage: "play.circle")
+            Label(L10n.text("open_player"), systemImage: "play.circle")
         }
         TrackMixActions.menuButtons(
             for: track,
@@ -920,7 +919,7 @@ struct CatalogView: View {
         Button {
             sharingTrack = track
         } label: {
-            Label("Поделиться аудиофайлом", systemImage: "square.and.arrow.up")
+            Label(L10n.text("share_audio_file"), systemImage: "square.and.arrow.up")
         }
     }
 
@@ -928,16 +927,16 @@ struct CatalogView: View {
         VStack(spacing: 16) {
             Image(systemName: "waveform.slash")
                 .font(.system(size: 40, weight: .medium))
-            Text("Музыка пока недоступна")
+            Text(L10n.text("home.unavailable"))
                 .font(.title3.bold())
             Text(
                 errorMessage
-                    ?? L10n.text("VK не вернул рекомендации.")
+                    ?? L10n.text("vk_did_not_return_recommendations")
             )
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("Обновить") { Task { await load(force: true) } }
+            Button(L10n.text("action.refresh")) { Task { await load(force: true) } }
                 .buttonStyle(PrimaryButtonStyle())
         }
         .frame(maxWidth: .infinity)
