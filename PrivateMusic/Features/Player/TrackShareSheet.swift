@@ -25,7 +25,7 @@ actor TrackShareService {
 
     private let session: URLSession
     private let fileManager: FileManager
-    private let hlsExporter: HLSSegmentExporter
+    private var hlsExporter: HLSSegmentExporter?
 
     init(
         session: URLSession? = nil,
@@ -45,10 +45,16 @@ actor TrackShareService {
             self.session = URLSession(configuration: configuration)
         }
         self.fileManager = fileManager
-        self.hlsExporter = HLSSegmentExporter(
+    }
+
+    private func hlsExporterInstance() -> HLSSegmentExporter {
+        if let hlsExporter { return hlsExporter }
+        let created = HLSSegmentExporter(
             session: session,
             fileManager: fileManager
         )
+        hlsExporter = created
+        return created
     }
 
     /// Creates a real audio attachment: direct streams are downloaded and
@@ -449,15 +455,16 @@ actor TrackShareService {
         )
 
         do {
+            let exporter = hlsExporterInstance()
             if sourceURL.isFileURL {
-                try await hlsExporter.exportMovpkgToM4A(
+                try await exporter.exportMovpkgToM4A(
                     packageURL: sourceURL,
                     destination: destination,
                     fileSizeLimit: Self.maximumFileSize,
                     progress: progress
                 )
             } else {
-                try await hlsExporter.exportToM4A(
+                try await exporter.exportToM4A(
                     streamURL: sourceURL,
                     headers: requestHeaders(userAgent: userAgent),
                     destination: destination,
