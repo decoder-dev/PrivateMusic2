@@ -44,7 +44,7 @@ private enum MainTab: CaseIterable, Hashable, Identifiable {
 /// reserve exactly that much space above each tab's content on the
 /// custom (pre–iOS 26) dock path.
 private struct PlaybackDockHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    static var defaultValue: CGFloat { 0 }
 
     static func reduce(
         value: inout CGFloat,
