@@ -1309,6 +1309,18 @@ for required_setting in (
     if required_setting not in project_yml:
         fail(f"missing project setting: {required_setting}")
 
+watch_bundle_validator = (
+    ROOT / "scripts" / "validate_watch_bundle.py"
+).read_text(encoding="utf-8")
+if (
+    'watch_info.get("WKRunsIndependentlyOfCompanionApp") is not True'
+    not in watch_bundle_validator
+):
+    fail(
+        "Watch IPA validator must require "
+        "WKRunsIndependentlyOfCompanionApp = YES"
+    )
+
 open_braces = len(re.findall(r"\{", all_source))
 close_braces = len(re.findall(r"\}", all_source))
 if open_braces != close_braces:
