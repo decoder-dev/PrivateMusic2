@@ -52,7 +52,7 @@ enum MixRationaleBuilder {
                 ?? displayArtist(top, from: history.map(\.track))
                 ?? top
             lines.append(
-                L10n.format("Часто слушаете: %@", display)
+                L10n.format("you_often_listen_to_0", display)
             )
         }
 
@@ -62,7 +62,7 @@ enum MixRationaleBuilder {
                 ?? displayArtist(second, from: history.map(\.track))
                 ?? second
             lines.append(
-                L10n.format("Ещё из недавнего: %@", display)
+                L10n.format("also_from_recent_listening_0", display)
             )
         }
 
@@ -80,7 +80,7 @@ enum MixRationaleBuilder {
                 ?? displayArtist(top, from: recommendations)
                 ?? top
             lines.append(
-                L10n.format("Пересекается с рекомендациями: %@", display)
+                L10n.format("overlaps_recommendations_0", display)
             )
         }
 
@@ -104,7 +104,7 @@ enum MixRationaleBuilder {
                 }
             )
             if !albums.intersection(historyAlbums).isEmpty {
-                lines.append(L10n.text("Есть альбомы из недавних прослушиваний"))
+                lines.append(L10n.text("includes_albums_from_recent_listening"))
             }
         }
 
@@ -119,14 +119,14 @@ enum MixRationaleBuilder {
             if novelPercent >= 35 {
                 lines.append(
                     L10n.format(
-                        "Около %d%% артистов — новые для недавней истории",
+                        "about_d0_of_the_artists_are_new_to_your_recent_history",
                         novelPercent
                     )
                 )
             } else if mixArtists.count >= 4 {
                 lines.append(
                     L10n.format(
-                        "В потоке %d разных артистов",
+                        "d0_different_artists_in_the_stream",
                         mixArtists.count
                     )
                 )
@@ -136,12 +136,12 @@ enum MixRationaleBuilder {
         let hqCount = mixTracks.filter(\.isHQ).count
         if lines.count < limit, hqCount >= 3 {
             lines.append(
-                L10n.format("Есть HQ-записи: %d в подборке", hqCount)
+                L10n.format("hq_recordings_available_d0_in_the_selection", hqCount)
             )
         }
 
         if lines.isEmpty {
-            lines.append(L10n.text("Подобрано под ваш недавний вкус"))
+            lines.append(L10n.text("matched_to_your_recent_taste"))
         }
 
         return MixRationale(lines: Array(lines.prefix(limit)))

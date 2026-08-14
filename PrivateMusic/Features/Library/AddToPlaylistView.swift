@@ -15,13 +15,13 @@ struct AddToPlaylistView: View {
         NavigationStack {
             Group {
                 if isLoading {
-                    ProgressView("Загружаем плейлисты…")
+                    ProgressView(L10n.text("loading_playlists"))
                 } else if playlists.isEmpty {
                     EmptyStateView(
-                        title: "Нет своих плейлистов",
+                        title: "no_available_playlists",
                         systemImage: "rectangle.stack.badge.plus",
                         description: errorMessage
-                            ?? "Создайте плейлист в медиатеке."
+                            ?? "create_a_playlist_in_your_library"
                     )
                 } else {
                     List(playlists) { playlist in
@@ -59,23 +59,22 @@ struct AddToPlaylistView: View {
                 }
             }
             .background(ThemeBackground())
-            .navigationTitle("Добавить в плейлист")
+            .navigationTitle(L10n.text("add_to_playlist"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Закрыть") { dismiss() }
+                    Button(L10n.text("action.close")) { dismiss() }
                 }
             }
         }
         .task { await load() }
-        .alert(
-            "Не удалось добавить",
+        .alert(L10n.text("could_not_add"),
             isPresented: Binding(
                 get: { errorMessage != nil && !playlists.isEmpty },
                 set: { if !$0 { errorMessage = nil } }
             )
         ) {
-            Button("ОК", role: .cancel) {}
+            Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
         }

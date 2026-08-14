@@ -68,20 +68,20 @@ struct MiniPlayerView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            L10n.format("%@ — %@", track.title, track.artist)
+            L10n.format("n_0_1_2", track.title, track.artist)
         )
         .accessibilityValue(L10n.text(playbackAccessibilityValue))
-        .accessibilityHint(L10n.text("Открыть полноэкранный плеер"))
+        .accessibilityHint(L10n.text("open_full_screen_player"))
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction(named: L10n.text("Предыдущий трек")) {
+        .accessibilityAction(named: L10n.text("previous_track")) {
             Haptics.trackChange()
             player.previous()
         }
-        .accessibilityAction(named: L10n.text("Следующий трек")) {
+        .accessibilityAction(named: L10n.text("next_track")) {
             Haptics.trackChange()
             player.next()
         }
-        .accessibilityAction(named: L10n.text("Открыть плеер")) {
+        .accessibilityAction(named: L10n.text("open_player")) {
             Haptics.open()
             player.presentPlayer()
         }
@@ -149,7 +149,7 @@ struct MiniPlayerView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PremiumPressStyle())
-        .accessibilityLabel(L10n.text("Предыдущий трек"))
+        .accessibilityLabel(L10n.text("previous_track"))
     }
 
     @ViewBuilder
@@ -161,7 +161,7 @@ struct MiniPlayerView: View {
                     width: MiniPlayerLayoutMetrics.tapTarget,
                     height: MiniPlayerLayoutMetrics.tapTarget
                 )
-                .accessibilityLabel(L10n.text("Буферизация"))
+                .accessibilityLabel(L10n.text("buffering"))
         } else {
             Button {
                 Haptics.selection()
@@ -183,8 +183,8 @@ struct MiniPlayerView: View {
             .accessibilityLabel(
                 L10n.text(
                     player.isPlaying
-                        ? "Приостановить"
-                        : "Продолжить воспроизведение"
+                        ? "pause"
+                        : "resume_playback"
                 )
             )
         }
@@ -204,7 +204,7 @@ struct MiniPlayerView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PremiumPressStyle())
-        .accessibilityLabel(L10n.text("Следующий трек"))
+        .accessibilityLabel(L10n.text("next_track"))
     }
 
     // MARK: - Progress
@@ -290,12 +290,12 @@ struct MiniPlayerView: View {
 
     private var playbackAccessibilityValue: String {
         if player.isBuffering {
-            return "Буферизация"
+            return "buffering"
         }
         if player.isPlaying {
-            return "Воспроизводится"
+            return "playing"
         }
-        return "На паузе"
+        return "paused"
     }
 }
 

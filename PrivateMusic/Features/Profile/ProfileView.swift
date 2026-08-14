@@ -16,7 +16,7 @@ struct ProfileView: View {
                     NavigationLink {
                         SettingsView()
                     } label: {
-                        Label("Настройки", systemImage: "gearshape.fill")
+                        Label(L10n.text("tab.settings"), systemImage: "gearshape.fill")
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding()
                             .premiumCard(interactive: true)
@@ -27,7 +27,7 @@ struct ProfileView: View {
                     Button(role: .destructive) {
                         showingLogoutConfirmation = true
                     } label: {
-                        Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
+                        Label(L10n.text("sign_out"), systemImage: "rectangle.portrait.and.arrow.right")
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding()
                             .premiumCard(interactive: true)
@@ -69,23 +69,18 @@ struct ProfileView: View {
             }
         }
         .background(ThemeBackground())
-        .navigationTitle("Профиль")
-        .confirmationDialog(
-            "Выйти из Private Music?",
+        .navigationTitle(L10n.text("tab.profile"))
+        .confirmationDialog(L10n.text("sign_out_of_private_music"),
             isPresented: $showingLogoutConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Выйти", role: .destructive) {
+            Button(L10n.text("sign_out"), role: .destructive) {
                 sessionStore.logout()
             }
-            Button("Отмена", role: .cancel) {}
+            Button(L10n.text("action.cancel"), role: .cancel) {}
         } message: {
             Text(
-                L10n.text(
-                    "После выхода сохранённая сессия будет удалена с этого "
-                        + "устройства. Для подключения потребуется снова "
-                        + "войти в VK."
-                )
+                L10n.text("signing_out_removes_the_saved_session_from_this_device_you_will_need_to_")
             )
         }
     }
@@ -102,12 +97,12 @@ struct ProfileView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(
                     sessionStore.profile?.displayName
-                        ?? L10n.text("Слушатель")
+                        ?? L10n.text("listener")
                 )
                     .font(.title3.bold())
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Private Music")
+                Text(L10n.text("private_music"))
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -120,15 +115,15 @@ struct ProfileView: View {
     private var linksCard: some View {
         VStack(spacing: 0) {
             linkButton(
-                title: "Группа Private Music",
-                subtitle: "Новости и обновления",
+                title: "private_music_group",
+                subtitle: "news_and_updates",
                 icon: "paperplane.fill",
                 url: environment.configuration.telegramGroupURL
             )
             Divider().padding(.leading, 54)
             linkButton(
-                title: "VPN",
-                subtitle: "Открыть Telegram-бота",
+                title: "vpn",
+                subtitle: "open_telegram_bot",
                 icon: "lock.fill",
                 url: environment.configuration.telegramVPNURL
             )
