@@ -4,7 +4,7 @@ import UIKit
 /// Reports the global minY of a hero title so the nav bar can reveal
 /// its own title only after the hero title has scrolled away.
 struct HeroTitleMinYKey: PreferenceKey {
-    static var defaultValue: CGFloat = .greatestFiniteMagnitude
+    static var defaultValue: CGFloat { .greatestFiniteMagnitude }
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = min(value, nextValue())
