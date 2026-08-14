@@ -14,3 +14,5 @@
 "mix_queue" = "Микс";
 "queue" = "Очередь";
 "now_playing_row" = "Сейчас играет";
+"play_from_queue" = "Играть этот трек";
+"spoken_metadata_0_1" = "%@, %@";

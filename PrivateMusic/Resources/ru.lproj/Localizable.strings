@@ -722,3 +722,4 @@
 "track_singular" = "Трек";
 "percent_d0" = "%d%%";
 "spoken_metadata_0_1" = "%@, %@";
+"tab.switch_hint" = "Переключает выбранный раздел";

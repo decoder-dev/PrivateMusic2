@@ -63,6 +63,7 @@ REQUIRED_ACCESSIBILITY_KEYS = {
     "search.searching",
     "searching",
     "loading_more",
+    "tab.switch_hint",
 }
 
 
