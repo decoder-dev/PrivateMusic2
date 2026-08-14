@@ -934,6 +934,15 @@ enum StreamRecoveryDelayPolicy {
     }
 }
 
+private struct IsolatedNotification: @unchecked Sendable {
+    let raw: Notification
+}
+
+private struct IsolatedPlayerItem: @unchecked Sendable {
+    let item: AVPlayerItem?
+    let error: Error?
+}
+
 @MainActor
 @Observable
 final class AudioPlayer {
@@ -2591,9 +2600,13 @@ final class AudioPlayer {
             object: nil,
             queue: .main
         ) { [weak self] notification in
+            let finished = IsolatedPlayerItem(
+                item: notification.object as? AVPlayerItem,
+                error: nil
+            )
             Task { @MainActor in
                 guard let self,
-                      let finishedItem = notification.object as? AVPlayerItem,
+                      let finishedItem = finished.item,
                       finishedItem === self.player.currentItem else {
                     return
                 }
@@ -2605,12 +2618,15 @@ final class AudioPlayer {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            let error = notification.userInfo?[
-                AVPlayerItemFailedToPlayToEndTimeErrorKey
-            ] as? Error
+            let failed = IsolatedPlayerItem(
+                item: notification.object as? AVPlayerItem,
+                error: notification.userInfo?[
+                    AVPlayerItemFailedToPlayToEndTimeErrorKey
+                ] as? Error
+            )
             Task { @MainActor in
                 guard let self,
-                      let failedItem = notification.object as? AVPlayerItem,
+                      let failedItem = failed.item,
                       failedItem === self.player.currentItem else {
                     return
                 }
@@ -2621,7 +2637,7 @@ final class AudioPlayer {
                     return
                 }
                 self.lastFailedItemIdentifier = identifier
-                self.handleItemFailure(error)
+                self.handleItemFailure(failed.error)
             }
         })
         notificationObservers.append(center.addObserver(
@@ -2629,8 +2645,9 @@ final class AudioPlayer {
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] notification in
+            let boxed = IsolatedNotification(raw: notification)
             Task { @MainActor in
-                self?.handleInterruption(notification)
+                self?.handleInterruption(boxed.raw)
             }
         })
         notificationObservers.append(center.addObserver(
@@ -2638,8 +2655,9 @@ final class AudioPlayer {
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] notification in
+            let boxed = IsolatedNotification(raw: notification)
             Task { @MainActor in
-                self?.handleRouteChange(notification)
+                self?.handleRouteChange(boxed.raw)
             }
         })
         notificationObservers.append(center.addObserver(

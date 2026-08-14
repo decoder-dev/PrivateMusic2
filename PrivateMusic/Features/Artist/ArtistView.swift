@@ -440,7 +440,7 @@ struct ArtistView: View {
         _ operation: @escaping @MainActor () async throws -> Value
     ) async throws -> Value {
         try await withThrowingTaskGroup(of: Value.self) { group in
-            group.addTask { @MainActor in
+            group.addTask {
                 try await operation()
             }
             group.addTask {
