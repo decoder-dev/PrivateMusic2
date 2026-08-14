@@ -208,14 +208,15 @@ final class OfflineTrackStore {
         fileManager: FileManager = .default,
         rootURL: URL? = nil,
         downloadService: TrackShareService = TrackShareService(),
-        downloadCoordinator: DownloadCoordinator = .shared,
+        downloadCoordinator: DownloadCoordinator? = nil,
         artworkByteCountProvider: @escaping () -> Int64 = {
             PlaylistArtworkBytesBox.shared.current()
         }
     ) {
         self.fileManager = fileManager
         self.downloadService = downloadService
-        self.downloadCoordinator = downloadCoordinator
+        // Default arguments are nonisolated; `.shared` is MainActor-isolated.
+        self.downloadCoordinator = downloadCoordinator ?? .shared
         self.artworkByteCountProvider = artworkByteCountProvider
         if let rootURL {
             self.rootURL = rootURL
