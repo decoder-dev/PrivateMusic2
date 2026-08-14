@@ -5,7 +5,7 @@ enum PlaylistSource: String, Codable, Hashable, Sendable {
 
     var title: String {
         switch self {
-        case .vk: L10n.text("VK Музыка")
+        case .vk: L10n.text("vk_music")
         }
     }
 
@@ -139,7 +139,7 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
         // is what made one arrive on the shelf as nothing at all.
         title = (
             try? container.decode(String.self, forKey: .title)
-        ) ?? L10n.text("Плейлист")
+        ) ?? L10n.text("playlist")
         description = try container.decodeIfPresent(
             String.self,
             forKey: .description

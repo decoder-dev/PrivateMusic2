@@ -174,7 +174,7 @@ enum DownloadNotifications {
 
     static func notifyDownloadComplete(title: String) {
         let content = UNMutableNotificationContent()
-        content.title = L10n.text("Загрузка завершена")
+        content.title = L10n.text("download_complete")
         content.body = title
         content.sound = .default
         let request = UNNotificationRequest(
@@ -187,7 +187,7 @@ enum DownloadNotifications {
 
     static func notifyDownloadError(title: String) {
         let content = UNMutableNotificationContent()
-        content.title = L10n.text("Ошибка загрузки")
+        content.title = L10n.text("download_failed_2")
         content.body = title
         content.sound = .default
         let request = UNNotificationRequest(

@@ -13,24 +13,24 @@ enum APIError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidRequest:
-            return L10n.text("Не удалось создать запрос.")
+            return L10n.text("could_not_create_the_request")
         case .invalidResponse:
-            return L10n.text("Сервер вернул некорректный ответ.")
+            return L10n.text("the_server_returned_an_invalid_response")
         case .unauthorized:
-            return L10n.text("Сессия VK требует обновления.")
+            return L10n.text("the_vk_session_needs_to_be_refreshed")
         case .offline:
-            return L10n.text("Нет подключения к интернету.")
+            return L10n.text("no_internet_connection")
         case .timedOut:
             return L10n.text(
-                "Сервер не ответил вовремя. Попробуйте ещё раз."
+                "the_server_timed_out_try_again"
             )
         case let .server(_, message):
             return message
         case let .transport(message):
-            return L10n.format("Сетевая ошибка: %@", message)
+            return L10n.format("network_error_0", message)
         case let .decoding(message):
             return L10n.format(
-                "Не удалось обработать ответ: %@",
+                "could_not_process_the_response_0",
                 message
             )
         }
@@ -51,7 +51,7 @@ enum APIError: LocalizedError, Equatable {
         }
         return .server(
             code: statusCode,
-            message: L10n.format("Сервер вернул HTTP %d.", statusCode)
+            message: L10n.format("the_server_returned_http_d0", statusCode)
         )
     }
 }
