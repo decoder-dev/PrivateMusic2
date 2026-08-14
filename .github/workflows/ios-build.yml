@@ -129,26 +129,27 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.78-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.79-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.78-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.79-iphone-unsigned.ipa"
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.78"
+          test "$GITHUB_REF_NAME" = "v3.28.79"
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.78 (pre-release)
+          # Private Music 3.28.79 (pre-release)
 
-          Сетевое восстановление плеера стало быстрее и чище:
-          меньше лишних retry-запросов, быстрее возврат после offline,
-          аккуратный jitter и короче timeout обновления stream URL.
+          Треки, которые «не грузятся» и «не играют»: play больше не
+          тыкает в мёртвый AVPlayerItem, refresh не клинит после
+          shuffle, нет URL больше не маскируется под таймаут сети.
+          Share/офлайн demux (MPEG-TS, CMAF) и VK unmask ушли в C.
 
           ## Очередь из Медиатеки
           - У медиатеки свой потолок очереди (до 2000), отдельный от
@@ -171,6 +172,21 @@ jobs:
           - Декод обложек читает `thumbs` / grid / вложенные photo и
             нормализует HTTP CDN в HTTPS — часть альбомов после обновления
             VK больше не остаётся серой ноткой
+
+          ## Загрузка и старт трека
+          - Play / lock screen после неудачной загрузки заново берёт
+            stream URL, а не вызывает `play()` на `.failed` item
+          - Refresh стрима сверяется по id трека и всегда освобождает слот
+            (shuffle / play next больше не клинят последующие загрузки)
+          - Пустой или `audio_api_unavailable` URL — одна попытка getById,
+            затем skip/ошибка, а не 8–12 «таймаутов»
+          - После restore сохранённый https URL играет сразу; getById
+            блокирует только если играть нечем
+          - Offline stall больше не жрёт retry-бюджет; возврат сети
+            сбрасывает backoff и стартует короткое окно 0.1–0.5 с
+          - Пауза отменяет in-flight recovery, чтобы трек не стартовал
+            сам после снятия наушников
+          - Stream refresh не ждёт connectivity (fail-fast)
 
           ## Сетевое восстановление
           - Обновление stream URL больше не делает вложенные ретраи внутри
@@ -201,25 +217,32 @@ jobs:
           - Обрыв маршрута и media-services reset не открывают автоплей
             на динамик iPhone
 
+          ## Share / офлайн (C)
+          - MPEG-TS demux больше не режет Swift `Data` на каждый пакет
+            188 байт (share stitch / офлайн)
+          - Один ISO BMFF walker на CMAF и HLS (`ftyp`/`moov`/`moof`/`mdat`)
+          - VK URL unmask (alphabet / shuffle) на каждом getById
+          - Time observer складывает `loadedTimeRanges` в C, без Array
+
           ## Установка
           IPA не подписан.
           - **`…-iphone-unsigned.ipa`** — без Watch
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.78-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.78-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.79-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-3.28.79-unsigned.ipa"
           )
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
             gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.78" \
+              --title "Private Music 3.28.79" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.78" \
+              --title "Private Music 3.28.79" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -228,9 +251,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.78-unsigned
+          name: PrivateMusic-3.28.79-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.78-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.78-unsigned.ipa
+            artifacts/PrivateMusic-3.28.79-iphone-unsigned.ipa
+            artifacts/PrivateMusic-3.28.79-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
