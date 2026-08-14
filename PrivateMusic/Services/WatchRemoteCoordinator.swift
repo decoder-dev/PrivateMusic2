@@ -143,9 +143,8 @@ final class WatchRemoteCoordinator: NSObject {
         return context
     }
 
-    private func handle(_ message: [String: Any]) -> [String: Any] {
-        guard let envelope = WatchRemoteCommandEnvelope(message: message),
-              let player,
+    private func handle(_ envelope: WatchRemoteCommandEnvelope) -> [String: Any] {
+        guard let player,
               canControlPlayback() else {
             return reply(accepted: false)
         }
@@ -215,6 +214,10 @@ enum WatchStatePushCoalescingPolicy {
     }
 }
 
+private struct WatchRemoteReplyPayload: @unchecked Sendable {
+    let values: [String: Any]
+}
+
 extension WatchRemoteCoordinator: @preconcurrency WCSessionDelegate {
     nonisolated func session(
         _ session: WCSession,
@@ -244,11 +247,24 @@ extension WatchRemoteCoordinator: @preconcurrency WCSessionDelegate {
         didReceiveMessage message: [String: Any],
         replyHandler: @escaping ([String: Any]) -> Void
     ) {
-        Task { @MainActor [weak self] in
-            let reply = self?.handle(message) ?? [
-                WatchRemoteMessageKey.accepted: false
-            ]
-            replyHandler(reply)
+        let envelope = WatchRemoteCommandEnvelope(message: message)
+        Task { [weak self] in
+            let payload = await MainActor.run { [weak self] () -> WatchRemoteReplyPayload in
+                guard let self else {
+                    return WatchRemoteReplyPayload(
+                        values: [WatchRemoteMessageKey.accepted: false]
+                    )
+                }
+                guard let envelope else {
+                    return WatchRemoteReplyPayload(
+                        values: self.reply(accepted: false)
+                    )
+                }
+                return WatchRemoteReplyPayload(
+                    values: self.handle(envelope)
+                )
+            }
+            replyHandler(payload.values)
         }
     }
 
@@ -256,8 +272,13 @@ extension WatchRemoteCoordinator: @preconcurrency WCSessionDelegate {
         _ session: WCSession,
         didReceiveMessage message: [String: Any]
     ) {
-        Task { @MainActor [weak self] in
-            _ = self?.handle(message)
+        guard let envelope = WatchRemoteCommandEnvelope(message: message) else {
+            return
+        }
+        Task { [weak self] in
+            await MainActor.run { [weak self] in
+                _ = self?.handle(envelope)
+            }
         }
     }
 
