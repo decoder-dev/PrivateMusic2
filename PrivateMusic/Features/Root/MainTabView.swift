@@ -505,8 +505,10 @@ private struct PlaybackTabDock: View {
                     }
                 Text(tab.title)
                     .font(BubbleType.micro)
-                    // Weight, not size, carries selection.
-                    .fontWeight(selection == tab ? .semibold : .regular)
+                    // Weight, not size, carries selection. `.micro` is
+                    // already medium; regular here made the inactive row
+                    // read a step lighter than the rest of the chrome.
+                    .fontWeight(selection == tab ? .semibold : .medium)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
             }
