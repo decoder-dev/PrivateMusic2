@@ -489,32 +489,41 @@ private struct PlaybackTabDock: View {
         Button {
             selectTab(tab)
         } label: {
-            VStack(spacing: 3) {
+            VStack(spacing: BubbleSpacing.xs - 1) {
                 Image(systemName: tab.image)
-                    .font(.system(size: 20, weight: .semibold))
-                    .scaleEffect(selection == tab ? 1.04 : 0.94)
-                    .frame(width: 30, height: 26)
+                    .font(.system(size: 19, weight: .semibold))
+                    // Deliberately small: the selection surface carries the
+                    // state, so the row never reflows as tabs change.
+                    .scaleEffect(selection == tab ? 1.02 : 1)
+                    .frame(width: 34, height: 26)
                     .background {
                         if selection == tab {
-                            Circle()
-                                .fill(settings.theme.accent.opacity(0.16))
+                            // Chrome is a capsule, per BubbleShapeLanguage.
+                            BubbleShapeLanguage.chrome
+                                .fill(settings.theme.accent.opacity(0.18))
                         }
                     }
                 Text(tab.title)
-                    .font(.caption2.weight(.semibold))
+                    .font(BubbleType.micro)
+                    // Weight, not size, carries selection.
+                    .fontWeight(selection == tab ? .semibold : .regular)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
             }
+            .animation(
+                BubbleMotion.state(reduceMotion: reduceMotion),
+                value: selection
+            )
             .foregroundStyle(
                 selection == tab
                     ? selectedColor
                     : Color.primary.opacity(0.72)
             )
             .frame(maxWidth: .infinity)
-            .frame(height: 48)
+            .frame(height: BubbleMetrics.minimumTapTarget + 4)
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(BubblePressStyle())
         .accessibilityLabel(tab.title)
         .accessibilityAddTraits(selection == tab ? .isSelected : [])
     }
