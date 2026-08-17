@@ -167,6 +167,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The releases API answers 503 often enough that a single blip
+          # otherwise throws away a green archive and costs a full rebuild.
+          retry() {
+            attempt=1
+            until "$@"; do
+              if [ "$attempt" -ge 4 ]; then
+                echo "::error::$* failed after $attempt attempts"
+                return 1
+              fi
+              echo "Attempt $attempt failed, retrying in $((attempt * 10))s"
+              sleep "$((attempt * 10))"
+              attempt=$((attempt + 1))
+            done
+          }
           ASSETS=(
             "$PWD/artifacts/PrivateMusic-$VERSION-iphone-unsigned.ipa"
             "$PWD/artifacts/PrivateMusic-$VERSION-unsigned.ipa"
@@ -200,7 +214,7 @@ jobs:
             gh api -X DELETE \
               "repos/$GITHUB_REPOSITORY/git/refs/tags/$PREVIEW_TAG" \
               >/dev/null 2>&1 || true
-            gh release create "$PREVIEW_TAG" "${ASSETS[@]}" \
+            retry gh release create "$PREVIEW_TAG" "${ASSETS[@]}" \
               --target "$GITHUB_SHA" \
               --title "Сцена на Главной · превью ($VERSION)" \
               --notes-file "$PREVIEW_NOTES" \
@@ -242,15 +256,15 @@ jobs:
           sed -i '' "1s|.*|# Private Music $VERSION (pre-release)|" "$NOTES"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists — refreshing assets and notes"
-            gh release upload "$TAG" "${ASSETS[@]}" --clobber
-            gh release edit "$TAG" \
+            retry gh release upload "$TAG" "${ASSETS[@]}" --clobber
+            retry gh release edit "$TAG" \
               --title "Private Music $VERSION" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             echo "Creating release $TAG on $GITHUB_SHA"
-            gh release create "$TAG" "${ASSETS[@]}" \
+            retry gh release create "$TAG" "${ASSETS[@]}" \
               --target "$GITHUB_SHA" \
               --title "Private Music $VERSION" \
               --notes-file "$NOTES" \
