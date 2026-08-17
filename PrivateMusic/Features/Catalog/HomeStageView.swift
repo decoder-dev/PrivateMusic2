@@ -195,7 +195,7 @@ struct HomeStageView: View {
             in: .whitespacesAndNewlines
         )
         guard !artist.isEmpty else { return track.title }
-        return ArtistCreditDisplay.summarize(artist)
+        return ArtistCreditDisplay.readable(artist)
     }
 
     // MARK: - Artwork
