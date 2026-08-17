@@ -86,14 +86,51 @@ final class HomeStageContextTests: XCTestCase {
         )
     }
 
-    /// Prominence has to come from what a context is, not from where it
-    /// landed in a decorative cycle — re-ordering the data used to resize
-    /// the rail silently.
-    func testPriorityFallsOffDownTheRail() {
-        XCTAssertEqual(HomeStageContextBuilder.priority(forPosition: 0), .primary)
-        XCTAssertEqual(HomeStageContextBuilder.priority(forPosition: 1), .secondary)
-        XCTAssertEqual(HomeStageContextBuilder.priority(forPosition: 2), .secondary)
-        XCTAssertEqual(HomeStageContextBuilder.priority(forPosition: 5), .tertiary)
+    /// Prominence has to come from what a context is. The builder used to
+    /// call `priority(forPosition: contexts.count)`, which is exactly the
+    /// positional sizing the system forbids.
+    func testPriorityIsSemanticNotPositional() {
+        XCTAssertEqual(
+            BubblePriorityPolicy.priority(for: .station),
+            .primary
+        )
+        XCTAssertEqual(BubblePriorityPolicy.priority(for: .vibe), .secondary)
+        XCTAssertEqual(
+            BubblePriorityPolicy.priority(for: .artist, rank: 0),
+            .secondary
+        )
+        XCTAssertEqual(
+            BubblePriorityPolicy.priority(for: .artist, rank: 2),
+            .tertiary
+        )
+        XCTAssertEqual(BubblePriorityPolicy.priority(for: .mix), .tertiary)
+    }
+
+    /// The same context must keep its size wherever it lands in the rail.
+    func testPriorityDoesNotDependOnArrayPosition() {
+        let withMood = HomeStageContextBuilder.build(
+            mixes: [makeMix("m1", title: "В дорогу")],
+            recentArtists: [HomeStageArtist(name: "Owar1", seed: nil)],
+            selectedMood: .energetic,
+            stationTitle: "Селена"
+        )
+        let withoutMood = HomeStageContextBuilder.build(
+            mixes: [makeMix("m1", title: "В дорогу")],
+            recentArtists: [HomeStageArtist(name: "Owar1", seed: nil)],
+            selectedMood: .any,
+            stationTitle: "Селена"
+        )
+
+        // Dropping the mood shifts the artist one slot earlier; its size
+        // must not change with it.
+        XCTAssertEqual(
+            withMood.first { $0.kind == .artist }?.priority,
+            withoutMood.first { $0.kind == .artist }?.priority
+        )
+        XCTAssertEqual(
+            withMood.first { $0.kind == .mix }?.priority,
+            withoutMood.first { $0.kind == .mix }?.priority
+        )
     }
 
     /// A mix whose title repeats an artist bubble would render as two
@@ -182,11 +219,16 @@ final class HomeStageContextTests: XCTestCase {
     /// the same face, and the seed must stay the newest play.
     func testRecentArtistsDeduplicateAndKeepTheNewestSeed() {
         let newest = makeTrack(id: 1, title: "Не надо", artist: "Owar1")
-        let older = makeTrack(id: 2, title: "Другой", artist: "owar1")
         let artists = HomeStageContextBuilder.recentArtists(
             from: [
                 StubPlay(stageTrack: newest),
-                StubPlay(stageTrack: older),
+                StubPlay(
+                    stageTrack: makeTrack(
+                        id: 2,
+                        title: "Другой",
+                        artist: "owar1"
+                    )
+                ),
                 StubPlay(
                     stageTrack: makeTrack(
                         id: 3,
@@ -234,6 +276,13 @@ final class HomeStageContextTests: XCTestCase {
         XCTAssertTrue(
             context.accessibilityLabel.contains(
                 HomeStageContextKind.artist.kicker
+            )
+        )
+        // The noun alone leaves the listener guessing whether tapping
+        // opens a page or starts playing.
+        XCTAssertTrue(
+            context.accessibilityLabel.contains(
+                HomeStageContextKind.artist.actionHint
             )
         )
     }

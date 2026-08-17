@@ -161,6 +161,10 @@
 
 "appearance" = "Appearance";
 "text_size" = "Text Size";
+"home_stage.action.station" = "Play";
+"home_stage.action.vibe" = "Start the mix";
+"home_stage.action.artist" = "Start the station";
+"home_stage.action.mix" = "Start the mix";
 "artist_radio_0" = "%@ radio";
 "could_not_start_artist_0" = "Could not start %@";
 "home_stage.section" = "Home";
