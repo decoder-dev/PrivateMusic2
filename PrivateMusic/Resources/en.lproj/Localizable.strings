@@ -161,6 +161,16 @@
 
 "appearance" = "Appearance";
 "text_size" = "Text Size";
+"home_stage.section" = "Home";
+"home_stage.toggle" = "Now Playing Stage";
+"home_stage.footnote" = "Home opens on what is playing: the artist set large, the artwork, the controls and the context bubbles. The shelves — New Releases, Recently Played, Mixes — stay below, unchanged.";
+"home_stage.nothing_playing" = "Nothing playing";
+"home_stage.start_station" = "Play";
+"home_stage.clear_queue" = "Clear queue";
+"home_stage.kind.station" = "Station";
+"home_stage.kind.vibe" = "Vibe";
+"home_stage.kind.artist" = "Like this artist";
+"home_stage.kind.mix" = "Mix";
 "player_look" = "Player Look";
 "classic_player_look" = "Classic Player";
 "classic_player_look.footnote" = "Restores the iOS 18 look: a regular bottom bar with the mini player instead of the floating one, frosted panels and flat buttons instead of Liquid Glass. Applies to the player, the mini player, the bottom bar and the app's other panels.";

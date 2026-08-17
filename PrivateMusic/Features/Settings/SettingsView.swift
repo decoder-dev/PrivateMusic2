@@ -228,6 +228,18 @@ private struct AppearanceSettingsView: View {
                 }
             }
 
+            Section(L10n.text("home_stage.section")) {
+                Toggle(isOn: $settings.homeStageEnabled) {
+                    Label(
+                        L10n.text("home_stage.toggle"),
+                        systemImage: "sparkles.rectangle.stack"
+                    )
+                }
+                Text(L10n.text("home_stage.footnote"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Section(L10n.text("text_size")) {
                 Picker(
                     L10n.text("text_scale_picker"),
