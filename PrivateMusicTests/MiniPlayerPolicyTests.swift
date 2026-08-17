@@ -306,4 +306,37 @@ final class MiniPlayerAccessoryPolicyTests: XCTestCase {
             MiniPlayerAccessoryPolicy.showsBufferingIndicator(isBuffering: false)
         )
     }
+
+    /// The progress line used to run along the container's bottom edge,
+    /// where the border stroke and the corner curve both cross it — on the
+    /// legacy dock it read as a stray blue line overlapping the card.
+    func testProgressLineClearsTheContainerBorder() {
+        XCTAssertGreaterThanOrEqual(
+            MiniPlayerLayoutMetrics.progressSideInset,
+            MiniPlayerLayoutMetrics.cornerRadius,
+            "progress line must start past the rounded corner"
+        )
+        XCTAssertGreaterThan(
+            MiniPlayerLayoutMetrics.progressBottomInset,
+            0,
+            "progress line must not sit on the border stroke"
+        )
+    }
+
+    /// Insetting it is only acceptable if the dock does not grow: testers
+    /// already flagged the floating dock as sitting too high.
+    func testProgressInsetDoesNotRaiseTheDock() {
+        let contentHeight =
+            MiniPlayerLayoutMetrics.verticalPadding
+            + MiniPlayerLayoutMetrics.artworkSize
+            + MiniPlayerLayoutMetrics.progressTopSpacing
+            + MiniPlayerLayoutMetrics.progressHeight
+            + MiniPlayerLayoutMetrics.progressBottomInset
+
+        XCTAssertEqual(contentHeight, 63)
+        XCTAssertGreaterThanOrEqual(
+            contentHeight,
+            MiniPlayerLayoutMetrics.minHeight
+        )
+    }
 }
