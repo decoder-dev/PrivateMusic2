@@ -11,6 +11,14 @@ enum MiniPlayerLayoutMetrics {
     static let inlineArtworkCornerRadius: CGFloat = 5
     static let tapTarget: CGFloat = 44
     static let progressHeight: CGFloat = 2
+    /// The progress line used to sit flush on the container's bottom edge,
+    /// where both the border stroke and the 16 pt corner curve cross it: it
+    /// read as a stray blue line laid over the card instead of part of it.
+    /// The side inset clears the corners, and the top spacing pays for the
+    /// bottom one so the dock does not get any taller.
+    static let progressTopSpacing: CGFloat = 3
+    static let progressBottomInset: CGFloat = 4
+    static let progressSideInset: CGFloat = 18
     static let horizontalPadding: CGFloat = 12
     static let verticalPadding: CGFloat = 8
     static let inlineHorizontalPadding: CGFloat = 8

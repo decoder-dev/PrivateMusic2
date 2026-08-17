@@ -21,7 +21,10 @@ struct MiniPlayerView: View {
                 }
                 .padding(.horizontal, MiniPlayerLayoutMetrics.horizontalPadding)
                 .padding(.top, MiniPlayerLayoutMetrics.verticalPadding)
-                .padding(.bottom, MiniPlayerLayoutMetrics.verticalPadding - 1)
+                .padding(
+                    .bottom,
+                    MiniPlayerLayoutMetrics.progressTopSpacing
+                )
 
                 progressBar
             }
@@ -220,7 +223,8 @@ struct MiniPlayerView: View {
                 }
         }
         .frame(height: MiniPlayerLayoutMetrics.progressHeight)
-        .padding(.horizontal, MiniPlayerLayoutMetrics.horizontalPadding)
+        .padding(.horizontal, MiniPlayerLayoutMetrics.progressSideInset)
+        .padding(.bottom, MiniPlayerLayoutMetrics.progressBottomInset)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
