@@ -31,11 +31,6 @@ struct CatalogView: View {
                                 horizontalPadding: metrics.horizontalPadding
                             )
                             .id(MainTabScrollDestination.home)
-                            // Cancels the list inset so the atmosphere and
-                            // the bubbles reach both screen edges; the
-                            // stage re-applies it where it matters.
-                            .padding(.horizontal, -metrics.horizontalPadding)
-                            .padding(.top, -4)
                         } else {
                             welcomeHeader
                                 .id(MainTabScrollDestination.home)
@@ -312,26 +307,11 @@ struct CatalogView: View {
         }
     }
 
+    /// Resolution lives in `MixMoodLaunchPolicy` so the vibe chips here
+    /// and the mood bubble on the stage cannot drift into two different
+    /// answers for the same mood.
     private func playVibe(_ mood: MixMoodPreference) async {
-        let matches = homeCatalog.mixes.filter {
-            MixQueueFilter.shelfMatchesMood(
-                $0.sectionTitle ?? $0.title,
-                mood: mood
-            )
-                || MixQueueFilter.shelfMatchesMood($0.subtitle, mood: mood)
-                || MixSeedRadio.looksLikeVibeShelf($0.sectionTitle ?? $0.title)
-        }
-        if let mix = matches.first {
-            await environment.startCatalogMix(mix)
-            return
-        }
-        if let personal = homeCatalog.mixes.first(
-            where: { $0.id == MusicMix.common.id }
-        ) {
-            await environment.startCatalogMix(personal)
-            return
-        }
-        await environment.startMixFromMyMusic()
+        await environment.startMoodStation(mood, in: homeCatalog.mixes)
     }
 
     private func recommendationsSection(metrics: HomeMetrics) -> some View {
