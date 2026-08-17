@@ -16,7 +16,6 @@ struct CatalogView: View {
     @State private var sharingTrack: Track?
     @State private var selectedAlbum: Album?
     @State private var loadingAlbumTrackID: String?
-    @State private var loadingPlayAlbumID: String?
     @State private var albumLookupTask: Task<Void, Never>?
 
     var body: some View {
@@ -42,21 +41,13 @@ struct CatalogView: View {
                         if isLoading && contentIsEmpty {
                             catalogSkeleton(metrics: metrics)
                         } else {
-                            if !homeCatalog.newReleases.isEmpty {
-                                newReleasesSection(metrics: metrics)
-                            }
-                            vibeChipsSection
-                            if !homeMixes.isEmpty {
-                                mixesSection(metrics: metrics)
-                            }
+                            // One discovery section, full stop — station,
+                            // mood and the VK mix catalog already have a
+                            // home in the stage rail and the Mix tab.
+                            // Duplicating them here is what made Home read
+                            // as a second copy of the rest of the app.
                             if !recommendations.isEmpty {
                                 recommendationsSection(metrics: metrics)
-                                if !moreRecommendations.isEmpty {
-                                    trackListSection
-                                }
-                            }
-                            if !playlists.isEmpty {
-                                playlistsSection(metrics: metrics)
                             }
                             if contentIsEmpty { unavailableView }
                             if let errorMessage, !contentIsEmpty {
@@ -141,34 +132,16 @@ struct CatalogView: View {
     private var featuredRecommendations: [Track] {
         Array(recommendations.prefix(14))
     }
-    private var moreRecommendations: [Track] {
-        Array(recommendations.dropFirst(14).prefix(16))
-    }
-    private var playlists: [Playlist] { homeCatalog.playlists }
     private var isLoading: Bool { homeCatalog.isRefreshing }
     private var errorMessage: String? {
         actionErrorMessage ?? homeCatalog.errorMessage
     }
 
-    private var contentIsEmpty: Bool {
-        recommendations.isEmpty && playlists.isEmpty
-            && homeCatalog.newReleases.isEmpty
-            && homeCatalog.mixes.isEmpty
-    }
-
-    /// Home carries one mix shelf. The themed "charts" and "kids" shelves
-    /// used to sit here too, but every mix they showed is also in this
-    /// shelf and in the Mix tab, so the same card appeared two or three
-    /// times across one screen — and Home grew to ten stacked sections.
-    /// The Mix tab groups all of them (social, official shelves,
-    /// algorithmic) so nothing is lost by keeping Home to a single row.
-    private var homeMixes: [MusicMix] {
-        Array(
-            homeCatalog.mixes
-                .filter { $0.id != MusicMix.common.id }
-                .prefix(16)
-        )
-    }
+    /// Home's own discovery signal: the one section it still renders.
+    /// Mixes, new releases and playlists moved to the Mix and Library
+    /// tabs that already own them — their emptiness no longer belongs in
+    /// this check.
+    private var contentIsEmpty: Bool { recommendations.isEmpty }
 
     private var welcomeHeader: some View {
         HStack(spacing: 12) {
@@ -205,122 +178,9 @@ struct CatalogView: View {
         }
     }
 
-    private var vibeChipsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HomeSectionHeader(
-                L10n.text("what_is_the_vibe_right_now"),
-                subtitle: L10n.text("a_quick_start_based_on_your_mood")
-            )
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(MixMoodPreference.allCases.filter { $0 != .any }) {
-                        mood in
-                        Button {
-                            settings.mixMoodPreference = mood
-                            Task { await playVibe(mood) }
-                        } label: {
-                            Text(mood.title)
-                                .font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(
-                            settings.mixMoodPreference == mood
-                                ? settings.theme.accent
-                                : Color.secondary
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private func mixesSection(metrics: HomeMetrics) -> some View {
-        shelfMixesSection(
-            title: L10n.text("mixes"),
-            subtitle: L10n.text("selena.catalog_subtitle"),
-            mixes: homeMixes,
-            metrics: metrics
-        )
-    }
-
-    private func shelfMixesSection(
-        title: String,
-        subtitle: String,
-        mixes: [MusicMix],
-        metrics: HomeMetrics
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HomeSectionHeader(title, subtitle: subtitle)
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: metrics.cardSpacing) {
-                    ForEach(mixes) { mix in
-                        Button {
-                            Task {
-                                await environment.startCatalogMix(mix)
-                            }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                MixArtworkView(
-                                    mix: mix,
-                                    tracks: [],
-                                    size: metrics.trackWidth
-                                )
-                                Text(mix.title)
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(2)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .frame(
-                                        width: metrics.trackWidth,
-                                        alignment: .leading
-                                    )
-                                if let percent = mix.matchPercent {
-                                    Text(
-                                        L10n.format("percent_d0", percent)
-                                    )
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                } else if let curator = mix.curator?.displayName {
-                                    Text(curator)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                        }
-                        .buttonStyle(PremiumPressStyle())
-                        .contextMenu {
-                            Button {
-                                Task {
-                                    await environment.startCatalogMix(mix)
-                                }
-                            } label: {
-                                Label(L10n.text("listen"),
-                                    systemImage: "play.fill"
-                                )
-                            }
-                            if let curator = mix.curator, curator.isUsable {
-                                Text(curator.displayName)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// Resolution lives in `MixMoodLaunchPolicy` so the vibe chips here
-    /// and the mood bubble on the stage cannot drift into two different
-    /// answers for the same mood.
-    private func playVibe(_ mood: MixMoodPreference) async {
-        await environment.startMoodStation(mood, in: homeCatalog.mixes)
-    }
-
     private func recommendationsSection(metrics: HomeMetrics) -> some View {
         VStack(alignment: .leading, spacing: 11) {
-            HomeSectionHeader(
+            PremiumSectionHeader(
                 "for_you",
                 subtitle: "recommendations_based_on_vk_data"
             )
@@ -346,7 +206,7 @@ struct CatalogView: View {
 
     private func recentlyPlayedSection(metrics: HomeMetrics) -> some View {
         VStack(alignment: .leading, spacing: 11) {
-            HomeSectionHeader(
+            PremiumSectionHeader(
                 "recently_played",
                 subtitle: "history_is_stored_only_on_this_device"
             )
@@ -369,187 +229,6 @@ struct CatalogView: View {
                                 source: .history
                             )
                         }
-                    }
-                }
-            }
-        }
-    }
-
-    private var trackListSection: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HomeSectionHeader(
-                "more_for_you",
-                subtitle: "more_recommendations"
-            )
-            VStack(spacing: 0) {
-                ForEach(
-                    Array(moreRecommendations.enumerated()),
-                    id: \.element.id
-                ) { index, track in
-                    TrackRow(track: track, queue: recommendations)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                    if index < moreRecommendations.count - 1 {
-                        Divider().padding(.leading, 72)
-                    }
-                }
-            }
-            .premiumCard()
-        }
-    }
-
-    private func newReleasesSection(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            NavigationLink {
-                NewReleasesView(albums: homeCatalog.newReleases)
-            } label: {
-                HStack {
-                    HomeSectionHeader(
-                        "new_releases",
-                        subtitle: "fresh_albums"
-                    )
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .buttonStyle(.plain)
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(
-                    alignment: .top,
-                    spacing: metrics.cardSpacing
-                ) {
-                    ForEach(homeCatalog.newReleases.prefix(16)) { album in
-                        VStack(alignment: .leading, spacing: 6) {
-                            ZStack(alignment: .bottomTrailing) {
-                                Button { selectedAlbum = album } label: {
-                                    AsyncArtwork(
-                                        url: album.artworkURL,
-                                        size: metrics.newReleaseWidth
-                                    )
-                                }
-                                .buttonStyle(PremiumPressStyle())
-
-                                let playbackAction = playbackAction(for: album)
-                                Button {
-                                    performPlaybackAction(
-                                        playbackAction,
-                                        for: album
-                                    )
-                                } label: {
-                                    Group {
-                                        if loadingPlayAlbumID == album.id {
-                                            ProgressView()
-                                                .tint(.black)
-                                        } else {
-                                            Image(
-                                                systemName:
-                                                    playbackAction.systemImage
-                                            )
-                                        }
-                                    }
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(.black)
-                                    .frame(width: 30, height: 30)
-                                    .background(.white, in: Circle())
-                                }
-                                .buttonStyle(PremiumPressStyle())
-                                .padding(6)
-                                .disabled(
-                                    loadingPlayAlbumID != nil
-                                        && loadingPlayAlbumID != album.id
-                                )
-                                .accessibilityLabel(
-                                    L10n.text(
-                                        playbackAction.accessibilityLabelKey(
-                                            playKey: "play_album"
-                                        )
-                                    )
-                                )
-                            }
-                            Button { selectedAlbum = album } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(
-                                        Album.isUsableTitle(album.title)
-                                            ? album.title
-                                            : L10n.text("album")
-                                    )
-                                        .font(.footnote.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(2)
-                                        .multilineTextAlignment(.leading)
-                                        .fixedSize(
-                                            horizontal: false,
-                                            vertical: true
-                                        )
-                                    Text(album.artistText)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .frame(
-                            width: metrics.newReleaseWidth,
-                            alignment: .topLeading
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private func playlistsSection(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HomeSectionHeader(
-                "your_playlists",
-                subtitle: L10n.format(
-                    "n_0_in_your_library",
-                    L10n.playlistCount(playlists.count)
-                )
-            )
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(
-                    alignment: .top,
-                    spacing: metrics.cardSpacing
-                ) {
-                    ForEach(playlists.prefix(16)) { playlist in
-                        NavigationLink {
-                            PlaylistDetailView(playlist: playlist)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                PlaylistArtworkView(
-                                    playlist: playlist,
-                                    size: metrics.playlistWidth
-                                )
-                                Text(playlist.title)
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(2)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .frame(
-                                        height: 34,
-                                        alignment: .topLeading
-                                    )
-                                Text(
-                                    L10n.format(
-                                        "n_0_1",
-                                        L10n.trackCount(playlist.count),
-                                        playlist.source.shortTitle
-                                    )
-                                )
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            .frame(
-                                width: metrics.playlistWidth,
-                                alignment: .topLeading
-                            )
-                        }
-                        .buttonStyle(PremiumPressStyle())
                     }
                 }
             }
@@ -809,64 +488,6 @@ struct CatalogView: View {
         }
     }
 
-    private func playAlbum(_ album: Album) {
-        guard sessionStore.accessToken != nil else { return }
-        loadingPlayAlbumID = album.id
-        Task {
-            defer { loadingPlayAlbumID = nil }
-            do {
-                let page = try await environment.withAuthorizedToken { token in
-                    try await environment.musicService.albumTracks(
-                        album,
-                        accessToken: token,
-                        offset: 0,
-                        count: 50
-                    )
-                }
-                guard let first = page.items.first else { return }
-                environment.player.play(
-                    first,
-                    in: page.items,
-                    source: albumQueueSource(for: album)
-                )
-            } catch is CancellationError {
-                return
-            } catch {
-                actionErrorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func playbackAction(for album: Album) -> QueueSourcePlaybackAction {
-        QueueSourcePlaybackAction.resolve(
-            target: albumQueueSource(for: album),
-            isPlaying: highlight.isPlaying,
-            queueSource: highlight.queueSource
-        )
-    }
-
-    private func performPlaybackAction(
-        _ action: QueueSourcePlaybackAction,
-        for album: Album
-    ) {
-        switch action {
-        case .start:
-            playAlbum(album)
-        case .resume:
-            environment.player.resume()
-        case .pause:
-            environment.player.pause()
-        }
-    }
-
-    private func albumQueueSource(for album: Album) -> QueueSource {
-        .album(title: albumPlaybackTitle(album))
-    }
-
-    private func albumPlaybackTitle(_ album: Album) -> String {
-        Album.isUsableTitle(album.title) ? album.title : L10n.text("album")
-    }
-
     @ViewBuilder
     private func trackContextMenu(
         _ track: Track,
@@ -968,52 +589,6 @@ struct HomeMetrics {
         )
     }
 
-    var playlistWidth: CGFloat {
-        AdaptiveLayout.shelfCardWidth(
-            for: containerWidth,
-            compactMax: 140,
-            regularMax: AdaptiveLayout.regularCardWidthCap,
-            fraction: 0.35,
-            compactMin: 112
-        )
-    }
-
-    var newReleaseWidth: CGFloat {
-        AdaptiveLayout.shelfCardWidth(
-            for: containerWidth,
-            compactMax: 140,
-            regularMax: AdaptiveLayout.regularCardWidthCap,
-            fraction: 0.35,
-            compactMin: 112
-        )
-    }
-}
-
-private struct HomeSectionHeader: View {
-    let title: String
-    let subtitle: String?
-
-    init(_ title: String, subtitle: String? = nil) {
-        self.title = title
-        self.subtitle = subtitle
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(L10n.text(title))
-                .font(.headline.weight(.bold))
-                .lineLimit(1)
-            if let subtitle {
-                Text(L10n.text(subtitle))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-    }
 }
 
 private struct HomeTrackArtwork: View {
