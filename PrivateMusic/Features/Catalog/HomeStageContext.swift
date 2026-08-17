@@ -1,5 +1,29 @@
 import SwiftUI
 
+/// VK sometimes hands back a multi-artist credit as one comma-joined
+/// string ("SKWLKR, Lastfragm, ..."). One line of hero text can carry one
+/// credit — the lead artist survives, with the rest folded into a short
+/// count instead of the raw string running on past where it reads.
+enum ArtistCreditDisplay {
+    static func summarize(_ raw: String) -> String {
+        let parts = raw
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        // No comma at all (or nothing usable behind it) — pass the
+        // original through rather than an empty string.
+        guard let first = parts.first else { return raw }
+        // A trailing or doubled comma from upstream data must not turn one
+        // real artist into "Name +1"; it still deserves the trimmed name.
+        guard parts.count > 1 else { return first }
+        return L10n.format(
+            "home_stage.artist_plus_d0",
+            first,
+            parts.count - 1
+        )
+    }
+}
+
 /// An artist the listener has actually played, carried with enough to
 /// start them for real. The name alone is a display string; hanging
 /// playback off it is how the artist bubble ended up launching a generic
@@ -80,11 +104,15 @@ struct HomeStageContext: Identifiable, Hashable, Sendable {
         return String(first).uppercased()
     }
 
+    /// A bubble is one circle with one short label — a raw multi-artist
+    /// credit read as broken data.
+    var displayName: String { ArtistCreditDisplay.summarize(name) }
+
     /// One sentence carrying the noun *and* what tapping does. VoiceOver
     /// saying "Исполнитель, Owar1" leaves the listener guessing whether it
     /// opens a page or starts playing.
     var accessibilityLabel: String {
-        "\(kind.kicker) \(name). \(kind.actionHint)"
+        "\(kind.kicker) \(displayName). \(kind.actionHint)"
     }
 }
 
