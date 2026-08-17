@@ -127,7 +127,7 @@ struct PremiumSectionHeader: View {
             // overlap seen across the mix screens, whose long localized
             // section names wrap on narrow phones and at larger text sizes.
             Text(L10n.text(title))
-                .font(.title2.weight(.bold))
+                .font(.title2.weight(.semibold))
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             if let subtitle {

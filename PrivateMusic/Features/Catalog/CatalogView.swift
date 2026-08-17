@@ -23,7 +23,7 @@ struct CatalogView: View {
             GeometryReader { proxy in
                 let metrics = HomeMetrics(containerWidth: proxy.size.width)
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 22) {
+                    LazyVStack(alignment: .leading, spacing: BubbleSpacing.xxl) {
                         if settings.homeStageEnabled {
                             HomeStageView(
                                 width: proxy.size.width,
@@ -58,7 +58,7 @@ struct CatalogView: View {
                         }
                     }
                     .padding(.horizontal, metrics.horizontalPadding)
-                    .padding(.top, 4)
+                    .padding(.top, BubbleSpacing.xs)
                 }
                 // The vertical indicator sat right over the stage's
                 // artwork and controls at the top of the scroll — the one
@@ -189,7 +189,7 @@ struct CatalogView: View {
     }
 
     private func recommendationsSection(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: BubbleSpacing.m) {
             PremiumSectionHeader(
                 "for_you",
                 subtitle: "recommendations_based_on_vk_data"
@@ -215,7 +215,7 @@ struct CatalogView: View {
     }
 
     private func recentlyPlayedSection(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: BubbleSpacing.m) {
             PremiumSectionHeader(
                 "recently_played",
                 subtitle: "history_is_stored_only_on_this_device"
@@ -246,9 +246,9 @@ struct CatalogView: View {
     }
 
     private func catalogSkeleton(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: BubbleSpacing.xxl) {
             ForEach(0..<2, id: \.self) { section in
-                VStack(alignment: .leading, spacing: 11) {
+                VStack(alignment: .leading, spacing: BubbleSpacing.m) {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(.primary.opacity(0.11))
                         .frame(
