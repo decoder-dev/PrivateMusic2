@@ -58,6 +58,12 @@ enum BubbleType {
     /// Status chips: readable at a glance without competing with the
     /// headline above it.
     static let chip = Font.system(size: 13, weight: .medium)
+    /// The small label above a hero bubble's name (e.g. "Вайб", "Микс").
+    static let bubbleKicker = Font.system(size: 11, weight: .medium)
+    /// A hero bubble's own name. Sized to survive a two-line wrap inside a
+    /// ~94–128pt circle without either truncating or filling it edge to
+    /// edge.
+    static let bubbleTitle = Font.system(size: 15, weight: .semibold)
 }
 
 /// Motion is short, damped and optional. Nothing in Bubble UI floats on
