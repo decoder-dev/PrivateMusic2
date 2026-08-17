@@ -93,7 +93,6 @@ struct MixesHubView: View {
                     }
                     .padding(.horizontal, metrics.horizontalPadding)
                     .padding(.top, 8)
-                    .padding(.bottom, 120)
                 }
             }
             .onChange(of: scrollCoordinator.request) { _, request in
