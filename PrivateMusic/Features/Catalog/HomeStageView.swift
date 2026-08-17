@@ -17,10 +17,10 @@ struct HomeStageView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var isInLibrary = false
-    /// The track a library mutation is in flight for. An id rather than a
-    /// bool: a response for the previous track must never repaint the
-    /// heart that now belongs to a newer one.
-    @State private var pendingLibraryTrackID: String?
+    /// Tracks with a library mutation in flight. A set rather than one id:
+    /// liking track A and skipping to B must leave B's heart tappable, and
+    /// A's reply must not repaint it.
+    @State private var pendingLibraryTrackIDs: Set<String> = []
     @State private var startingContextID: String?
     /// One launch at a time. A second tap cancels the first so two radio
     /// requests cannot finish out of order and fight over the queue.
@@ -260,7 +260,7 @@ struct HomeStageView: View {
                         systemImage: isInLibrary ? "heart.fill" : "heart",
                         size: height,
                         isActive: isInLibrary,
-                        isEnabled: pendingLibraryTrackID == nil,
+                        isEnabled: !isMutatingCurrentTrack,
                         accessibilityLabel: L10n.text(
                             isInLibrary
                                 ? "track_is_in_your_library"
@@ -372,8 +372,11 @@ struct HomeStageView: View {
             }
             .padding(.horizontal, BubbleSpacing.m)
             .frame(width: size, height: size)
-            .background(fill.color, in: Circle())
-            .overlay { Circle().stroke(.white.opacity(0.10), lineWidth: 0.7) }
+            .bubbleSurface(
+                Circle(),
+                fill: .solid(fill),
+                elevation: .resting
+            )
             .overlay {
                 if startingContextID == context.id {
                     ZStack {
@@ -388,11 +391,6 @@ struct HomeStageView: View {
         .frame(
             minWidth: BubbleMetrics.minimumTapTarget,
             minHeight: BubbleMetrics.minimumTapTarget
-        )
-        .shadow(
-            color: .black.opacity(settings.theme == .dark ? 0.26 : 0.12),
-            radius: 10,
-            y: 4
         )
         // One element, one sentence — not image, then kicker, then name.
         .accessibilityElement(children: .ignore)
@@ -483,6 +481,12 @@ struct HomeStageView: View {
 
     // MARK: - Library
 
+    /// Only the current track's own in-flight mutation disables its heart.
+    private var isMutatingCurrentTrack: Bool {
+        guard let id = player.currentTrack?.id else { return false }
+        return pendingLibraryTrackIDs.contains(id)
+    }
+
     private func syncLibraryState() {
         guard let track = player.currentTrack else {
             isInLibrary = false
@@ -497,16 +501,16 @@ struct HomeStageView: View {
     /// playing.
     private func toggleLibrary() {
         guard let track = player.currentTrack,
-              pendingLibraryTrackID == nil,
-              sessionStore.accessToken != nil else {
+              sessionStore.accessToken != nil,
+              !pendingLibraryTrackIDs.contains(track.id) else {
             return
         }
         let trackID = track.id
         let removing = isInLibrary
-        pendingLibraryTrackID = trackID
+        pendingLibraryTrackIDs.insert(trackID)
         isInLibrary = !removing
         Task { @MainActor in
-            defer { pendingLibraryTrackID = nil }
+            defer { pendingLibraryTrackIDs.remove(trackID) }
             do {
                 if removing {
                     let stored = libraryStore.storedTrack(for: track) ?? track
