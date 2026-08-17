@@ -5,6 +5,22 @@ import SwiftUI
 /// credit — the lead artist survives, with the rest folded into a short
 /// count instead of the raw string running on past where it reads.
 enum ArtistCreditDisplay {
+    /// The Hero needs the artist's real name in full — never the bubble's
+    /// "+N" shorthand. VK's raw multi-artist credit is comma-joined; this
+    /// reads like a byline ("SKWLKR & Lastfragment") instead of a
+    /// database field. Used only for the Hero headline; bubbles keep the
+    /// compact `summarize(_:)` policy below.
+    static func readable(_ raw: String) -> String {
+        let parts = raw
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard let first = parts.first else { return raw }
+        guard parts.count > 1 else { return first }
+        let allButLast = parts.dropLast().joined(separator: ", ")
+        return "\(allButLast) & \(parts.last!)"
+    }
+
     static func summarize(_ raw: String) -> String {
         let parts = raw
             .split(separator: ",")
