@@ -18,22 +18,38 @@ enum MixMoodLaunchPolicy {
         in mixes: [MusicMix]
     ) -> MixMoodLaunch {
         guard mood != .any else { return fallback(in: mixes) }
-        if let match = mixes.first(where: { matches($0, mood: mood) }) {
-            return .mix(match)
+        // Named match first. Folding "looks like a vibe shelf" into the
+        // same condition made every vibe shelf answer every mood, so
+        // «Спокойно» picked «Энергичный драйв» purely because it came
+        // first in the catalog — the bug this whole policy exists to kill.
+        if let named = mixes.first(where: { matchesMarkers($0, mood: mood) }) {
+            return .mix(named)
+        }
+        // A generic vibe shelf still beats the ordinary station when
+        // nothing names this mood, but it can never outrank a real match.
+        if let vibe = mixes.first(where: isVibeShelf) {
+            return .mix(vibe)
         }
         return fallback(in: mixes)
     }
 
-    /// A shelf counts for a mood when its own title, the catalog section it
-    /// came from, or its subtitle carries one of the mood's markers — the
-    /// same three places Home's vibe chips looked at.
-    static func matches(_ mix: MusicMix, mood: MixMoodPreference) -> Bool {
+    /// A shelf names a mood when its own title, the catalog section it came
+    /// from, or its subtitle carries one of that mood's markers — the same
+    /// three places Home's vibe chips looked at.
+    static func matchesMarkers(
+        _ mix: MusicMix,
+        mood: MixMoodPreference
+    ) -> Bool {
         guard mood != .any else { return true }
         let shelfTitle = mix.sectionTitle ?? mix.title
         return MixQueueFilter.shelfMatchesMood(shelfTitle, mood: mood)
             || MixQueueFilter.shelfMatchesMood(mix.subtitle, mood: mood)
             || MixQueueFilter.shelfMatchesMood(mix.title, mood: mood)
-            || MixSeedRadio.looksLikeVibeShelf(shelfTitle)
+    }
+
+    /// Reads as a mood shelf without naming one in particular.
+    static func isVibeShelf(_ mix: MusicMix) -> Bool {
+        MixSeedRadio.looksLikeVibeShelf(mix.sectionTitle ?? mix.title)
     }
 
     private static func fallback(in mixes: [MusicMix]) -> MixMoodLaunch {
