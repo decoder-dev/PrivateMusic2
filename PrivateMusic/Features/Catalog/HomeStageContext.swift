@@ -39,6 +39,16 @@ enum HomeStageContextKind: String, Hashable, Sendable {
         }
     }
 
+    /// What tapping this does, in the listener's words.
+    var actionHint: String {
+        switch self {
+        case .station: L10n.text("home_stage.action.station")
+        case .vibe: L10n.text("home_stage.action.vibe")
+        case .artist: L10n.text("home_stage.action.artist")
+        case .mix: L10n.text("home_stage.action.mix")
+        }
+    }
+
     var symbol: String {
         switch self {
         case .station: "sparkles"
@@ -70,11 +80,11 @@ struct HomeStageContext: Identifiable, Hashable, Sendable {
         return String(first).uppercased()
     }
 
-    /// One sentence rather than three separate elements, per §33: VoiceOver
-    /// should say "Исполнитель Owar1, запустить" and not "image, Owar1,
-    /// исполнитель".
+    /// One sentence carrying the noun *and* what tapping does. VoiceOver
+    /// saying "Исполнитель, Owar1" leaves the listener guessing whether it
+    /// opens a page or starts playing.
     var accessibilityLabel: String {
-        "\(kind.kicker), \(name)"
+        "\(kind.kicker) \(name). \(kind.actionHint)"
     }
 }
 
@@ -96,6 +106,7 @@ enum HomeStageContextBuilder {
             id: String,
             kind: HomeStageContextKind,
             name: String,
+            rank: Int = 0,
             avatarURL: URL? = nil,
             mixID: String? = nil,
             mood: MixMoodPreference? = nil,
@@ -109,7 +120,10 @@ enum HomeStageContextBuilder {
                     id: id,
                     kind: kind,
                     name: trimmed,
-                    priority: priority(forPosition: contexts.count),
+                    priority: BubblePriorityPolicy.priority(
+                        for: kind,
+                        rank: rank
+                    ),
                     avatarURL: avatarURL,
                     mixID: mixID,
                     mood: mood,
@@ -133,11 +147,12 @@ enum HomeStageContextBuilder {
             )
         }
 
-        for artist in recentArtists {
+        for (rank, artist) in recentArtists.enumerated() {
             append(
                 id: "artist-\(artist.name.lowercased())",
                 kind: .artist,
                 name: artist.name,
+                rank: rank,
                 artist: artist
             )
         }
@@ -155,16 +170,6 @@ enum HomeStageContextBuilder {
         return Array(contexts.prefix(limit))
     }
 
-    /// Prominence falls off down the rail: the first context is the one
-    /// the app is recommending hardest. This is semantic — it tracks the
-    /// order the rules above produced, not a decorative cycle.
-    static func priority(forPosition position: Int) -> BubblePriority {
-        switch position {
-        case 0: .primary
-        case 1, 2: .secondary
-        default: .tertiary
-        }
-    }
 
     /// The artists behind the most recent plays, newest first, without
     /// repeats — an evening spent looping one album should not fill the
@@ -219,5 +224,30 @@ struct HomeStagePresentation: Equatable {
             chipIsProminent: hasCurrentTrack,
             showsRail: true
         )
+    }
+}
+
+/// Prominence, decided by what a context *is*. The previous rule read
+/// `priority(forPosition: contexts.count)`, which is exactly the
+/// positional sizing the system is supposed to forbid: re-ordering the
+/// data resized the rail and told the listener nothing.
+enum BubblePriorityPolicy {
+    static func priority(
+        for kind: HomeStageContextKind,
+        rank: Int = 0
+    ) -> BubblePriority {
+        switch kind {
+        case .station:
+            // The one context that always works, so it always leads.
+            return .primary
+        case .vibe:
+            return .secondary
+        case .artist:
+            // The most recently played artist earns the larger circle;
+            // the rest sit with the mixes.
+            return rank == 0 ? .secondary : .tertiary
+        case .mix:
+            return .tertiary
+        }
     }
 }
