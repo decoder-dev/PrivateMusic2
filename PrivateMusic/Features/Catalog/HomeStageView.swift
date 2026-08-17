@@ -1,8 +1,11 @@
 import SwiftUI
 
-/// The Home hero: what is playing, big, with the ways back into listening
-/// underneath it. Everything below it on Home stays exactly as it was —
-/// this sits on top of the existing shelves rather than replacing them.
+/// The Home hero. A compact block at the top of the page — what is
+/// playing, one clear action, and the contexts you can jump into — with
+/// the shelves already starting underneath inside the first viewport.
+///
+/// Deliberately not a second player: the full player owns large artwork
+/// and the complete transport, this owns orientation.
 struct HomeStageView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SessionStore.self) private var sessionStore
@@ -11,51 +14,68 @@ struct HomeStageView: View {
     @Environment(MusicLibraryStore.self) private var libraryStore
     @Environment(ListeningHistoryStore.self) private var history
     @Environment(HomeCatalogStore.self) private var homeCatalog
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var isInLibrary = false
-    @State private var isUpdatingLibrary = false
+    /// The track a library mutation is in flight for. An id rather than a
+    /// bool: a response for the previous track must never repaint the
+    /// heart that now belongs to a newer one.
+    @State private var pendingLibraryTrackID: String?
     @State private var startingContextID: String?
+    /// One launch at a time. A second tap cancels the first so two radio
+    /// requests cannot finish out of order and fight over the queue.
+    @State private var launchTask: Task<Void, Never>?
 
     let width: CGFloat
-    /// Home insets its shelves; the stage spans the full width so the
-    /// atmosphere and the bubbles can run off both edges, and re-applies
-    /// the inset only to the pieces that must not touch them.
+    /// Home's grid inset. The stage keeps its content on that grid and
+    /// lets only the decorative layers cross it.
     let horizontalPadding: CGFloat
+
+    private var presentation: HomeStagePresentation {
+        HomeStagePresentation.resolve(
+            hasCurrentTrack: player.currentTrack != nil
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             contextChip
-                .padding(.bottom, HomeStageViewPadding.belowChip)
+                .frame(height: HomeStageMetrics.chipHeight)
+                .padding(.bottom, HomeStageMetrics.belowChip)
 
             headline
-                .padding(.horizontal, horizontalPadding)
-                .padding(.bottom, HomeStageViewPadding.belowHeadline)
+                .padding(.bottom, HomeStageMetrics.belowHeadline)
 
             artwork
-                .padding(.bottom, HomeStageViewPadding.belowArtwork)
+                .padding(.bottom, HomeStageMetrics.belowArtwork)
 
-            transport
-                .padding(.horizontal, horizontalPadding)
-                .padding(.bottom, HomeStageViewPadding.belowTransport)
+            controls
+                .padding(.bottom, HomeStageMetrics.belowTransport)
 
             bubbleRail
         }
         .frame(maxWidth: .infinity)
         .background(alignment: .top) { atmosphere }
-        .task(id: player.currentTrack?.id) { updateLibraryState() }
-        .onChange(of: libraryStore.signatures) { _ in updateLibraryState() }
+        .animation(
+            BubbleMotion.state(reduceMotion: reduceMotion),
+            value: presentation
+        )
+        .task(id: player.currentTrack?.id) { syncLibraryState() }
+        .onChange(of: libraryStore.signatures) { _ in syncLibraryState() }
+        .onDisappear { launchTask?.cancel() }
     }
 
     // MARK: - Atmosphere
 
-    /// The same treatment the player uses for its own background: the
-    /// artwork itself, scaled up and blurred past recognition. Collapsed
-    /// into one layer by `drawingGroup(opaque:)` and rebuilt only when the
-    /// track changes — Home is on screen constantly, so this must not
-    /// animate. See `PlayerView.artworkBackground`.
+    /// The blurred-artwork treatment the player already uses, bounded to
+    /// the hero and masked to nothing at its base so there is no seam
+    /// where the shelves begin.
+    ///
+    /// Keyed on the artwork URL rather than the track, and never animated:
+    /// Home is on screen constantly, and redecoding here on every playback
+    /// tick is exactly what put this app on the heat path once already.
     private var atmosphere: some View {
         ZStack {
-            settings.theme.colors.last ?? Color.black
             if let artworkURL = player.currentTrack?.artworkURL {
                 CachedRemoteImage(
                     url: artworkURL,
@@ -64,46 +84,41 @@ struct HomeStageView: View {
                     image
                         .resizable()
                         .scaledToFill()
-                        .scaleEffect(1.4)
                         .blur(
                             radius: PlayerArtworkBackgroundPolicy.blurRadius
                         )
-                        .saturation(1.18)
-                        .opacity(settings.theme == .light ? 0.3 : 0.92)
+                        .saturation(1.15)
+                        // Light mode needs the artwork well behind the text;
+                        // dark mode would otherwise collapse into a slab.
+                        .opacity(settings.theme == .light ? 0.26 : 0.78)
                 } placeholder: {
                     Color.clear
                 }
-                .id(player.currentTrack?.id)
+                .id(artworkURL)
             }
+        }
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: HomeStageMetrics.atmosphereHeight(for: width)
+        )
+        .clipped()
+        // Fades to nothing, not to a colour, so it dissolves into whatever
+        // ThemeBackground is painting underneath instead of ending on a
+        // rectangle.
+        .mask {
             LinearGradient(
                 stops: [
-                    .init(color: .clear, location: 0),
-                    .init(
-                        color: (settings.theme.colors.first ?? .black)
-                            .opacity(0.55),
-                        location: HomeStageMetrics.atmosphereFadeStart
-                    ),
-                    .init(
-                        color: settings.theme.colors.first ?? .black,
-                        location: 1
-                    )
+                    .init(color: .black, location: 0),
+                    .init(color: .black.opacity(0.8), location: 0.5),
+                    .init(color: .clear, location: 1)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
         }
-        .frame(height: atmosphereHeight)
-        .clipped()
-        .drawingGroup(opaque: true)
+        .padding(.horizontal, -horizontalPadding)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-    }
-
-    private var atmosphereHeight: CGFloat {
-        HomeStageMetrics.artworkSize(for: width)
-            + HomeStageMetrics.controlHeight(for: width)
-            + HomeStageMetrics.artistFontSize(for: width) * 2
-            + 150
     }
 
     // MARK: - Chip
@@ -111,34 +126,26 @@ struct HomeStageView: View {
     @ViewBuilder
     private var contextChip: some View {
         if player.currentTrack != nil {
-            HStack(spacing: 8) {
-                Text(player.queueContextTitle)
-                    .font(.footnote.weight(.bold))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            BubbleChip(title: player.queueContextTitle) {
                 Button {
                     Haptics.selection()
                     player.stop()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .black))
-                        .frame(width: 20, height: 20)
-                        .background(.primary.opacity(0.85), in: Circle())
-                        .foregroundStyle(settings.theme.colors.first ?? .black)
+                        .font(.system(size: 9, weight: .black))
+                        .frame(width: 22, height: 22)
+                        .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(BubblePressStyle())
                 .accessibilityLabel(L10n.text("home_stage.clear_queue"))
             }
-            .padding(.leading, 14)
-            .padding(.trailing, 6)
-            .padding(.vertical, 6)
-            .adaptiveGlass(in: Capsule(style: .continuous))
         } else {
-            Text(L10n.text("home_stage.nothing_playing"))
-                .font(.footnote.weight(.bold))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .adaptiveGlass(in: Capsule(style: .continuous))
+            // Quieter when idle: the call to action below is the thing to
+            // look at, not the status.
+            BubbleChip(
+                title: L10n.text("home_stage.nothing_playing"),
+                isProminent: false
+            )
         }
     }
 
@@ -146,15 +153,10 @@ struct HomeStageView: View {
 
     private var headline: some View {
         Text(headlineText)
-            .font(
-                .system(
-                    size: HomeStageMetrics.artistFontSize(for: width),
-                    weight: .heavy
-                )
-            )
-            .tracking(-1)
+            .font(BubbleType.hero(HomeStageMetrics.headlineSize(for: width)))
+            .tracking(-0.8)
             .lineLimit(2)
-            .minimumScaleFactor(0.6)
+            .minimumScaleFactor(0.62)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity)
@@ -163,7 +165,7 @@ struct HomeStageView: View {
 
     private var headlineText: String {
         guard let track = player.currentTrack else {
-            return L10n.text("selena_station")
+            return L10n.text("selena.name")
         }
         let artist = track.artist.trimmingCharacters(
             in: .whitespacesAndNewlines
@@ -173,10 +175,9 @@ struct HomeStageView: View {
 
     // MARK: - Artwork
 
-    @ViewBuilder
     private var artwork: some View {
         let size = HomeStageMetrics.artworkSize(for: width)
-        Group {
+        return Group {
             if let track = player.currentTrack {
                 CachedRemoteImage(
                     url: track.artworkURL,
@@ -184,117 +185,115 @@ struct HomeStageView: View {
                 ) { image in
                     image.resizable().scaledToFill()
                 } placeholder: {
-                    artworkPlaceholder
+                    stationArtwork(size: size)
                 }
             } else {
-                artworkPlaceholder
+                stationArtwork(size: size)
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.36), radius: 18, y: 8)
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: BubbleRadius.artwork(for: size),
+                style: .continuous
+            )
+        )
+        .shadow(
+            color: .black.opacity(settings.theme == .dark ? 0.34 : 0.16),
+            radius: 16,
+            y: 8
+        )
         .accessibilityHidden(true)
     }
 
-    private var artworkPlaceholder: some View {
-        ZStack {
-            Rectangle().fill(.ultraThinMaterial)
+    /// Idle gets a generated station bubble rather than a grey rectangle —
+    /// compact, but something to look at.
+    private func stationArtwork(size: CGFloat) -> some View {
+        let tint = BubblePalette.surface(.station, tint: nil).color
+        return ZStack {
+            LinearGradient(
+                colors: [tint, tint.opacity(0.55)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
             Image(systemName: "sparkles")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .font(.system(size: size * 0.28, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
         }
     }
 
-    // MARK: - Transport
+    // MARK: - Controls
 
-    private var transport: some View {
+    /// Playing: transport, title, like. Idle: exactly one call to action.
+    /// The idle screen used to carry a play button, a big pill and a
+    /// disabled heart — three controls for a single possible action.
+    @ViewBuilder
+    private var controls: some View {
         let height = HomeStageMetrics.controlHeight(for: width)
-        return HStack(spacing: 8) {
-            Button {
-                Haptics.selection()
-                if player.currentTrack == nil {
-                    startStation()
-                } else {
+        if presentation.showsCallToAction {
+            BubbleCallToAction(
+                title: L10n.text("home_stage.start_station"),
+                height: height,
+                isBusy: startingContextID != nil
+            ) {
+                start(stationContext)
+            }
+        } else {
+            HStack(spacing: BubbleSpacing.s) {
+                BubbleIconButton(
+                    systemImage: player.isPlaying
+                        ? "pause.fill"
+                        : "play.fill",
+                    size: height,
+                    accessibilityLabel: L10n.text(
+                        player.isPlaying ? "pause" : "resume_playback"
+                    )
+                ) {
+                    Haptics.selection()
                     player.playPause()
                 }
-            } label: {
-                Image(
-                    systemName: player.isPlaying ? "pause.fill" : "play.fill"
-                )
-                .font(.system(size: 17, weight: .bold))
-                .frame(width: height, height: height)
-            }
-            .buttonStyle(.plain)
-            .adaptiveGlass(in: Circle(), interactive: true)
-            .accessibilityLabel(
-                L10n.text(player.isPlaying ? "pause" : "resume_playback")
-            )
 
-            Button {
-                if player.currentTrack == nil {
-                    Haptics.selection()
-                    startStation()
-                } else {
-                    Haptics.open()
-                    player.presentPlayer()
+                nowPlayingTitle(height: height)
+
+                if presentation.showsHeart {
+                    BubbleIconButton(
+                        systemImage: isInLibrary ? "heart.fill" : "heart",
+                        size: height,
+                        isActive: isInLibrary,
+                        isEnabled: pendingLibraryTrackID == nil,
+                        accessibilityLabel: L10n.text(
+                            isInLibrary
+                                ? "track_is_in_your_library"
+                                : "track_is_not_in_your_library"
+                        )
+                    ) {
+                        toggleLibrary()
+                    }
                 }
-            } label: {
-                Text(transportTitle)
-                    .font(.subheadline.weight(.bold))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: height)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .adaptiveGlass(
-                in: Capsule(style: .continuous),
-                interactive: true
-            )
-            .accessibilityHint(
-                L10n.text(
-                    player.currentTrack == nil
-                        ? "home_stage.start_station"
-                        : "open_full_screen_player"
-                )
-            )
-
-            likeButton(height: height)
         }
     }
 
-    private var transportTitle: String {
-        guard let track = player.currentTrack else {
-            return L10n.text("home_stage.start_station")
-        }
-        return track.title
-    }
-
-    @ViewBuilder
-    private func likeButton(height: CGFloat) -> some View {
+    private func nowPlayingTitle(height: CGFloat) -> some View {
         Button {
-            guard let track = player.currentTrack else { return }
-            toggleLibrary(track)
+            Haptics.open()
+            player.presentPlayer()
         } label: {
-            Image(systemName: isInLibrary ? "heart.fill" : "heart")
-                .font(.system(size: 17, weight: .semibold))
-                .frame(width: height, height: height)
+            Text(player.currentTrack?.title ?? "")
+                .font(BubbleType.cardTitle)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity)
+                .frame(height: height)
+                .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
-        .adaptiveGlass(in: Circle(), interactive: true)
-        .disabled(player.currentTrack == nil || isUpdatingLibrary)
-        .opacity(player.currentTrack == nil ? 0.45 : 1)
-        .accessibilityLabel(
-            L10n.text(
-                isInLibrary
-                    ? "track_is_in_your_library"
-                    : "track_is_not_in_your_library"
-            )
-        )
+        .buttonStyle(BubblePressStyle())
+        .adaptiveGlass(in: Capsule(style: .continuous), interactive: true)
+        .accessibilityLabel(player.currentTrack?.title ?? "")
+        .accessibilityHint(L10n.text("open_full_screen_player"))
     }
 
-    // MARK: - Bubbles
+    // MARK: - Context rail
 
     private var contexts: [HomeStageContext] {
         HomeStageContextBuilder.build(
@@ -307,59 +306,102 @@ struct HomeStageView: View {
         )
     }
 
-    private var bubbleRail: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .bottom, spacing: 8) {
-                ForEach(Array(contexts.enumerated()), id: \.element.id) {
-                    index, context in
-                    bubble(context, index: index)
-                }
-            }
-            .padding(.horizontal, 4)
-            .padding(.top, HomeStageMetrics.avatarOverhang(for: width))
-        }
-        // The row is taller than this frame on purpose. ScrollView clips
-        // to its bounds, so the bottom of every bubble is cut by the same
-        // line while the avatars stay inside the top padding above.
-        .frame(height: HomeStageMetrics.railHeight(for: width))
+    private var stationContext: HomeStageContext {
+        contexts.first { $0.kind == .station }
+            ?? HomeStageContext(
+                id: "station",
+                kind: .station,
+                name: L10n.text("selena.name"),
+                priority: .primary,
+                avatarURL: nil,
+                mixID: nil,
+                mood: nil,
+                artist: nil
+            )
     }
 
-    private func bubble(_ context: HomeStageContext, index: Int) -> some View {
-        let size = HomeStageMetrics.bubbleSize(for: width, index: index)
-        let avatar = HomeStageMetrics.avatarSize(for: width)
+    /// Circles are shown whole. The rail used to shrink its own frame to
+    /// fake bubbles rising off the bottom edge, which on a device simply
+    /// read as clipping. Running past the screen edges horizontally is the
+    /// decorative part; `contentMargins` keeps the first bubble on Home's
+    /// grid and lets the last one scroll fully clear.
+    private var bubbleRail: some View {
+        ScrollView(.horizontal) {
+            HStack(alignment: .center, spacing: BubbleSpacing.s) {
+                ForEach(contexts) { context in
+                    bubble(context)
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+        .contentMargins(.leading, horizontalPadding, for: .scrollContent)
+        .contentMargins(
+            .trailing,
+            horizontalPadding + BubbleMetrics.railTrailingInset(for: width),
+            for: .scrollContent
+        )
+        .frame(height: HomeStageMetrics.railHeight(for: width))
+        .padding(.horizontal, -horizontalPadding)
+    }
+
+    private func bubble(_ context: HomeStageContext) -> some View {
+        let size = BubbleMetrics.hero(for: width, priority: context.priority)
+        let glyphSize = BubbleMetrics.heroArtwork(in: size)
+        // Artwork-derived tints come from the shared cache once one has
+        // been sampled; the role palette is the guaranteed fallback, so the
+        // rail never loses its colour legend.
+        let fill = BubblePalette.surface(
+            context.kind.role,
+            tint: BubbleTintCache.shared.cached(for: context.avatarURL)
+        )
         return Button {
             start(context)
         } label: {
-            VStack(spacing: 4) {
-                bubbleAvatar(context, size: avatar)
-                    .padding(.top, -avatar / 2)
+            VStack(spacing: BubbleSpacing.xs) {
+                bubbleGlyph(context, size: glyphSize)
                 Text(context.kind.kicker)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.72))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.74))
                     .lineLimit(1)
                 Text(context.name)
-                    .font(.system(size: 13, weight: .heavy))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 12)
+            .padding(.horizontal, BubbleSpacing.m)
             .frame(width: size, height: size)
-            .background(context.kind.tint, in: Circle())
+            .background(fill.color, in: Circle())
+            .overlay { Circle().stroke(.white.opacity(0.10), lineWidth: 0.7) }
             .overlay {
                 if startingContextID == context.id {
-                    ProgressView().tint(.white)
+                    ZStack {
+                        Circle().fill(.black.opacity(0.28))
+                        ProgressView().tint(.white)
+                    }
                 }
             }
+            .contentShape(Circle())
         }
-        .buttonStyle(PremiumPressStyle())
-        .accessibilityLabel("\(context.kind.kicker), \(context.name)")
+        .buttonStyle(BubblePressStyle())
+        .frame(
+            minWidth: BubbleMetrics.minimumTapTarget,
+            minHeight: BubbleMetrics.minimumTapTarget
+        )
+        .shadow(
+            color: .black.opacity(settings.theme == .dark ? 0.26 : 0.12),
+            radius: 10,
+            y: 4
+        )
+        // One element, one sentence — not image, then kicker, then name.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(context.accessibilityLabel)
+        .accessibilityAddTraits(.isButton)
     }
 
-    private func bubbleAvatar(
+    @ViewBuilder
+    private func bubbleGlyph(
         _ context: HomeStageContext,
         size: CGFloat
     ) -> some View {
@@ -369,70 +411,79 @@ struct HomeStageView: View {
                     image in
                     image.resizable().scaledToFill()
                 } placeholder: {
-                    monogram(context)
+                    glyphFallback(context, size: size)
                 }
             } else {
-                monogram(context)
+                glyphFallback(context, size: size)
             }
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay { Circle().stroke(.white.opacity(0.22), lineWidth: 1) }
-        .shadow(color: .black.opacity(0.32), radius: 5, y: 2)
-        .accessibilityHidden(true)
+        .overlay { Circle().stroke(.white.opacity(0.18), lineWidth: 1) }
     }
 
-    private func monogram(_ context: HomeStageContext) -> some View {
+    private func glyphFallback(
+        _ context: HomeStageContext,
+        size: CGFloat
+    ) -> some View {
         ZStack {
-            Circle().fill(.black.opacity(0.42))
-            Text(context.monogram)
-                .font(.system(size: 15, weight: .heavy))
-                .foregroundStyle(.white.opacity(0.86))
+            Circle().fill(.black.opacity(0.26))
+            Image(systemName: context.kind.symbol)
+                .font(.system(size: size * 0.42, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Launching
 
+    /// Every bubble launches through here, and every launch cancels the
+    /// one before it. Tapping an artist and then a mood must leave the
+    /// mood playing, whichever network call happens to finish last.
     private func start(_ context: HomeStageContext) {
-        guard startingContextID == nil else { return }
         Haptics.selection()
+        launchTask?.cancel()
         if let mood = context.mood {
             settings.mixMoodPreference = mood
         }
         startingContextID = context.id
-        Task {
-            defer { startingContextID = nil }
-            if let mixID = context.mixID,
-               let mix = homeCatalog.mixes.first(where: { $0.id == mixID }) {
-                await environment.startCatalogMix(mix)
-            } else if context.kind == .artist {
-                await environment.startMixFromMyMusic()
-            } else {
-                await startPersonalStation()
+        launchTask = Task { @MainActor in
+            defer {
+                if startingContextID == context.id {
+                    startingContextID = nil
+                }
+            }
+            switch context.kind {
+            case .mix:
+                if let mixID = context.mixID,
+                   let mix = homeCatalog.mixes.first(
+                       where: { $0.id == mixID }
+                   ) {
+                    await environment.startCatalogMix(mix)
+                } else {
+                    await environment.startPersonalStation(
+                        in: homeCatalog.mixes
+                    )
+                }
+            case .vibe:
+                await environment.startMoodStation(
+                    context.mood ?? settings.mixMoodPreference,
+                    in: homeCatalog.mixes
+                )
+            case .artist:
+                guard let artist = context.artist else { return }
+                await environment.startMixFromArtist(
+                    named: artist.name,
+                    seed: artist.seed
+                )
+            case .station:
+                await environment.startPersonalStation(in: homeCatalog.mixes)
             }
         }
     }
 
-    private func startStation() {
-        guard startingContextID == nil else { return }
-        startingContextID = "station"
-        Task {
-            defer { startingContextID = nil }
-            await startPersonalStation()
-        }
-    }
+    // MARK: - Library
 
-    private func startPersonalStation() async {
-        if let personal = homeCatalog.mixes.first(
-            where: { $0.id == MusicMix.common.id }
-        ) {
-            await environment.startCatalogMix(personal)
-        } else {
-            await environment.startMixFromMyMusic()
-        }
-    }
-
-    private func updateLibraryState() {
+    private func syncLibraryState() {
         guard let track = player.currentTrack else {
             isInLibrary = false
             return
@@ -441,15 +492,21 @@ struct HomeStageView: View {
             || track.ownerID == sessionStore.session?.userID
     }
 
-    private func toggleLibrary(_ track: Track) {
-        guard !isUpdatingLibrary,
+    /// Optimistic, and tied to the track it started on. A slow response
+    /// for the previous track must not repaint the heart of the one now
+    /// playing.
+    private func toggleLibrary() {
+        guard let track = player.currentTrack,
+              pendingLibraryTrackID == nil,
               sessionStore.accessToken != nil else {
             return
         }
+        let trackID = track.id
         let removing = isInLibrary
-        isUpdatingLibrary = true
-        Task {
-            defer { isUpdatingLibrary = false }
+        pendingLibraryTrackID = trackID
+        isInLibrary = !removing
+        Task { @MainActor in
+            defer { pendingLibraryTrackID = nil }
             do {
                 if removing {
                     let stored = libraryStore.storedTrack(for: track) ?? track
@@ -473,12 +530,16 @@ struct HomeStageView: View {
                     libraryStore.markAdded(source: track, stored: added)
                     MusicLibraryEvents.postAdded(added)
                 }
-                updateLibraryState()
                 Haptics.selection()
+                guard player.currentTrack?.id == trackID else { return }
+                syncLibraryState()
             } catch is CancellationError {
-                return
+                guard player.currentTrack?.id == trackID else { return }
+                isInLibrary = removing
             } catch {
-                player.errorMessage = L10n.format(
+                guard player.currentTrack?.id == trackID else { return }
+                isInLibrary = removing
+                environment.mixActionError = L10n.format(
                     removing
                         ? "could_not_remove_the_track_0"
                         : "could_not_add_the_track_0",

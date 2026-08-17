@@ -161,6 +161,8 @@
 
 "appearance" = "Appearance";
 "text_size" = "Text Size";
+"artist_radio_0" = "%@ radio";
+"could_not_start_artist_0" = "Could not start %@";
 "home_stage.section" = "Home";
 "home_stage.toggle" = "Now Playing Stage";
 "home_stage.footnote" = "Home opens on what is playing: the artist set large, the artwork, the controls and the context bubbles. The shelves — New Releases, Recently Played, Mixes — stay below, unchanged.";
