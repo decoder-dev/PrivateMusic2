@@ -25,8 +25,21 @@ struct CatalogView: View {
                 let metrics = HomeMetrics(containerWidth: proxy.size.width)
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
-                        welcomeHeader
+                        if settings.homeStageEnabled {
+                            HomeStageView(
+                                width: proxy.size.width,
+                                horizontalPadding: metrics.horizontalPadding
+                            )
                             .id(MainTabScrollDestination.home)
+                            // Cancels the list inset so the atmosphere and
+                            // the bubbles reach both screen edges; the
+                            // stage re-applies it where it matters.
+                            .padding(.horizontal, -metrics.horizontalPadding)
+                            .padding(.top, -4)
+                        } else {
+                            welcomeHeader
+                                .id(MainTabScrollDestination.home)
+                        }
 
                         if !history.entries.isEmpty {
                             recentlyPlayedSection(metrics: metrics)

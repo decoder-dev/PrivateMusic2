@@ -138,6 +138,13 @@ final class AppSettings {
     var textScale: AppTextScale {
         didSet { defaults.set(textScale.rawValue, forKey: Keys.textScale) }
     }
+    /// Opens Home with the now-playing stage instead of going straight
+    /// into shelves. The shelves stay exactly where they are underneath.
+    var homeStageEnabled: Bool {
+        didSet {
+            defaults.set(homeStageEnabled, forKey: Keys.homeStageEnabled)
+        }
+    }
     /// Pins playback chrome to the flat pre-iOS 26 look: the full-screen
     /// player, the mini player and the tab bar it sits in. Below iOS 26
     /// everything already draws that way and the switch has nothing to do,
@@ -312,6 +319,9 @@ final class AppSettings {
         textScale = AppTextScale(
             rawValue: defaults.string(forKey: Keys.textScale) ?? ""
         ) ?? .system
+        homeStageEnabled = defaults.object(
+            forKey: Keys.homeStageEnabled
+        ) as? Bool ?? true
         // 3.28.82 shipped this as a player-only switch under its own key.
         classicChrome = defaults.object(forKey: Keys.classicChrome) as? Bool
             ?? defaults.object(
@@ -431,6 +441,7 @@ final class AppSettings {
         static let appearance = "appearance.mode"
         static let textScale = "appearance.textScale"
         static let classicChrome = "appearance.classicChrome"
+        static let homeStageEnabled = "home.stage.enabled"
         static let equalizer = "audio.equalizer.enabled"
         static let preset = "audio.equalizer.preset"
         static let gains = "audio.equalizer.gains"
