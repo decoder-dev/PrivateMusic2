@@ -1077,6 +1077,53 @@ enum NetworkReturnKickPolicy {
     }
 }
 
+/// Everything the player hands to a process-wide singleton and therefore
+/// has to hand back: `NotificationCenter` observers, `MPRemoteCommandCenter`
+/// targets and `AVPlayer`'s periodic time observer all outlive the player
+/// unless they are explicitly removed.
+///
+/// They live outside `AudioPlayer` because `deinit` on a `@MainActor` class
+/// is nonisolated and so cannot touch the player's isolated state. This box
+/// is only ever mutated from the main actor, and its `deinit` runs when the
+/// last (main-actor) reference goes away — hence `@unchecked Sendable`.
+///
+/// The app keeps a single player for its whole lifetime, but the tests build
+/// and drop one per case. Every instance used to leave five notification
+/// observers, six remote-command targets and a periodic time observer behind,
+/// so dead players kept waking up on every route change and interruption.
+private final class PlaybackRegistrations: @unchecked Sendable {
+    var notifications: [NSObjectProtocol] = []
+    var remoteCommands: [(command: MPRemoteCommand, token: Any)] = []
+    var periodicTime: (player: AVPlayer, token: Any)?
+
+    func removeNotifications() {
+        let center = NotificationCenter.default
+        for observer in notifications {
+            center.removeObserver(observer)
+        }
+        notifications = []
+    }
+
+    func removeRemoteCommands() {
+        for entry in remoteCommands {
+            entry.command.removeTarget(entry.token)
+        }
+        remoteCommands = []
+    }
+
+    func removePeriodicTime() {
+        guard let periodicTime else { return }
+        periodicTime.player.removeTimeObserver(periodicTime.token)
+        self.periodicTime = nil
+    }
+
+    deinit {
+        removeNotifications()
+        removeRemoteCommands()
+        removePeriodicTime()
+    }
+}
+
 @MainActor
 @Observable
 final class AudioPlayer {
@@ -1176,12 +1223,13 @@ final class AudioPlayer {
     private let historyStore: ListeningHistoryStore
     @ObservationIgnored
     private let settings: AppSettings
-    private var timeObserver: Any?
-    private var notificationObservers: [NSObjectProtocol] = []
+    /// `let` of a `Sendable` type, so `deinit` — which is nonisolated on a
+    /// `@MainActor` class — can still reach it to tear the registrations down.
+    @ObservationIgnored
+    private let registrations = PlaybackRegistrations()
     private let defaults: UserDefaults
     private var settingsObservation: ObservationLoop.Token?
     private var equalizerApplyTask: Task<Void, Never>?
-    private var remoteCommandTokens: [Any] = []
     private var sleepTask: Task<Void, Never>?
     private var streamUserAgent: String?
     private var itemStatusObservation: NSKeyValueObservation?
@@ -2650,36 +2698,47 @@ final class AudioPlayer {
         center.previousTrackCommand.isEnabled = true
         center.changePlaybackPositionCommand.isEnabled = true
 
-        remoteCommandTokens = [
-            center.playCommand.addTarget { [weak self] _ in
-                self?.enqueueRemoteCommand(.play)
-                return .success
-            },
-            center.pauseCommand.addTarget { [weak self] _ in
-                self?.enqueueRemoteCommand(.pause)
-                return .success
-            },
-            center.togglePlayPauseCommand.addTarget { [weak self] _ in
-                self?.enqueueRemoteCommand(.toggle)
-                return .success
-            },
-            center.nextTrackCommand.addTarget { [weak self] _ in
-                self?.enqueueRemoteCommand(.next)
-                return .success
-            },
-            center.previousTrackCommand.addTarget { [weak self] _ in
-                self?.enqueueRemoteCommand(.previous)
-                return .success
-            },
-            center.changePlaybackPositionCommand.addTarget { [weak self] event in
-                guard let event = event as? MPChangePlaybackPositionCommandEvent
-                else {
-                    return .commandFailed
-                }
-                self?.enqueueRemoteCommand(.seek(event.positionTime))
-                return .success
+        registrations.removeRemoteCommands()
+        add(center.playCommand) { [weak self] _ in
+            self?.enqueueRemoteCommand(.play)
+            return .success
+        }
+        add(center.pauseCommand) { [weak self] _ in
+            self?.enqueueRemoteCommand(.pause)
+            return .success
+        }
+        add(center.togglePlayPauseCommand) { [weak self] _ in
+            self?.enqueueRemoteCommand(.toggle)
+            return .success
+        }
+        add(center.nextTrackCommand) { [weak self] _ in
+            self?.enqueueRemoteCommand(.next)
+            return .success
+        }
+        add(center.previousTrackCommand) { [weak self] _ in
+            self?.enqueueRemoteCommand(.previous)
+            return .success
+        }
+        add(center.changePlaybackPositionCommand) { [weak self] event in
+            guard let event = event as? MPChangePlaybackPositionCommandEvent
+            else {
+                return .commandFailed
             }
-        ]
+            self?.enqueueRemoteCommand(.seek(event.positionTime))
+            return .success
+        }
+    }
+
+    /// Keeps the removal token next to the command it belongs to, so the
+    /// shared command centre can be cleaned up when the player goes away.
+    private func add(
+        _ command: MPRemoteCommand,
+        handler: @escaping @Sendable (MPRemoteCommandEvent)
+            -> MPRemoteCommandHandlerStatus
+    ) {
+        registrations.remoteCommands.append(
+            (command, command.addTarget(handler: handler))
+        )
     }
 
     /// Headphone / CarKit remotes often deliver pause+toggle in one burst.
@@ -2789,7 +2848,7 @@ final class AudioPlayer {
         installPeriodicTimeObserver()
 
         let center = NotificationCenter.default
-        notificationObservers.append(center.addObserver(
+        registrations.notifications.append(center.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: nil,
             queue: .main
@@ -2807,7 +2866,7 @@ final class AudioPlayer {
                 self.advanceAfterCompletion()
             }
         })
-        notificationObservers.append(center.addObserver(
+        registrations.notifications.append(center.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime,
             object: nil,
             queue: .main
@@ -2834,7 +2893,7 @@ final class AudioPlayer {
                 self.handleItemFailure(failed.error)
             }
         })
-        notificationObservers.append(center.addObserver(
+        registrations.notifications.append(center.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main
@@ -2844,7 +2903,7 @@ final class AudioPlayer {
                 self?.handleInterruption(boxed.raw)
             }
         })
-        notificationObservers.append(center.addObserver(
+        registrations.notifications.append(center.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main
@@ -2854,7 +2913,7 @@ final class AudioPlayer {
                 self?.handleRouteChange(boxed.raw)
             }
         })
-        notificationObservers.append(center.addObserver(
+        registrations.notifications.append(center.addObserver(
             forName: AVAudioSession.mediaServicesWereResetNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main
@@ -2877,7 +2936,7 @@ final class AudioPlayer {
 
     private func installPeriodicTimeObserver() {
         let observedPlayer = player
-        timeObserver = observedPlayer.addPeriodicTimeObserver(
+        let token = observedPlayer.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
         ) { [weak self] time in
@@ -2929,6 +2988,7 @@ final class AudioPlayer {
                 }
             }
         }
+        registrations.periodicTime = (observedPlayer, token)
     }
 
     private func handleInterruption(_ notification: Notification) {
@@ -3373,10 +3433,7 @@ final class AudioPlayer {
         lastFailedItemIdentifier = nil
 
         let orphanedPlayer = player
-        if let timeObserver {
-            orphanedPlayer.removeTimeObserver(timeObserver)
-            self.timeObserver = nil
-        }
+        registrations.removePeriodicTime()
         orphanedPlayer.pause()
         orphanedPlayer.replaceCurrentItem(with: nil)
 

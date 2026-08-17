@@ -2036,24 +2036,42 @@ struct MixesHubView: View {
     }
 
     private func load(force: Bool = false) async {
-        guard sessionStore.accessToken != nil,
-              force || mixes.isEmpty else { return }
+        guard sessionStore.accessToken != nil else { return }
+        let needsMixes = force || mixes.isEmpty
+        let needsSelena = force || selenaTracks.isEmpty
+        // The two used to share one guard on `mixes`, so a Selena fetch that
+        // failed while the catalog succeeded could never be retried without
+        // a manual pull-to-refresh.
+        guard needsMixes || needsSelena else { return }
         isLoading = true
         defer { isLoading = false }
+        // Selena is the tab everyone lands on, and its tracks come from the
+        // recommendation stream — they do not read `mixes` at all. Fetching
+        // them after the VK catalog meant the default tab sat on a skeleton
+        // waiting for a request it never uses. Both run side by side now.
+        let selena: Task<Void, Never>? =
+            needsSelena
+            ? Task { await loadSelenaTracks() }
+            : nil
         do {
-            mixes = try await environment.withAuthorizedToken { token in
-                try await environment.musicService.mixes(accessToken: token)
+            if needsMixes {
+                mixes = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService
+                        .mixes(accessToken: token)
+                }
+                loadErrorMessage = nil
+                ensureVKSelection(forceReload: force)
             }
-            loadErrorMessage = nil
-            if force || selenaTracks.isEmpty {
-                await loadSelenaTracks()
-            }
-            ensureVKSelection(forceReload: force)
         } catch is CancellationError {
+            // The view went away or the token changed — drop the sibling
+            // fetch too instead of letting it finish into a dead view.
+            selena?.cancel()
+            await selena?.value
             return
         } catch {
             loadErrorMessage = error.localizedDescription
         }
+        await selena?.value
     }
 
     private func loadSelenaTracks() async {
