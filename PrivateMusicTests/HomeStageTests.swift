@@ -350,6 +350,39 @@ final class ArtistCreditDisplayTests: XCTestCase {
     func testEmptyStringPassesThrough() {
         XCTAssertEqual(ArtistCreditDisplay.summarize(""), "")
     }
+
+    /// The Hero must never show the bubble's "+N" shorthand — it needs the
+    /// real name, joined the way a byline reads.
+    func testReadableJoinsTwoArtistsWithAmpersand() {
+        XCTAssertEqual(
+            ArtistCreditDisplay.readable("SKWLKR, Lastfragment"),
+            "SKWLKR & Lastfragment"
+        )
+    }
+
+    func testReadableJoinsThreeArtistsWithCommasAndAFinalAmpersand() {
+        XCTAssertEqual(
+            ArtistCreditDisplay.readable("A, B, C"),
+            "A, B & C"
+        )
+    }
+
+    func testReadableNeverProducesTheCompactPlusNotation() {
+        let readable = ArtistCreditDisplay.readable("SKWLKR, Lastfragment")
+        XCTAssertFalse(readable.contains("+"))
+    }
+
+    func testReadableSingleNamePassesThrough() {
+        XCTAssertEqual(ArtistCreditDisplay.readable("Owar1"), "Owar1")
+    }
+
+    func testReadableTrailingCommaCleansUpToTheSingleName() {
+        XCTAssertEqual(ArtistCreditDisplay.readable("Owar1,  ,"), "Owar1")
+    }
+
+    func testReadableEmptyStringPassesThrough() {
+        XCTAssertEqual(ArtistCreditDisplay.readable(""), "")
+    }
 }
 
 @MainActor

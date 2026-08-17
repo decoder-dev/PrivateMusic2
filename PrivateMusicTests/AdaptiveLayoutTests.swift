@@ -51,6 +51,10 @@ final class AdaptiveLayoutTests: XCTestCase {
         XCTAssertLessThanOrEqual(iPad, 220)
     }
 
+    /// Home carries only its own discovery row now — the playlist and new
+    /// release shelves moved to the Library and Mix tabs that already own
+    /// that content, and `HomeMetrics` dropped the widths that existed
+    /// only to size them.
     func testHomeMetricsPreservePhone390AndGrowOnIPad() {
         let phone = HomeMetrics(containerWidth: phoneWidth)
         let iPad = HomeMetrics(containerWidth: iPadWidth)
@@ -58,15 +62,10 @@ final class AdaptiveLayoutTests: XCTestCase {
         XCTAssertEqual(phone.horizontalPadding, 16)
         XCTAssertEqual(phone.trackWidth, 140.4, accuracy: 0.01)
         XCTAssertEqual(phone.recentWidth, 126, accuracy: 0.01)
-        XCTAssertEqual(phone.playlistWidth, 136.5, accuracy: 0.01)
-        XCTAssertEqual(phone.newReleaseWidth, 136.5, accuracy: 0.01)
 
         XCTAssertEqual(iPad.horizontalPadding, 24)
         XCTAssertGreaterThan(iPad.trackWidth, phone.trackWidth)
         XCTAssertGreaterThan(iPad.recentWidth, phone.recentWidth)
-        XCTAssertGreaterThan(iPad.playlistWidth, phone.playlistWidth)
-        XCTAssertGreaterThan(iPad.newReleaseWidth, phone.newReleaseWidth)
-        XCTAssertLessThanOrEqual(iPad.playlistWidth, 220)
     }
 
     func testMixHubMetricsPreservePhone390CardShareAndGrowOnIPad() {
