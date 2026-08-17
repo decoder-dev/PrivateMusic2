@@ -41,26 +41,6 @@ struct CatalogView: View {
                             if !homeMixes.isEmpty {
                                 mixesSection(metrics: metrics)
                             }
-                            if !chartMixes.isEmpty {
-                                shelfMixesSection(
-                                    title: L10n.text("charts_and_hits"),
-                                    subtitle: L10n.text(
-                                        "vk_catalog_shelves"
-                                    ),
-                                    mixes: chartMixes,
-                                    metrics: metrics
-                                )
-                            }
-                            if !kidsMixes.isEmpty {
-                                shelfMixesSection(
-                                    title: L10n.text("for_kids"),
-                                    subtitle: L10n.text(
-                                        "tales_lullabies_and_family_mixes"
-                                    ),
-                                    mixes: kidsMixes,
-                                    metrics: metrics
-                                )
-                            }
                             if !recommendations.isEmpty {
                                 recommendationsSection(metrics: metrics)
                                 if !moreRecommendations.isEmpty {
@@ -164,25 +144,18 @@ struct CatalogView: View {
             && homeCatalog.mixes.isEmpty
     }
 
+    /// Home carries one mix shelf. The themed "charts" and "kids" shelves
+    /// used to sit here too, but every mix they showed is also in this
+    /// shelf and in the Mix tab, so the same card appeared two or three
+    /// times across one screen — and Home grew to ten stacked sections.
+    /// The Mix tab groups all of them (social, official shelves,
+    /// algorithmic) so nothing is lost by keeping Home to a single row.
     private var homeMixes: [MusicMix] {
         Array(
             homeCatalog.mixes
                 .filter { $0.id != MusicMix.common.id }
                 .prefix(16)
         )
-    }
-
-    private var kidsMixes: [MusicMix] {
-        homeCatalog.mixes.filter {
-            MixSeedRadio.looksLikeKidsShelf($0.sectionTitle ?? $0.title)
-                || MixSeedRadio.looksLikeKidsShelf($0.subtitle)
-        }
-    }
-
-    private var chartMixes: [MusicMix] {
-        homeCatalog.mixes.filter {
-            MixSeedRadio.looksLikeChartShelf($0.sectionTitle ?? $0.title)
-        }
     }
 
     private var welcomeHeader: some View {
@@ -286,6 +259,7 @@ struct CatalogView: View {
                                     .font(.footnote.weight(.semibold))
                                     .foregroundStyle(.primary)
                                     .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
                                     .frame(
                                         width: metrics.trackWidth,
                                         alignment: .leading
@@ -557,6 +531,7 @@ struct CatalogView: View {
                                     .font(.footnote.weight(.semibold))
                                     .foregroundStyle(.primary)
                                     .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
                                     .frame(
                                         height: 34,
                                         alignment: .topLeading
@@ -950,6 +925,7 @@ struct CatalogView: View {
                 Text(message)
                     .font(.caption)
                     .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer()
             }
             .foregroundStyle(.secondary)

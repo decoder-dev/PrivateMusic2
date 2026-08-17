@@ -336,6 +336,7 @@ private struct ConnectionBanner: View {
             Text(L10n.text(message))
                 .font(.footnote.weight(.semibold))
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let retry {
                 Button(L10n.text("action.retry"), action: retry)
