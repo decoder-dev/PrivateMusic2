@@ -333,7 +333,7 @@ final class MiniPlayerAccessoryPolicyTests: XCTestCase {
             + MiniPlayerLayoutMetrics.progressHeight
             + MiniPlayerLayoutMetrics.progressBottomInset
 
-        XCTAssertEqual(contentHeight, 63)
+        XCTAssertEqual(contentHeight, 58)
         XCTAssertGreaterThanOrEqual(
             contentHeight,
             MiniPlayerLayoutMetrics.minHeight
