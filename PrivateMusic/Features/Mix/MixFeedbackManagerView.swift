@@ -35,6 +35,7 @@ struct MixFeedbackManagerView: View {
                                 Text(record.title)
                                     .font(.body.weight(.semibold))
                                     .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
                                 if !record.artist.isEmpty {
                                     Text(record.artist)
                                         .font(.caption)
@@ -63,6 +64,7 @@ struct MixFeedbackManagerView: View {
                         HStack {
                             Text(record.displayName)
                                 .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 12)
                             Button(L10n.text("restore")) {
                                 mixFeedbackStore.unbanArtist(key: record.key)

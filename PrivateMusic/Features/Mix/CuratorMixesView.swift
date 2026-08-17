@@ -35,6 +35,7 @@ struct CuratorMixesView: View {
                         Text(curator.displayName)
                             .font(.headline)
                             .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(
                             L10n.format(
                                 "d0_mixes_in_their_taste",
@@ -76,6 +77,7 @@ struct CuratorMixesView: View {
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
                                     .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
                                 if let percent = mix.matchPercent {
                                     Text(
                                         L10n.format(

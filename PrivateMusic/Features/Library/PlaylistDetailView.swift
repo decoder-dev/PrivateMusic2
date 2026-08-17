@@ -191,6 +191,7 @@ struct PlaylistDetailView: View {
                     .font(.title2.weight(.bold))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .heroTitleScrollAnchor()
                 Label(
                     L10n.format(

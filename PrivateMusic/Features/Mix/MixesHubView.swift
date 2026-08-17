@@ -376,6 +376,7 @@ struct MixesHubView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     HStack(spacing: 6) {
                         Text(mixTypeTitle(for: mix))
@@ -424,6 +425,7 @@ struct MixesHubView: View {
                                 Text(shelf.title)
                                     .font(.headline)
                                     .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
                                 Text(
                                     L10n.format(
                                         "d0_mixes",
@@ -504,6 +506,7 @@ struct MixesHubView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if !cached.isEmpty {
                 Text(L10n.trackCount(cached.count))
@@ -675,6 +678,7 @@ struct MixesHubView: View {
                     Text(mix.title)
                         .font(.title2.weight(.bold))
                         .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let trimmedSubtitle {
                         Text(trimmedSubtitle)
                             .font(.subheadline)
@@ -1635,6 +1639,7 @@ struct MixesHubView: View {
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
                                     .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
                                 Text(
                                     L10n.format(
                                         "d0_mixes",

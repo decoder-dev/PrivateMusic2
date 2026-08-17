@@ -587,6 +587,7 @@ struct OfflineDownloadsView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                         .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     case .cancelled:
                         Text(L10n.text("download_cancelled"))
                             .font(.caption)

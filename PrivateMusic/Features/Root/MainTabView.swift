@@ -395,7 +395,11 @@ private struct PlaybackTabDock: View {
         // GlassEffectContainer: iOS 26 morphs sibling glass into floating
         // orbs (giant search circle, detached mini-player pill, stray
         // accent blobs). Glass stays on each chrome piece individually.
-        VStack(spacing: 12) {
+        // Spacing/padding here directly sets how far the floating dock sits
+        // above the home indicator, because the overlay is already aligned
+        // to the safe area. Keep it tight: the dock reads as detached and
+        // wastes usable screen when it floats high.
+        VStack(spacing: 8) {
             if player.currentTrack != nil {
                 MiniPlayerView(playerNamespace: playerNamespace)
                     .transition(
@@ -422,8 +426,8 @@ private struct PlaybackTabDock: View {
         }
         .dynamicTypeSize(...DynamicTypeSize.large)
         .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .padding(.bottom, 5)
+        .padding(.top, 6)
+        .padding(.bottom, 0)
         .animation(
             reduceMotion
                 ? nil

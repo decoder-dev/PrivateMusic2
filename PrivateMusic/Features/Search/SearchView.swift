@@ -317,6 +317,7 @@ struct SearchView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -513,6 +514,7 @@ struct SearchView: View {
                             )
                                 .font(.headline)
                                 .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                             Text(album.artistText)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -594,6 +596,7 @@ struct SearchView: View {
                             Text(playlist.title)
                                 .font(.headline)
                                 .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                             Text(L10n.trackCount(playlist.count))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
