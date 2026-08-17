@@ -450,7 +450,7 @@ struct PlayerView: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(track.title)
-                    .font(.title3.weight(.bold))
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(playerForeground)
                     .lineLimit(1)
                 Button {
