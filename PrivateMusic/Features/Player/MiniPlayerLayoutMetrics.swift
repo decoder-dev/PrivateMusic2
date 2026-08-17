@@ -3,10 +3,14 @@ import Foundation
 
 /// Layout constants for the Apple Music–style compact mini player.
 enum MiniPlayerLayoutMetrics {
-    static let artworkSize: CGFloat = 46
+    static let artworkSize: CGFloat = 42
     /// Squircle, matching BubbleShapeLanguage.media at this size, so
-    /// artwork curves identically in the dock, the stage and the shelves.
-    static let artworkCornerRadius: CGFloat = 11
+    /// artwork curves identically in the dock, the stage and the shelves —
+    /// computed from the same formula rather than a radius hand-tuned to
+    /// whatever `artworkSize` used to be.
+    static let artworkCornerRadius: CGFloat = BubbleRadius.artwork(
+        for: artworkSize
+    )
     static let artworkShadowRadius: CGFloat = 3
     static let artworkShadowY: CGFloat = 1
     static let inlineArtworkSize: CGFloat = 28
@@ -22,13 +26,15 @@ enum MiniPlayerLayoutMetrics {
     static let progressBottomInset: CGFloat = 4
     static let progressSideInset: CGFloat = 18
     static let horizontalPadding: CGFloat = 12
-    static let verticalPadding: CGFloat = 8
+    static let verticalPadding: CGFloat = 7
     static let inlineHorizontalPadding: CGFloat = 8
     static let inlineVerticalPadding: CGFloat = 4
     static let contentSpacing: CGFloat = 12
     static let inlineContentSpacing: CGFloat = 8
     static let controlSpacing: CGFloat = 2
-    static let minHeight: CGFloat = 62
+    /// 56–60 pt visual height: the compact bar Apple Music itself uses,
+    /// not a second, shorter player.
+    static let minHeight: CGFloat = 58
     static let cornerRadius: CGFloat = 16
     static let containerShadowRadius: CGFloat = 8
     static let containerShadowY: CGFloat = 3
