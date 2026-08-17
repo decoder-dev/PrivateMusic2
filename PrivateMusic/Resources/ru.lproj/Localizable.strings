@@ -161,6 +161,9 @@
 
 "appearance" = "Оформление";
 "text_size" = "Масштаб текста";
+"player_look" = "Вид плеера";
+"classic_player_look" = "Старый вид плеера";
+"classic_player_look.footnote" = "Возвращает плееру оформление iOS 18: матовые панели и плоские кнопки вместо Liquid Glass. Действует только на экране плеера и его окнах — очередь, действия.";
 "settings.preview" = "Пример";
 "liquid_glass" = "Liquid Glass";
 "ios_26_uses_the_system_interactive_glass_effect_ios_16_25_use_a_compatib" = "На iOS 26+ используется системное интерактивное стекло. На iOS 17–25 — совместимый эффект системного материала.";

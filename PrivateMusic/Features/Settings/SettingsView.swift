@@ -211,6 +211,23 @@ private struct AppearanceSettingsView: View {
                 themePicker
             }
 
+            // Below iOS 26 the player is already drawn this way, so the
+            // switch would be a no-op control — it only shows up where
+            // Liquid Glass actually applies.
+            if #available(iOS 26.0, *) {
+                Section(L10n.text("player_look")) {
+                    Toggle(isOn: $settings.classicPlayerChrome) {
+                        Label(
+                            L10n.text("classic_player_look"),
+                            systemImage: "rectangle.on.rectangle"
+                        )
+                    }
+                    Text(L10n.text("classic_player_look.footnote"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section(L10n.text("text_size")) {
                 Picker(
                     L10n.text("text_scale_picker"),
