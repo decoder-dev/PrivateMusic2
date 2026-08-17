@@ -120,12 +120,22 @@ struct PremiumSectionHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
+            // Both labels need an explicit line budget and `fixedSize`.
+            // Without it a wrapped title or subtitle is laid out in the
+            // height of a single line, so the extra lines render over the
+            // content underneath instead of pushing it down — the text
+            // overlap seen across the mix screens, whose long localized
+            // section names wrap on narrow phones and at larger text sizes.
             Text(L10n.text(title))
                 .font(.title2.weight(.bold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
             if let subtitle {
                 Text(L10n.text(subtitle))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

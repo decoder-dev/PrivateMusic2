@@ -1986,6 +1986,7 @@ private struct PlayerActionsSheet: View {
                 Text(L10n.text(title))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
             }
@@ -2204,6 +2205,7 @@ struct AudioProcessingRouteHintBanner: View {
             Text(L10n.text("audio_processing_may_disable_airplay"))
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
         }
         .padding(.horizontal, 16)

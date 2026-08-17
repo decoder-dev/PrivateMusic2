@@ -240,6 +240,7 @@ struct ArtistView: View {
                 Text(artist)
                     .font(.title2.weight(.bold))
                     .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .minimumScaleFactor(0.82)
                 Text(
                     resolvedArtist == nil
@@ -549,6 +550,7 @@ private struct ArtistLoadingView: View {
                         Text(artist)
                             .font(.title3.weight(.bold))
                             .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                         RoundedRectangle(cornerRadius: 4)
                             .fill(Color(uiColor: .tertiarySystemFill))
                             .frame(width: 104, height: 12)
@@ -652,6 +654,7 @@ private struct ArtistInlineError: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Button(L10n.text("action.retry"), action: retry)
                 .font(.caption.weight(.semibold))

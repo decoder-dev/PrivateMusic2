@@ -36,6 +36,7 @@ struct AddToPlaylistView: View {
                                 VStack(alignment: .leading) {
                                     Text(playlist.title)
                                         .lineLimit(2)
+                                        .fixedSize(horizontal: false, vertical: true)
                                     Text(L10n.trackCount(playlist.count))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
