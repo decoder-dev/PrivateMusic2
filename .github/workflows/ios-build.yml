@@ -77,6 +77,16 @@ jobs:
       - name: Prepare Metal toolchain
         run: sudo xcodebuild -downloadComponent MetalToolchain || true
 
+      # project.yml is the single source of truth for the version. It used
+      # to be hard-coded in ~11 places in this file, so every bump meant
+      # editing all of them and one miss shipped a mismatched artifact.
+      - name: Resolve version
+        run: |
+          VERSION="$(awk '/^ *MARKETING_VERSION:/ {print $2; exit}' project.yml)"
+          test -n "$VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Building $VERSION"
+
       - name: Validate source package
         run: |
           python3 scripts/validate_project.py
@@ -129,19 +139,31 @@ jobs:
           # Full IPA (iPhone + Watch) — Apple unsigned recipe via Info-ZIP.
           bash ./scripts/package_unsigned_ipa.sh \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.80-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-$VERSION-unsigned.ipa"
           # iPhone-only IPA — for ESign / Sideloadly / Feather that choke on
           # embedded Watch PlugIns during import/unpack/resign.
           bash ./scripts/package_unsigned_ipa.sh --strip-watch \
             "$APP_PATH" \
-            "$PWD/artifacts/PrivateMusic-3.28.80-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-$VERSION-iphone-unsigned.ipa"
 
+      # Publishes straight off main once tests + archive pass: the tag is
+      # created by `gh release create` on this commit, so no separate tag
+      # push is needed. A version that already has a release only gets its
+      # assets refreshed — the tag keeps pointing at the commit that first
+      # shipped it, and existing download links stay valid. Bump
+      # MARKETING_VERSION to cut a new one.
       - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: >-
+          github.event_name == 'push' && (github.ref == 'refs/heads/main' ||
+          startsWith(github.ref, 'refs/tags/v'))
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$GITHUB_REF_NAME" = "v3.28.80"
+          TAG="v$VERSION"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$TAG" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match MARKETING_VERSION $VERSION"
+            exit 1
+          fi
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
           # Private Music 3.28.80 (pre-release)
@@ -175,20 +197,26 @@ jobs:
           - **`…-iphone-unsigned.ipa`** — без Watch
           - `…-unsigned.ipa` — полная сборка с Watch
           EOF
+          # Heredoc is quoted so backticks in the notes stay literal;
+          # patch the version into the title afterwards.
+          sed -i '' "1s|.*|# Private Music $VERSION (pre-release)|" "$NOTES"
           ASSETS=(
-            "$PWD/artifacts/PrivateMusic-3.28.80-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-3.28.80-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-$VERSION-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-$VERSION-unsigned.ipa"
           )
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
-            gh release edit "$GITHUB_REF_NAME" \
-              --title "Private Music 3.28.80" \
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists — refreshing assets and notes"
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+            gh release edit "$TAG" \
+              --title "Private Music $VERSION" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
-            gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
-              --title "Private Music 3.28.80" \
+            echo "Creating release $TAG on $GITHUB_SHA"
+            gh release create "$TAG" "${ASSETS[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "Private Music $VERSION" \
               --notes-file "$NOTES" \
               --prerelease
           fi
@@ -197,9 +225,9 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v5
         with:
-          name: PrivateMusic-3.28.80-unsigned
+          name: PrivateMusic-${{ env.VERSION }}-unsigned
           path: |
-            artifacts/PrivateMusic-3.28.80-iphone-unsigned.ipa
-            artifacts/PrivateMusic-3.28.80-unsigned.ipa
+            artifacts/PrivateMusic-${{ env.VERSION }}-iphone-unsigned.ipa
+            artifacts/PrivateMusic-${{ env.VERSION }}-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
