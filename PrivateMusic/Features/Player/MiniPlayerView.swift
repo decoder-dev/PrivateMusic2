@@ -149,7 +149,8 @@ struct MiniPlayerView: View {
                     width: MiniPlayerLayoutMetrics.tapTarget,
                     height: MiniPlayerLayoutMetrics.tapTarget
                 )
-                .contentShape(Rectangle())
+                // Actions are circles, per BubbleShapeLanguage.
+                .contentShape(BubbleShapeLanguage.action)
         }
         .buttonStyle(PremiumPressStyle())
         .accessibilityLabel(L10n.text("previous_track"))
@@ -204,7 +205,8 @@ struct MiniPlayerView: View {
                     width: MiniPlayerLayoutMetrics.tapTarget,
                     height: MiniPlayerLayoutMetrics.tapTarget
                 )
-                .contentShape(Rectangle())
+                // Actions are circles, per BubbleShapeLanguage.
+                .contentShape(BubbleShapeLanguage.action)
         }
         .buttonStyle(PremiumPressStyle())
         .accessibilityLabel(L10n.text("next_track"))
