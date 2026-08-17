@@ -554,6 +554,32 @@ final class HomeStageMetricsTests: XCTestCase {
             )
         }
     }
+
+    /// The atmosphere has to bleed behind the status bar / nav bar rather
+    /// than stop at the safe-area boundary — that boundary is exactly what
+    /// used to read as a separate black block above the hero. Passing the
+    /// real inset must grow the band by that same amount, and omitting it
+    /// must fall back to the un-extended height untouched call sites relied
+    /// on before this existed.
+    func testAtmosphereHeightExtendsByTheTopSafeAreaInset() {
+        for width in widths {
+            let base = HomeStageMetrics.atmosphereHeight(for: width)
+            XCTAssertEqual(
+                HomeStageMetrics.atmosphereHeight(
+                    for: width,
+                    topSafeAreaInset: 0
+                ),
+                base
+            )
+            XCTAssertEqual(
+                HomeStageMetrics.atmosphereHeight(
+                    for: width,
+                    topSafeAreaInset: 59
+                ),
+                base + 59
+            )
+        }
+    }
 }
 
 @MainActor

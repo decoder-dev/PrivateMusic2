@@ -27,11 +27,13 @@ struct CatalogView: View {
                         if settings.homeStageEnabled {
                             HomeStageView(
                                 width: proxy.size.width,
-                                horizontalPadding: metrics.horizontalPadding
+                                horizontalPadding: metrics.horizontalPadding,
+                                topSafeAreaInset: proxy.safeAreaInsets.top
                             )
                             .id(MainTabScrollDestination.home)
                         } else {
                             welcomeHeader
+                                .padding(.top, proxy.safeAreaInsets.top)
                                 .id(MainTabScrollDestination.home)
                         }
 
@@ -63,6 +65,14 @@ struct CatalogView: View {
                 // place on Home it can't afford to compete for attention.
                 .scrollIndicators(.hidden)
             }
+            // Gives up its own top safe-area reservation so the stage's
+            // artwork-derived atmosphere can paint behind the status bar
+            // and the compact nav title instead of stopping at a hard
+            // edge there. `HomeStageView` (and the plain welcome header)
+            // reintroduce that same inset as top padding on their own
+            // foreground content, so nothing actually moves under the
+            // Dynamic Island — only the background reaches it.
+            .ignoresSafeArea(edges: .top)
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .home else { return }
                 scrollToTop(scrollProxy, destination: .home)

@@ -30,6 +30,12 @@ struct HomeStageView: View {
     /// Home's grid inset. The stage keeps its content on that grid and
     /// lets only the decorative layers cross it.
     let horizontalPadding: CGFloat
+    /// The status bar / nav bar reservation above the stage, read once from
+    /// Home's own `GeometryReader` — not a magic number, and not something
+    /// the stage can find itself while sitting inside scrollable content.
+    /// The atmosphere uses it to bleed its background past the safe area;
+    /// none of the foreground content changes position because of it.
+    let topSafeAreaInset: CGFloat
 
     private var presentation: HomeStagePresentation {
         HomeStagePresentation.resolve(
@@ -38,24 +44,33 @@ struct HomeStageView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            contextChip
-                .frame(height: HomeStageMetrics.chipHeight)
-                .padding(.bottom, HomeStageMetrics.belowChip)
+        ZStack(alignment: .top) {
+            // Bleeds behind the status bar / nav bar — the container this
+            // stage sits in has already given up its own top safe-area
+            // reservation (see `CatalogView`), so this is free to paint
+            // there. The foreground column below carries its own matching
+            // padding to land exactly where it always has.
+            atmosphere
 
-            headline
-                .padding(.bottom, HomeStageMetrics.belowHeadline)
+            VStack(spacing: 0) {
+                contextChip
+                    .frame(height: HomeStageMetrics.chipHeight)
+                    .padding(.bottom, HomeStageMetrics.belowChip)
 
-            artwork
-                .padding(.bottom, HomeStageMetrics.belowArtwork)
+                headline
+                    .padding(.bottom, HomeStageMetrics.belowHeadline)
 
-            controls
-                .padding(.bottom, HomeStageMetrics.belowTransport)
+                artwork
+                    .padding(.bottom, HomeStageMetrics.belowArtwork)
 
-            bubbleRail
+                controls
+                    .padding(.bottom, HomeStageMetrics.belowTransport)
+
+                bubbleRail
+            }
+            .padding(.top, topSafeAreaInset)
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
-        .background(alignment: .top) { atmosphere }
         .animation(
             BubbleMotion.state(reduceMotion: reduceMotion),
             value: presentation
@@ -105,7 +120,10 @@ struct HomeStageView: View {
         }
         .frame(
             maxWidth: .infinity,
-            maxHeight: HomeStageMetrics.atmosphereHeight(for: width)
+            maxHeight: HomeStageMetrics.atmosphereHeight(
+                for: width,
+                topSafeAreaInset: topSafeAreaInset
+            )
         )
         .clipped()
         // Fades to nothing, not to a colour, so it dissolves into whatever
