@@ -23,22 +23,28 @@ enum BubbleMetrics {
     /// Everything a finger touches, per HIG and §33.
     static let minimumTapTarget: CGFloat = PremiumLayout.minimumTapTarget
 
-    // MARK: - Hero
+    // MARK: - Context tile
 
-    static func hero(
+    /// A contextual shortcut — station, mood, artist, mix — not a second
+    /// hero. A literal 118–128pt circle read as competing with the artwork
+    /// above it; a compact tile reads as a shortcut you can glance past.
+    /// Height stays uniform across the rail so it scans as one row; width
+    /// is what carries priority, and only subtly.
+    static func contextTileHeight(for width: CGFloat) -> CGFloat {
+        clamp(width * 0.205, minimum: 72, maximum: 88)
+    }
+
+    static func contextTileWidth(
         for width: CGFloat,
         priority: BubblePriority = .primary
     ) -> CGFloat {
-        // A primary bubble reads as a peer of the artwork above it, not a
-        // second hero of its own — 116–168 let the rail dominate the
-        // viewport on anything wider than a compact phone.
-        let base = clamp(width * 0.30, minimum: 118, maximum: 128)
+        let base = clamp(width * 0.37, minimum: 120, maximum: 155)
         return (base * priority.scale).rounded()
     }
 
-    /// The artwork or avatar inside a hero bubble.
-    static func heroArtwork(in size: CGFloat) -> CGFloat {
-        (size * 0.36).rounded()
+    /// The icon/avatar inside a context tile.
+    static func contextGlyphSize(for tileHeight: CGFloat) -> CGFloat {
+        (tileHeight * 0.36).rounded()
     }
 
     // MARK: - Action
@@ -64,12 +70,12 @@ enum BubbleMetrics {
 
     // MARK: - Rails
 
-    /// A hero rail is exactly as tall as its tallest bubble. Nothing is
-    /// clipped vertically — the previous rail shrank its own frame to fake
-    /// bubbles rising off the bottom edge, which read as a layout bug on a
-    /// real device.
+    /// A rail is exactly as tall as its tiles. Nothing is clipped
+    /// vertically — a previous rail shrank its own frame to fake bubbles
+    /// rising off the bottom edge, which read as a layout bug on a real
+    /// device.
     static func heroRailHeight(for width: CGFloat) -> CGFloat {
-        hero(for: width, priority: .primary)
+        contextTileHeight(for: width)
     }
 
     /// Enough trailing room that the last bubble clears the screen edge

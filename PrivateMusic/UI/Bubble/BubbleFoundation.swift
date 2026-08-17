@@ -39,6 +39,9 @@ enum BubbleRadius {
 
     static let card = PremiumLayout.cardRadius
     static let compact = PremiumLayout.compactRadius
+    /// The context rail's own radius family — a shortcut tile, not a card,
+    /// so it doesn't borrow `card`'s meaning.
+    static let contextTile: CGFloat = 20
 }
 
 /// Weight carries hierarchy; size carries structure. The screens were
