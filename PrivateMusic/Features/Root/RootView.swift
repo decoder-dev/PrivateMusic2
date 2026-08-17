@@ -87,6 +87,12 @@ struct RootView: View {
             Task { await recoverActiveSession() }
         }
         .tint(settings.theme.accent)
+        // Set once at the root so the flat look is consistent everywhere,
+        // including the full-screen player cover above and every surface
+        // built from `adaptiveGlass`. A half-converted app — flat controls
+        // with isolated glass pills still floating over them — reads as a
+        // rendering bug rather than a choice.
+        .environment(\.prefersClassicChrome, settings.classicChrome)
         .background(ThemeBackground())
         .preferredColorScheme(settings.theme.colorScheme)
         .appTextScale(settings.textScale)

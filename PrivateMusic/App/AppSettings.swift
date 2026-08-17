@@ -138,12 +138,13 @@ final class AppSettings {
     var textScale: AppTextScale {
         didSet { defaults.set(textScale.rawValue, forKey: Keys.textScale) }
     }
-    /// Pins the player to the flat pre-iOS 26 chrome. Below iOS 26 the
-    /// player already draws that way and the switch has nothing to do, so
-    /// it is only offered where Liquid Glass actually applies.
-    var classicPlayerChrome: Bool {
+    /// Pins playback chrome to the flat pre-iOS 26 look: the full-screen
+    /// player, the mini player and the tab bar it sits in. Below iOS 26
+    /// everything already draws that way and the switch has nothing to do,
+    /// so it is only offered where Liquid Glass actually applies.
+    var classicChrome: Bool {
         didSet {
-            defaults.set(classicPlayerChrome, forKey: Keys.classicPlayerChrome)
+            defaults.set(classicChrome, forKey: Keys.classicChrome)
         }
     }
     var equalizerEnabled: Bool {
@@ -311,9 +312,12 @@ final class AppSettings {
         textScale = AppTextScale(
             rawValue: defaults.string(forKey: Keys.textScale) ?? ""
         ) ?? .system
-        classicPlayerChrome = defaults.object(
-            forKey: Keys.classicPlayerChrome
-        ) as? Bool ?? false
+        // 3.28.82 shipped this as a player-only switch under its own key.
+        classicChrome = defaults.object(forKey: Keys.classicChrome) as? Bool
+            ?? defaults.object(
+                forKey: LegacyKeys.classicPlayerChrome
+            ) as? Bool
+            ?? false
         equalizerEnabled = defaults.object(
             forKey: Keys.equalizer
         ) as? Bool ?? false
@@ -401,7 +405,7 @@ final class AppSettings {
         theme = .dark
         appearance = .dark
         textScale = .system
-        classicPlayerChrome = false
+        classicChrome = false
     }
 
     var offlineStorageLimitBytes: Int64 {
@@ -426,7 +430,7 @@ final class AppSettings {
         static let theme = "appearance.theme"
         static let appearance = "appearance.mode"
         static let textScale = "appearance.textScale"
-        static let classicPlayerChrome = "appearance.player.classic"
+        static let classicChrome = "appearance.classicChrome"
         static let equalizer = "audio.equalizer.enabled"
         static let preset = "audio.equalizer.preset"
         static let gains = "audio.equalizer.gains"
@@ -457,6 +461,7 @@ final class AppSettings {
 
     private enum LegacyKeys {
         static let liquidGlass = "appearance.liquidGlass"
+        static let classicPlayerChrome = "appearance.player.classic"
     }
 }
 

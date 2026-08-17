@@ -28,7 +28,7 @@ struct PlayerView: View {
     /// pills as visual noise. Every glass branch here already carries a
     /// complete pre-26 fallback, so the switch just routes to it.
     private var usesGlassChrome: Bool {
-        !settings.classicPlayerChrome
+        !settings.classicChrome
     }
 
     var body: some View {
@@ -61,8 +61,9 @@ struct PlayerView: View {
         .contentShape(Rectangle())
         .simultaneousGesture(fullScreenDismissGesture)
         .background(playerBackground.ignoresSafeArea())
-        // Carries the choice into the sheets the player presents and into
-        // every `adaptiveGlass` surface nested inside it.
+        // RootView already sets this for the whole app; repeated here
+        // because the player arrives through a `fullScreenCover` and its
+        // own sheets (queue, actions) hang off this view, not off Root.
         .environment(\.prefersClassicChrome, !usesGlassChrome)
         .preferredColorScheme(settings.theme.colorScheme)
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)

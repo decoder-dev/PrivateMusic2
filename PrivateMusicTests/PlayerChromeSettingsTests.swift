@@ -6,17 +6,28 @@ final class PlayerChromeSettingsTests: XCTestCase {
     func testPlayerKeepsLiquidGlassByDefault() {
         withDefaults { defaults in
             let settings = AppSettings(defaults: defaults)
-            XCTAssertFalse(settings.classicPlayerChrome)
+            XCTAssertFalse(settings.classicChrome)
+        }
+    }
+
+    /// 3.28.82 stored the switch under a player-only key before it grew to
+    /// cover the tab chrome. Anyone who flipped it there keeps their choice.
+    func testClassicChromeMigratesFromThePlayerOnlyKey() {
+        withDefaults { defaults in
+            defaults.set(true, forKey: "appearance.player.classic")
+
+            let settings = AppSettings(defaults: defaults)
+            XCTAssertTrue(settings.classicChrome)
         }
     }
 
     func testClassicChromeSurvivesRelaunch() {
         withDefaults { defaults in
             let first = AppSettings(defaults: defaults)
-            first.classicPlayerChrome = true
+            first.classicChrome = true
 
             let restored = AppSettings(defaults: defaults)
-            XCTAssertTrue(restored.classicPlayerChrome)
+            XCTAssertTrue(restored.classicChrome)
         }
     }
 
@@ -25,12 +36,12 @@ final class PlayerChromeSettingsTests: XCTestCase {
     func testResetAppearanceRestoresLiquidGlass() {
         withDefaults { defaults in
             let settings = AppSettings(defaults: defaults)
-            settings.classicPlayerChrome = true
+            settings.classicChrome = true
             settings.resetAppearance()
 
-            XCTAssertFalse(settings.classicPlayerChrome)
+            XCTAssertFalse(settings.classicChrome)
             XCTAssertFalse(
-                AppSettings(defaults: defaults).classicPlayerChrome
+                AppSettings(defaults: defaults).classicChrome
             )
         }
     }

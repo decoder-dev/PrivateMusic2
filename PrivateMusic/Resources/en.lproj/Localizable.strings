@@ -163,7 +163,7 @@
 "text_size" = "Text Size";
 "player_look" = "Player Look";
 "classic_player_look" = "Classic Player";
-"classic_player_look.footnote" = "Restores the iOS 18 player: frosted panels and flat buttons instead of Liquid Glass. Applies to the player screen and the sheets it opens — queue, actions.";
+"classic_player_look.footnote" = "Restores the iOS 18 look: a regular bottom bar with the mini player instead of the floating one, frosted panels and flat buttons instead of Liquid Glass. Applies to the player, the mini player, the bottom bar and the app's other panels.";
 "settings.preview" = "Preview";
 "liquid_glass" = "Liquid Glass";
 "ios_26_uses_the_system_interactive_glass_effect_ios_16_25_use_a_compatib" = "iOS 26+ uses the system interactive glass effect. iOS 17–25 use a compatible system material effect.";
