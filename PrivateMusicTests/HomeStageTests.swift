@@ -351,6 +351,18 @@ final class MixMoodLaunchPolicyTests: XCTestCase {
         )
     }
 
+    /// A shelf that merely looks like a mood shelf must never outrank one
+    /// that actually names the mood asked for.
+    func testANamedMoodOutranksAGenericVibeShelf() {
+        let generic = makeMix("m0", title: "Под настроение")
+        let calm = makeMix("m1", title: "Спокойный вечер")
+
+        XCTAssertEqual(
+            MixMoodLaunchPolicy.resolve(mood: .calm, in: [generic, calm]),
+            .mix(calm)
+        )
+    }
+
     func testNoMoodFallsBackToThePersonalStation() {
         let personal = makeMix(MusicMix.common.id, title: "Составлено Селеной")
 
