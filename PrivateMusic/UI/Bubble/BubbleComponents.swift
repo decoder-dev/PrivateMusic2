@@ -175,7 +175,10 @@ private struct BubbleGlassIfNeeded: ViewModifier {
 struct BubbleChip<Trailing: View>: View {
     let title: String
     var isProminent = true
-    fileprivate var hasTrailing = true
+    /// Internal, not fileprivate: a fileprivate stored property drags the
+    /// whole memberwise initialiser down with it, and callers in other
+    /// files lose the trailing-closure form.
+    var hasTrailing = true
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
@@ -242,5 +245,45 @@ struct BubbleCallToAction: View {
         .buttonStyle(BubblePressStyle())
         .disabled(isBusy)
         .accessibilityLabel(title)
+    }
+}
+
+// MARK: - Shape language
+
+/// The four rules the interface is meant to teach without explanation:
+/// a musical context is a circle, media artwork is a squircle, an action
+/// is a circle, chrome is a capsule. Stated once here so it cannot drift
+/// across dozens of call sites.
+enum BubbleShapeLanguage {
+    /// Station, artist, mood, mix, recommendation.
+    static var context: Circle { Circle() }
+
+    /// Album, track and playlist artwork.
+    static func media(size: CGFloat) -> RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: BubbleRadius.artwork(for: size),
+            style: .continuous
+        )
+    }
+
+    /// Play, like, shuffle, more, download.
+    static var action: Circle { Circle() }
+
+    /// Tab bar, mini player, status, search, chips.
+    static var chrome: Capsule { Capsule(style: .continuous) }
+}
+
+extension View {
+    /// Routes a bubble through the shared surface instead of hand-rolling
+    /// `.background(in: Circle())` + `.overlay(stroke)` + `.shadow`, which
+    /// is how three "hero" bubbles end up looking like three systems.
+    func bubbleSurface<S: Shape>(
+        _ shape: S,
+        fill: BubbleFill = .chrome,
+        elevation: BubbleElevation = .resting
+    ) -> some View {
+        BubbleSurface(shape: shape, fill: fill, elevation: elevation) {
+            self
+        }
     }
 }

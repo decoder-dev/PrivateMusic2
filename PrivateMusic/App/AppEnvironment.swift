@@ -815,6 +815,10 @@ final class AppEnvironment {
                 knownTracks: queue
             )
             let title = L10n.format("mix_based_on_0", track.title)
+            // The launch that started this may have been cancelled while
+            // the request was in flight — a later reply must not seize a
+            // queue the listener has already replaced.
+            guard !Task.isCancelled else { return }
             player.play(
                 track,
                 in: queue,
@@ -874,6 +878,10 @@ final class AppEnvironment {
                 seedTracks: page.items + recs,
                 knownTracks: blended
             )
+            // The launch that started this may have been cancelled while
+            // the request was in flight — a later reply must not seize a
+            // queue the listener has already replaced.
+            guard !Task.isCancelled else { return }
             player.play(
                 first,
                 in: blended,
@@ -954,6 +962,10 @@ final class AppEnvironment {
                 seedTracks: cleaned,
                 knownTracks: cleaned
             )
+            // The launch that started this may have been cancelled while
+            // the request was in flight — a later reply must not seize a
+            // queue the listener has already replaced.
+            guard !Task.isCancelled else { return }
             player.play(
                 first,
                 in: cleaned,
@@ -1036,6 +1048,10 @@ final class AppEnvironment {
                 return
             }
             let cursor = MixTrackContinuationCursor(mix: mix)
+            // The launch that started this may have been cancelled while
+            // the request was in flight — a later reply must not seize a
+            // queue the listener has already replaced.
+            guard !Task.isCancelled else { return }
             player.play(
                 first,
                 in: cleaned,
