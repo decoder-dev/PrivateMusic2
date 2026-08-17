@@ -57,6 +57,7 @@ private struct PlaybackDockHeightKey: PreferenceKey {
 struct MainTabView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SessionStore.self) private var sessionStore
+    @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedTab: MainTab = .home
@@ -68,12 +69,17 @@ struct MainTabView: View {
         Group {
             if horizontalSizeClass == .regular {
                 regularWidthSplitView
-            } else if #available(iOS 26.0, *) {
+            } else if #available(iOS 26.0, *), !settings.classicChrome {
                 SystemLiquidGlassTabView(
                     selection: $selectedTab,
                     playerNamespace: playerNamespace
                 )
             } else {
+                // Also the iOS 26 path when the classic look is pinned: the
+                // system tab bar and its floating `tabViewBottomAccessory`
+                // mini player are where most of the Liquid Glass a user sees
+                // actually comes from, so leaving them in place made the
+                // switch look like it did nothing.
                 legacyTabStack
             }
         }
