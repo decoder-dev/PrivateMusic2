@@ -176,10 +176,111 @@ struct MixesHubView: View {
             .premiumAppear(delay: 0.06)
         selenaQuickStarts
             .premiumAppear(delay: 0.08)
+        // Mood used to have its own large selector on Home, right below a
+        // context bubble that already promised the same mood — the same
+        // choice presented twice on one screen. Discovery depth belongs
+        // here, in the tab whose whole job is discovery.
+        moodQuickLaunch
+            .premiumAppear(delay: 0.10)
         if !vibeShelves.isEmpty {
             vibeShelfBlock(metrics: metrics)
                 .premiumAppear(delay: 0.12)
         }
+        if !homeCatalog.newReleases.isEmpty {
+            newReleasesLink
+                .premiumAppear(delay: 0.14)
+        }
+    }
+
+    /// Selena's own mood picker. Resolution goes through the same
+    /// `MixMoodLaunchPolicy` (and, for the VK-mix branch, the same local
+    /// `start(_:)`) as everything else that starts a mood — a named mood
+    /// must win over a generic vibe shelf, and the screen must end up
+    /// showing whatever it just started rather than whatever was on
+    /// screen before.
+    private var moodQuickLaunch: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L10n.text("what_is_the_vibe_right_now"))
+                .font(.headline)
+            Text(L10n.text("a_quick_start_based_on_your_mood"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(
+                        MixMoodPreference.allCases.filter { $0 != .any }
+                    ) { mood in
+                        Button {
+                            launchMood(mood)
+                        } label: {
+                            Text(mood.title)
+                                .font(.subheadline.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(
+                            settings.mixMoodPreference == mood
+                                ? settings.theme.accent
+                                : Color.secondary
+                        )
+                        .disabled(loadingMixID != nil)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .premiumCard()
+    }
+
+    private func launchMood(_ mood: MixMoodPreference) {
+        Haptics.selection()
+        settings.mixMoodPreference = mood
+        switch MixMoodLaunchPolicy.resolve(mood: mood, in: mixes) {
+        case let .mix(mix):
+            // The resolver falls back to the personal station itself when
+            // nothing in the catalog names the mood — that still shows on
+            // the Selena tab, not VK's.
+            hubTab = mix.id == MusicMix.common.id ? .selena : .vk
+            start(mix)
+        case .myMusic:
+            hubTab = .selena
+            Task { await environment.startMixFromMyMusic() }
+        }
+    }
+
+    /// A quiet entry point, not another shelf: the album art already gets
+    /// its own carousel inside `NewReleasesView`, so this only needs to
+    /// say the section exists and hand off to it.
+    private var newReleasesLink: some View {
+        NavigationLink {
+            NewReleasesView(albums: homeCatalog.newReleases)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "sparkles.tv")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(settings.theme.accent)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L10n.text("new_releases"))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(L10n.text("fresh_albums"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+        .premiumCard(interactive: true)
     }
 
     // MARK: - VK
@@ -250,6 +351,9 @@ struct MixesHubView: View {
 
             controlsPanel(mix: mix, tracks: tracks)
                 .premiumAppear(delay: 0.12)
+
+            mixUtilityLinks(mix: mix, tracks: tracks)
+                .premiumAppear(delay: 0.13)
 
             picker()
 
@@ -675,7 +779,7 @@ struct MixesHubView: View {
                             .tracking(0.55)
                     }
                     Text(mix.title)
-                        .font(.title2.weight(.bold))
+                        .font(.title.weight(.bold))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                     if let trimmedSubtitle {
@@ -849,12 +953,11 @@ struct MixesHubView: View {
         return VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("mix_radio"))
                 .font(.headline)
-            Text(
-                L10n.text("diversifies_the_queue_and_on_closer_to_track_more_novelty_pulls_vk_recom")
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
 
+            // One line, not a static paragraph explaining the whole
+            // feature every time the card renders: the caption already
+            // changes with the selected mode, which is the part worth
+            // reading.
             Picker(
                 L10n.text("mode"),
                 selection: Binding(
@@ -959,48 +1062,55 @@ struct MixesHubView: View {
                 .buttonStyle(.bordered)
                 .disabled(tracks.isEmpty)
             }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    NavigationLink {
-                        MixFiltersSettingsView()
-                    } label: {
-                        Label(
-                            L10n.text("mix_filters"),
-                            systemImage: "line.3.horizontal.decrease.circle"
-                        )
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    }
-
-                    NavigationLink {
-                        MixFeedbackManagerView()
-                    } label: {
-                        Label(
-                            L10n.text("hidden"),
-                            systemImage: "eye.slash"
-                        )
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    }
-
-                    Button {
-                        openQueue(mix)
-                    } label: {
-                        Label(
-                            L10n.text("player.queue"),
-                            systemImage: "list.bullet"
-                        )
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    }
-                    .disabled(tracks.isEmpty)
-                }
-            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .premiumCard()
+    }
+
+    /// Filters, hidden tracks and the queue are utility links, not radio
+    /// tuning — folding them into the Radio Mix card was exactly the kind
+    /// of unrelated content that made it read as half the screen. Flat
+    /// row, no card: they don't need their own surface to be reachable.
+    private func mixUtilityLinks(mix: MusicMix, tracks: [Track]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                NavigationLink {
+                    MixFiltersSettingsView()
+                } label: {
+                    Label(
+                        L10n.text("mix_filters"),
+                        systemImage: "line.3.horizontal.decrease.circle"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                }
+
+                NavigationLink {
+                    MixFeedbackManagerView()
+                } label: {
+                    Label(
+                        L10n.text("hidden"),
+                        systemImage: "eye.slash"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                }
+
+                Button {
+                    openQueue(mix)
+                } label: {
+                    Label(
+                        L10n.text("player.queue"),
+                        systemImage: "list.bullet"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                }
+                .disabled(tracks.isEmpty)
+            }
+            .foregroundStyle(.secondary)
+        }
     }
 
     private func mixFilterChips(mix: MusicMix) -> some View {
@@ -1193,6 +1303,11 @@ struct MixesHubView: View {
                     if isExpanded {
                         switch trackListLayout {
                         case .list:
+                            // Flat, like every other long track list in the
+                            // app (Library's own list has no enclosing
+                            // card either) — up to 45 rows inside one
+                            // rounded rectangle read as a modal card
+                            // stapled onto the page, not as a list.
                             VStack(spacing: 0) {
                                 ForEach(
                                     Array(expandedList.enumerated()),
@@ -1209,9 +1324,6 @@ struct MixesHubView: View {
                                     }
                                 }
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 4)
-                            .premiumCard()
                         case .grid:
                             LazyVGrid(
                                 columns: metrics.gridColumns,
