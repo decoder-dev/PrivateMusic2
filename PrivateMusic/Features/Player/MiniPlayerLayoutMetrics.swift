@@ -4,7 +4,9 @@ import Foundation
 /// Layout constants for the Apple Music–style compact mini player.
 enum MiniPlayerLayoutMetrics {
     static let artworkSize: CGFloat = 46
-    static let artworkCornerRadius: CGFloat = 7
+    /// Squircle, matching BubbleShapeLanguage.media at this size, so
+    /// artwork curves identically in the dock, the stage and the shelves.
+    static let artworkCornerRadius: CGFloat = 11
     static let artworkShadowRadius: CGFloat = 3
     static let artworkShadowY: CGFloat = 1
     static let inlineArtworkSize: CGFloat = 28
