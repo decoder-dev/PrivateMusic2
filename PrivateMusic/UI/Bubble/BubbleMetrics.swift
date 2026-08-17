@@ -29,7 +29,10 @@ enum BubbleMetrics {
         for width: CGFloat,
         priority: BubblePriority = .primary
     ) -> CGFloat {
-        let base = clamp(width * 0.30, minimum: 116, maximum: 168)
+        // A primary bubble reads as a peer of the artwork above it, not a
+        // second hero of its own — 116–168 let the rail dominate the
+        // viewport on anything wider than a compact phone.
+        let base = clamp(width * 0.30, minimum: 118, maximum: 128)
         return (base * priority.scale).rounded()
     }
 
@@ -44,8 +47,8 @@ enum BubbleMetrics {
     /// finger needs, 64 is where a control starts competing with the
     /// artwork for attention.
     static func action(for width: CGFloat, prominent: Bool = false) -> CGFloat {
-        let fraction = prominent ? 0.148 : 0.128
-        let ceiling: CGFloat = prominent ? 64 : 54
+        let fraction = prominent ? 0.126 : 0.118
+        let ceiling: CGFloat = prominent ? 52 : 50
         return clamp(
             width * fraction,
             minimum: minimumTapTarget,
@@ -92,7 +95,9 @@ enum BottomAccessoryMetrics {
     /// floor used before that measurement lands, so content never starts
     /// out underneath it on first paint.
     static let estimatedDockHeight: CGFloat = 74
-    static let estimatedMiniPlayerHeight: CGFloat = 63
+    /// Matches MiniPlayerLayoutMetrics.minHeight (58) plus a hairline of
+    /// rounding slack, so the estimate still clears the real bar.
+    static let estimatedMiniPlayerHeight: CGFloat = 59
 
     /// Breathing room between the last row of content and the chrome.
     static let contentClearance: CGFloat = BubbleSpacing.l

@@ -88,13 +88,19 @@ struct HomeStageView: View {
                             radius: PlayerArtworkBackgroundPolicy.blurRadius
                         )
                         .saturation(1.15)
-                        // Light mode needs the artwork well behind the text;
-                        // dark mode would otherwise collapse into a slab.
-                        .opacity(settings.theme == .light ? 0.26 : 0.78)
+                        // A tint the status/artist/artwork/controls sit in,
+                        // not a wallpaper behind them — dark mode used to
+                        // run this at 0.78 and read as a second background.
+                        .opacity(settings.theme == .light ? 0.22 : 0.58)
                 } placeholder: {
                     Color.clear
                 }
                 .id(artworkURL)
+            } else {
+                // Idle still gets a whisper of the station's own colour
+                // instead of flat black — the same role palette the idle
+                // artwork glyph already draws from, not a second engine.
+                idleAtmosphereTint
             }
         }
         .frame(
@@ -121,6 +127,18 @@ struct HomeStageView: View {
         .accessibilityHidden(true)
     }
 
+    private var idleAtmosphereTint: some View {
+        let tint = BubblePalette.surface(.station, tint: nil).color
+        return LinearGradient(
+            colors: [
+                tint.opacity(settings.theme == .light ? 0.10 : 0.20),
+                .clear
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
     // MARK: - Chip
 
     @ViewBuilder
@@ -134,7 +152,10 @@ struct HomeStageView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .black))
                         .frame(width: 22, height: 22)
-                        .contentShape(Circle())
+                        // The glyph stays small so the chip stays a status,
+                        // not a button; the hit area still clears 44×44 by
+                        // growing only the tap region, not the layout.
+                        .contentShape(Circle().inset(by: -11))
                 }
                 .buttonStyle(BubblePressStyle())
                 .accessibilityLabel(L10n.text("home_stage.clear_queue"))
@@ -154,9 +175,12 @@ struct HomeStageView: View {
     private var headline: some View {
         Text(headlineText)
             .font(BubbleType.hero(HomeStageMetrics.headlineSize(for: width)))
-            .tracking(-0.8)
+            .tracking(-0.4)
             .lineLimit(2)
-            .minimumScaleFactor(0.62)
+            // Shrinking is the fallback, not the strategy: the band this
+            // reads from is already narrow (32–38 pt), so a short name
+            // never needs to reach for it.
+            .minimumScaleFactor(0.85)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity)
@@ -170,7 +194,8 @@ struct HomeStageView: View {
         let artist = track.artist.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
-        return artist.isEmpty ? track.title : artist
+        guard !artist.isEmpty else { return track.title }
+        return ArtistCreditDisplay.summarize(artist)
     }
 
     // MARK: - Artwork
@@ -327,7 +352,7 @@ struct HomeStageView: View {
     /// grid and lets the last one scroll fully clear.
     private var bubbleRail: some View {
         ScrollView(.horizontal) {
-            HStack(alignment: .center, spacing: BubbleSpacing.s) {
+            HStack(alignment: .center, spacing: BubbleSpacing.m) {
                 ForEach(contexts) { context in
                     bubble(context)
                 }
@@ -360,13 +385,14 @@ struct HomeStageView: View {
             VStack(spacing: BubbleSpacing.xs) {
                 bubbleGlyph(context, size: glyphSize)
                 Text(context.kind.kicker)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.74))
                     .lineLimit(1)
-                Text(context.name)
-                    .font(.system(size: 13, weight: .semibold))
+                Text(context.displayName)
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(2)
+                    .minimumScaleFactor(0.85)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }

@@ -44,15 +44,20 @@ enum BubbleRadius {
 /// Weight carries hierarchy; size carries structure. The screens were
 /// reading as a wall of bold because every level reached for `.bold`.
 enum BubbleType {
+    /// Bold, not heavy — heavy read as shouting at every width once the
+    /// headline band widened past a phone's largest artist credits.
     static func hero(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .heavy, design: .default)
+        .system(size: size, weight: .bold, design: .default)
     }
 
     static let section = Font.title3.weight(.semibold)
-    static let cardTitle = Font.subheadline.weight(.semibold)
+    static let cardTitle = Font.system(size: 18, weight: .semibold)
     static let body = Font.subheadline
     static let metadata = Font.footnote
     static let micro = Font.caption2.weight(.medium)
+    /// Status chips: readable at a glance without competing with the
+    /// headline above it.
+    static let chip = Font.system(size: 13, weight: .medium)
 }
 
 /// Motion is short, damped and optional. Nothing in Bubble UI floats on

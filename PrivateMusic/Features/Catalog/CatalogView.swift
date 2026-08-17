@@ -67,6 +67,10 @@ struct CatalogView: View {
                     .padding(.horizontal, metrics.horizontalPadding)
                     .padding(.top, 4)
                 }
+                // The vertical indicator sat right over the stage's
+                // artwork and controls at the top of the scroll — the one
+                // place on Home it can't afford to compete for attention.
+                .scrollIndicators(.hidden)
             }
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .home else { return }

@@ -177,6 +177,7 @@
 "home_stage.kind.vibe" = "Vibe";
 "home_stage.kind.artist" = "Like this artist";
 "home_stage.kind.mix" = "Mix";
+"home_stage.artist_plus_d0" = "%@ +%d";
 "player_look" = "Player Look";
 "classic_player_look" = "Classic Player";
 "classic_player_look.footnote" = "Restores the iOS 18 look: a regular bottom bar with the mini player instead of the floating one, frosted panels and flat buttons instead of Liquid Glass. Applies to the player, the mini player, the bottom bar and the app's other panels.";

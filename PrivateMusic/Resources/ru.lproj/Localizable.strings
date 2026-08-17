@@ -177,6 +177,7 @@
 "home_stage.kind.vibe" = "Вайб";
 "home_stage.kind.artist" = "В стиле артиста";
 "home_stage.kind.mix" = "Микс";
+"home_stage.artist_plus_d0" = "%@ +%d";
 "player_look" = "Вид плеера";
 "classic_player_look" = "Старый вид плеера";
 "classic_player_look.footnote" = "Возвращает оформление iOS 18: обычная нижняя панель с мини-плеером вместо плавающей, матовые панели и плоские кнопки вместо Liquid Glass. Действует на плеер, мини-плеер, нижнюю панель и остальные панели приложения.";
