@@ -23,6 +23,14 @@ struct PlayerView: View {
     @State private var routeHintToken = UUID()
     @State private var sharingTrack: Track?
 
+    /// The tester feedback that started this: on iOS 26 the player picks up
+    /// Liquid Glass, and people coming from iOS 18 read the translucent
+    /// pills as visual noise. Every glass branch here already carries a
+    /// complete pre-26 fallback, so the switch just routes to it.
+    private var usesGlassChrome: Bool {
+        !settings.classicPlayerChrome
+    }
+
     var body: some View {
         GeometryReader { proxy in
             ZStack {
@@ -53,6 +61,9 @@ struct PlayerView: View {
         .contentShape(Rectangle())
         .simultaneousGesture(fullScreenDismissGesture)
         .background(playerBackground.ignoresSafeArea())
+        // Carries the choice into the sheets the player presents and into
+        // every `adaptiveGlass` surface nested inside it.
+        .environment(\.prefersClassicChrome, !usesGlassChrome)
         .preferredColorScheme(settings.theme.colorScheme)
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .sheet(
@@ -570,7 +581,7 @@ struct PlayerView: View {
 
     @ViewBuilder
     private var playPauseButton: some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), usesGlassChrome {
             Button {
                 Haptics.selection()
                 player.playPause()
@@ -654,7 +665,7 @@ struct PlayerView: View {
 
     @ViewBuilder
     private func quickActionGlyph(_ image: String) -> some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), usesGlassChrome {
             Image(systemName: image)
                 .font(.system(size: 16, weight: .semibold))
                 .frame(width: 44, height: 44)
@@ -673,7 +684,7 @@ struct PlayerView: View {
         accessibilityLabel: String,
         action: @escaping () -> Void
     ) -> some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), usesGlassChrome {
             Button(action: action) {
                 Image(systemName: systemImage)
                     .font(.system(size: 22, weight: .semibold))
@@ -707,7 +718,7 @@ struct PlayerView: View {
     ) -> some View {
         let resolvedTint = tint ?? playerForeground
         let button = Group {
-            if #available(iOS 26.0, *) {
+            if #available(iOS 26.0, *), usesGlassChrome {
                 Button(action: action) {
                     Image(systemName: systemImage)
                         .font(font)
@@ -750,7 +761,7 @@ struct PlayerView: View {
         accessibilityValue: String,
         action: @escaping () -> Void
     ) -> some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), usesGlassChrome {
             Button(action: action) {
                 Image(systemName: image)
                     .font(.system(size: 17, weight: .semibold))

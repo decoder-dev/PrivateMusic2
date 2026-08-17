@@ -138,6 +138,14 @@ final class AppSettings {
     var textScale: AppTextScale {
         didSet { defaults.set(textScale.rawValue, forKey: Keys.textScale) }
     }
+    /// Pins the player to the flat pre-iOS 26 chrome. Below iOS 26 the
+    /// player already draws that way and the switch has nothing to do, so
+    /// it is only offered where Liquid Glass actually applies.
+    var classicPlayerChrome: Bool {
+        didSet {
+            defaults.set(classicPlayerChrome, forKey: Keys.classicPlayerChrome)
+        }
+    }
     var equalizerEnabled: Bool {
         didSet { defaults.set(equalizerEnabled, forKey: Keys.equalizer) }
     }
@@ -303,6 +311,9 @@ final class AppSettings {
         textScale = AppTextScale(
             rawValue: defaults.string(forKey: Keys.textScale) ?? ""
         ) ?? .system
+        classicPlayerChrome = defaults.object(
+            forKey: Keys.classicPlayerChrome
+        ) as? Bool ?? false
         equalizerEnabled = defaults.object(
             forKey: Keys.equalizer
         ) as? Bool ?? false
@@ -390,6 +401,7 @@ final class AppSettings {
         theme = .dark
         appearance = .dark
         textScale = .system
+        classicPlayerChrome = false
     }
 
     var offlineStorageLimitBytes: Int64 {
@@ -414,6 +426,7 @@ final class AppSettings {
         static let theme = "appearance.theme"
         static let appearance = "appearance.mode"
         static let textScale = "appearance.textScale"
+        static let classicPlayerChrome = "appearance.player.classic"
         static let equalizer = "audio.equalizer.enabled"
         static let preset = "audio.equalizer.preset"
         static let gains = "audio.equalizer.gains"

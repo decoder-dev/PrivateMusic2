@@ -14,15 +14,31 @@ struct ThemeBackground: View {
     }
 }
 
+private struct ClassicChromeKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Set on a subtree that the user has pinned to the pre-iOS 26 look.
+    /// Without it the surfaces built from `adaptiveGlass` would keep their
+    /// Liquid Glass while the hand-written branches around them fell back,
+    /// leaving isolated glass pills floating over flat chrome.
+    var prefersClassicChrome: Bool {
+        get { self[ClassicChromeKey.self] }
+        set { self[ClassicChromeKey.self] = newValue }
+    }
+}
+
 private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     let shape: S
     let interactive: Bool
     let tint: Color?
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.prefersClassicChrome) private var prefersClassicChrome
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *), !reduceTransparency {
+        if #available(iOS 26.0, *), !reduceTransparency, !prefersClassicChrome {
             // Liquid Glass samples its own shape; clipping the content
             // before handing it to glassEffect(in:) fights that sampling
             // and is a documented source of rendering artifacts. The
@@ -69,6 +85,7 @@ struct AdaptiveGlassContainer<Content: View>: View {
     let spacing: CGFloat?
     private let content: Content
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.prefersClassicChrome) private var prefersClassicChrome
 
     init(
         spacing: CGFloat? = nil,
@@ -80,7 +97,7 @@ struct AdaptiveGlassContainer<Content: View>: View {
 
     @ViewBuilder
     var body: some View {
-        if #available(iOS 26.0, *), !reduceTransparency {
+        if #available(iOS 26.0, *), !reduceTransparency, !prefersClassicChrome {
             GlassEffectContainer(spacing: spacing) {
                 content
             }
