@@ -58,6 +58,7 @@ struct MainTabView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SessionStore.self) private var sessionStore
     @Environment(AppSettings.self) private var settings
+    @Environment(AudioPlayer.self) private var player
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedTab: MainTab = .home
@@ -211,8 +212,19 @@ struct MainTabView: View {
     ) -> some View {
         content()
             .safeAreaInset(edge: .bottom, spacing: 0) {
+                // Reservation goes through BottomAccessoryMetrics so the
+                // dock, the mini player and the clearance between them are
+                // decided in one place. Before the dock has measured
+                // itself the estimate still clears it, which is what used
+                // to let the first shelf paint underneath on the first
+                // frame.
                 Color.clear
-                    .frame(height: dockHeight)
+                    .frame(
+                        height: BottomAccessoryMetrics.inset(
+                            measuredDockHeight: dockHeight,
+                            hasMiniPlayer: player.currentTrack != nil
+                        )
+                    )
                     .accessibilityHidden(true)
             }
             .opacity(selectedTab == tab ? 1 : 0)

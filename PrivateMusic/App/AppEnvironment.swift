@@ -897,6 +897,130 @@ final class AppEnvironment {
         }
     }
 
+    /// The personal station, or the listener's own library when the
+    /// catalog has not produced one yet.
+    func startPersonalStation(in mixes: [MusicMix]) async {
+        if let personal = mixes.first(where: { $0.id == MusicMix.common.id }) {
+            await startCatalogMix(personal)
+        } else {
+            await startMixFromMyMusic()
+        }
+    }
+
+    /// Starting a mood used to mean writing `settings.mixMoodPreference`
+    /// and then launching the ordinary personal station, so «Активно» and
+    /// «Спокойно» produced the same queue. `MixMoodLaunchPolicy` is the
+    /// one resolver Home's vibe chips and the stage bubbles both go
+    /// through, so the mood reaches the queue rather than just the UI.
+    func startMoodStation(
+        _ mood: MixMoodPreference,
+        in mixes: [MusicMix]
+    ) async {
+        switch MixMoodLaunchPolicy.resolve(mood: mood, in: mixes) {
+        case let .mix(mix):
+            await startCatalogMix(mix)
+        case .myMusic:
+            await startMixFromMyMusic()
+        }
+    }
+
+    /// Radio for one artist. Tapping an artist bubble used to call
+    /// `startMixFromMyMusic()`, which played everything and honoured
+    /// nothing about who was tapped.
+    ///
+    /// Resolution order: VK's artist id when `audio.searchArtists` can
+    /// match the name, then the most recent track we hold by them as a
+    /// recommendation seed, then a plain search. Every branch stays about
+    /// this artist — none of them fall back to the generic library mix.
+    func startMixFromArtist(named name: String, seed: Track?) async {
+        mixActionError = nil
+        let query = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        do {
+            let tracks = try await artistTracks(for: query)
+            let cleaned = filteredMixTracks(tracks)
+            guard let first = cleaned.first else {
+                if let seed {
+                    await startMixFromTrack(seed)
+                } else {
+                    mixActionError = L10n.format(
+                        "could_not_start_artist_0",
+                        query
+                    )
+                }
+                return
+            }
+            let stream = SelenaRecommendationCursor(
+                seedTracks: cleaned,
+                knownTracks: cleaned
+            )
+            player.play(
+                first,
+                in: cleaned,
+                continuation: { [weak self] in
+                    guard let self else { return [] }
+                    let more = try await self.withAuthorizedToken { token in
+                        try await stream.next(
+                            accessToken: token,
+                            musicService: self.musicService
+                        )
+                    }
+                    return self.filteredMixTracks(more)
+                },
+                source: .mix(title: L10n.format("artist_radio_0", query))
+            )
+            // Keeps the upcoming queue leaning towards the artist that was
+            // tapped instead of drifting into general recommendations.
+            player.rerankUpcomingMix(
+                mode: .closerToSeed,
+                seed: first,
+                historyArtists: Set(
+                    historyStore.entries.prefix(40).map(\.track.artist)
+                )
+            )
+            Haptics.success()
+        } catch is CancellationError {
+            return
+        } catch {
+            if let seed {
+                await startMixFromTrack(seed)
+            } else {
+                mixActionError = error.localizedDescription
+            }
+        }
+    }
+
+    private func artistTracks(for query: String) async throws -> [Track] {
+        let candidates = try await withAuthorizedToken { token in
+            try await musicService.searchArtists(
+                query: query,
+                accessToken: token,
+                offset: 0,
+                count: 8
+            )
+        }
+        if let artist = VKArtistMatch.best(in: candidates, named: query) {
+            let page = try await withAuthorizedToken { token in
+                try await musicService.artistTracks(
+                    artistID: artist.id,
+                    accessToken: token,
+                    offset: 0,
+                    count: 50
+                )
+            }
+            if !page.items.isEmpty { return page.items }
+        }
+        let search = try await withAuthorizedToken { token in
+            try await musicService.search(
+                query: query,
+                accessToken: token,
+                offset: 0,
+                count: 50
+            )
+        }
+        return search.items
+    }
+
     func startCatalogMix(_ mix: MusicMix) async {
         mixActionError = nil
         do {
