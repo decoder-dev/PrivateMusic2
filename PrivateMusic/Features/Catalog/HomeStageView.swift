@@ -104,9 +104,11 @@ struct HomeStageView: View {
                         )
                         .saturation(1.15)
                         // A tint the status/artist/artwork/controls sit in,
-                        // not a wallpaper behind them — dark mode used to
-                        // run this at 0.78 and read as a second background.
-                        .opacity(settings.theme == .light ? 0.22 : 0.58)
+                        // not a wallpaper behind them — 0.78 read as a
+                        // second background, 0.58 read as a weak glow
+                        // localized behind the artwork instead of one field
+                        // the whole hero sits in.
+                        .opacity(settings.theme == .light ? 0.22 : 0.64)
                 } placeholder: {
                     Color.clear
                 }
@@ -317,6 +319,10 @@ struct HomeStageView: View {
         }
     }
 
+    /// Flat on purpose: Play and Like on either side are genuine floating
+    /// controls and keep their glass, but the title between them is a
+    /// label, not its own surface — a third glass pill made three
+    /// unrelated objects out of one playback group.
     private func nowPlayingTitle(height: CGFloat) -> some View {
         Button {
             Haptics.open()
@@ -328,10 +334,9 @@ struct HomeStageView: View {
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity)
                 .frame(height: height)
-                .contentShape(Capsule(style: .continuous))
+                .contentShape(Rectangle())
         }
         .buttonStyle(BubblePressStyle())
-        .adaptiveGlass(in: Capsule(style: .continuous), interactive: true)
         .accessibilityLabel(player.currentTrack?.title ?? "")
         .accessibilityHint(L10n.text("open_full_screen_player"))
     }
@@ -363,10 +368,10 @@ struct HomeStageView: View {
             )
     }
 
-    /// Circles are shown whole. The rail used to shrink its own frame to
+    /// Tiles are shown whole. The rail used to shrink its own frame to
     /// fake bubbles rising off the bottom edge, which on a device simply
     /// read as clipping. Running past the screen edges horizontally is the
-    /// decorative part; `contentMargins` keeps the first bubble on Home's
+    /// decorative part; `contentMargins` keeps the first tile on Home's
     /// grid and lets the last one scroll fully clear.
     private var bubbleRail: some View {
         ScrollView(.horizontal) {
@@ -387,9 +392,21 @@ struct HomeStageView: View {
         .padding(.horizontal, -horizontalPadding)
     }
 
+    /// A shortcut, not a second hero: soft geometry, contextual colour and
+    /// compact grouping rather than a circle sized to compete with the
+    /// artwork above it. Height is uniform across the rail — only width
+    /// (and, faintly, colour) carries priority.
     private func bubble(_ context: HomeStageContext) -> some View {
-        let size = BubbleMetrics.hero(for: width, priority: context.priority)
-        let glyphSize = BubbleMetrics.heroArtwork(in: size)
+        let tileHeight = HomeStageMetrics.railHeight(for: width)
+        let tileWidth = BubbleMetrics.contextTileWidth(
+            for: width,
+            priority: context.priority
+        )
+        let glyphSize = BubbleMetrics.contextGlyphSize(for: tileHeight)
+        let shape = RoundedRectangle(
+            cornerRadius: BubbleRadius.contextTile,
+            style: .continuous
+        )
         // Artwork-derived tints come from the shared cache once one has
         // been sampled; the role palette is the guaranteed fallback, so the
         // rail never loses its colour legend.
@@ -400,80 +417,75 @@ struct HomeStageView: View {
         return Button {
             start(context)
         } label: {
-            VStack(spacing: BubbleSpacing.xs) {
+            HStack(spacing: BubbleSpacing.s) {
                 bubbleGlyph(context, size: glyphSize)
-                Text(context.kind.kicker)
-                    .font(BubbleType.bubbleKicker)
-                    .foregroundStyle(.white.opacity(0.74))
-                    .lineLimit(1)
-                Text(context.displayName)
-                    .font(BubbleType.bubbleTitle)
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(context.kind.kicker)
+                        .font(BubbleType.bubbleKicker)
+                        .foregroundStyle(.white.opacity(0.72))
+                        .lineLimit(1)
+                    Text(context.displayName)
+                        .font(BubbleType.bubbleTitle)
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .minimumScaleFactor(0.88)
+                }
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, BubbleSpacing.m)
-            .frame(width: size, height: size)
-            .bubbleSurface(
-                Circle(),
-                fill: .solid(fill),
-                elevation: .resting
-            )
+            .frame(width: tileWidth, height: tileHeight, alignment: .leading)
+            .bubbleSurface(shape, fill: .solid(fill), elevation: .resting)
             .overlay {
                 if startingContextID == context.id {
                     ZStack {
-                        Circle().fill(.black.opacity(0.28))
+                        shape.fill(.black.opacity(0.28))
                         ProgressView().tint(.white)
                     }
                 }
             }
-            .contentShape(Circle())
+            .contentShape(shape)
         }
         .buttonStyle(BubblePressStyle())
-        .frame(
-            minWidth: BubbleMetrics.minimumTapTarget,
-            minHeight: BubbleMetrics.minimumTapTarget
-        )
+        .frame(minHeight: BubbleMetrics.minimumTapTarget)
         // One element, one sentence — not image, then kicker, then name.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(context.accessibilityLabel)
         .accessibilityAddTraits(.isButton)
     }
 
+    /// A real photo earns its own circle; the symbol fallback sits directly
+    /// on the tile's own tinted surface. Wrapping the fallback in a second
+    /// filled circle was a bubble stacked inside a bubble for no reason —
+    /// the tile is already the coloured surface.
     @ViewBuilder
     private func bubbleGlyph(
         _ context: HomeStageContext,
         size: CGFloat
     ) -> some View {
-        Group {
-            if let avatarURL = context.avatarURL {
-                CachedRemoteImage(url: avatarURL, maxPixelSize: size * 3) {
-                    image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    glyphFallback(context, size: size)
-                }
-            } else {
+        if let avatarURL = context.avatarURL {
+            CachedRemoteImage(url: avatarURL, maxPixelSize: size * 3) {
+                image in
+                image.resizable().scaledToFill()
+            } placeholder: {
                 glyphFallback(context, size: size)
             }
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+            .overlay { Circle().stroke(.white.opacity(0.18), lineWidth: 1) }
+        } else {
+            glyphFallback(context, size: size)
         }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-        .overlay { Circle().stroke(.white.opacity(0.18), lineWidth: 1) }
     }
 
     private func glyphFallback(
         _ context: HomeStageContext,
         size: CGFloat
     ) -> some View {
-        ZStack {
-            Circle().fill(.black.opacity(0.26))
-            Image(systemName: context.kind.symbol)
-                .font(.system(size: size * 0.42, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.9))
-        }
+        Image(systemName: context.kind.symbol)
+            .font(.system(size: size * 0.6, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.92))
+            .frame(width: size, height: size)
     }
 
     // MARK: - Launching

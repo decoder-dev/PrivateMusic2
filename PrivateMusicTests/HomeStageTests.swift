@@ -543,15 +543,14 @@ final class HomeStageMetricsTests: XCTestCase {
         }
     }
 
-    /// The rail is exactly as tall as its tallest bubble. It used to be
-    /// shorter on purpose, to fake circles rising off the bottom edge,
-    /// which on a device just read as clipping.
-    func testRailIsTallEnoughToShowWholeBubbles() {
+    /// The rail is exactly as tall as its tiles — a compact contextual
+    /// shortcut, not a second hero sized to compete with the artwork.
+    func testRailMatchesTheCompactContextTileBand() {
         for width in widths {
-            XCTAssertGreaterThanOrEqual(
-                HomeStageMetrics.railHeight(for: width),
-                BubbleMetrics.hero(for: width, priority: .primary)
-            )
+            let rail = HomeStageMetrics.railHeight(for: width)
+            XCTAssertEqual(rail, BubbleMetrics.contextTileHeight(for: width))
+            XCTAssertGreaterThanOrEqual(rail, 72)
+            XCTAssertLessThanOrEqual(rail, 88)
         }
     }
 
@@ -586,23 +585,34 @@ final class HomeStageMetricsTests: XCTestCase {
 final class BubbleSystemTests: XCTestCase {
     private let widths: [CGFloat] = [375, 393, 430]
 
-    func testHeroSizeFollowsPriorityNotPosition() {
+    /// Priority now carries a subtle width difference between context
+    /// tiles, not an enormous size jump — the tile is a shortcut, and a
+    /// shortcut sized like a second hero competed with the artwork above
+    /// it. Height stays fixed across the rail regardless of priority.
+    func testContextTileWidthFollowsPriorityNotPosition() {
         for width in widths {
-            let primary = BubbleMetrics.hero(for: width, priority: .primary)
-            let secondary = BubbleMetrics.hero(for: width, priority: .secondary)
-            let tertiary = BubbleMetrics.hero(for: width, priority: .tertiary)
+            let primary = BubbleMetrics.contextTileWidth(
+                for: width,
+                priority: .primary
+            )
+            let secondary = BubbleMetrics.contextTileWidth(
+                for: width,
+                priority: .secondary
+            )
+            let tertiary = BubbleMetrics.contextTileWidth(
+                for: width,
+                priority: .tertiary
+            )
 
             XCTAssertGreaterThan(primary, secondary)
             XCTAssertGreaterThan(secondary, tertiary)
 
-            // A colourful circle the size of a small avatar, not a second
-            // artwork competing with the one above it.
-            XCTAssertGreaterThanOrEqual(primary, 118)
-            XCTAssertLessThanOrEqual(primary, 128)
-            XCTAssertGreaterThanOrEqual(secondary, 104)
-            XCTAssertLessThanOrEqual(secondary, 116)
-            XCTAssertGreaterThanOrEqual(tertiary, 94)
-            XCTAssertLessThanOrEqual(tertiary, 106)
+            XCTAssertGreaterThanOrEqual(tertiary, 96)
+            XCTAssertLessThanOrEqual(primary, 155)
+
+            let height = BubbleMetrics.contextTileHeight(for: width)
+            XCTAssertGreaterThanOrEqual(height, 72)
+            XCTAssertLessThanOrEqual(height, 88)
         }
     }
 
