@@ -286,6 +286,70 @@ final class HomeStageContextTests: XCTestCase {
             )
         )
     }
+
+    /// VK sometimes hands back a multi-artist credit as one comma-joined
+    /// string. The bubble's display name must fold it down rather than
+    /// showing the run-on string a listener actually saw on device.
+    func testMultiArtistCreditCollapsesToLeadPlusCount() {
+        let context = HomeStageContext(
+            id: "artist-skwlkr",
+            kind: .artist,
+            name: "SKWLKR, Lastfragment, Somebody Else",
+            priority: .secondary,
+            avatarURL: nil,
+            mixID: nil,
+            mood: nil,
+            artist: HomeStageArtist(name: "SKWLKR", seed: nil)
+        )
+
+        XCTAssertFalse(context.displayName.contains(","))
+        XCTAssertTrue(context.displayName.hasPrefix("SKWLKR"))
+        XCTAssertTrue(context.displayName.contains("2"))
+        // Accessibility must read the same short label, not the raw credit.
+        XCTAssertFalse(context.accessibilityLabel.contains("Lastfragment"))
+    }
+
+    func testSingleArtistNameIsUnaffected() {
+        let context = HomeStageContext(
+            id: "artist-owar1",
+            kind: .artist,
+            name: "Owar1",
+            priority: .secondary,
+            avatarURL: nil,
+            mixID: nil,
+            mood: nil,
+            artist: HomeStageArtist(name: "Owar1", seed: nil)
+        )
+
+        XCTAssertEqual(context.displayName, "Owar1")
+    }
+}
+
+@MainActor
+final class ArtistCreditDisplayTests: XCTestCase {
+    func testTwoArtistsFoldIntoLeadPlusOne() {
+        XCTAssertEqual(
+            ArtistCreditDisplay.summarize("SKWLKR, Lastfragment"),
+            L10n.format("home_stage.artist_plus_d0", "SKWLKR", 1)
+        )
+    }
+
+    func testWhitespaceOnlySegmentsDoNotCountAsExtraArtists() {
+        // A trailing comma or double comma from upstream data must not
+        // turn one artist into "Name +1".
+        XCTAssertEqual(
+            ArtistCreditDisplay.summarize("Owar1,  ,"),
+            "Owar1"
+        )
+    }
+
+    func testSingleNameWithoutCommaPassesThrough() {
+        XCTAssertEqual(ArtistCreditDisplay.summarize("Owar1"), "Owar1")
+    }
+
+    func testEmptyStringPassesThrough() {
+        XCTAssertEqual(ArtistCreditDisplay.summarize(""), "")
+    }
 }
 
 @MainActor
@@ -388,20 +452,20 @@ final class HomeStageMetricsTests: XCTestCase {
     func testHeadlineStaysInTheSpecifiedBand() {
         for width in widths {
             let size = HomeStageMetrics.headlineSize(for: width)
-            XCTAssertGreaterThanOrEqual(size, 34)
-            XCTAssertLessThanOrEqual(size, 42)
+            XCTAssertGreaterThanOrEqual(size, 32)
+            XCTAssertLessThanOrEqual(size, 38)
         }
     }
 
     func testArtworkAndControlsStayInTheSpecifiedBands() {
         for width in widths {
             let artwork = HomeStageMetrics.artworkSize(for: width)
-            XCTAssertGreaterThanOrEqual(artwork, 120)
+            XCTAssertGreaterThanOrEqual(artwork, 125)
             XCTAssertLessThanOrEqual(artwork, 145)
 
             let control = HomeStageMetrics.controlHeight(for: width)
-            XCTAssertGreaterThanOrEqual(control, 50)
-            XCTAssertLessThanOrEqual(control, 54)
+            XCTAssertGreaterThanOrEqual(control, 48)
+            XCTAssertLessThanOrEqual(control, 52)
         }
     }
 
@@ -418,6 +482,20 @@ final class HomeStageMetricsTests: XCTestCase {
             80,
             "at least a shelf row should show under the stage"
         )
+    }
+
+    /// Home reads as a feed with a hero block at the top, not as a second
+    /// full-screen player — the hero alone (before the context rail) has
+    /// to stay well clear of "almost the whole screen."
+    func testHeroWithoutRailStaysCompact() {
+        for width in widths {
+            let withRail = HomeStageMetrics.stageHeight(for: width)
+            let rail = HomeStageMetrics.railHeight(for: width)
+            let heroOnly = withRail - rail
+
+            XCTAssertGreaterThanOrEqual(heroOnly, 280)
+            XCTAssertLessThanOrEqual(heroOnly, 360)
+        }
     }
 
     /// Even the worst case — a two-line feature credit — must not turn the
@@ -457,6 +535,15 @@ final class BubbleSystemTests: XCTestCase {
 
             XCTAssertGreaterThan(primary, secondary)
             XCTAssertGreaterThan(secondary, tertiary)
+
+            // A colourful circle the size of a small avatar, not a second
+            // artwork competing with the one above it.
+            XCTAssertGreaterThanOrEqual(primary, 118)
+            XCTAssertLessThanOrEqual(primary, 128)
+            XCTAssertGreaterThanOrEqual(secondary, 104)
+            XCTAssertLessThanOrEqual(secondary, 116)
+            XCTAssertGreaterThanOrEqual(tertiary, 94)
+            XCTAssertLessThanOrEqual(tertiary, 106)
         }
     }
 
@@ -466,10 +553,10 @@ final class BubbleSystemTests: XCTestCase {
                 BubbleMetrics.action(for: width),
                 BubbleMetrics.minimumTapTarget
             )
-            XCTAssertLessThanOrEqual(BubbleMetrics.action(for: width), 54)
+            XCTAssertLessThanOrEqual(BubbleMetrics.action(for: width), 50)
             XCTAssertLessThanOrEqual(
                 BubbleMetrics.action(for: width, prominent: true),
-                64
+                52
             )
         }
     }
