@@ -60,7 +60,16 @@ enum HomeStageMetrics {
     /// The atmosphere fades out level with the transport row, so the hero
     /// dissolves into the page instead of ending on a visible seam and
     /// reading as a separate screen.
-    static func atmosphereHeight(for width: CGFloat) -> CGFloat {
+    ///
+    /// `topSafeAreaInset` extends the same band up behind the status bar /
+    /// nav bar instead of stopping at the safe-area boundary — the stage
+    /// used to leave that strip flat black, the one clean seam this hero
+    /// was supposed not to have.
+    static func atmosphereHeight(
+        for width: CGFloat,
+        topSafeAreaInset: CGFloat = 0
+    ) -> CGFloat {
         stageHeight(for: width) - railHeight(for: width) * 0.35
+            + topSafeAreaInset
     }
 }
