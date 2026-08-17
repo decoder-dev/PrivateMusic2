@@ -385,11 +385,11 @@ struct HomeStageView: View {
             VStack(spacing: BubbleSpacing.xs) {
                 bubbleGlyph(context, size: glyphSize)
                 Text(context.kind.kicker)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(BubbleType.bubbleKicker)
                     .foregroundStyle(.white.opacity(0.74))
                     .lineLimit(1)
                 Text(context.displayName)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(BubbleType.bubbleTitle)
                     .foregroundStyle(.white)
                     .lineLimit(2)
                     .minimumScaleFactor(0.85)
