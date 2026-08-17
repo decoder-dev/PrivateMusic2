@@ -161,6 +161,10 @@
 
 "appearance" = "Оформление";
 "text_size" = "Масштаб текста";
+"home_stage.action.station" = "Включить";
+"home_stage.action.vibe" = "Запустить микс";
+"home_stage.action.artist" = "Запустить станцию";
+"home_stage.action.mix" = "Запустить микс";
 "artist_radio_0" = "Радио: %@";
 "could_not_start_artist_0" = "Не удалось запустить %@";
 "home_stage.section" = "Главная";
