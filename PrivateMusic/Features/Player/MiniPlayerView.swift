@@ -119,7 +119,7 @@ struct MiniPlayerView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Text(track.artist)
-                .font(.caption)
+                .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -144,7 +144,7 @@ struct MiniPlayerView: View {
             player.previous()
         } label: {
             Image(systemName: "backward.fill")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 19, weight: .semibold))
                 .frame(
                     width: MiniPlayerLayoutMetrics.tapTarget,
                     height: MiniPlayerLayoutMetrics.tapTarget
@@ -176,7 +176,7 @@ struct MiniPlayerView: View {
                         ? "pause.fill"
                         : "play.fill"
                 )
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold))
                 .frame(
                     width: MiniPlayerLayoutMetrics.tapTarget,
                     height: MiniPlayerLayoutMetrics.tapTarget
@@ -200,7 +200,7 @@ struct MiniPlayerView: View {
             player.next()
         } label: {
             Image(systemName: "forward.fill")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 19, weight: .semibold))
                 .frame(
                     width: MiniPlayerLayoutMetrics.tapTarget,
                     height: MiniPlayerLayoutMetrics.tapTarget
