@@ -1,9 +1,18 @@
 import SwiftUI
 
-/// One bubble on the Home stage: a way back into listening that is not a
-/// shelf card. Kinds are ordered by how strong a claim they have on the
-/// rail — the personal station first, then moods, then whatever the
-/// listener has actually been playing.
+/// An artist the listener has actually played, carried with enough to
+/// start them for real. The name alone is a display string; hanging
+/// playback off it is how the artist bubble ended up launching a generic
+/// library mix that had nothing to do with whoever was tapped.
+struct HomeStageArtist: Hashable, Sendable {
+    let name: String
+    /// The most recent track we hold by them. Used as the radio seed when
+    /// VK's artist lookup does not resolve, so the fallback is still about
+    /// this artist rather than about everything.
+    let seed: Track?
+}
+
+/// One bubble on the Home rail: a musical context you can enter.
 enum HomeStageContextKind: String, Hashable, Sendable {
     case station
     case vibe
@@ -19,16 +28,23 @@ enum HomeStageContextKind: String, Hashable, Sendable {
         }
     }
 
-    /// Fixed per kind rather than sampled from artwork. The reference the
-    /// design came from does the same: the bubbles are a legend, so a
-    /// listener learns "green means a mood" instead of re-reading every
-    /// label. Sampling would repaint them on every track change.
-    var tint: Color {
+    /// The palette role, so the rail reads as a legend: a listener learns
+    /// "green is a mood" instead of re-reading every label.
+    var role: BubbleRole {
         switch self {
-        case .station: Color(red: 0.77, green: 0.33, blue: 0.17)
-        case .vibe: Color(red: 0.18, green: 0.55, blue: 0.31)
-        case .artist: Color(red: 0.72, green: 0.26, blue: 0.18)
-        case .mix: Color(red: 0.49, green: 0.23, blue: 0.66)
+        case .station: .station
+        case .vibe: .mood
+        case .artist: .artist
+        case .mix: .mix
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .station: "sparkles"
+        case .vibe: "waveform"
+        case .artist: "music.mic"
+        case .mix: "square.stack"
         }
     }
 }
@@ -37,120 +53,137 @@ struct HomeStageContext: Identifiable, Hashable, Sendable {
     let id: String
     let kind: HomeStageContextKind
     let name: String
-    /// Curator or artist photo when VK exposes one; the bubble falls back
-    /// to a monogram, so a missing photo never leaves a hole.
+    /// Prominence, and therefore size. Derived from what the context *is*,
+    /// never from its position — sizing by index made re-ordering the data
+    /// silently resize the rail.
+    let priority: BubblePriority
+    /// Curator or artist photo when VK exposes one; a monogram covers the
+    /// gap so a missing photo never leaves a hole.
     let avatarURL: URL?
-    /// Set when tapping the bubble should start a specific VK mix.
     let mixID: String?
-    /// Set when tapping the bubble should apply a mood first.
     let mood: MixMoodPreference?
+    let artist: HomeStageArtist?
 
     var monogram: String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let first = trimmed.first else { return "?" }
         return String(first).uppercased()
     }
+
+    /// One sentence rather than three separate elements, per §33: VoiceOver
+    /// should say "Исполнитель Owar1, запустить" and not "image, Owar1,
+    /// исполнитель".
+    var accessibilityLabel: String {
+        "\(kind.kicker), \(name)"
+    }
 }
 
-/// Builds the bubble rail out of what the app already knows. Kept free of
-/// views and stores so the ordering and de-duplication rules can be tested
-/// directly, the way the other `*Policy` types in this project are.
+/// Builds the rail out of what the app already knows. Free of views and
+/// stores, so ordering, de-duplication and the cap are tested directly.
 enum HomeStageContextBuilder {
     static let limit = 6
 
     static func build(
         mixes: [MusicMix],
-        recentArtists: [String],
+        recentArtists: [HomeStageArtist],
         selectedMood: MixMoodPreference,
         stationTitle: String
     ) -> [HomeStageContext] {
         var contexts: [HomeStageContext] = []
         var takenNames = Set<String>()
 
-        func append(_ context: HomeStageContext) {
-            let key = context.name.lowercased()
+        func append(
+            id: String,
+            kind: HomeStageContextKind,
+            name: String,
+            avatarURL: URL? = nil,
+            mixID: String? = nil,
+            mood: MixMoodPreference? = nil,
+            artist: HomeStageArtist? = nil
+        ) {
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = trimmed.lowercased()
             guard !key.isEmpty, takenNames.insert(key).inserted else { return }
-            contexts.append(context)
+            contexts.append(
+                HomeStageContext(
+                    id: id,
+                    kind: kind,
+                    name: trimmed,
+                    priority: priority(forPosition: contexts.count),
+                    avatarURL: avatarURL,
+                    mixID: mixID,
+                    mood: mood,
+                    artist: artist
+                )
+            )
         }
 
-        // The personal station always leads: it is the one context that is
-        // available even with an empty catalog and no history.
-        append(
-            HomeStageContext(
-                id: "station",
-                kind: .station,
-                name: stationTitle,
-                avatarURL: nil,
-                mixID: nil,
-                mood: nil
-            )
-        )
+        // The station always leads: it is the one context available even
+        // with an empty catalog and no history.
+        append(id: "station", kind: .station, name: stationTitle)
 
-        // The mood the listener actually picked, if any — showing all five
-        // would push everything else off the rail.
+        // Only the mood the listener actually picked. All five would push
+        // everything else off the rail.
         if selectedMood != .any {
             append(
-                HomeStageContext(
-                    id: "vibe-\(selectedMood.rawValue)",
-                    kind: .vibe,
-                    name: selectedMood.title,
-                    avatarURL: nil,
-                    mixID: nil,
-                    mood: selectedMood
-                )
+                id: "vibe-\(selectedMood.rawValue)",
+                kind: .vibe,
+                name: selectedMood.title,
+                mood: selectedMood
             )
         }
 
         for artist in recentArtists {
-            let trimmed = artist.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
             append(
-                HomeStageContext(
-                    id: "artist-\(trimmed.lowercased())",
-                    kind: .artist,
-                    name: trimmed,
-                    avatarURL: nil,
-                    mixID: nil,
-                    mood: nil
-                )
+                id: "artist-\(artist.name.lowercased())",
+                kind: .artist,
+                name: artist.name,
+                artist: artist
             )
         }
 
         for mix in mixes {
-            let title = mix.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !title.isEmpty else { continue }
             append(
-                HomeStageContext(
-                    id: "mix-\(mix.id)",
-                    kind: .mix,
-                    name: title,
-                    avatarURL: mix.curator?.photoURL,
-                    mixID: mix.id,
-                    mood: nil
-                )
+                id: "mix-\(mix.id)",
+                kind: .mix,
+                name: mix.title,
+                avatarURL: mix.curator?.photoURL,
+                mixID: mix.id
             )
         }
 
         return Array(contexts.prefix(limit))
     }
 
-    /// The artists behind the most recent plays, most recent first and
-    /// without repeats — someone who looped one album all evening should
-    /// not get six identical bubbles.
+    /// Prominence falls off down the rail: the first context is the one
+    /// the app is recommending hardest. This is semantic — it tracks the
+    /// order the rules above produced, not a decorative cycle.
+    static func priority(forPosition position: Int) -> BubblePriority {
+        switch position {
+        case 0: .primary
+        case 1, 2: .secondary
+        default: .tertiary
+        }
+    }
+
+    /// The artists behind the most recent plays, newest first, without
+    /// repeats — an evening spent looping one album should not fill the
+    /// rail with the same face.
     static func recentArtists(
         from entries: [some HomeStagePlayable],
         limit: Int = 3
-    ) -> [String] {
+    ) -> [HomeStageArtist] {
         var seen = Set<String>()
-        var artists: [String] = []
+        var artists: [HomeStageArtist] = []
         for entry in entries {
-            let artist = entry.stageArtist
+            let track = entry.stageTrack
+            let name = track.artist
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !artist.isEmpty,
-                  seen.insert(artist.lowercased()).inserted else {
+            guard !name.isEmpty,
+                  seen.insert(name.lowercased()).inserted else {
                 continue
             }
-            artists.append(artist)
+            artists.append(HomeStageArtist(name: name, seed: track))
             if artists.count == limit { break }
         }
         return artists
@@ -159,9 +192,32 @@ enum HomeStageContextBuilder {
 
 /// Lets the builder read history entries without importing the store.
 protocol HomeStagePlayable {
-    var stageArtist: String { get }
+    var stageTrack: Track { get }
 }
 
 extension ListeningHistoryEntry: HomeStagePlayable {
-    var stageArtist: String { track.artist }
+    var stageTrack: Track { track }
+}
+
+/// What the stage shows when nothing is playing. Kept as a value so "idle
+/// shows one call to action and no disabled heart" is a test rather than a
+/// reading of the view body.
+struct HomeStagePresentation: Equatable {
+    let showsHeart: Bool
+    let showsTransportButton: Bool
+    let showsCallToAction: Bool
+    let chipIsProminent: Bool
+    let showsRail: Bool
+
+    static func resolve(hasCurrentTrack: Bool) -> HomeStagePresentation {
+        HomeStagePresentation(
+            // Idle had a disabled heart, a play button and a big "Включить"
+            // pill all at once — three controls for one action.
+            showsHeart: hasCurrentTrack,
+            showsTransportButton: hasCurrentTrack,
+            showsCallToAction: !hasCurrentTrack,
+            chipIsProminent: hasCurrentTrack,
+            showsRail: true
+        )
+    }
 }
