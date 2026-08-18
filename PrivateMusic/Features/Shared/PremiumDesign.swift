@@ -175,6 +175,16 @@ struct AppGroupedSection<Content: View, Trailing: View>: View {
     }
 }
 
+extension AppGroupedSection where Trailing == EmptyView {
+    init(
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.init(title: title, subtitle: subtitle, trailing: { EmptyView() }, content: content)
+    }
+}
+
 struct AppGroupedSurface<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
@@ -211,6 +221,15 @@ struct AppGroupedRow<Leading: View, Trailing: View>: View {
         .padding(.horizontal, BubbleSpacing.m)
         .frame(minHeight: minHeight)
         .contentShape(Rectangle())
+    }
+}
+
+extension AppGroupedRow where Trailing == EmptyView {
+    init(
+        minHeight: CGFloat = 56,
+        @ViewBuilder leading: @escaping () -> Leading
+    ) {
+        self.init(minHeight: minHeight, leading: leading, trailing: { EmptyView() })
     }
 }
 
