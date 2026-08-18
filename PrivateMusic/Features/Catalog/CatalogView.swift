@@ -70,6 +70,10 @@ struct CatalogView: View {
                 // artwork and controls at the top of the scroll — the one
                 // place on Home it can't afford to compete for attention.
                 .scrollIndicators(.hidden)
+                // Applied on the ScrollView inside GeometryReader so the
+                // last shelf clears the iOS 26 accessory mini player. The
+                // legacy overlay dock already reserves this in `tabScreen`.
+                .clearsMiniPlayer()
             }
             // Gives up its own top safe-area reservation so the stage's
             // artwork-derived atmosphere can paint behind the status bar

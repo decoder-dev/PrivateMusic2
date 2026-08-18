@@ -134,6 +134,7 @@ struct ListeningHistoryView: View {
                 }
             }
         }
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("library.history"))
         .searchable(
