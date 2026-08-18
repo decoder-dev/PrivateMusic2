@@ -54,13 +54,20 @@ enum BubbleType {
     }
 
     static let section = Font.title3.weight(.semibold)
-    static let cardTitle = Font.system(size: 18, weight: .semibold)
+    static let cardTitle = Font.body.weight(.semibold)
     static let body = Font.subheadline
     static let metadata = Font.footnote
     static let micro = Font.caption2.weight(.medium)
     /// Status chips: readable at a glance without competing with the
     /// headline above it.
-    static let chip = Font.system(size: 13, weight: .medium)
+    static let chip = Font.footnote.weight(.medium)
+
+    // The three below are deliberately fixed rather than Dynamic Type.
+    // They are set inside a canvas of a fixed size — a hero circle, a
+    // generated cover — where growing the text does not push anything
+    // aside, it simply runs out of circle. Everything laid out in normal
+    // flow above scales.
+
     /// The small label above a hero bubble's name (e.g. "Вайб", "Микс").
     static let bubbleKicker = Font.system(size: 11, weight: .medium)
     /// A hero bubble's own name. Sized to survive a two-line wrap inside a
