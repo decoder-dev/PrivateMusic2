@@ -363,13 +363,19 @@ enum AudioProcessingRoutePolicy {
 enum AudioProcessingAttachPolicy {
     static func supportsAudioTap(url: URL, isOffline: Bool) -> Bool {
         if isOffline { return true }
-        return url.pathExtension.caseInsensitiveCompare("m3u8") != .orderedSame
+        return !StreamQualityPolicy.isHLSStream(url)
     }
 
     /// After media-services reset (typical on car attach), suppress auto-skip
     /// briefly so a transient item failure retries the same track instead of
     /// jumping through the queue with error toasts.
     static let postResetAdvanceSuppression: TimeInterval = 8
+}
+
+/// How `loadCurrent` picks between VK progressive MP3 and the original HLS URL.
+private enum PlaybackURLStrategy {
+    case automatic
+    case originalOnly
 }
 
 /// Exact seeks force AVFoundation to decode to a precise frame — expensive on
@@ -1281,6 +1287,10 @@ final class AudioPlayer {
     private var pauseAtMinimumVolume = true
     private var advanceOnPlaybackError = true
     private var preferHighQuality = true
+    /// After a progressive MP3 upgrade fails, replay the original HLS URL once.
+    private var playbackURLStrategy: PlaybackURLStrategy = .automatic
+    private var playbackURLStrategyTrackID: String?
+    private var activePlaybackURL: URL?
     /// Optional filter applied to mix queue fills (local dislike memory).
     private var mixTrackFilter: (([Track]) -> [Track])?
     /// Optional server-backed refill for closerToSeed / moreNovel modes.
@@ -2196,10 +2206,15 @@ final class AudioPlayer {
             resumeAfterRouteTransfer = playbackIntended
         }
         guard let track = currentTrack else { return }
+        if playbackURLStrategyTrackID != track.id {
+            playbackURLStrategy = .automatic
+            playbackURLStrategyTrackID = track.id
+        }
         let offlineURL = offlineURLProvider?(track)
-        let remoteURL = track.streamURL.flatMap { url in
+        let sourceRemoteURL = track.streamURL.flatMap { url in
             StreamURLLoadPolicy.isPlayableRemoteURL(url) ? url : nil
         }
+        let remoteURL = sourceRemoteURL.map { resolvePlaybackURL(from: $0) }
         guard let url = offlineURL ?? remoteURL else {
             if streamRefreshProvider != nil {
                 streamRecoveryAttempts += 1
@@ -2238,6 +2253,7 @@ final class AudioPlayer {
             )
             return
         }
+        activePlaybackURL = url
         errorMessage = nil
 
         playbackGeneration += 1
@@ -2353,6 +2369,14 @@ final class AudioPlayer {
             )
     }
 
+    private func resolvePlaybackURL(from url: URL) -> URL {
+        StreamQualityPolicy.playbackURL(
+            url,
+            preferHighQuality: preferHighQuality,
+            allowProgressiveUpgrade: playbackURLStrategy == .automatic
+        )
+    }
+
     private func makePlaybackAsset(
         url: URL,
         isOffline: Bool
@@ -2431,10 +2455,11 @@ final class AudioPlayer {
         let offlineURL = offlineURLProvider?(track)
         guard (offlineURL != nil || remotePreloadingAllowed),
               offlineURL != nil || !restoredTrackIDs.contains(track.id),
-              let url = offlineURL ?? track.streamURL else {
+              let sourceURL = offlineURL ?? track.streamURL else {
             invalidatePreloadedPlayback()
             return
         }
+        let url = offlineURL ?? resolvePlaybackURL(from: sourceURL)
         if let existing = preloadedPlayback,
            PlaybackPreloadPolicy.isValid(
             trackID: track.id,
@@ -2634,8 +2659,9 @@ final class AudioPlayer {
                 .playback,
                 mode: .default,
                 policy: .longFormAudio,
-                options: []
+                options: [.allowBluetoothA2DP]
             )
+            try? session.setPreferredSampleRate(48_000)
             if #available(iOS 17.0, *) {
                 // Keep the system's expected media-app behavior when wired or
                 // wireless headphones disappear: interrupt playback instead
@@ -3634,6 +3660,24 @@ final class AudioPlayer {
 
     private func handleItemFailure(_ error: Error?) {
         publishPlaybackState(force: true)
+        if let track = currentTrack,
+           let sourceURL = track.streamURL,
+           playbackURLStrategy == .automatic,
+           let playbackURL = activePlaybackURL,
+           StreamQualityPolicy.usedProgressiveUpgrade(
+               original: sourceURL,
+               playback: playbackURL
+           ) {
+            playbackURLStrategy = .originalOnly
+            streamRecoveryAttempts = 0
+            didAttemptStreamRefresh = false
+            loadCurrent(
+                autoplay: playbackIntended,
+                startAt: elapsedTime,
+                automatic: true
+            )
+            return
+        }
         if let track = currentTrack,
            loadedOfflineTrackID == track.id {
             loadedOfflineTrackID = nil
