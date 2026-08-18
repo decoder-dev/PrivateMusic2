@@ -592,7 +592,9 @@ final class HomeStageMetricsTests: XCTestCase {
                 reportedTopSafeAreaInset: 0,
                 windowTopSafeAreaInset: 59
             ),
-            59 + HomeStageMetrics.navigationGap
+            59
+                + NavigationChromeMetrics.inlineNavigationBarHeight
+                + HomeStageMetrics.navigationGap
         )
         // Nothing measured anywhere — neither the local geometry nor the
         // window — must still yield the documented non-zero band. Asserting
@@ -604,6 +606,7 @@ final class HomeStageMetricsTests: XCTestCase {
                 windowTopSafeAreaInset: 0
             ),
             NavigationChromeMetrics.fallbackTopSafeAreaInset
+                + NavigationChromeMetrics.inlineNavigationBarHeight
                 + HomeStageMetrics.navigationGap
         )
         // The live path still has to clear the gap by a real safe-area band,
@@ -617,15 +620,31 @@ final class HomeStageMetricsTests: XCTestCase {
         )
     }
 
-    /// The authoritative Hero origin is "resolved top safe area + one Hero
-    /// breathing gap", and the gap is stable regardless of source / artist.
-    func testResolvedForegroundTopOriginAddsOneStableNavigationGap() {
+    /// The authoritative Hero origin is "bottom of the inline title band +
+    /// one Hero breathing gap", and the gap is stable regardless of source
+    /// / artist. Clearing only the safe area left the status chip tucked
+    /// under "Главная" rather than below it.
+    func testResolvedForegroundTopOriginClearsTheInlineTitleBand() {
         XCTAssertEqual(
             HomeStageMetrics.resolvedForegroundTopOrigin(
                 reportedTopSafeAreaInset: 64,
                 windowTopSafeAreaInset: 59
             ),
-            64 + HomeStageMetrics.navigationGap
+            64
+                + NavigationChromeMetrics.inlineNavigationBarHeight
+                + HomeStageMetrics.navigationGap
+        )
+        // The whole point: the Hero foreground must begin strictly below the
+        // inline title band, never merely below the status bar.
+        XCTAssertGreaterThan(
+            HomeStageMetrics.resolvedForegroundTopOrigin(
+                reportedTopSafeAreaInset: 64,
+                windowTopSafeAreaInset: 59
+            ),
+            NavigationChromeMetrics.inlineTitleRegionBottom(
+                reportedTopSafeAreaInset: 64,
+                windowTopSafeAreaInset: 59
+            )
         )
     }
 
