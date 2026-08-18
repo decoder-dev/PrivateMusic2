@@ -52,7 +52,8 @@ struct LibraryView: View {
                     if playlists.isLoading && playlists.playlists.isEmpty {
                         playlistSkeleton(width: shelfWidth)
                             .librarySectionSpacing()
-                    } else if !playlists.playlists.isEmpty {
+                    } else if !playlists.playlists.isEmpty,
+                              !shelfPlaylists.isEmpty {
                         playlistShelf(width: shelfWidth)
                             .librarySectionSpacing()
                     }
@@ -672,6 +673,15 @@ struct LibraryView: View {
         settings.theme.accent
     }
 
+    private var shelfPlaylists: [Playlist] {
+        LibraryPlaylistShelfPolicy.excludingLikedAlbums(
+            playlists.playlists,
+            likedAlbumCompositeIDs: Set(
+                likedAlbumsStore.albums.map(\.compositeID)
+            )
+        )
+    }
+
     private func playlistShelf(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("library.playlists"))
@@ -690,13 +700,13 @@ struct LibraryView: View {
                     // by owner+id. Colliding ForEach ids let SwiftUI reuse one
                     // card for several playlists and drop their artwork.
                     ForEach(
-                        Array(playlists.playlists.enumerated()),
+                        Array(shelfPlaylists.enumerated()),
                         id: \.element.libraryIdentity
                     ) { index, playlist in
                         playlistCard(
                             playlist,
                             index: index,
-                            isLast: index == playlists.playlists.count - 1,
+                            isLast: index == shelfPlaylists.count - 1,
                             width: width
                         )
                     }
