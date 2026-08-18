@@ -1,18 +1,19 @@
 import Foundation
 
-/// Cross-launch memory for Home's dynamic-artist section — just enough to
-/// keep it from reshuffling after every track. Scoped per account and
-/// persisted the same way `PinnedMixStore` and `MixFeedbackStore` already
-/// are: a small Codable snapshot in `UserDefaults`, not a new persistence
-/// layer.
+/// Remembers the What's Next winner (and its artist, when relevant) so
+/// Home does not reshuffle the slot after every track. Scoped per account
+/// and persisted the same way `PinnedMixStore` and `MixFeedbackStore`
+/// already are.
 @MainActor
 @Observable
 final class HomePersonalizationStore {
     private(set) var lastShownArtistKey: String?
+    private(set) var lastShownNextStepKey: String?
 
     private let defaults: UserDefaults
     private var accountID: Int?
     private let keyPrefix = "home.personalization.v1."
+    private let nextStepKeyPrefix = "home.nextstep.v1."
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -42,18 +43,42 @@ final class HomePersonalizationStore {
         persist()
     }
 
+    func recordShownNextStep(key: String) {
+        guard key != lastShownNextStepKey else { return }
+        lastShownNextStepKey = key
+        persistNextStep()
+    }
+
+    func clearNextStepIfShowing(key: String) {
+        guard lastShownNextStepKey == key else { return }
+        lastShownNextStepKey = nil
+        persistNextStep()
+    }
+
     private var storageKey: String? {
         guard let accountID else { return nil }
         return keyPrefix + String(accountID)
+    }
+
+    private var nextStepStorageKey: String? {
+        guard let accountID else { return nil }
+        return nextStepKeyPrefix + String(accountID)
     }
 
     private func load() {
         guard let storageKey,
               let stored = defaults.string(forKey: storageKey) else {
             lastShownArtistKey = nil
+            lastShownNextStepKey = loadNextStep()
             return
         }
         lastShownArtistKey = stored
+        lastShownNextStepKey = loadNextStep()
+    }
+
+    private func loadNextStep() -> String? {
+        guard let nextStepStorageKey else { return nil }
+        return defaults.string(forKey: nextStepStorageKey)
     }
 
     private func persist() {
@@ -62,6 +87,15 @@ final class HomePersonalizationStore {
             defaults.set(lastShownArtistKey, forKey: storageKey)
         } else {
             defaults.removeObject(forKey: storageKey)
+        }
+    }
+
+    private func persistNextStep() {
+        guard let nextStepStorageKey else { return }
+        if let lastShownNextStepKey {
+            defaults.set(lastShownNextStepKey, forKey: nextStepStorageKey)
+        } else {
+            defaults.removeObject(forKey: nextStepStorageKey)
         }
     }
 }

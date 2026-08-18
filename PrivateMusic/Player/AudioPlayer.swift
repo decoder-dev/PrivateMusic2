@@ -1359,7 +1359,8 @@ final class AudioPlayer {
         highlight.update(
             currentTrackID: currentTrack?.id,
             isPlaying: isPlaying,
-            queueSource: queueSource
+            queueSource: queueSource,
+            currentArtist: currentTrack?.artist
         )
     }
 
