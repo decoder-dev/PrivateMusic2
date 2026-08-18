@@ -400,6 +400,7 @@ private struct PlaybackTabDock: View {
     @Environment(AppSettings.self) private var settings
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Binding var selection: MainTab
     let playerNamespace: Namespace.ID
 
@@ -437,7 +438,6 @@ private struct PlaybackTabDock: View {
                 searchTabButton
             }
         }
-        .dynamicTypeSize(...DynamicTypeSize.large)
         .padding(.horizontal, 12)
         .padding(.top, 6)
         .padding(.bottom, 0)
@@ -453,6 +453,18 @@ private struct PlaybackTabDock: View {
         [.home, .library, .profile]
     }
 
+    /// Accessibility sizes have to grow the row; freezing it at 48pt is
+    /// what made the dock cap Dynamic Type in the first place.
+    private var tabRowHeight: CGFloat {
+        dynamicTypeSize.isAccessibilitySize
+            ? 68
+            : BubbleMetrics.minimumTapTarget + 4
+    }
+
+    private var searchControlSize: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 64 : 58
+    }
+
     private var searchTabButton: some View {
         Button {
             selectTab(.search)
@@ -464,7 +476,7 @@ private struct PlaybackTabDock: View {
                         ? selectedColor
                         : Color.primary.opacity(0.72)
                 )
-                .frame(width: 58, height: 58)
+                .frame(width: searchControlSize, height: searchControlSize)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -504,7 +516,7 @@ private struct PlaybackTabDock: View {
                     // already medium; regular here made the inactive row
                     // read a step lighter than the rest of the chrome.
                     .fontWeight(selection == tab ? .semibold : .medium)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     .minimumScaleFactor(0.78)
             }
             .animation(
@@ -517,7 +529,7 @@ private struct PlaybackTabDock: View {
                     : Color.primary.opacity(0.72)
             )
             .frame(maxWidth: .infinity)
-            .frame(height: BubbleMetrics.minimumTapTarget + 4)
+            .frame(height: tabRowHeight)
             .contentShape(Capsule())
         }
         .buttonStyle(BubblePressStyle())

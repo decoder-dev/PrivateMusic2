@@ -39,6 +39,8 @@ required = {
     "PrivateMusic/Models/OfflineTrackStore.swift",
     "PrivateMusic/Features/Library/OfflineDownloadsView.swift",
     "PrivateMusic/Services/HLSOfflineDownloadService.swift",
+    "PrivateMusic/UI/ContrastPolicy.swift",
+    "PrivateMusic/UI/HitTarget.swift",
 }
 for relative in required:
     if not (ROOT / relative).is_file():
@@ -975,6 +977,17 @@ if ".dynamicTypeSize(...DynamicTypeSize.large)" in catalog_view_source:
     fail("Home must not freeze Dynamic Type at the default size")
 if ".dynamicTypeSize(...DynamicTypeSize.large)" in library_view_source:
     fail("Library must not freeze Dynamic Type at the default size")
+if ".dynamicTypeSize(...DynamicTypeSize.large)" in main_tab_source:
+    fail("the tab dock must not freeze Dynamic Type at the default size")
+if ".dynamicTypeSize(...DynamicTypeSize.accessibility1)" in player_view_source:
+    fail("the full player must not cap Dynamic Type at accessibility1")
+adaptive_glass_source = (
+    SOURCE / "Features" / "Shared" / "AdaptiveGlass.swift"
+).read_text(encoding="utf-8")
+if "ContrastPolicy.flattensCustomGlass" not in adaptive_glass_source:
+    fail("custom Liquid Glass must flatten under Increase Contrast")
+if "colorSchemeContrast" not in adaptive_glass_source:
+    fail("AdaptiveGlass must read Increase Contrast")
 premium_design_source = (
     SOURCE / "Features" / "Shared" / "PremiumDesign.swift"
 ).read_text(encoding="utf-8")

@@ -23,10 +23,55 @@ final class HIGConformanceTests: XCTestCase {
         let library = Self.source(
             "PrivateMusic/Features/Library/LibraryView.swift"
         )
+        let tabs = Self.source("PrivateMusic/Features/Root/MainTabView.swift")
+        let player = Self.source("PrivateMusic/Features/Player/PlayerView.swift")
         XCTAssertFalse(home.contains(".dynamicTypeSize(...DynamicTypeSize.large)"))
         XCTAssertFalse(
             library.contains(".dynamicTypeSize(...DynamicTypeSize.large)")
         )
+        XCTAssertFalse(tabs.contains(".dynamicTypeSize(...DynamicTypeSize.large)"))
+        XCTAssertFalse(
+            player.contains(".dynamicTypeSize(...DynamicTypeSize.accessibility1)")
+        )
+    }
+
+    func testCustomGlassFlattensUnderIncreaseContrast() {
+        XCTAssertTrue(
+            ContrastPolicy.flattensCustomGlass(
+                reduceTransparency: false,
+                increaseContrast: true,
+                prefersClassicChrome: false
+            )
+        )
+        XCTAssertTrue(
+            ContrastPolicy.flattensCustomGlass(
+                reduceTransparency: true,
+                increaseContrast: false,
+                prefersClassicChrome: false
+            )
+        )
+        XCTAssertFalse(
+            ContrastPolicy.flattensCustomGlass(
+                reduceTransparency: false,
+                increaseContrast: false,
+                prefersClassicChrome: false
+            )
+        )
+        XCTAssertGreaterThan(
+            ContrastPolicy.strokeWidth(increased: true),
+            ContrastPolicy.strokeWidth(increased: false)
+        )
+        XCTAssertGreaterThan(
+            ContrastPolicy.strokeOpacity(increased: true, reduceTransparency: false),
+            ContrastPolicy.strokeOpacity(increased: false, reduceTransparency: false)
+        )
+    }
+
+    func testAccessibilityStepsCoverTheFiveDynamicTypeSizes() {
+        XCTAssertEqual(PlayerAccessibilityPolicy.step(for: .large), 0)
+        XCTAssertEqual(PlayerAccessibilityPolicy.step(for: .xxxLarge), 0)
+        XCTAssertEqual(PlayerAccessibilityPolicy.step(for: .accessibility1), 1)
+        XCTAssertEqual(PlayerAccessibilityPolicy.step(for: .accessibility5), 5)
     }
 
     func testSystemTextScaleDoesNotOverrideTheReader() {

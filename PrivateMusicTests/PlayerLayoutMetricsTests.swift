@@ -100,6 +100,43 @@ final class PlayerLayoutMetricsTests: XCTestCase {
         )
     }
 
+    func testLargestAccessibilityTextScrollsOnCompactPortrait() {
+        let step1 = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 320, height: 568),
+            safeBottom: 34,
+            usesAccessibilityText: true,
+            accessibilityStep: 1
+        )
+        let step5 = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 320, height: 568),
+            safeBottom: 34,
+            usesAccessibilityText: true,
+            accessibilityStep: 5
+        )
+
+        XCTAssertFalse(
+            step1.requiresAccessibilityScrolling(containerHeight: 568)
+        )
+        XCTAssertGreaterThan(step5.metadataTopSpacing, 0)
+        XCTAssertGreaterThan(step5.quickActionsHeight, step1.quickActionsHeight)
+        XCTAssertTrue(
+            step5.requiresAccessibilityScrolling(containerHeight: 568)
+                || step5.minimumContentHeight > step1.minimumContentHeight
+        )
+    }
+
+    func testOverflowingPortraitContentUsesTheScrollPath() {
+        let overflowing = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 320, height: 400),
+            safeBottom: 34,
+            usesAccessibilityText: true,
+            accessibilityStep: 5
+        )
+        XCTAssertTrue(
+            overflowing.requiresAccessibilityScrolling(containerHeight: 400)
+        )
+    }
+
     func testAccessibilityQuickActionsKeepPreviousCompactDock() {
         let metrics = PlayerLayoutMetrics.resolve(
             containerSize: CGSize(width: 320, height: 568),

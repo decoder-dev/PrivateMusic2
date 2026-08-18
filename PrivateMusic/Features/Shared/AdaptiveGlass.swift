@@ -34,11 +34,20 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     let interactive: Bool
     let tint: Color?
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.prefersClassicChrome) private var prefersClassicChrome
+
+    private var flattensGlass: Bool {
+        ContrastPolicy.flattensCustomGlass(
+            reduceTransparency: reduceTransparency,
+            increaseContrast: colorSchemeContrast == .increased,
+            prefersClassicChrome: prefersClassicChrome
+        )
+    }
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *), !reduceTransparency, !prefersClassicChrome {
+        if #available(iOS 26.0, *), !flattensGlass {
             // Liquid Glass samples its own shape; clipping the content
             // before handing it to glassEffect(in:) fights that sampling
             // and is a documented source of rendering artifacts. The
@@ -61,10 +70,11 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                     .contentShape(shape)
             }
         } else {
+            let increased = colorSchemeContrast == .increased
             content
                 .clipShape(shape)
                 .background {
-                    if reduceTransparency {
+                    if reduceTransparency || increased {
                         shape.fill(Color(uiColor: .secondarySystemBackground))
                     } else {
                         shape.fill(.ultraThinMaterial)
@@ -72,8 +82,13 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                 }
                 .overlay {
                     shape.stroke(
-                        Color.primary.opacity(0.11),
-                        lineWidth: 0.8
+                        Color.primary.opacity(
+                            ContrastPolicy.strokeOpacity(
+                                increased: increased,
+                                reduceTransparency: reduceTransparency
+                            )
+                        ),
+                        lineWidth: ContrastPolicy.strokeWidth(increased: increased)
                     )
                 }
                 .contentShape(shape)
@@ -85,6 +100,7 @@ struct AdaptiveGlassContainer<Content: View>: View {
     let spacing: CGFloat?
     private let content: Content
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.prefersClassicChrome) private var prefersClassicChrome
 
     init(
@@ -97,7 +113,12 @@ struct AdaptiveGlassContainer<Content: View>: View {
 
     @ViewBuilder
     var body: some View {
-        if #available(iOS 26.0, *), !reduceTransparency, !prefersClassicChrome {
+        if #available(iOS 26.0, *),
+           !ContrastPolicy.flattensCustomGlass(
+               reduceTransparency: reduceTransparency,
+               increaseContrast: colorSchemeContrast == .increased,
+               prefersClassicChrome: prefersClassicChrome
+           ) {
             GlassEffectContainer(spacing: spacing) {
                 content
             }
