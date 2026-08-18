@@ -342,7 +342,7 @@ final class PrivateMusicMediaTests: XCTestCase {
                 }
             }
         }
-        XCTAssertEqual(cryptStatus, kCCSuccess)
+        XCTAssertEqual(Int32(cryptStatus), Int32(kCCSuccess))
         return output.prefix(outputLength)
     }
 }
