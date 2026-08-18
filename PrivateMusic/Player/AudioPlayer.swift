@@ -3031,7 +3031,7 @@ final class AudioPlayer {
             Task { @MainActor in
                 self?.handlePlaybackResourceConstraintsChanged()
             }
-        }))
+        })
         registrations.notifications.append(center.addObserver(
             forName: ProcessInfo.thermalStateDidChangeNotification,
             object: nil,
@@ -3040,7 +3040,7 @@ final class AudioPlayer {
             Task { @MainActor in
                 self?.handlePlaybackResourceConstraintsChanged()
             }
-        }))
+        })
         outputVolumeObservation = AVAudioSession.sharedInstance().observe(
             \.outputVolume,
             options: [.initial, .new]
