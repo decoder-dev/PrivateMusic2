@@ -220,6 +220,63 @@ final class HomeNextStepPolicyTests: XCTestCase {
         XCTAssertEqual(next?.kind, .vkMix)
     }
 
+    /// The retention bar sits below the qualifying bar so a card already on
+    /// screen survives a dip instead of vanishing. Selecting against the
+    /// qualifying bar a second time made that band dead: an artist whose
+    /// score decayed just under the entry bar was dropped even though
+    /// nothing else qualified, and Home lost the section entirely.
+    func testAShownCandidateSurvivesADipIntoTheRetentionBand() {
+        let dipped = makeArtist(
+            key: "rive",
+            name: "RIVE",
+            score: (HomeNextStepPolicy.qualifyingConfidence
+                + HomeNextStepPolicy.retentionConfidence) / 2
+        )
+        XCTAssertLessThan(
+            dipped.score,
+            HomeNextStepPolicy.qualifyingConfidence
+        )
+        XCTAssertGreaterThanOrEqual(
+            dipped.score,
+            HomeNextStepPolicy.retentionConfidence
+        )
+
+        let held = HomeNextStepPolicy.select(
+            request(
+                affinity: [dipped],
+                previouslyShownArtistKey: "rive",
+                previouslyShownKey: "artist:rive",
+                occupancy: .idle,
+                hasListeningHistory: true,
+                hasRecommendations: false
+            )
+        )
+
+        XCTAssertEqual(held?.stabilityKey, "artist:rive")
+    }
+
+    /// Retention is only for a card that was actually on screen — the same
+    /// score must not be enough to appear in the first place.
+    func testTheRetentionBandDoesNotLetANewCandidateIn() {
+        let weak = makeArtist(
+            key: "rive",
+            name: "RIVE",
+            score: (HomeNextStepPolicy.qualifyingConfidence
+                + HomeNextStepPolicy.retentionConfidence) / 2
+        )
+
+        let fresh = HomeNextStepPolicy.select(
+            request(
+                affinity: [weak],
+                occupancy: .idle,
+                hasListeningHistory: true,
+                hasRecommendations: false
+            )
+        )
+
+        XCTAssertNotEqual(fresh?.stabilityKey, "artist:rive")
+    }
+
     func testIdleOccupancyDoesNotDuplicateThePersonalStation() {
         let occupancy = HomeNextStepPolicy.occupancy(
             hasCurrentTrack: false,
