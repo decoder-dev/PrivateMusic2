@@ -42,33 +42,32 @@ struct HomeStageView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            // Bleeds behind the status bar / nav bar — the container this
-            // stage sits in has already given up its own top safe-area
-            // reservation (see `CatalogView`), so this is free to paint
-            // there. The foreground column below carries its own matching
-            // padding to land exactly where it always has.
-            atmosphere
+        VStack(spacing: 0) {
+            contextChip
+                .frame(height: HomeStageMetrics.chipHeight)
+                .padding(.bottom, HomeStageMetrics.belowChip)
 
-            VStack(spacing: 0) {
-                contextChip
-                    .frame(height: HomeStageMetrics.chipHeight)
-                    .padding(.bottom, HomeStageMetrics.belowChip)
+            headline
+                .padding(.bottom, HomeStageMetrics.belowHeadline)
 
-                headline
-                    .padding(.bottom, HomeStageMetrics.belowHeadline)
+            artwork
+                .padding(.bottom, HomeStageMetrics.belowArtwork)
 
-                artwork
-                    .padding(.bottom, HomeStageMetrics.belowArtwork)
+            controls
+                .padding(.bottom, HomeStageMetrics.belowTransport)
 
-                controls
-                    .padding(.bottom, HomeStageMetrics.belowTransport)
-
-                bubbleRail
-            }
-            .padding(.top, foregroundTopOrigin)
-            .frame(maxWidth: .infinity)
+            bubbleRail
         }
+        .padding(.top, foregroundTopOrigin)
+        .frame(maxWidth: .infinity)
+        // A background, deliberately not a ZStack layer. `atmosphere`
+        // carries negative horizontal padding so it can bleed past Home's
+        // grid; inside a ZStack that wider layer sizes the stack, and the
+        // column's `maxWidth: .infinity` then stretched to match — which
+        // pushed the play and like buttons clean off both screen edges.
+        // A background paints outside its host without resizing it, and
+        // still covers the top padding above, so the bleed survives.
+        .background(alignment: .top) { atmosphere }
         .animation(
             BubbleMotion.state(reduceMotion: reduceMotion),
             value: presentation
