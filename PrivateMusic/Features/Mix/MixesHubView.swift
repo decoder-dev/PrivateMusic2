@@ -1426,6 +1426,11 @@ struct MixesHubView: View {
             Button { player.playNext(track) } label: {
                 Label(L10n.text("play_next"), systemImage: "text.badge.plus")
             }
+            Button { player.playLast(track) } label: {
+                Label(L10n.text("play_last"),
+                    systemImage: "text.line.last.and.arrowtriangle.forward"
+                )
+            }
             TrackMixActions.menuButtons(
                 for: track,
                 environment: environment
@@ -1492,6 +1497,11 @@ struct MixesHubView: View {
         .contextMenu {
             Button { player.playNext(track) } label: {
                 Label(L10n.text("play_next"), systemImage: "text.badge.plus")
+            }
+            Button { player.playLast(track) } label: {
+                Label(L10n.text("play_last"),
+                    systemImage: "text.line.last.and.arrowtriangle.forward"
+                )
             }
             Button {
                 playTrack(track, queue: queue, mix: mix)

@@ -456,12 +456,23 @@ struct PlayerView: View {
                 Button {
                     present(.artist(track.artist))
                 } label: {
-                    Text(track.artist)
-                        .font(.subheadline)
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(track.artist)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(playerSecondary)
+                .disabled(
+                    track.artist.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty
+                )
+                .accessibilityHint(L10n.text("player.open_artist"))
                 if let album = track.albumTitle, !album.isEmpty {
                     Text(album)
                         .font(.caption2)
@@ -519,8 +530,16 @@ struct PlayerView: View {
                 Spacer()
                 Text("-\(remainingTime.formattedDuration)")
             }
-            .font(.system(size: 11, weight: .medium).monospacedDigit())
-            .foregroundStyle(playerSecondary)
+            .font(
+                isScrubbing
+                    ? .title3.monospacedDigit().weight(.semibold)
+                    : .system(size: 11, weight: .medium).monospacedDigit()
+            )
+            .foregroundStyle(isScrubbing ? playerForeground : playerSecondary)
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.12),
+                value: isScrubbing
+            )
         }
     }
 
@@ -840,6 +859,8 @@ struct PlayerView: View {
     private var displayedElapsedTime: TimeInterval {
         scrubPosition ?? progress.elapsedTime
     }
+
+    private var isScrubbing: Bool { scrubPosition != nil }
 
     private func commitScrubbing(_ position: TimeInterval) {
         player.seek(to: position)
