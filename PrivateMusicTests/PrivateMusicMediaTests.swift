@@ -112,8 +112,8 @@ final class PrivateMusicMediaTests: XCTestCase {
     func testAES128CBCDecryptRejectsNonBlockAlignedCiphertext() {
         var outputLength: Int32 = 0
         var output = [UInt8](repeating: 0, count: 32)
-        let key = [UInt8](repeating: 1, count: PM_AES128_KEY_BYTES)
-        let iv = [UInt8](repeating: 2, count: PM_AES128_IV_BYTES)
+        let key = [UInt8](repeating: 1, count: Int(PM_AES128_KEY_BYTES))
+        let iv = [UInt8](repeating: 2, count: Int(PM_AES128_IV_BYTES))
         let ciphertext = [UInt8](repeating: 0, count: 15)
         let status = pm_aes128_cbc_decrypt(
             ciphertext,
@@ -318,7 +318,7 @@ final class PrivateMusicMediaTests: XCTestCase {
         key: Data,
         iv: Data
     ) -> Data {
-        var output = Data(count: plaintext.count + PM_AES128_BLOCK_BYTES)
+        var output = Data(count: plaintext.count + Int(PM_AES128_BLOCK_BYTES))
         var outputLength = 0
         let status = output.withUnsafeMutableBytes { outputBytes in
             plaintext.withUnsafeBytes { plaintextBytes in
