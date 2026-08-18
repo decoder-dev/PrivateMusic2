@@ -727,7 +727,7 @@ final class AudioPlayerTransitionTests: XCTestCase {
         defer {
             context.defaults.removePersistentDomain(forName: context.suite)
         }
-        let first = track(id: 1, duration: 180)
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
         var requestCount = 0
         context.player.configureContinuation {
             requestCount += 1
