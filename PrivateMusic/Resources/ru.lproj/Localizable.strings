@@ -28,6 +28,9 @@
 "tab.search" = "Поиск";
 "tab.profile" = "Профиль";
 "tab.settings" = "Настройки";
+"account" = "Аккаунт";
+"support" = "Поддержка";
+"session" = "Сессия";
 "artist" = "Исполнитель";
 "tab.mix" = "Микс";
 "listen_together" = "Слушайте друг друга";

@@ -14,7 +14,8 @@ struct TrackCollectionScreen: View {
                 EmptyStateView(
                     title: "could_not_load",
                     systemImage: "wifi.exclamationmark",
-                    description: error
+                    description: error,
+                    descriptionIsLocalizedKey: false
                 )
             } else if model.tracks.isEmpty {
                 EmptyStateView(
