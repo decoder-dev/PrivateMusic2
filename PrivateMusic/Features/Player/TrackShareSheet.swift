@@ -56,6 +56,8 @@ actor TrackShareService {
 
     /// Creates a real audio attachment: direct streams are downloaded and
     /// kept in their original format, HLS streams are exported to M4A.
+    /// When a VK playlist rewrites to progressive MP3 (`…/HASH/index.m3u8`
+    /// → `…/HASH.mp3`), that file is downloaded instead of stitching HLS.
     /// HLS is never exposed as a link or a fake MP3 — renaming a playlist
     /// would not create an audio file and would leak a temporary signed
     /// address to the share sheet.
@@ -67,6 +69,24 @@ actor TrackShareService {
     ) async throws -> TrackSharePayload {
         guard let streamURL = track.streamURL else {
             throw directAudioUnavailableError
+        }
+        if let progressive = StreamQualityPolicy.progressiveURL(from: streamURL),
+           progressive != streamURL {
+            do {
+                return try await downloadDirectFile(
+                    from: progressive,
+                    track: track,
+                    userAgent: userAgent,
+                    requiresMP3: requiresMP3,
+                    progress: progress
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                if requiresMP3 || !isHLS(streamURL) {
+                    throw error
+                }
+            }
         }
         if isHLS(streamURL) {
             guard !requiresMP3 else {
@@ -80,11 +100,28 @@ actor TrackShareService {
             )
         }
 
+        return try await downloadDirectFile(
+            from: streamURL,
+            track: track,
+            userAgent: userAgent,
+            requiresMP3: requiresMP3,
+            progress: progress
+        )
+    }
+
+    private func downloadDirectFile(
+        from streamURL: URL,
+        track: Track,
+        userAgent: String?,
+        requiresMP3: Bool,
+        progress: TrackExportProgressHandler?
+    ) async throws -> TrackSharePayload {
         await progress?(.downloadingDirectFile)
         let (temporaryURL, response) = try await downloadDirectAudio(
             from: streamURL,
             userAgent: userAgent
         )
+        defer { try? fileManager.removeItem(at: temporaryURL) }
         try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode) else {
@@ -328,7 +365,7 @@ actor TrackShareService {
     }
 
     private func isHLS(_ url: URL) -> Bool {
-        url.pathExtension.caseInsensitiveCompare("m3u8") == .orderedSame
+        StreamQualityPolicy.isHLSStream(url)
     }
 
     private func isHLS(response: HTTPURLResponse) -> Bool {

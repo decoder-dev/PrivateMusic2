@@ -403,6 +403,35 @@ final class OfflineTrackStoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: localURL.path))
     }
 
+    func testRewriteableHLSDownloadStoresProgressiveMP3() async throws {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = OfflineTrackStore(
+            rootURL: root,
+            downloadService: try makeHLSDownloadService(),
+            downloadCoordinator: DownloadCoordinator()
+        )
+        let track = Track(
+            trackID: 78,
+            ownerID: -42,
+            title: "HQ Title",
+            artist: "Artist",
+            duration: 120,
+            streamURL: URL(
+                string: "https://psv4.example.com/s/v1/a2/abc123/index.m3u8"
+            ),
+            artworkURL: nil
+        )
+        store.configure(accountID: 42)
+
+        try await store.download(track, userAgent: "PrivateMusicTests")
+
+        XCTAssertTrue(store.contains(track))
+        let localURL = try XCTUnwrap(store.localURL(for: track))
+        XCTAssertEqual(localURL.pathExtension.lowercased(), "mp3")
+        XCTAssertEqual(try Data(contentsOf: localURL), Data("ID3audio".utf8))
+    }
+
     func testCancelledHLSDownloadLeavesNoRecordsOrStaging() async throws {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -410,7 +439,7 @@ final class OfflineTrackStoreTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [OfflineURLProtocol.self]
         OfflineURLProtocol.handler = { request in
-            if request.url?.lastPathComponent == "index.m3u8" {
+            if request.url?.pathExtension.lowercased() == "m3u8" {
                 Thread.sleep(forTimeInterval: 0.5)
             }
             let response = HTTPURLResponse(
@@ -420,7 +449,7 @@ final class OfflineTrackStoreTests: XCTestCase {
                 headerFields: nil
             )!
             switch request.url?.lastPathComponent {
-            case "index.m3u8":
+            case "index.m3u8", "playlist.m3u8":
                 return (response, Data(Self.hlsPlaylist.utf8))
             case "init.mp4":
                 return (response, fixture.initialization)
@@ -665,7 +694,7 @@ final class OfflineTrackStoreTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [OfflineURLProtocol.self]
         OfflineURLProtocol.handler = { request in
-            if request.url?.lastPathComponent == "index.m3u8" {
+            if request.url?.pathExtension.lowercased() == "m3u8" {
                 lock.lock()
                 let shouldFail = failuresRemaining > 0
                 if shouldFail { failuresRemaining -= 1 }
@@ -761,7 +790,7 @@ final class OfflineTrackStoreTests: XCTestCase {
                 headerFields: nil
             )!
             switch url.lastPathComponent {
-            case "index.m3u8":
+            case "index.m3u8", "playlist.m3u8":
                 return (response, Data(Self.hlsPlaylist.utf8))
             case "init.mp4":
                 return (response, fixture.initialization)
@@ -788,7 +817,7 @@ final class OfflineTrackStoreTests: XCTestCase {
             title: "HLS Title",
             artist: "Artist",
             duration: 120,
-            streamURL: URL(string: "https://example.com/hls/index.m3u8"),
+            streamURL: URL(string: "https://example.com/hls/playlist.m3u8"),
             artworkURL: nil
         )
     }

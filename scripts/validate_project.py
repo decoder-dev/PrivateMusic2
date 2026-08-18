@@ -339,6 +339,7 @@ for symbol in (
     "pm_iso_walk",
     "pm_iso_contains_types",
     "pm_cmaf_extract_fragment",
+    "pm_cmaf_parse_initialization",
     "pm_vk_unmask",
     "pm_buffer_max_loaded_ahead",
     "pm_aes128_cbc_decrypt",
@@ -382,6 +383,8 @@ cmaf_source = (SOURCE / "Services" / "CMAFAudioDemuxer.swift").read_text(
 )
 if "pm_cmaf_extract_fragment(" not in cmaf_source:
     fail("CMAFAudioDemuxer must extract trun/mdat samples through pm_cmaf_extract_fragment")
+if "pm_cmaf_parse_initialization(" not in cmaf_source:
+    fail("CMAFAudioDemuxer must parse moov/esds/stsd through pm_cmaf_parse_initialization")
 if "func parseTRUN" in cmaf_source or "func parseTFHD" in cmaf_source:
     fail("CMAF tfhd/trun tables must stay in PrivateMusicMedia.c")
 if "[UInt32?]" in cmaf_source:
@@ -395,6 +398,11 @@ if "pm_aes128_cbc_decrypt(" not in hls_exporter_source:
     fail("HLSSegmentExporter must decrypt AES-128 segments through C")
 if "CCCrypt(" in hls_exporter_source or "import CommonCrypto" in hls_exporter_source:
     fail("HLS AES-128 decrypt must live in PrivateMusicMedia.c, not Swift")
+track_share_source = (
+    SOURCE / "Features" / "Player" / "TrackShareSheet.swift"
+).read_text(encoding="utf-8")
+if "progressiveURL(" not in track_share_source:
+    fail("TrackShareService must prefer rewritten progressive MP3 over HLS stitching")
 vk_resolver_source = (
     SOURCE / "Services" / "VKAudioURLResolver.swift"
 ).read_text(encoding="utf-8")
@@ -404,6 +412,8 @@ if "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN0PQRSTUVWXYZO123456789+/=" in vk_res
     fail("VK unmask alphabet/decode/shuffle must stay in PrivateMusicMedia.c")
 if "pm_buffer_max_loaded_ahead(" not in audio_player_source:
     fail("AudioPlayer must fold loadedTimeRanges through pm_buffer_max_loaded_ahead")
+if audio_player_source.count("shouldRefreshHLSBeforePlay(") < 2:
+    fail("AudioPlayer must refresh remaining HLS before both play and neighbor preload")
 if "CMTimeSubtract(end, position)" in audio_player_source:
     fail("loadedTimeRanges max-ahead must not be walked in Swift")
 equalizer_source = (SOURCE / "Player" / "EqualizerDSP.swift").read_text(

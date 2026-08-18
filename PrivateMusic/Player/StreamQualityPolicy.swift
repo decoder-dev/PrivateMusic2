@@ -61,8 +61,9 @@ enum StreamQualityPolicy {
 
     /// LavaSrc / VK clients refresh `audio.getById` when the live URL is
     /// still an HLS playlist after the local m3u8→mp3 rewrite. A fresh
-    /// payload sometimes carries a progressive MP3. One attempt per load —
-    /// if VK still returns HLS we play that instead of looping.
+    /// payload sometimes carries a progressive MP3. One attempt per load
+    /// and per neighbor preload — if VK still returns HLS we play or warm
+    /// that instead of looping.
     static func shouldRefreshHLSBeforePlay(
         sourceURL: URL?,
         playbackURL: URL?,

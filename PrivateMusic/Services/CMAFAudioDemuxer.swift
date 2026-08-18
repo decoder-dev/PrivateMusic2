@@ -56,8 +56,92 @@ struct CMAFAudioDemuxer {
     // MARK: - Initialization segment
 
     /// Parses `ftyp` + `moov` and selects the audio track
-    /// (`hdlr.handler_type == "soun"`).
+    /// (`hdlr.handler_type == "soun"`). The box walk lives in
+    /// `PrivateMusicMedia.c`; Swift only slices `esds` / ASC from offsets.
     func parseInitialization(_ data: Data) throws -> InitializationInfo {
+        do {
+            return try parseInitializationNative(data)
+        } catch {
+            return try parseInitializationLegacy(data)
+        }
+    }
+
+    private func parseInitializationNative(
+        _ data: Data
+    ) throws -> InitializationInfo {
+        try data.withUnsafeBytes { raw in
+            guard let base = raw.bindMemory(to: UInt8.self).baseAddress else {
+                throw CMAFError.invalidInitialization
+            }
+            var info = pm_cmaf_init(
+                track_id: 0,
+                timescale: 0,
+                sample_rate: 0,
+                channel_count: 0,
+                codec_fourcc: 0,
+                default_sample_duration: 0,
+                default_sample_size: 0,
+                default_sample_flags: 0,
+                has_default_duration: false,
+                has_default_size: false,
+                has_default_flags: false,
+                esds_offset: -1,
+                esds_length: 0,
+                asc_offset: -1,
+                asc_length: 0
+            )
+            var status = pm_cmaf_status(code: 0, found_track_id: 0)
+            let ok = pm_cmaf_parse_initialization(
+                base,
+                Int32(data.count),
+                &info,
+                &status
+            )
+            try Self.throwInitializationIfNeeded(status, info: info)
+            guard ok == 1 else {
+                throw CMAFError.invalidInitialization
+            }
+            let codec = Codec(rawValue: Self.fourCCString(info.codec_fourcc))
+                ?? .unsupported
+            guard codec != .unsupported else {
+                throw CMAFError.unsupportedCodec(
+                    Self.fourCCString(info.codec_fourcc)
+                )
+            }
+            return InitializationInfo(
+                trackID: info.track_id,
+                timescale: info.timescale,
+                sampleRate: info.sample_rate > 0
+                    ? Double(info.sample_rate)
+                    : 44_100,
+                channelCount: info.channel_count > 0 ? info.channel_count : 2,
+                codec: codec,
+                audioSpecificConfig: Self.slice(
+                    data,
+                    offset: info.asc_offset,
+                    length: info.asc_length
+                ),
+                elementaryStreamDescriptor: Self.slice(
+                    data,
+                    offset: info.esds_offset,
+                    length: info.esds_length
+                ),
+                defaultSampleDuration: info.has_default_duration
+                    ? info.default_sample_duration
+                    : nil,
+                defaultSampleSize: info.has_default_size
+                    ? info.default_sample_size
+                    : nil,
+                defaultSampleFlags: info.has_default_flags
+                    ? info.default_sample_flags
+                    : nil
+            )
+        }
+    }
+
+    private func parseInitializationLegacy(
+        _ data: Data
+    ) throws -> InitializationInfo {
         let reader = ISOBoxReader(data)
         let boxes = try reader.boxes()
         guard boxes.contains(where: { $0.type == "ftyp" }) else {
@@ -229,6 +313,48 @@ struct CMAFAudioDemuxer {
         default:
             throw CMAFError.missingMovieBox
         }
+    }
+
+    private static func throwInitializationIfNeeded(
+        _ status: pm_cmaf_status,
+        info: pm_cmaf_init
+    ) throws {
+        switch status.code {
+        case PM_CMAF_OK:
+            return
+        case PM_CMAF_MISSING_FTYP, PM_CMAF_INVALID_INIT, PM_CMAF_TRUNCATED:
+            throw CMAFError.invalidInitialization
+        case PM_CMAF_MISSING_MOOV:
+            throw CMAFError.missingMovieBox
+        case PM_CMAF_NO_AUDIO_TRACK:
+            throw CMAFError.noAudioTrack
+        case PM_CMAF_UNSUPPORTED_CODEC:
+            throw CMAFError.unsupportedCodec(fourCCString(info.codec_fourcc))
+        default:
+            throw CMAFError.invalidInitialization
+        }
+    }
+
+    private static func slice(
+        _ data: Data,
+        offset: Int32,
+        length: Int32
+    ) -> Data? {
+        guard offset >= 0, length > 0 else { return nil }
+        let start = Int(offset)
+        let end = start + Int(length)
+        guard start < end, end <= data.count else { return nil }
+        return data.subdata(in: start..<end)
+    }
+
+    private static func fourCCString(_ type: UInt32) -> String {
+        let bytes = [
+            UInt8((type >> 24) & 0xFF),
+            UInt8((type >> 16) & 0xFF),
+            UInt8((type >> 8) & 0xFF),
+            UInt8(type & 0xFF)
+        ]
+        return String(bytes: bytes, encoding: .ascii) ?? ""
     }
 
     // MARK: - Parsing internals

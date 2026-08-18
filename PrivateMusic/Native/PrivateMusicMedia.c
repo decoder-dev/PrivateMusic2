@@ -577,6 +577,10 @@ uint32_t pm_iso_fourcc(const char *type) {
     return value;
 }
 
+static uint16_t pm_iso_load_u16(const uint8_t *data, int32_t offset) {
+    return (uint16_t)(((uint16_t)data[offset] << 8) | (uint16_t)data[offset + 1]);
+}
+
 static uint32_t pm_iso_load_u32(const uint8_t *data, int32_t offset) {
     return ((uint32_t)data[offset] << 24)
         | ((uint32_t)data[offset + 1] << 16)
@@ -824,6 +828,20 @@ bool pm_iso_contains_types(
         | ((uint32_t)(unsigned char)(c) << 8) \
         | (uint32_t)(unsigned char)(d))
 
+#define PM_ISO_FTYP PM_ISO_TYPE('f', 't', 'y', 'p')
+#define PM_ISO_MOOV PM_ISO_TYPE('m', 'o', 'o', 'v')
+#define PM_ISO_TRAK PM_ISO_TYPE('t', 'r', 'a', 'k')
+#define PM_ISO_TKHD PM_ISO_TYPE('t', 'k', 'h', 'd')
+#define PM_ISO_MDIA PM_ISO_TYPE('m', 'd', 'i', 'a')
+#define PM_ISO_MDHD PM_ISO_TYPE('m', 'd', 'h', 'd')
+#define PM_ISO_HDLR PM_ISO_TYPE('h', 'd', 'l', 'r')
+#define PM_ISO_MINF PM_ISO_TYPE('m', 'i', 'n', 'f')
+#define PM_ISO_STBL PM_ISO_TYPE('s', 't', 'b', 'l')
+#define PM_ISO_STSD PM_ISO_TYPE('s', 't', 's', 'd')
+#define PM_ISO_ESDS PM_ISO_TYPE('e', 's', 'd', 's')
+#define PM_ISO_MVEX PM_ISO_TYPE('m', 'v', 'e', 'x')
+#define PM_ISO_TREX PM_ISO_TYPE('t', 'r', 'e', 'x')
+#define PM_ISO_SOUN PM_ISO_TYPE('s', 'o', 'u', 'n')
 #define PM_ISO_MOOF PM_ISO_TYPE('m', 'o', 'o', 'f')
 #define PM_ISO_MDAT PM_ISO_TYPE('m', 'd', 'a', 't')
 #define PM_ISO_TRAF PM_ISO_TYPE('t', 'r', 'a', 'f')
@@ -1421,6 +1439,611 @@ int32_t pm_cmaf_extract_fragment(
     *has_decode_time = has_running;
     st->code = PM_CMAF_OK;
     return written;
+}
+
+#pragma mark - CMAF initialization parse
+
+static int32_t pm_cmaf_walk_range(
+    const uint8_t *data,
+    int32_t length,
+    int32_t start,
+    int32_t end,
+    pm_iso_box *out,
+    int32_t out_capacity,
+    pm_cmaf_status *status
+) {
+    pm_iso_status walk = {PM_ISO_OK, 0, 0};
+    const int32_t count = pm_iso_walk(
+        data,
+        length,
+        start,
+        end,
+        out,
+        out_capacity,
+        &walk
+    );
+    if (walk.code != PM_ISO_OK && count == 0) {
+        pm_cmaf_fail(status, PM_CMAF_TRUNCATED, 0);
+        return -1;
+    }
+    return count;
+}
+
+static int32_t pm_cmaf_stored_count(int32_t count) {
+    if (count < 0) {
+        return 0;
+    }
+    if (count > PM_CMAF_BOX_CAP) {
+        return PM_CMAF_BOX_CAP;
+    }
+    return count;
+}
+
+static void pm_cmaf_init_clear(pm_cmaf_init *out) {
+    if (out == NULL) {
+        return;
+    }
+    memset(out, 0, sizeof(*out));
+    out->esds_offset = -1;
+    out->esds_length = 0;
+    out->asc_offset = -1;
+    out->asc_length = 0;
+}
+
+static bool pm_cmaf_find_asc(
+    const uint8_t *data,
+    int32_t start,
+    int32_t end,
+    int32_t depth,
+    int32_t *asc_offset,
+    int32_t *asc_length
+) {
+    if (data == NULL || depth > 8 || start < 0 || start > end) {
+        return false;
+    }
+    int32_t offset = start;
+    while (offset + 2 <= end) {
+        const uint8_t tag = data[offset];
+        offset += 1;
+        uint32_t size = 0;
+        int read = 0;
+        while (read < 4) {
+            if (offset >= end) {
+                return false;
+            }
+            const uint8_t byte = data[offset];
+            offset += 1;
+            read += 1;
+            size = (size << 7) | (uint32_t)(byte & 0x7F);
+            if ((byte & 0x80) == 0) {
+                break;
+            }
+        }
+        if (size > (uint32_t)INT32_MAX) {
+            return false;
+        }
+        const int32_t payload_size = (int32_t)size;
+        if (!pm_cmaf_fits(offset, payload_size, end)) {
+            break;
+        }
+        if (tag == 0x05) {
+            if (asc_offset != NULL) {
+                *asc_offset = offset;
+            }
+            if (asc_length != NULL) {
+                *asc_length = payload_size;
+            }
+            return true;
+        }
+        const int32_t payload_end = offset + payload_size;
+        int32_t nested_start = -1;
+        if (tag == 0x03) {
+            nested_start = offset + 3;
+        } else if (tag == 0x04) {
+            nested_start = offset + 13;
+        }
+        if (nested_start >= 0 && nested_start < payload_end) {
+            if (pm_cmaf_find_asc(
+                data,
+                nested_start,
+                payload_end,
+                depth + 1,
+                asc_offset,
+                asc_length
+            )) {
+                return true;
+            }
+        }
+        offset = payload_end;
+    }
+    return false;
+}
+
+static bool pm_cmaf_parse_tkhd_id(
+    const uint8_t *data,
+    int32_t length,
+    const pm_iso_box *box,
+    uint32_t *track_id
+) {
+    const int32_t body = pm_cmaf_payload_start(box);
+    const int32_t end = pm_cmaf_payload_end(box);
+    if (!pm_cmaf_fits(body, 1, end) || !pm_cmaf_fits(body, 1, length)) {
+        return false;
+    }
+    const uint8_t version = data[body];
+    const int32_t id_offset = version == 1 ? body + 20 : body + 12;
+    if (!pm_cmaf_fits(id_offset, 4, end) || !pm_cmaf_fits(id_offset, 4, length)) {
+        return false;
+    }
+    const uint32_t value = pm_iso_load_u32(data, id_offset);
+    if (value == 0) {
+        return false;
+    }
+    if (track_id != NULL) {
+        *track_id = value;
+    }
+    return true;
+}
+
+static bool pm_cmaf_parse_mdhd_timescale(
+    const uint8_t *data,
+    int32_t length,
+    const pm_iso_box *box,
+    uint32_t *timescale
+) {
+    const int32_t body = pm_cmaf_payload_start(box);
+    const int32_t end = pm_cmaf_payload_end(box);
+    if (!pm_cmaf_fits(body, 5, end) || !pm_cmaf_fits(body, 5, length)) {
+        return false;
+    }
+    const uint8_t version = data[body];
+    const int32_t scale_offset = version == 1 ? body + 24 : body + 16;
+    if (!pm_cmaf_fits(scale_offset, 4, end)
+        || !pm_cmaf_fits(scale_offset, 4, length)) {
+        return false;
+    }
+    const uint32_t value = pm_iso_load_u32(data, scale_offset);
+    if (value == 0) {
+        return false;
+    }
+    if (timescale != NULL) {
+        *timescale = value;
+    }
+    return true;
+}
+
+static bool pm_cmaf_parse_hdlr_is_audio(
+    const uint8_t *data,
+    int32_t length,
+    const pm_iso_box *box,
+    bool *is_audio
+) {
+    const int32_t body = pm_cmaf_payload_start(box);
+    const int32_t end = pm_cmaf_payload_end(box);
+    if (!pm_cmaf_fits(body, 12, end) || !pm_cmaf_fits(body, 12, length)) {
+        return false;
+    }
+    const uint32_t handler = pm_iso_load_u32(data, body + 8);
+    if (is_audio != NULL) {
+        *is_audio = handler == PM_ISO_SOUN;
+    }
+    return true;
+}
+
+static bool pm_cmaf_parse_audio_sample_entry(
+    const uint8_t *data,
+    int32_t length,
+    const pm_iso_box *entry,
+    uint32_t *channels,
+    uint32_t *sample_rate
+) {
+    const int32_t body = pm_cmaf_payload_start(entry);
+    const int32_t end = pm_cmaf_payload_end(entry);
+    if (!pm_cmaf_fits(body, 28, end) || !pm_cmaf_fits(body, 28, length)) {
+        return false;
+    }
+    const uint16_t channel_count = pm_iso_load_u16(data, body + 16);
+    const uint32_t rate_fixed = pm_iso_load_u32(data, body + 24);
+    if (channels != NULL) {
+        *channels = channel_count;
+    }
+    if (sample_rate != NULL) {
+        *sample_rate = rate_fixed >> 16;
+    }
+    return true;
+}
+
+static bool pm_cmaf_parse_esds(
+    const uint8_t *data,
+    int32_t length,
+    const pm_iso_box *entry,
+    pm_cmaf_init *out,
+    pm_cmaf_status *status
+) {
+    const int32_t children_start = pm_cmaf_payload_start(entry) + 28;
+    const int32_t children_end = pm_cmaf_payload_end(entry);
+    if (children_start > children_end) {
+        return true;
+    }
+    pm_iso_box nested[PM_CMAF_BOX_CAP];
+    const int32_t nested_count = pm_cmaf_walk_range(
+        data,
+        length,
+        children_start,
+        children_end,
+        nested,
+        PM_CMAF_BOX_CAP,
+        status
+    );
+    if (nested_count < 0) {
+        return false;
+    }
+    const pm_iso_box *esds = pm_cmaf_find_box(
+        nested,
+        pm_cmaf_stored_count(nested_count),
+        PM_ISO_ESDS
+    );
+    if (esds == NULL) {
+        return true;
+    }
+    const int32_t descriptor_start = pm_cmaf_payload_start(esds) + 4;
+    const int32_t descriptor_end = pm_cmaf_payload_end(esds);
+    if (descriptor_start >= descriptor_end
+        || !pm_cmaf_fits(descriptor_start, 0, length)) {
+        return true;
+    }
+    out->esds_offset = descriptor_start;
+    out->esds_length = descriptor_end - descriptor_start;
+    int32_t asc_offset = -1;
+    int32_t asc_length = 0;
+    if (pm_cmaf_find_asc(
+        data,
+        descriptor_start,
+        descriptor_end,
+        0,
+        &asc_offset,
+        &asc_length
+    )) {
+        out->asc_offset = asc_offset;
+        out->asc_length = asc_length;
+    }
+    return true;
+}
+
+static bool pm_cmaf_parse_trak(
+    const uint8_t *data,
+    int32_t length,
+    const pm_iso_box *trak,
+    pm_cmaf_init *out,
+    bool *is_audio,
+    pm_cmaf_status *status
+) {
+    pm_iso_box trak_children[PM_CMAF_BOX_CAP];
+    const int32_t trak_count = pm_cmaf_walk_children(
+        data,
+        length,
+        trak,
+        trak_children,
+        PM_CMAF_BOX_CAP,
+        status
+    );
+    if (trak_count < 0) {
+        return false;
+    }
+    const int32_t trak_stored = pm_cmaf_stored_count(trak_count);
+    const pm_iso_box *tkhd = pm_cmaf_find_box(
+        trak_children,
+        trak_stored,
+        PM_ISO_TKHD
+    );
+    const pm_iso_box *mdia = pm_cmaf_find_box(
+        trak_children,
+        trak_stored,
+        PM_ISO_MDIA
+    );
+    if (tkhd == NULL || mdia == NULL) {
+        return false;
+    }
+
+    pm_iso_box mdia_children[PM_CMAF_BOX_CAP];
+    const int32_t mdia_count = pm_cmaf_walk_children(
+        data,
+        length,
+        mdia,
+        mdia_children,
+        PM_CMAF_BOX_CAP,
+        status
+    );
+    if (mdia_count < 0) {
+        return false;
+    }
+    const int32_t mdia_stored = pm_cmaf_stored_count(mdia_count);
+    const pm_iso_box *mdhd = pm_cmaf_find_box(
+        mdia_children,
+        mdia_stored,
+        PM_ISO_MDHD
+    );
+    const pm_iso_box *hdlr = pm_cmaf_find_box(
+        mdia_children,
+        mdia_stored,
+        PM_ISO_HDLR
+    );
+    const pm_iso_box *minf = pm_cmaf_find_box(
+        mdia_children,
+        mdia_stored,
+        PM_ISO_MINF
+    );
+    if (mdhd == NULL || hdlr == NULL || minf == NULL) {
+        return false;
+    }
+
+    pm_iso_box minf_children[PM_CMAF_BOX_CAP];
+    const int32_t minf_count = pm_cmaf_walk_children(
+        data,
+        length,
+        minf,
+        minf_children,
+        PM_CMAF_BOX_CAP,
+        status
+    );
+    if (minf_count < 0) {
+        return false;
+    }
+    const pm_iso_box *stbl = pm_cmaf_find_box(
+        minf_children,
+        pm_cmaf_stored_count(minf_count),
+        PM_ISO_STBL
+    );
+    if (stbl == NULL) {
+        return false;
+    }
+
+    pm_iso_box stbl_children[PM_CMAF_BOX_CAP];
+    const int32_t stbl_count = pm_cmaf_walk_children(
+        data,
+        length,
+        stbl,
+        stbl_children,
+        PM_CMAF_BOX_CAP,
+        status
+    );
+    if (stbl_count < 0) {
+        return false;
+    }
+    const pm_iso_box *stsd = pm_cmaf_find_box(
+        stbl_children,
+        pm_cmaf_stored_count(stbl_count),
+        PM_ISO_STSD
+    );
+    if (stsd == NULL) {
+        return false;
+    }
+
+    uint32_t track_id = 0;
+    uint32_t timescale = 0;
+    bool audio = false;
+    if (!pm_cmaf_parse_tkhd_id(data, length, tkhd, &track_id)
+        || !pm_cmaf_parse_mdhd_timescale(data, length, mdhd, &timescale)
+        || !pm_cmaf_parse_hdlr_is_audio(data, length, hdlr, &audio)) {
+        return false;
+    }
+
+    const int32_t entries_start = pm_cmaf_payload_start(stsd) + 8;
+    const int32_t entries_end = pm_cmaf_payload_end(stsd);
+    if (entries_start > entries_end) {
+        return false;
+    }
+    pm_iso_box entries[PM_CMAF_BOX_CAP];
+    const int32_t entry_count = pm_cmaf_walk_range(
+        data,
+        length,
+        entries_start,
+        entries_end,
+        entries,
+        PM_CMAF_BOX_CAP,
+        status
+    );
+    if (entry_count < 0) {
+        return false;
+    }
+    const int32_t entry_stored = pm_cmaf_stored_count(entry_count);
+    if (entry_stored <= 0) {
+        return false;
+    }
+    const pm_iso_box *entry = &entries[0];
+
+    uint32_t channels = 0;
+    uint32_t sample_rate = 0;
+    (void)pm_cmaf_parse_audio_sample_entry(
+        data,
+        length,
+        entry,
+        &channels,
+        &sample_rate
+    );
+
+    pm_cmaf_init_clear(out);
+    out->track_id = track_id;
+    out->timescale = timescale;
+    out->sample_rate = sample_rate;
+    out->channel_count = channels;
+    out->codec_fourcc = entry->type;
+    if (is_audio != NULL) {
+        *is_audio = audio;
+    }
+    if (entry->type == PM_ISO_TYPE('m', 'p', '4', 'a')) {
+        if (!pm_cmaf_parse_esds(data, length, entry, out, status)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void pm_cmaf_fold_trex(
+    const uint8_t *data,
+    int32_t length,
+    const pm_iso_box *moov,
+    pm_cmaf_init *out,
+    pm_cmaf_status *status
+) {
+    pm_iso_box moov_children[PM_CMAF_BOX_CAP];
+    const int32_t moov_count = pm_cmaf_walk_children(
+        data,
+        length,
+        moov,
+        moov_children,
+        PM_CMAF_BOX_CAP,
+        status
+    );
+    if (moov_count < 0) {
+        return;
+    }
+    const pm_iso_box *mvex = pm_cmaf_find_box(
+        moov_children,
+        pm_cmaf_stored_count(moov_count),
+        PM_ISO_MVEX
+    );
+    if (mvex == NULL) {
+        return;
+    }
+    pm_iso_box mvex_children[PM_CMAF_BOX_CAP];
+    const int32_t mvex_count = pm_cmaf_walk_children(
+        data,
+        length,
+        mvex,
+        mvex_children,
+        PM_CMAF_BOX_CAP,
+        status
+    );
+    if (mvex_count < 0) {
+        return;
+    }
+    const int32_t stored = pm_cmaf_stored_count(mvex_count);
+    for (int32_t index = 0; index < stored; index++) {
+        if (mvex_children[index].type != PM_ISO_TREX) {
+            continue;
+        }
+        const int32_t body = pm_cmaf_payload_start(&mvex_children[index]);
+        const int32_t end = pm_cmaf_payload_end(&mvex_children[index]);
+        if (!pm_cmaf_fits(body, 24, end) || !pm_cmaf_fits(body, 24, length)) {
+            continue;
+        }
+        const uint32_t track_id = pm_iso_load_u32(data, body + 4);
+        if (track_id != out->track_id) {
+            continue;
+        }
+        out->default_sample_duration = pm_iso_load_u32(data, body + 12);
+        out->default_sample_size = pm_iso_load_u32(data, body + 16);
+        out->default_sample_flags = pm_iso_load_u32(data, body + 20);
+        out->has_default_duration = true;
+        out->has_default_size = true;
+        out->has_default_flags = true;
+        return;
+    }
+}
+
+int32_t pm_cmaf_parse_initialization(
+    const uint8_t *data,
+    int32_t length,
+    pm_cmaf_init *out,
+    pm_cmaf_status *status
+) {
+    pm_cmaf_status local = {PM_CMAF_OK, 0};
+    pm_cmaf_status *st = status != NULL ? status : &local;
+    st->code = PM_CMAF_OK;
+    st->found_track_id = 0;
+    if (out != NULL) {
+        pm_cmaf_init_clear(out);
+    }
+    if (data == NULL || length < 8 || out == NULL) {
+        pm_cmaf_fail(st, PM_CMAF_INVALID_INIT, 0);
+        return 0;
+    }
+
+    pm_iso_box top[PM_CMAF_BOX_CAP];
+    const int32_t top_count = pm_cmaf_walk_range(
+        data,
+        length,
+        0,
+        length,
+        top,
+        PM_CMAF_BOX_CAP,
+        st
+    );
+    if (top_count < 0) {
+        return 0;
+    }
+    const int32_t top_stored = pm_cmaf_stored_count(top_count);
+    if (pm_cmaf_find_box(top, top_stored, PM_ISO_FTYP) == NULL) {
+        pm_cmaf_fail(st, PM_CMAF_MISSING_FTYP, 0);
+        return 0;
+    }
+    const pm_iso_box *moov = pm_cmaf_find_box(top, top_stored, PM_ISO_MOOV);
+    if (moov == NULL) {
+        pm_cmaf_fail(st, PM_CMAF_MISSING_MOOV, 0);
+        return 0;
+    }
+
+    pm_iso_box moov_children[PM_CMAF_BOX_CAP];
+    const int32_t moov_count = pm_cmaf_walk_children(
+        data,
+        length,
+        moov,
+        moov_children,
+        PM_CMAF_BOX_CAP,
+        st
+    );
+    if (moov_count < 0) {
+        return 0;
+    }
+    const int32_t moov_stored = pm_cmaf_stored_count(moov_count);
+
+    pm_cmaf_init selected;
+    pm_cmaf_init fallback;
+    bool has_selected = false;
+    bool has_fallback = false;
+    pm_cmaf_init_clear(&selected);
+    pm_cmaf_init_clear(&fallback);
+
+    for (int32_t index = 0; index < moov_stored; index++) {
+        if (moov_children[index].type != PM_ISO_TRAK) {
+            continue;
+        }
+        pm_cmaf_init candidate;
+        bool is_audio = false;
+        pm_cmaf_init_clear(&candidate);
+        if (!pm_cmaf_parse_trak(
+            data,
+            length,
+            &moov_children[index],
+            &candidate,
+            &is_audio,
+            st
+        )) {
+            st->code = PM_CMAF_OK;
+            st->found_track_id = 0;
+            continue;
+        }
+        if (is_audio) {
+            selected = candidate;
+            has_selected = true;
+            break;
+        }
+        if (!has_fallback) {
+            fallback = candidate;
+            has_fallback = true;
+        }
+    }
+
+    if (!has_selected && !has_fallback) {
+        pm_cmaf_fail(st, PM_CMAF_NO_AUDIO_TRACK, 0);
+        return 0;
+    }
+    *out = has_selected ? selected : fallback;
+    pm_cmaf_fold_trex(data, length, moov, out, st);
+    st->code = PM_CMAF_OK;
+    st->found_track_id = out->track_id;
+    return 1;
 }
 
 #pragma mark - VK unmask
