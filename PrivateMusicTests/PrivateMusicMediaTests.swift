@@ -67,12 +67,15 @@ final class PrivateMusicMediaTests: XCTestCase {
     }
 
     func testAES128CBCDecryptRoundTrip() {
-        let key = Data(repeating: 0x2A, count: PM_AES128_KEY_BYTES)
-        let iv = Data(repeating: 0x19, count: PM_AES128_IV_BYTES)
+        let key = Data(repeating: 0x2A, count: Int(PM_AES128_KEY_BYTES))
+        let iv = Data(repeating: 0x19, count: Int(PM_AES128_IV_BYTES))
         let plaintext = Data("PrivateMusic HLS segment payload".utf8)
         let ciphertext = encryptAES128CBC(plaintext, key: key, iv: iv)
 
-        var output = [UInt8](repeating: 0, count: ciphertext.count + PM_AES128_BLOCK_BYTES)
+        var output = [UInt8](
+            repeating: 0,
+            count: ciphertext.count + Int(PM_AES128_BLOCK_BYTES)
+        )
         var outputLength: Int32 = 0
         let status = ciphertext.withUnsafeBytes { cipherBytes in
             key.withUnsafeBytes { keyBytes in
