@@ -148,7 +148,8 @@ enum HomeStageContextBuilder {
         mixes: [MusicMix],
         recentArtists: [HomeStageArtist],
         selectedMood: MixMoodPreference,
-        stationTitle: String
+        stationTitle: String,
+        omitStation: Bool = false
     ) -> [HomeStageContext] {
         var contexts: [HomeStageContext] = []
         var takenNames = Set<String>()
@@ -183,9 +184,19 @@ enum HomeStageContextBuilder {
             )
         }
 
-        // The station always leads: it is the one context available even
-        // with an empty catalog and no history.
-        append(id: "station", kind: .station, name: stationTitle)
+        if !omitStation {
+            // The station always leads when Hero is not already offering it.
+            // Idle Hero's "Включить" *is* the station, so the rail must not
+            // repeat that same action as its first tile.
+            append(
+                id: "station",
+                kind: .station,
+                name: stationTitle
+            )
+        }
+        // Mix catalog still arrives so Home doesn't grow a second fetch;
+        // the rail itself no longer renders mix tiles.
+        _ = mixes
 
         // Only the mood the listener actually picked. All five would push
         // everything else off the rail.
@@ -208,16 +219,9 @@ enum HomeStageContextBuilder {
             )
         }
 
-        for mix in mixes {
-            append(
-                id: "mix-\(mix.id)",
-                kind: .mix,
-                name: mix.title,
-                avatarURL: mix.curator?.photoURL,
-                mixID: mix.id
-            )
-        }
-
+        // Catalog mixes are Explore / What's Next. The rail is session
+        // control: station, vibe, and recent artists — not another mix
+        // shelf sitting under the hero.
         return Array(contexts.prefix(limit))
     }
 

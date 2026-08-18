@@ -15,14 +15,14 @@ struct CatalogView: View {
     @Environment(HomePersonalizationStore.self) private var personalization
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var actionErrorMessage: String?
     @State private var sharingTrack: Track?
     @State private var selectedAlbum: Album?
     @State private var loadingAlbumTrackID: String?
     @State private var albumLookupTask: Task<Void, Never>?
-    @State private var isDynamicArtistLaunching = false
-    @State private var pendingHiddenArtist: ArtistAffinityCandidate?
+    @State private var isNextStepLaunching = false
+    @State private var pendingHiddenArtist: HomeNextStepCandidate?
+    @State private var openingMixID: String?
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -47,29 +47,21 @@ struct CatalogView: View {
                                 .id(MainTabScrollDestination.home)
                         }
 
-                        if !vkMixCandidates.isEmpty {
-                            vkMixesSection(metrics: metrics)
-                        }
-                        if isLoading && contentIsEmpty {
-                            catalogSkeleton(metrics: metrics)
-                        } else {
-                            if !recommendations.isEmpty {
-                                recommendationsSection(metrics: metrics)
-                            }
-                            if contentIsEmpty { unavailableView }
-                            if let errorMessage, !contentIsEmpty {
-                                retryRow(errorMessage)
-                            }
-                        }
-                        if let dynamicArtistCandidate {
-                            dynamicArtistSection(
-                                dynamicArtistCandidate,
+                        if let nextStepCandidate {
+                            nextStepSection(
+                                nextStepCandidate,
                                 metrics: metrics
                             )
+                        }
+                        if homeCatalog.errorMessage != nil,
+                           nextStepCandidate == nil,
+                           history.entries.isEmpty {
+                            retryRow(errorMessage ?? homeCatalog.errorMessage ?? "")
                         }
                         if !history.entries.isEmpty {
                             recentlyPlayedSection(metrics: metrics)
                         }
+                        exploreMusicEntry
                     }
                     .padding(.horizontal, metrics.horizontalPadding)
                     .padding(.top, BubbleSpacing.xs)
@@ -107,6 +99,14 @@ struct CatalogView: View {
                 AlbumDetailView(album: selectedAlbum)
             }
         }
+        .navigationDestination(
+            isPresented: Binding(
+                get: { openingMixID != nil },
+                set: { if !$0 { openingMixID = nil } }
+            )
+        ) {
+            MixesHubView(focusedMixID: openingMixID)
+        }
         .refreshable { await load(force: true) }
         .task(id: sessionStore.resolvedOfflineAccountID) {
             await load()
@@ -123,7 +123,12 @@ struct CatalogView: View {
         // (rather than inside the computed property) is what makes the
         // "prefer what's already shown" stickiness actually stick instead
         // of just reading its own last write back immediately.
-        .onChange(of: dynamicArtistCandidate?.artistKey) { _, key in
+        .onChange(of: nextStepCandidate?.stabilityKey) { _, key in
+            if let key {
+                personalization.recordShownNextStep(key: key)
+            }
+        }
+        .onChange(of: nextStepCandidate?.artistKey) { _, key in
             if let key {
                 personalization.recordShown(artistKey: key)
             }
@@ -156,7 +161,7 @@ struct CatalogView: View {
         ) {
             Button(L10n.text("hide_artist"), role: .destructive) {
                 if let candidate = pendingHiddenArtist {
-                    hideDynamicArtist(candidate)
+                    hideNextStepArtist(candidate)
                 }
                 pendingHiddenArtist = nil
             }
@@ -168,7 +173,7 @@ struct CatalogView: View {
                 Text(
                     L10n.format(
                         "hide_artist_in_mixes_confirmation_0",
-                        candidate.displayName
+                        candidate.titleArgument ?? candidate.artistKey ?? ""
                     )
                 )
             }
@@ -188,42 +193,32 @@ struct CatalogView: View {
         }
     }
 
-    private var recommendations: [Track] { homeCatalog.recommendations }
-    private var featuredRecommendations: [Track] {
-        Array(recommendations.prefix(14))
-    }
-    private var isLoading: Bool { homeCatalog.isRefreshing }
     private var errorMessage: String? {
         actionErrorMessage ?? homeCatalog.errorMessage
     }
 
-    /// Home's own discovery signal, plus the VK mixes and dynamic-artist
-    /// sections below — new releases and playlists still belong to
-    /// Library, which owns saved content; their emptiness doesn't belong
-    /// in this check.
-    private var contentIsEmpty: Bool { recommendations.isEmpty }
-
-    /// VK's own feed already comes relevance-ordered — this is dedup and
-    /// a cap, not a second ranking model layered on data this app has no
-    /// basis to second-guess.
-    private var vkMixCandidates: [MusicMix] {
-        HomeVKMixesPolicy.candidates(from: homeCatalog.mixes)
-    }
-
-    /// The one artist Home's own listening signals currently support,
-    /// still respecting whatever `MixFeedbackStore` has suppressed and
-    /// preferring the artist already shown so the section does not
-    /// reshuffle after every track.
-    private var dynamicArtistCandidate: ArtistAffinityCandidate? {
-        let candidates = ArtistAffinityPolicy.candidates(
-            history: history.entries,
-            isLiked: { libraryStore.contains($0) },
-            bannedArtistKeys: mixFeedback.bannedArtists,
-            bannedTrackIDs: mixFeedback.bannedTrackIDs
-        )
-        return ArtistAffinityPolicy.selectDynamicArtist(
-            from: candidates,
-            previouslyShownKey: personalization.lastShownArtistKey
+    private var nextStepCandidate: HomeNextStepCandidate? {
+        HomeNextStepPolicy.select(
+            HomeNextStepRequest(
+                affinityCandidates: ArtistAffinityPolicy.candidates(
+                    history: history.entries,
+                    isLiked: { libraryStore.contains($0) },
+                    bannedArtistKeys: mixFeedback.bannedArtists,
+                    bannedTrackIDs: mixFeedback.bannedTrackIDs
+                ),
+                previouslyShownArtistKey: personalization.lastShownArtistKey,
+                previouslyShownKey: personalization.lastShownNextStepKey,
+                mixes: homeCatalog.mixes,
+                selectedMood: settings.mixMoodPreference,
+                occupancy: HomeNextStepPolicy.occupancy(
+                    hasCurrentTrack: highlight.currentTrackID != nil,
+                    queueSource: highlight.queueSource,
+                    currentArtist: highlight.currentArtist,
+                    mixes: homeCatalog.mixes
+                ),
+                hasListeningHistory: !history.entries.isEmpty,
+                hasRecommendations: !homeCatalog.recommendations.isEmpty
+            )
         )
     }
 
@@ -270,100 +265,52 @@ struct CatalogView: View {
         }
     }
 
-    // MARK: - VK Mixes
+    // MARK: - What's Next
 
-    /// Media-first: artwork carries the section, source metadata stays
-    /// small. `MixesHubView` still owns the full catalog and advanced
-    /// Radio tuning — this is a taste, not a second copy of that screen.
-    private func vkMixesSection(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: BubbleSpacing.m) {
-            HStack(alignment: .firstTextBaseline) {
-                PremiumSectionHeader("vk_mixes")
-                Spacer(minLength: BubbleSpacing.m)
-                NavigationLink(L10n.text("all_mixes")) {
-                    MixesHubView()
-                }
-                .font(.subheadline.weight(.semibold))
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: metrics.cardSpacing) {
-                    ForEach(vkMixCandidates) { mix in
-                        vkMixCard(mix, artworkSize: metrics.trackWidth)
-                    }
-                }
-            }
-        }
-    }
-
-    private func vkMixCard(
-        _ mix: MusicMix,
-        artworkSize: CGFloat
-    ) -> some View {
-        Button {
-            Haptics.selection()
-            Task { await environment.startCatalogMix(mix) }
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                // The shared mix artwork, same as the Mix hub: VK's cover
-                // when it sent one, the curator's photo for a friend's mix,
-                // otherwise a generated cover keyed to what the mix is.
-                // `HomeTrackArtwork` is for tracks, and its grey note made
-                // every coverless mix look like a failed image load.
-                MixArtworkView(
-                    mix: mix,
-                    tracks: [],
-                    size: artworkSize,
-                    cornerRadius: PremiumLayout.artworkRadius(
-                        for: artworkSize
-                    )
-                )
-                Text(mix.title)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !mix.subtitle.isEmpty {
-                    Text(mix.subtitle)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            .frame(width: artworkSize, alignment: .leading)
-        }
-        .buttonStyle(PremiumPressStyle())
-        .accessibilityElement(children: .combine)
-    }
-
-    // MARK: - Dynamic artist
-
-    /// Only rendered when `ArtistAffinityPolicy` actually has evidence —
-    /// weak or absent affinity means no section, not a filler card.
-    private func dynamicArtistSection(
-        _ candidate: ArtistAffinityCandidate,
+    private func nextStepSection(
+        _ candidate: HomeNextStepCandidate,
         metrics: HomeMetrics
     ) -> some View {
-        VStack(alignment: .leading, spacing: BubbleSpacing.m) {
-            PremiumSectionHeader("selena.name")
-            HStack(spacing: BubbleSpacing.m) {
-                dynamicArtistGlyph(candidate, size: metrics.recentWidth)
+        let artworkSize = metrics.nextStepWidth
+        return VStack(alignment: .leading, spacing: BubbleSpacing.m) {
+            PremiumSectionHeader("home_next.title")
+            HStack(alignment: .center, spacing: BubbleSpacing.m) {
+                nextStepArtwork(candidate, size: artworkSize)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(
-                        L10n.format(
-                            "home_stage.dynamic_artist.title",
-                            candidate.displayName
-                        )
-                    )
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    Text(dynamicArtistReasonText(candidate.reason))
+                    Text(nextStepTitle(candidate))
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(L10n.text(candidate.subtitleKey))
                         .font(BubbleType.metadata)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                    dynamicArtistActions(candidate)
+                    if candidate.sourceIsSelena {
+                        Text(L10n.text("home_next.source.selena"))
+                            .font(BubbleType.micro)
+                            .foregroundStyle(.tertiary)
+                    } else if candidate.kind == .vkMix {
+                        Text(L10n.text("home_next.vk.title"))
+                            .font(BubbleType.micro)
+                            .foregroundStyle(.tertiary)
+                    }
+                    HStack(spacing: BubbleSpacing.s) {
+                        nextStepActionButton(candidate)
+                        Spacer(minLength: 0)
+                        if nextStepHasMenu(candidate) {
+                            Menu {
+                                nextStepMenu(candidate)
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 32, height: 32)
+                                    .contentShape(Rectangle())
+                            }
+                            .accessibilityLabel(L10n.text("more"))
+                        }
+                    }
                     .padding(.top, 2)
                 }
                 Spacer(minLength: 0)
@@ -371,37 +318,85 @@ struct CatalogView: View {
         }
     }
 
+    private func nextStepTitle(_ candidate: HomeNextStepCandidate) -> String {
+        if candidate.kind == .vkMix, let title = candidate.titleArgument {
+            return title
+        }
+        if let argument = candidate.titleArgument {
+            return L10n.format(candidate.titleKey, argument)
+        }
+        return L10n.text(candidate.titleKey)
+    }
+
     @ViewBuilder
-    private func dynamicArtistActions(
-        _ candidate: ArtistAffinityCandidate
+    private func nextStepArtwork(
+        _ candidate: HomeNextStepCandidate,
+        size: CGFloat
     ) -> some View {
-        let continueTitle = L10n.text("home_stage.dynamic_artist.continue")
-        let hideTitle = L10n.text("hide_artist")
-        ViewThatFits(
-            in: dynamicTypeSize.isAccessibilitySize ? .vertical : .horizontal
-        ) {
-            HStack(spacing: BubbleSpacing.s) {
-                continueDynamicArtistButton(title: continueTitle, candidate: candidate)
-                hideDynamicArtistButton(title: hideTitle, candidate: candidate)
-            }
-            VStack(alignment: .leading, spacing: BubbleSpacing.s) {
-                continueDynamicArtistButton(title: continueTitle, candidate: candidate)
-                hideDynamicArtistButton(title: hideTitle, candidate: candidate)
-            }
+        if let mix = nextStepMix(for: candidate) {
+            MixArtworkView(
+                mix: mix,
+                tracks: [],
+                size: size,
+                cornerRadius: PremiumLayout.artworkRadius(for: size)
+            )
+        } else if let url = candidate.artworkURL {
+            HomeTrackArtwork(url: url, size: size)
+        } else {
+            nextStepGlyph(candidate, size: size)
         }
     }
 
-    private func continueDynamicArtistButton(
-        title: String,
-        candidate: ArtistAffinityCandidate
+    private func nextStepMix(
+        for candidate: HomeNextStepCandidate
+    ) -> MusicMix? {
+        guard let mixID = candidate.mixID else { return nil }
+        return homeCatalog.mixes.first { $0.id == mixID }
+            ?? (mixID == MusicMix.common.id ? .common : nil)
+    }
+
+    private func nextStepGlyph(
+        _ candidate: HomeNextStepCandidate,
+        size: CGFloat
+    ) -> some View {
+        let role: BubbleRole = switch candidate.kind {
+        case .artistContinuation: .artist
+        case .vibeContinuation: .mood
+        case .vkMix: .mix
+        case .personalStation: .station
+        }
+        let tint = BubblePalette.surface(role, tint: nil).color
+        return ZStack {
+            LinearGradient(
+                colors: [tint, tint.opacity(0.55)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Image(systemName: candidate.kind == .artistContinuation
+                ? "person.wave.2.fill"
+                : "sparkles")
+                .font(.system(size: size * 0.32, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
+        }
+        .frame(width: size, height: size)
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: PremiumLayout.artworkRadius(for: size),
+                style: .continuous
+            )
+        )
+    }
+
+    private func nextStepActionButton(
+        _ candidate: HomeNextStepCandidate
     ) -> some View {
         Button {
-            continueDynamicArtist(candidate)
+            launchNextStep(candidate)
         } label: {
             ZStack {
-                Text(title)
-                    .opacity(isDynamicArtistLaunching ? 0 : 1)
-                if isDynamicArtistLaunching {
+                Text(L10n.text(candidate.actionKey))
+                    .opacity(isNextStepLaunching ? 0 : 1)
+                if isNextStepLaunching {
                     ProgressView()
                         .controlSize(.small)
                 }
@@ -410,112 +405,108 @@ struct CatalogView: View {
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
-        .disabled(isDynamicArtistLaunching)
+        .disabled(isNextStepLaunching)
     }
 
-    private func hideDynamicArtistButton(
-        title: String,
-        candidate: ArtistAffinityCandidate
-    ) -> some View {
-        Button(role: .destructive) {
-            pendingHiddenArtist = candidate
-        } label: {
-            Text(title)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
+    private func nextStepHasMenu(_ candidate: HomeNextStepCandidate) -> Bool {
+        candidate.artistKey != nil || candidate.kind == .vkMix
+    }
+
+    @ViewBuilder
+    private func nextStepMenu(_ candidate: HomeNextStepCandidate) -> some View {
+        if candidate.artistKey != nil {
+            Button {
+                suppressNextStep(candidate, includeArtist: false)
+            } label: {
+                Label(
+                    L10n.text("home_next.less_like_this"),
+                    systemImage: "hand.thumbsdown"
+                )
+            }
+            Button(role: .destructive) {
+                pendingHiddenArtist = candidate
+            } label: {
+                Label(
+                    L10n.text("home_next.hide_artist"),
+                    systemImage: "person.badge.minus"
+                )
+            }
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .tint(.secondary)
-    }
-
-    private func dynamicArtistGlyph(
-        _ candidate: ArtistAffinityCandidate,
-        size: CGFloat
-    ) -> some View {
-        let tint = BubblePalette.surface(.artist, tint: nil).color
-        return ZStack {
-            LinearGradient(
-                colors: [tint, tint.opacity(0.55)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Image(systemName: "person.wave.2.fill")
-                .font(.system(size: size * 0.32, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.92))
-        }
-        .frame(width: size * 0.62, height: size * 0.62)
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: PremiumLayout.artworkRadius(for: size * 0.62),
-                style: .continuous
-            )
-        )
-    }
-
-    private func dynamicArtistReasonText(
-        _ reason: ArtistAffinityCandidate.Reason
-    ) -> String {
-        switch reason {
-        case .likedAndPlayed:
-            L10n.text("home_stage.dynamic_artist.reason.liked")
-        case .frequentRecently:
-            L10n.text("home_stage.dynamic_artist.reason.frequent")
-        case .multipleTracks:
-            L10n.text("home_stage.dynamic_artist.reason.multiple")
+        if let mixID = candidate.mixID, candidate.kind == .vkMix {
+            Button {
+                openingMixID = mixID
+            } label: {
+                Label(L10n.text("open_mix"), systemImage: "square.stack")
+            }
         }
     }
 
-    private func continueDynamicArtist(_ candidate: ArtistAffinityCandidate) {
-        guard !isDynamicArtistLaunching else { return }
+    private func launchNextStep(_ candidate: HomeNextStepCandidate) {
+        guard !isNextStepLaunching else { return }
         Haptics.selection()
-        let seed = seedTrack(forArtistKey: candidate.artistKey)
-        isDynamicArtistLaunching = true
+        isNextStepLaunching = true
         Task {
-            defer { isDynamicArtistLaunching = false }
-            await environment.startMixFromArtist(
-                named: candidate.displayName,
-                seed: seed
-            )
-        }
-    }
-
-    /// Reuses `MixFeedbackStore` rather than a second suppression list —
-    /// the same ban already keeps this artist out of Mix Radio, and now
-    /// out of `ArtistAffinityPolicy`'s candidates too.
-    private func hideDynamicArtist(_ candidate: ArtistAffinityCandidate) {
-        Haptics.selection()
-        guard let seed = seedTrack(forArtistKey: candidate.artistKey) else {
-            return
-        }
-        mixFeedback.ban(seed, includeArtist: true)
-        personalization.clearIfShowing(artistKey: candidate.artistKey)
-    }
-
-    private func recommendationsSection(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: BubbleSpacing.m) {
-            PremiumSectionHeader(
-                "for_you",
-                subtitle: "recommendations_based_on_vk_data"
-            )
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(
-                    alignment: .top,
-                    spacing: metrics.cardSpacing
-                ) {
-                    ForEach(featuredRecommendations) { track in
-                        homeTrackItem(
-                            track,
-                            queue: recommendations,
-                            artworkSize: metrics.trackWidth
-                        )
-                        .contextMenu {
-                            trackContextMenu(track, queue: recommendations)
-                        }
-                    }
+            defer { isNextStepLaunching = false }
+            switch candidate.action {
+            case let .artist(name, artistKey):
+                await environment.startMixFromArtist(
+                    named: name,
+                    seed: seedTrack(forArtistKey: artistKey)
+                )
+            case .personalStation:
+                await environment.startPersonalStation(in: homeCatalog.mixes)
+            case let .mood(mood):
+                await environment.startMoodStation(
+                    mood,
+                    in: homeCatalog.mixes
+                )
+            case let .mix(id):
+                if let mix = homeCatalog.mixes.first(where: { $0.id == id }) {
+                    await environment.startCatalogMix(mix)
                 }
             }
         }
+    }
+
+    private func suppressNextStep(
+        _ candidate: HomeNextStepCandidate,
+        includeArtist: Bool
+    ) {
+        Haptics.selection()
+        if let artistKey = candidate.artistKey,
+           let seed = seedTrack(forArtistKey: artistKey) {
+            mixFeedback.ban(seed, includeArtist: includeArtist)
+            if includeArtist {
+                personalization.clearIfShowing(artistKey: artistKey)
+            }
+        }
+        personalization.clearNextStepIfShowing(key: candidate.stabilityKey)
+    }
+
+    private func hideNextStepArtist(_ candidate: HomeNextStepCandidate) {
+        suppressNextStep(candidate, includeArtist: true)
+    }
+
+    private var exploreMusicEntry: some View {
+        NavigationLink {
+            MixesHubView(
+                deprioritizedMixID: nextStepCandidate?.mixID,
+                startsOnVK: nextStepCandidate?.kind == .personalStation
+            )
+        } label: {
+            HStack(spacing: BubbleSpacing.s) {
+                Text(L10n.text("explore_music"))
+                    .font(.subheadline.weight(.semibold))
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(PremiumPressStyle())
+        .accessibilityHint(L10n.text("explore_music"))
     }
 
     private func recentlyPlayedSection(metrics: HomeMetrics) -> some View {
@@ -529,7 +520,7 @@ struct CatalogView: View {
                     alignment: .top,
                     spacing: metrics.cardSpacing
                 ) {
-                    ForEach(history.entries.prefix(12)) { entry in
+                    ForEach(history.entries.prefix(5)) { entry in
                         homeTrackItem(
                             entry.track,
                             queue: history.entries.map(\.track),
@@ -547,62 +538,6 @@ struct CatalogView: View {
                 }
             }
         }
-    }
-
-    private func catalogSkeleton(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: BubbleSpacing.xxl) {
-            ForEach(0..<2, id: \.self) { section in
-                VStack(alignment: .leading, spacing: BubbleSpacing.m) {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(.primary.opacity(0.11))
-                        .frame(
-                            width: section == 0 ? 112 : 150,
-                            height: 16
-                        )
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(
-                            alignment: .top,
-                            spacing: metrics.cardSpacing
-                        ) {
-                            ForEach(0..<3, id: \.self) { _ in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    RoundedRectangle(
-                                        cornerRadius:
-                                            PremiumLayout.artworkRadius(
-                                                for: metrics.trackWidth
-                                            ),
-                                        style: .continuous
-                                    )
-                                        .fill(.primary.opacity(0.09))
-                                        .frame(
-                                            width: metrics.trackWidth,
-                                            height: metrics.trackWidth
-                                        )
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(.primary.opacity(0.09))
-                                        .frame(
-                                            width: metrics.trackWidth * 0.82,
-                                            height: 11
-                                        )
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(.primary.opacity(0.06))
-                                        .frame(
-                                            width: metrics.trackWidth * 0.58,
-                                            height: 9
-                                        )
-                                }
-                                .frame(
-                                    width: metrics.trackWidth,
-                                    alignment: .leading
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .redacted(reason: .placeholder)
-        .accessibilityLabel(L10n.text("loading_recommendations_and_mixes"))
     }
 
     private func homeTrackCard(
@@ -830,26 +765,6 @@ struct CatalogView: View {
         }
     }
 
-    private var unavailableView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "waveform.slash")
-                .font(.system(size: 40, weight: .medium))
-            Text(L10n.text("home.unavailable"))
-                .font(.title3.bold())
-            Text(
-                errorMessage
-                    ?? L10n.text("vk_did_not_return_recommendations")
-            )
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button(L10n.text("action.refresh")) { Task { await load(force: true) } }
-                .buttonStyle(PrimaryButtonStyle())
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 52)
-    }
-
     private func retryRow(_ message: String) -> some View {
         Button { Task { await load(force: true) } } label: {
             HStack(spacing: 12) {
@@ -883,13 +798,11 @@ struct HomeMetrics {
         containerWidth <= 350 ? 10 : 12
     }
 
-    var trackWidth: CGFloat {
-        AdaptiveLayout.shelfCardWidth(
-            for: containerWidth,
-            compactMax: 142,
-            regularMax: AdaptiveLayout.regularCardWidthCap,
-            fraction: 0.36,
-            compactMin: 114
+    var nextStepWidth: CGFloat {
+        BubbleMetrics.clamp(
+            containerWidth * 0.18,
+            minimum: 64,
+            maximum: 76
         )
     }
 

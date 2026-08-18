@@ -1,9 +1,8 @@
 import Foundation
 
-/// Which VK Mixes Home surfaces, and in what order. VK's own feed is
-/// already relevance-ordered server-side — this is dedup and a cap, not a
-/// second ranking model layered on data this app has no basis to
-/// second-guess.
+/// Which VK Mixes compete for Home's single What's Next slot (and still
+/// feed Explore). VK's own feed is already relevance-ordered server-side
+/// — this is dedup and a cap, not a second ranking model.
 enum HomeVKMixesPolicy {
     static let limit = 6
 

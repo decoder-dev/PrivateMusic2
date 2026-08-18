@@ -54,9 +54,16 @@ struct HomeStageView: View {
                 .padding(.bottom, HomeStageMetrics.belowArtwork)
 
             controls
-                .padding(.bottom, HomeStageMetrics.belowTransport)
+                .padding(
+                    .bottom,
+                    contexts.isEmpty
+                        ? BubbleSpacing.m
+                        : HomeStageMetrics.belowTransport
+                )
 
-            bubbleRail
+            if !contexts.isEmpty {
+                bubbleRail
+            }
         }
         .padding(.top, foregroundTopOrigin)
         .frame(maxWidth: .infinity)
@@ -351,7 +358,8 @@ struct HomeStageView: View {
                 from: history.entries
             ),
             selectedMood: settings.mixMoodPreference,
-            stationTitle: L10n.text("selena.name")
+            stationTitle: L10n.text("selena.name"),
+            omitStation: presentation.showsCallToAction
         )
     }
 

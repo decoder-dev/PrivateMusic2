@@ -1646,6 +1646,48 @@ def require_artist_album_shelf_fix() -> None:
 
 require_artist_album_shelf_fix()
 
+
+def require_home_is_not_a_recommendation_feed() -> None:
+    """Root Home must not stack competing recommendation shelves."""
+    catalog = (
+        SOURCE / "Features" / "Catalog" / "CatalogView.swift"
+    ).read_text(encoding="utf-8")
+    policy = (
+        SOURCE / "Models" / "HomeNextStepPolicy.swift"
+    ).read_text(encoding="utf-8")
+    for forbidden in (
+        "vkMixesSection",
+        "recommendationsSection",
+        "dynamicArtistSection",
+        'PremiumSectionHeader(\n                "vk_mixes"',
+        'PremiumSectionHeader(\n                "for_you"',
+        'PremiumSectionHeader(\n            "selena.name"',
+    ):
+        if forbidden in catalog:
+            fail(
+                "Home must not keep a permanent recommendation shelf: "
+                f"found {forbidden!r} in CatalogView"
+            )
+    for required_symbol in (
+        "HomeNextStepPolicy.select(",
+        "explore_music",
+        "home_next.title",
+        "recentlyPlayedSection",
+    ):
+        if required_symbol not in catalog:
+            fail(f"simplified Home is missing {required_symbol}")
+    for required_symbol in (
+        "enum HomeNextStepPolicy",
+        "static func select(",
+        "hysteresis",
+        "HomeNextStepOccupancy",
+    ):
+        if required_symbol not in policy:
+            fail(f"HomeNextStepPolicy is missing {required_symbol}")
+
+
+require_home_is_not_a_recommendation_feed()
+
 print(f"OK: {len(swift_files)} Swift files")
 print("OK: no embedded client secret or CAPTCHA interception")
 print("OK: Keychain, ephemeral URLSession and Now Playing are present")
