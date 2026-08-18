@@ -176,6 +176,36 @@ final class StreamQualityPolicyTests: XCTestCase {
         )
     }
 
+    func testShouldRefreshHLSBeforePlayOnlyWhenRewriteStaysOnPlaylist() {
+        let hls = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123/index.m3u8"
+        )!
+        let mp3 = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123.mp3"
+        )!
+        XCTAssertTrue(
+            StreamQualityPolicy.shouldRefreshHLSBeforePlay(
+                sourceURL: hls,
+                playbackURL: hls,
+                alreadyRefreshed: false
+            )
+        )
+        XCTAssertFalse(
+            StreamQualityPolicy.shouldRefreshHLSBeforePlay(
+                sourceURL: hls,
+                playbackURL: mp3,
+                alreadyRefreshed: false
+            )
+        )
+        XCTAssertFalse(
+            StreamQualityPolicy.shouldRefreshHLSBeforePlay(
+                sourceURL: hls,
+                playbackURL: hls,
+                alreadyRefreshed: true
+            )
+        )
+    }
+
     func testPrefersHQDuplicate() {
         let standard = Track(
             trackID: 1,
@@ -333,6 +363,96 @@ final class PlaybackResourcePolicyTests: XCTestCase {
                 requiresAudioTap: true,
                 lowPowerMode: false,
                 thermalState: .nominal
+            )
+        )
+    }
+
+    func testOverlappingPlaybackBlockedWhenTapOrLowPower() {
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowOverlappingPlayback(
+                userEnabled: true,
+                requiresAudioTap: true,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowOverlappingPlayback(
+                userEnabled: true,
+                requiresAudioTap: false,
+                lowPowerMode: true,
+                thermalState: .nominal
+            )
+        )
+        XCTAssertTrue(
+            PlaybackResourcePolicy.allowOverlappingPlayback(
+                userEnabled: true,
+                requiresAudioTap: false,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+    }
+}
+
+final class PlaybackTransitionPolicyTests: XCTestCase {
+    func testCrossfadeSkippedForHLSAndWhenDisabled() {
+        let hls = URL(string: "https://example.com/index.m3u8")!
+        let mp3 = URL(string: "https://example.com/a.mp3")!
+        XCTAssertFalse(
+            PlaybackTransitionPolicy.allowsCrossfade(
+                userEnabled: false,
+                currentURL: mp3,
+                nextURL: mp3,
+                requiresAudioTap: false,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+        XCTAssertFalse(
+            PlaybackTransitionPolicy.allowsCrossfade(
+                userEnabled: true,
+                currentURL: hls,
+                nextURL: mp3,
+                requiresAudioTap: false,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+        XCTAssertTrue(
+            PlaybackTransitionPolicy.allowsCrossfade(
+                userEnabled: true,
+                currentURL: mp3,
+                nextURL: mp3,
+                requiresAudioTap: false,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+    }
+
+    func testPrepareAndFadeWindows() {
+        XCTAssertTrue(
+            PlaybackTransitionPolicy.shouldPrepareIncoming(
+                remaining: 1.0,
+                duration: 180,
+                hasNextTrack: true,
+                isRepeatOne: false,
+                isAlreadyTransitioning: false
+            )
+        )
+        XCTAssertFalse(
+            PlaybackTransitionPolicy.shouldStartFade(
+                remaining: 1.0,
+                incomingIsReady: true,
+                isAlreadyFading: false
+            )
+        )
+        XCTAssertTrue(
+            PlaybackTransitionPolicy.shouldStartFade(
+                remaining: 0.4,
+                incomingIsReady: true,
+                isAlreadyFading: false
             )
         )
     }

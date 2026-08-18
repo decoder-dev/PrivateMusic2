@@ -1322,10 +1322,15 @@ final class AudioPlayer {
     private var pauseAtMinimumVolume = true
     private var advanceOnPlaybackError = true
     private var preferHighQuality = true
+    private var crossfadeEnabled = true
     /// After a progressive MP3 upgrade fails, replay the original HLS URL once.
     private var playbackURLStrategy: PlaybackURLStrategy = .automatic
     private var playbackURLStrategyTrackID: String?
     private var activePlaybackURL: URL?
+    private var incomingPlayer: AVPlayer?
+    private var crossfadeTask: Task<Void, Never>?
+    private var isCrossfading = false
+    private var incomingPreparedTrackID: String?
     /// Optional filter applied to mix queue fills (local dislike memory).
     private var mixTrackFilter: (([Track]) -> [Track])?
     /// Optional server-backed refill for closerToSeed / moreNovel modes.
@@ -1487,6 +1492,7 @@ final class AudioPlayer {
         // unity so the system volume slider is the only attenuation.
         advanceOnPlaybackError = settings.advanceOnPlaybackError
         preferHighQuality = settings.preferHighQuality
+        crossfadeEnabled = settings.crossfadeEnabled
         let initialShuffle = PlaybackShufflePreference.resolve(
             defaults: defaults
         )
@@ -2028,6 +2034,7 @@ final class AudioPlayer {
     }
 
     func pause() {
+        cancelCrossfade()
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
         advanceAfterContinuationPrefetch = false
@@ -2072,6 +2079,7 @@ final class AudioPlayer {
     }
 
     func next() {
+        cancelCrossfade()
         guard let currentIndex, !queue.isEmpty else { return }
         let nextIndex = queue.index(after: currentIndex)
         if nextIndex >= queue.endIndex, repeatMode == .off {
@@ -2101,6 +2109,7 @@ final class AudioPlayer {
     }
 
     func previous() {
+        cancelCrossfade()
         if elapsedTime > 4 {
             seek(to: 0)
             return
@@ -2123,6 +2132,7 @@ final class AudioPlayer {
     }
 
     func seek(to seconds: TimeInterval) {
+        cancelCrossfade()
         let upperBound = duration > 0 ? duration : seconds
         let targetSeconds = min(max(0, seconds), upperBound)
         lastListeningElapsedTime = targetSeconds
@@ -2146,6 +2156,7 @@ final class AudioPlayer {
     }
 
     func stop() {
+        cancelCrossfade()
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
         minimumVolumeResumeSuppressed = false
@@ -2233,6 +2244,7 @@ final class AudioPlayer {
         startAt position: TimeInterval,
         automatic: Bool = false
     ) {
+        cancelCrossfade()
         let autoplay = requestedAutoplay
             && (!automatic || allowsAutomaticPlayback)
         if requestedAutoplay, !autoplay {
@@ -2250,6 +2262,19 @@ final class AudioPlayer {
             StreamURLLoadPolicy.isPlayableRemoteURL(url) ? url : nil
         }
         let remoteURL = sourceRemoteURL.map { resolvePlaybackURL(from: $0) }
+        if offlineURL == nil,
+           StreamQualityPolicy.shouldRefreshHLSBeforePlay(
+            sourceURL: sourceRemoteURL,
+            playbackURL: remoteURL,
+            alreadyRefreshed: didAttemptStreamRefresh
+           ),
+           streamRefreshProvider != nil {
+            refreshCurrentStream(
+                autoplay: autoplay,
+                automatic: automatic
+            )
+            return
+        }
         guard let url = offlineURL ?? remoteURL else {
             if streamRefreshProvider != nil {
                 streamRecoveryAttempts += 1
@@ -2872,6 +2897,7 @@ final class AudioPlayer {
             self.pauseAtMinimumVolume = self.settings.pauseAtMinimumVolume
             self.advanceOnPlaybackError = self.settings.advanceOnPlaybackError
             let highQuality = self.settings.preferHighQuality
+            self.crossfadeEnabled = self.settings.crossfadeEnabled
             self.handleOutputVolume(
                 AVAudioSession.sharedInstance().outputVolume
             )
@@ -2898,7 +2924,7 @@ final class AudioPlayer {
                     .allowsExternalPlayback(
                         requiresAudioTap: requiresEffectiveTap
                     )
-                if requiredTap != requiresAudioTap,
+                if requiredTap != self.equalizer.requiresAudioTap,
                    self.player.currentItem != nil {
                     self.reloadCurrentItemForAudioProcessing()
                 }
@@ -2925,6 +2951,7 @@ final class AudioPlayer {
             )
             Task { @MainActor in
                 guard let self,
+                      !self.isCrossfading,
                       let finishedItem = finished.item,
                       finishedItem === self.player.currentItem else {
                     return
@@ -3051,6 +3078,7 @@ final class AudioPlayer {
                 }
                 self.sampleListeningProgress()
                 self.sampleBufferHealth()
+                self.maybeAdvanceWithCrossfade()
                 let buffering = self.isPlaying
                     && self.player.timeControlStatus
                         == .waitingToPlayAtSpecifiedRate
@@ -3519,6 +3547,7 @@ final class AudioPlayer {
         cancelContinuation()
         cancelStreamRefresh()
         cancelPreloading()
+        cancelCrossfade()
         playbackGeneration += 1
         itemStatusObservation?.invalidate()
         itemStatusObservation = nil
@@ -3647,7 +3676,195 @@ final class AudioPlayer {
 
     private func handlePlaybackResourceConstraintsChanged() {
         guard currentTrack != nil, player.currentItem != nil else { return }
+        if !PlaybackResourcePolicy.allowOverlappingPlayback(
+            userEnabled: crossfadeEnabled,
+            requiresAudioTap: equalizer.requiresAudioTap
+        ) {
+            cancelCrossfade()
+        }
         reloadCurrentItemForAudioProcessing()
+    }
+
+    private func cancelCrossfade() {
+        crossfadeTask?.cancel()
+        crossfadeTask = nil
+        isCrossfading = false
+        incomingPreparedTrackID = nil
+        if let incoming = incomingPlayer {
+            incoming.pause()
+            incoming.replaceCurrentItem(with: nil)
+        }
+        incomingPlayer = nil
+        player.volume = 1
+    }
+
+    private func upcomingPlayback() -> (
+        track: Track,
+        index: Int,
+        url: URL,
+        isOffline: Bool
+    )? {
+        guard let currentIndex, !queue.isEmpty, repeatMode != .one else {
+            return nil
+        }
+        var nextIndex = queue.index(after: currentIndex)
+        if nextIndex >= queue.endIndex {
+            guard repeatMode == .all else { return nil }
+            nextIndex = 0
+        }
+        guard queue.indices.contains(nextIndex) else { return nil }
+        let track = queue[nextIndex]
+        let offlineURL = offlineURLProvider?(track)
+        let sourceURL = track.streamURL.flatMap { url in
+            StreamURLLoadPolicy.isPlayableRemoteURL(url) ? url : nil
+        }
+        guard let url = offlineURL ?? sourceURL.map({
+            resolvePlaybackURL(from: $0)
+        }) else {
+            return nil
+        }
+        return (track, nextIndex, url, offlineURL != nil)
+    }
+
+    private func maybeAdvanceWithCrossfade() {
+        guard isPlaying, !isCrossfading, duration > 0 else { return }
+        let remaining = duration - elapsedTime
+        guard let upcoming = upcomingPlayback() else { return }
+        let currentURL = (player.currentItem?.asset as? AVURLAsset)?.url
+            ?? activePlaybackURL
+        guard PlaybackTransitionPolicy.allowsCrossfade(
+            userEnabled: crossfadeEnabled,
+            currentURL: currentURL,
+            nextURL: upcoming.url,
+            requiresAudioTap: equalizer.requiresAudioTap,
+            lowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled,
+            thermalState: ProcessInfo.processInfo.thermalState
+        ) else {
+            return
+        }
+        if PlaybackTransitionPolicy.shouldPrepareIncoming(
+            remaining: remaining,
+            duration: duration,
+            hasNextTrack: true,
+            isRepeatOne: false,
+            isAlreadyTransitioning: incomingPlayer != nil
+        ) {
+            prepareIncomingPlayback(upcoming)
+        }
+        let incomingReady = incomingPlayer?.currentItem?.status == .readyToPlay
+        guard PlaybackTransitionPolicy.shouldStartFade(
+            remaining: remaining,
+            incomingIsReady: incomingReady,
+            isAlreadyFading: isCrossfading
+        ) else {
+            return
+        }
+        startCrossfade(to: upcoming)
+    }
+
+    private func prepareIncomingPlayback(
+        _ upcoming: (
+            track: Track,
+            index: Int,
+            url: URL,
+            isOffline: Bool
+        )
+    ) {
+        if incomingPreparedTrackID == upcoming.track.id,
+           incomingPlayer != nil {
+            return
+        }
+        incomingPlayer?.pause()
+        incomingPlayer?.replaceCurrentItem(with: nil)
+        let incoming = AVPlayer()
+        incoming.automaticallyWaitsToMinimizeStalling = true
+        incoming.volume = 0
+        incoming.allowsExternalPlayback = false
+        let item = takePreloadedPlayback(for: upcoming.track, url: upcoming.url)
+            ?? makePlaybackItem(url: upcoming.url, isOffline: upcoming.isOffline)
+        incoming.replaceCurrentItem(with: item)
+        incomingPlayer = incoming
+        incomingPreparedTrackID = upcoming.track.id
+    }
+
+    private func startCrossfade(
+        to upcoming: (
+            track: Track,
+            index: Int,
+            url: URL,
+            isOffline: Bool
+        )
+    ) {
+        guard let incoming = incomingPlayer else { return }
+        isCrossfading = true
+        incoming.play()
+        let steps = 8
+        let stepDuration = PlaybackTransitionPolicy.fadeDuration
+            / Double(steps)
+        crossfadeTask?.cancel()
+        crossfadeTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            for step in 1...steps {
+                try? await Task.sleep(for: .seconds(stepDuration))
+                guard !Task.isCancelled, self.isCrossfading else { return }
+                let progress = Float(step) / Float(steps)
+                self.player.volume = max(0, 1 - progress)
+                incoming.volume = progress
+            }
+            guard !Task.isCancelled, self.isCrossfading else { return }
+            self.commitCrossfade(
+                incoming: incoming,
+                upcoming: upcoming
+            )
+        }
+    }
+
+    private func commitCrossfade(
+        incoming: AVPlayer,
+        upcoming: (
+            track: Track,
+            index: Int,
+            url: URL,
+            isOffline: Bool
+        )
+    ) {
+        let outgoing = player
+        outgoing.pause()
+        outgoing.volume = 1
+        outgoing.replaceCurrentItem(with: nil)
+        player = incoming
+        incomingPlayer = nil
+        incomingPreparedTrackID = nil
+        isCrossfading = false
+        crossfadeTask = nil
+        player.volume = 1
+        configurePlayerInstance()
+        registrations.removePeriodicTime()
+        installPeriodicTimeObserver()
+        currentIndex = upcoming.index
+        loadedTrackID = upcoming.track.id
+        loadedOfflineTrackID = upcoming.isOffline ? upcoming.track.id : nil
+        activePlaybackURL = upcoming.url
+        playbackURLStrategyTrackID = upcoming.track.id
+        resetProgressForTrackTransition()
+        persistPlayback()
+        if let item = player.currentItem,
+           shouldAttachAudioProcessing(
+            url: upcoming.url,
+            isOffline: upcoming.isOffline
+           ) {
+            attachAudioProcessing(to: item)
+        }
+        publishNowPlayingQueue()
+        nowPlaying.update(
+            track: upcoming.track,
+            elapsedTime: elapsedTime,
+            rate: isPlaying ? 1 : 0,
+            queueCount: queue.count,
+            queueIndex: upcoming.index
+        )
+        scheduleNeighborPreloads()
+        prunePinnedPlayNextIDs()
     }
 
     private func handleOutputVolume(

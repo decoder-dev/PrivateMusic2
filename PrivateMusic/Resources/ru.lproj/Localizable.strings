@@ -646,6 +646,8 @@
 "vibes_from_vk" = "Вайбы из VK";
 "restore" = "Вернуть";
 "high_quality" = "Высокое качество";
+"crossfade" = "Кроссфейд";
+"overlaps_the_next_track_for_a_short_fade_skipped_on_hls_eq_and_low_powe" = "Коротко перекрывает следующий трек. Не работает на HLS, с эквалайзером и в режиме энергосбережения.";
 "sad" = "Грустно";
 "makes_quiet_passages_audible_in_noisy_places_headphones_on_the_subway_a_" = "Делает тихие места слышнее в шумной обстановке (наушники в метро, колонка в машине).";
 "for_kids" = "Детям";

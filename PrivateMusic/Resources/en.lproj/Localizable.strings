@@ -646,6 +646,8 @@
 "vibes_from_vk" = "Vibes from VK";
 "restore" = "Restore";
 "high_quality" = "High Quality";
+"crossfade" = "Crossfade";
+"overlaps_the_next_track_for_a_short_fade_skipped_on_hls_eq_and_low_powe" = "Overlaps the next track for a short fade. Skipped on HLS, EQ, and Low Power Mode.";
 "sad" = "Sad";
 "makes_quiet_passages_audible_in_noisy_places_headphones_on_the_subway_a_" = "Makes quiet passages audible in noisy places (headphones on the subway, a car speaker).";
 "for_kids" = "For Kids";

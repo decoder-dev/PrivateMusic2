@@ -79,6 +79,17 @@ final class PlayerPersistenceTests: XCTestCase {
         XCTAssertEqual(restored.spatialAudioIntensity, 1)
     }
 
+    func testCrossfadeDefaultsOnAndPersists() {
+        let suite = "PlayerPersistenceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let first = AppSettings(defaults: defaults)
+        XCTAssertTrue(first.crossfadeEnabled)
+        first.crossfadeEnabled = false
+        XCTAssertFalse(AppSettings(defaults: defaults).crossfadeEnabled)
+    }
+
     func testRemovingStoredTrackClearsSourceAndStoredAliases() {
         let store = MusicLibraryStore()
         let source = track(
