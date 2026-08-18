@@ -1,10 +1,8 @@
 import SwiftUI
 
-/// Mix is no longer a permanent root destination — VK Mixes now live on
-/// Home, and the full hub (advanced Radio tuning, the VK catalog, Selena
-/// controls) is one tap away from there. Four intentional root tabs read
-/// as one product; five, with Mix duplicating what Home already surfaces,
-/// read as two apps stitched together.
+/// Mix is not a root destination. Home holds now-playing plus one next
+/// step; the full hub (VK catalog, Selena controls, moods) is Explore,
+/// pushed from Home. Four root tabs read as one product.
 private enum MainTab: CaseIterable, Hashable, Identifiable {
     case home
     case library

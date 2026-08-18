@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Single Mix tab: Selena and VK share the same listening window.
-/// VK mix switching happens inline — no browse/detail push.
+/// Discovery destination pushed from Home. Selena and VK share the same
+/// listening window. VK mix switching happens inline — no browse/detail
+/// push. This is not a root tab.
 struct MixesHubView: View {
     private enum HubTab: String, CaseIterable, Identifiable {
         case selena
@@ -57,6 +58,14 @@ struct MixesHubView: View {
     @State private var selectedCurator: MixCurator?
     @State private var expandedTrackMixIDs: Set<String> = []
     @State private var trackListLayout: TrackListLayout = .list
+    /// Mix currently recommended on Home — keep it out of Explore's first
+    /// visible VK slot so the two screens do not open on the same hero.
+    var deprioritizedMixID: String? = nil
+    /// Open this mix on the VK tab (from What's Next "Открыть микс").
+    var focusedMixID: String? = nil
+    /// When Home's What's Next is already the Selena station, open Explore
+    /// on VK so the first screen is not the same hero again.
+    var startsOnVK: Bool = false
 
     private let defaultPreviewTrackLimit = 15
     private let expandedPreviewTrackLimit = 60
@@ -67,7 +76,8 @@ struct MixesHubView: View {
                 let metrics = MixHubMetrics(width: geometry.size.width)
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 20) {
-                        titleHeader
+                        Color.clear
+                            .frame(height: 0)
                             .id(MainTabScrollDestination.mix)
 
                         Picker(L10n.text("tab.mix"), selection: $hubTab) {
@@ -101,8 +111,8 @@ struct MixesHubView: View {
             }
         }
         .background(ThemeBackground())
+        .navigationTitle(L10n.text("explore_music"))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .navigationBar)
         .trackShareSheet(track: $sharingTrack)
         .navigationDestination(
             isPresented: Binding(
@@ -127,7 +137,12 @@ struct MixesHubView: View {
         }
         .refreshable { await load(force: true) }
         .task(id: sessionStore.accessToken) { await load() }
-        .onChange(of: hubTab) { tab in
+        .onAppear {
+            if focusedMixID != nil || startsOnVK {
+                hubTab = .vk
+            }
+        }
+        .onChange(of: hubTab) { _, tab in
             if tab == .vk {
                 ensureVKSelection()
             }
@@ -653,14 +668,6 @@ struct MixesHubView: View {
     }
 
     // MARK: - Chrome
-
-    private var titleHeader: some View {
-        Text(L10n.text("tab.mix"))
-            .font(.largeTitle.weight(.bold))
-            .foregroundStyle(.primary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityAddTraits(.isHeader)
-    }
 
     @ViewBuilder
     private var listenLaterBanner: some View {
@@ -1800,6 +1807,12 @@ struct MixesHubView: View {
         for mix in vkMixes where seen.insert(mix.id).inserted {
             result.append(mix)
         }
+        if let skip = deprioritizedMixID,
+           skip != focusedMixID,
+           let index = result.firstIndex(where: { $0.id == skip }) {
+            let moved = result.remove(at: index)
+            result.append(moved)
+        }
         return result
     }
 
@@ -2233,7 +2246,10 @@ struct MixesHubView: View {
             return
         }
         let preferred =
-            selectedVKMix.flatMap { current in
+            focusedMixID.flatMap { id in
+                orderedVKMixes.first { $0.id == id }
+            }
+            ?? selectedVKMix.flatMap { current in
                 orderedVKMixes.first { $0.id == current.id }
             }
             ?? pinnedMixStore.pin.flatMap { pin in

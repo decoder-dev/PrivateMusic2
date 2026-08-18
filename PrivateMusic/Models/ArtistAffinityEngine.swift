@@ -1,7 +1,7 @@
 import Foundation
 
-/// One artist candidate for the Home dynamic-artist section, scored from
-/// real listening evidence.
+/// One artist candidate for Home's What's Next slot, scored from real
+/// listening evidence. Affinity never owns its own Home shelf.
 struct ArtistAffinityCandidate: Identifiable, Equatable, Sendable {
     var id: String { artistKey }
     /// Normalized via `MixFeedbackPolicy.normalized` — the same key
@@ -15,6 +15,10 @@ struct ArtistAffinityCandidate: Identifiable, Equatable, Sendable {
     /// The strongest single reason behind the score, so the UI explains
     /// itself from what actually drove it rather than a raw number.
     let reason: Reason
+    /// Most recent qualifying play — Home's What's Next card uses this
+    /// instead of scanning history again on every render.
+    let artworkURL: URL?
+    let seedTrackID: String?
 
     enum Reason: Equatable, Sendable {
         case likedAndPlayed
@@ -57,6 +61,8 @@ enum ArtistAffinityPolicy {
         var displayName: String
         var trackIDs: Set<String> = []
         var weightedRecency: Double = 0
+        var artworkURL: URL?
+        var seedTrackID: String?
     }
 
     static func candidates(
@@ -87,6 +93,12 @@ enum ArtistAffinityPolicy {
                 var record = evidence[key] ?? Evidence(displayName: name)
                 record.trackIDs.insert(entry.track.id)
                 record.weightedRecency += weight
+                // History is newest-first. Keep the first seed so the
+                // artwork matches what the listener actually just heard.
+                if record.seedTrackID == nil {
+                    record.seedTrackID = entry.track.id
+                    record.artworkURL = entry.track.artworkURL
+                }
                 evidence[key] = record
                 // Liked is per-artist, not per-track: N liked tracks by the
                 // same artist must not compound the boost N times.
@@ -112,7 +124,9 @@ enum ArtistAffinityPolicy {
                 score: score,
                 evidenceTrackCount: record.trackIDs.count,
                 isLiked: liked,
-                reason: reason
+                reason: reason,
+                artworkURL: record.artworkURL,
+                seedTrackID: record.seedTrackID
             )
         }
         .sorted { lhs, rhs in
