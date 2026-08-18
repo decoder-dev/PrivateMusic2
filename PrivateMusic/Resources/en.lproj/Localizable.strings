@@ -226,6 +226,8 @@
 "on" = "On";
 "off" = "Off";
 "audio_processing" = "Audio Processing";
+"audio_processing.paused_low_power" = "Paused: Low Power Mode is on. Resumes automatically.";
+"audio_processing.paused_thermal" = "Paused: the device is too warm. Resumes automatically.";
 "spatial_audio" = "Spatial Audio";
 "expanded_stereo_soundstage" = "Expanded Stereo Soundstage";
 "settings.intensity" = "Intensity";
