@@ -237,7 +237,7 @@ struct AppInlineMessageCard: View {
     @Environment(AppSettings.self) private var settings
     let message: String
     let systemImage: String
-    var tint: Color = .orange
+    var tint: Color = BubbleGamut.warning.color
     var actionTitle: String? = nil
     var action: (() -> Void)? = nil
 

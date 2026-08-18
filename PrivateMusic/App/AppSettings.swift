@@ -17,9 +17,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 
     var accent: Color {
-        self == .dark
-            ? Color(red: 0.04, green: 0.50, blue: 1.0)
-            : .black
+        BubbleGamut.accentColor(for: self)
     }
 
     var secondaryAccent: Color {
