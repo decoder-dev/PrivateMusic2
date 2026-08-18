@@ -64,7 +64,6 @@ struct PlayerView: View {
         // own sheets (queue, actions) hang off this view, not off Root.
         .environment(\.prefersClassicChrome, !usesGlassChrome)
         .preferredColorScheme(settings.theme.colorScheme)
-        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .sheet(
             item: $presentedSheet,
             onDismiss: handleSheetDismissal
@@ -156,6 +155,9 @@ struct PlayerView: View {
             safeLeading: safeInsets.leading,
             safeTrailing: safeInsets.trailing,
             usesAccessibilityText: dynamicTypeSize.isAccessibilitySize,
+            accessibilityStep: PlayerAccessibilityPolicy.step(
+                for: dynamicTypeSize
+            ),
             hasAlbum: track.albumTitle?.isEmpty == false
         )
 
@@ -164,8 +166,14 @@ struct PlayerView: View {
                 containerHeight: size.height
             ) {
                 ScrollView(.vertical) {
-                    landscapePlayerContent(track, metrics: metrics)
-                        .frame(minHeight: metrics.minimumContentHeight)
+                    Group {
+                        if metrics.mode == .landscape {
+                            landscapePlayerContent(track, metrics: metrics)
+                        } else {
+                            portraitPlayerContent(track, metrics: metrics)
+                        }
+                    }
+                    .frame(minHeight: metrics.minimumContentHeight)
                 }
                 .scrollIndicators(.hidden)
             } else if metrics.mode == .landscape {
@@ -1161,6 +1169,7 @@ struct PlayerLayoutMetrics: Equatable {
         safeLeading: CGFloat = 0,
         safeTrailing: CGFloat = 0,
         usesAccessibilityText: Bool = false,
+        accessibilityStep: Int = 1,
         hasAlbum: Bool = true
     ) -> PlayerLayoutMetrics {
         let isLandscape =
@@ -1230,19 +1239,23 @@ struct PlayerLayoutMetrics: Equatable {
         }
 
         let primaryControlsHeight: CGFloat = 60
+        let axExtra = usesAccessibilityText
+            ? CGFloat(max(accessibilityStep, 1) - 1) * 14
+            : 0
         let quickActionsHeight: CGFloat =
-            usesAccessibilityText ? 72 : 64
+            (usesAccessibilityText ? 72 : 64) + axExtra * 0.35
         let bottomPadding = max(
             safeBottom,
             mode == .landscape ? 6 : 10
         )
         let metadataHeight: CGFloat
         if usesAccessibilityText {
-            metadataHeight = hasAlbum ? 100 : 78
+            metadataHeight = (hasAlbum ? 100 : 78) + axExtra
         } else {
             metadataHeight = hasAlbum ? 68 : 54
         }
-        let progressHeight: CGFloat = usesAccessibilityText ? 45 : 39
+        let progressHeight: CGFloat =
+            (usesAccessibilityText ? 45 : 39) + axExtra * 0.2
 
         let artworkSize: CGFloat
         let minimumContentHeight: CGFloat
@@ -1339,9 +1352,7 @@ struct PlayerLayoutMetrics: Equatable {
     }
 
     func requiresAccessibilityScrolling(containerHeight: CGFloat) -> Bool {
-        mode == .landscape
-            && usesAccessibilityText
-            && minimumContentHeight > containerHeight + 0.5
+        minimumContentHeight > containerHeight + 0.5
     }
 }
 

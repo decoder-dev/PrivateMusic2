@@ -26,6 +26,7 @@ struct BubbleSurface<S: Shape, Content: View>: View {
 
     @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var body: some View {
         switch fill {
@@ -45,11 +46,16 @@ struct BubbleSurface<S: Shape, Content: View>: View {
             content()
                 .background(components.color, in: shape)
                 .overlay {
-                    // A hairline, not a border. Thick strokes are what make
-                    // a tinted surface look like a sticker.
+                    let increased = colorSchemeContrast == .increased
                     shape.stroke(
-                        Color.white.opacity(reduceTransparency ? 0 : 0.10),
-                        lineWidth: 0.7
+                        Color.primary.opacity(
+                            ContrastPolicy.strokeOpacity(
+                                increased: increased,
+                                reduceTransparency: reduceTransparency,
+                                base: 0.10
+                            )
+                        ),
+                        lineWidth: ContrastPolicy.strokeWidth(increased: increased)
                     )
                 }
                 .contentShape(shape)
