@@ -937,4 +937,42 @@ final class BottomAccessoryMetricsTests: XCTestCase {
             120 + BottomAccessoryMetrics.contentClearance
         )
     }
+
+    func testMiniPlayerClearanceIsZeroWhenIdle() {
+        XCTAssertEqual(
+            BottomAccessoryMetrics.miniPlayerClearance(hasMiniPlayer: false),
+            0
+        )
+    }
+
+    func testMiniPlayerClearanceClearsTheBarAndBreathingRoom() {
+        XCTAssertEqual(
+            BottomAccessoryMetrics.miniPlayerClearance(hasMiniPlayer: true),
+            BottomAccessoryMetrics.estimatedMiniPlayerHeight
+                + BottomAccessoryMetrics.contentClearance
+        )
+    }
+}
+
+final class PlaybackChromePolicyTests: XCTestCase {
+    func testExplicitClearanceIsForSystemTabsWithoutClassicChrome() {
+        XCTAssertTrue(
+            PlaybackChromePolicy.needsExplicitMiniPlayerClearance(
+                isIOS26OrLater: true,
+                classicChrome: false
+            )
+        )
+        XCTAssertFalse(
+            PlaybackChromePolicy.needsExplicitMiniPlayerClearance(
+                isIOS26OrLater: true,
+                classicChrome: true
+            )
+        )
+        XCTAssertFalse(
+            PlaybackChromePolicy.needsExplicitMiniPlayerClearance(
+                isIOS26OrLater: false,
+                classicChrome: false
+            )
+        )
+    }
 }

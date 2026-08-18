@@ -87,6 +87,7 @@ struct PlaylistLibraryView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .clearsMiniPlayer(includingWhenDockReservesSpace: true)
             }
         }
         .task { await load() }

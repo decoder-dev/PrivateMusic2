@@ -98,6 +98,7 @@ struct OfflineDownloadsView: View {
         .animation(.easeInOut(duration: 0.3), value: contentSnapshot)
         .background(ThemeBackground())
         .scrollContentBackground(.hidden)
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(selection != nil)

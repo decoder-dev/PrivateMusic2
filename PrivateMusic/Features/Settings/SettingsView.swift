@@ -173,6 +173,7 @@ struct SettingsView: View {
             .padding(.horizontal, PremiumLayout.screenPadding)
             .padding(.vertical, BubbleSpacing.l)
         }
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("tab.settings"))
     }

@@ -78,6 +78,7 @@ struct MixFeedbackManagerView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("hidden_in_mixes"))
         .confirmationDialog(

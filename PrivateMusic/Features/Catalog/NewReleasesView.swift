@@ -93,6 +93,7 @@ struct NewReleasesView: View {
             }
             .padding(16)
         }
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("new_releases"))
         .navigationBarTitleDisplayMode(.inline)

@@ -118,4 +118,12 @@ enum BottomAccessoryMetrics {
                 + (hasMiniPlayer ? estimatedMiniPlayerHeight : 0)
         return dock + contentClearance
     }
+
+    /// Space a scroll view needs so its last row sits above the mini player
+    /// when the tab bar is already in the system safe area (iOS 26 accessory,
+    /// pushed NavigationStack destinations). Zero when nothing is playing.
+    static func miniPlayerClearance(hasMiniPlayer: Bool) -> CGFloat {
+        guard hasMiniPlayer else { return 0 }
+        return estimatedMiniPlayerHeight + contentClearance
+    }
 }

@@ -22,6 +22,7 @@ struct ProfileView: View {
                 .padding(.horizontal, PremiumLayout.screenPadding)
                 .padding(.vertical, BubbleSpacing.l)
             }
+            .clearsMiniPlayer()
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .profile else { return }
                 if reduceMotion {

@@ -129,6 +129,7 @@ struct LibraryView: View {
                 // under the header.
                 .padding(.top, LibraryShelfMetrics.contentTopPadding)
             }
+            .clearsMiniPlayer()
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .library else { return }
                 if reduceMotion {

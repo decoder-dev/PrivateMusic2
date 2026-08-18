@@ -44,6 +44,7 @@ struct SearchView: View {
         // ScrollViewReader) so the regular Search tab still has a native
         // search field on iOS 26.0+ without detached tab-bar chrome.
         searchScrollRoot
+            .clearsMiniPlayer()
             .background(ThemeBackground())
             .navigationTitle(L10n.text("tab.search"))
             .navigationBarTitleDisplayMode(.inline)
