@@ -262,6 +262,27 @@ final class PlayerProgressPolicyTests: XCTestCase {
     }
 }
 
+final class NativeBufferPeakTests: XCTestCase {
+    func testPeakMagnitudeFindsLargestSample() {
+        let samples: [Float] = [0.01, -0.4, 0.2, 0.05]
+        let peak = samples.withUnsafeBufferPointer { buffer in
+            pm_buffer_peak_magnitude(
+                buffer.baseAddress,
+                Int32(buffer.count)
+            )
+        }
+        XCTAssertEqual(peak, 0.4, accuracy: 0.000_001)
+    }
+
+    func testPeakMagnitudeReturnsZeroForEmptyInput() {
+        XCTAssertEqual(
+            pm_buffer_peak_magnitude(nil, 0),
+            0,
+            accuracy: 0.000_001
+        )
+    }
+}
+
 final class PlaybackArtworkPerformancePolicyTests: XCTestCase {
     func testPlayerBackgroundUsesSmallBlurSource() {
         XCTAssertLessThanOrEqual(

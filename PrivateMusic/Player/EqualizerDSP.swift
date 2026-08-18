@@ -1,4 +1,3 @@
-import Accelerate
 import AudioToolbox
 import AVFoundation
 import MediaToolbox
@@ -293,15 +292,14 @@ final class EqualizerDSP: @unchecked Sendable {
         buffers: UnsafeMutableAudioBufferListPointer,
         frameCount: Int
     ) -> Bool {
-        var peak: Float = 0
+        let threshold: Float = 0.000_5
         for buffer in buffers {
             guard let rawData = buffer.mData else { continue }
             let samples = rawData.assumingMemoryBound(to: Float.self)
-            let count = frameCount * max(Int(buffer.mNumberChannels), 1)
-            var localPeak: Float = 0
-            vDSP_maxmgv(samples, 1, &localPeak, vDSP_Length(count))
-            peak = max(peak, localPeak)
-            if peak > 0.000_5 {
+            let count = Int32(
+                frameCount * max(Int(buffer.mNumberChannels), 1)
+            )
+            if pm_buffer_peak_magnitude(samples, count) > threshold {
                 return false
             }
         }

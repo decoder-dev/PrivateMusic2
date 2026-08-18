@@ -1,5 +1,6 @@
 #include "PrivateMusicDSP.h"
 
+#include <Accelerate/Accelerate.h>
 #include <math.h>
 
 /// Inlinable twin of `pm_biquad_process` so the per-sample loops below do not
@@ -276,4 +277,13 @@ void pm_spatial_process_interleaved(
         );
         index += stride;
     }
+}
+
+float pm_buffer_peak_magnitude(const float *samples, int32_t count) {
+    if (samples == NULL || count <= 0) {
+        return 0.0f;
+    }
+    float peak = 0.0f;
+    vDSP_maxmgv(samples, 1, &peak, (vDSP_Length)count);
+    return peak;
 }

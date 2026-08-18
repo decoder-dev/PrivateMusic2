@@ -63,6 +63,32 @@ int32_t pm_text_find(
     int32_t needle_length
 );
 
+/// Fold + trim ASCII whitespace the way `MixQueueRanker.normalized` does for
+/// artist / album identity. Uses the same ASCII + Cyrillic fast path as
+/// `pm_text_fold_utf8`; callers fall back to Foundation for other scripts.
+int32_t pm_text_normalize_identity(
+    const uint8_t *input,
+    int32_t length,
+    uint8_t *out,
+    int32_t out_capacity
+);
+
+#pragma mark - Artwork tint
+
+typedef struct PMArtworkTint {
+    float red;
+    float green;
+    float blue;
+} PMArtworkTint;
+
+/// Saturation-weighted dominant colour of premultiplied-last RGBA bytes.
+/// Returns false when `length` is invalid or every pixel is transparent.
+bool pm_artwork_extract_tint_rgba(
+    const uint8_t *rgba,
+    int32_t length,
+    PMArtworkTint *out
+);
+
 #pragma mark - Mix queue ranking
 
 /// Rank the upcoming queue toward the seed track.

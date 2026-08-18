@@ -111,37 +111,32 @@ enum BubbleArtworkTint {
     /// saturation, so a mostly-black cover still yields its accent rather
     /// than reporting "black".
     static func extract(rgba: [UInt8]) -> BubbleColorComponents? {
-        guard rgba.count >= 4, rgba.count % 4 == 0 else { return nil }
-        var weightedRed = 0.0
-        var weightedGreen = 0.0
-        var weightedBlue = 0.0
-        var totalWeight = 0.0
-
-        for pixel in stride(from: 0, to: rgba.count, by: 4) {
-            let alpha = Double(rgba[pixel + 3]) / 255
-            guard alpha > 0.4 else { continue }
-            let red = Double(rgba[pixel]) / 255
-            let green = Double(rgba[pixel + 1]) / 255
-            let blue = Double(rgba[pixel + 2]) / 255
-            let components = BubbleColorComponents(
-                red: red,
-                green: green,
-                blue: blue
-            )
-            // Saturation-weighted, with a small floor so a fully neutral
-            // cover still produces its grey instead of nothing at all.
-            let weight = alpha * (0.08 + components.saturation)
-            weightedRed += red * weight
-            weightedGreen += green * weight
-            weightedBlue += blue * weight
-            totalWeight += weight
+        if let metal = ArtworkTintGPU.extract(rgba: rgba) {
+            return metal
         }
+        return extractNative(rgba: rgba)
+    }
 
-        guard totalWeight > 0 else { return nil }
+    private static func extractNative(rgba: [UInt8]) -> BubbleColorComponents? {
+        guard rgba.count >= 4, rgba.count % 4 == 0 else { return nil }
+        var tint = PMArtworkTint()
+        let ok = rgba.withUnsafeBytes { buffer -> Bool in
+            guard let base = buffer.baseAddress?.assumingMemoryBound(
+                to: UInt8.self
+            ) else {
+                return false
+            }
+            return pm_artwork_extract_tint_rgba(
+                base,
+                Int32(rgba.count),
+                &tint
+            )
+        }
+        guard ok else { return nil }
         return BubbleColorComponents(
-            red: weightedRed / totalWeight,
-            green: weightedGreen / totalWeight,
-            blue: weightedBlue / totalWeight
+            red: Double(tint.red),
+            green: Double(tint.green),
+            blue: Double(tint.blue)
         )
     }
 
