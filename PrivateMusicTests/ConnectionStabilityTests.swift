@@ -701,6 +701,10 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
+    func testPlaybackAudioSessionPolicyConfiguresOnSimulator() {
+        XCTAssertTrue(PlaybackAudioSessionPolicy.configure())
+    }
+
     // Bounded reactivation retry for `setActive(true)` throws right after a
     // call ends or media services reset. The budget must be finite and the
     // delay must stay capped so a permanently unavailable session cannot
