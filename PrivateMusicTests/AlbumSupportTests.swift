@@ -621,7 +621,6 @@ final class HomeCatalogStoreTests: XCTestCase {
         store.finish(
             recommendations: [],
             mixes: [.common],
-            playlists: [],
             errorMessage: nil,
             now: Date(timeIntervalSince1970: 100)
         )
@@ -646,7 +645,6 @@ final class HomeCatalogStoreTests: XCTestCase {
         store.finish(
             recommendations: [],
             mixes: [.common],
-            playlists: [],
             errorMessage: nil
         )
 
