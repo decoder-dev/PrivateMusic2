@@ -63,6 +63,7 @@ enum ArtistAffinityPolicy {
         history: [ListeningHistoryEntry],
         isLiked: (Track) -> Bool,
         bannedArtistKeys: Set<String>,
+        bannedTrackIDs: Set<String> = [],
         now: Date = Date()
     ) -> [ArtistAffinityCandidate] {
         let cutoff = now.addingTimeInterval(-analysisWindow)
@@ -72,6 +73,9 @@ enum ArtistAffinityPolicy {
         var likedKeys: Set<String> = []
 
         for entry in recent {
+            guard !bannedTrackIDs.contains(entry.track.id) else {
+                continue
+            }
             let age = max(0, now.timeIntervalSince(entry.playedAt))
             let weight = pow(0.5, age / recencyHalfLife)
             let liked = isLiked(entry.track)

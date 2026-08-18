@@ -183,7 +183,7 @@
 "home_stage.artist_plus_d0" = "%@ +%d";
 "home_stage.dynamic_artist.title" = "Looks like you're into %@";
 "home_stage.dynamic_artist.continue" = "Continue";
-"home_stage.dynamic_artist.reason.liked" = "You added one of their tracks to your library";
+"home_stage.dynamic_artist.reason.liked" = "One of their tracks is already in your library";
 "home_stage.dynamic_artist.reason.frequent" = "You've been listening to them a lot lately";
 "home_stage.dynamic_artist.reason.multiple" = "A few of their tracks in the last few days";
 "player_look" = "Player Look";
@@ -683,6 +683,7 @@
 "hidden_tracks" = "Hidden Tracks";
 "hidden_tracks_and_artists_stay_out_of_mixes_on_this_device_vk_has_no_dis" = "Hidden tracks and artists stay out of mixes on this device. VK has no dislike API, so this memory is local.";
 "hide_artist_in_mixes" = "Hide Artist in Mixes";
+"hide_artist_in_mixes_confirmation_0" = "“%@” will disappear from Selena and mixes until you restore them in settings.";
 "snippet" = "Snippet";
 "calm" = "Calm";
 "settings.status" = "Status";

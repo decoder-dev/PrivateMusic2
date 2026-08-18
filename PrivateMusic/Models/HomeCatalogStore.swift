@@ -7,7 +7,6 @@ final class HomeCatalogStore {
 
     private(set) var recommendations: [Track] = []
     private(set) var mixes: [MusicMix] = []
-    private(set) var playlists: [Playlist] = []
     private(set) var newReleases: [Album] = []
     private(set) var isRefreshing = false
     private(set) var lastRefreshedAt: Date?
@@ -17,7 +16,7 @@ final class HomeCatalogStore {
     private var refreshGeneration = 0
 
     var isEmpty: Bool {
-        recommendations.isEmpty && mixes.isEmpty && playlists.isEmpty
+        recommendations.isEmpty && mixes.isEmpty
     }
 
     func prepare(accountID: Int?) {
@@ -26,7 +25,6 @@ final class HomeCatalogStore {
         refreshGeneration += 1
         recommendations = []
         mixes = []
-        playlists = []
         newReleases = []
         lastRefreshedAt = nil
         lastAttemptedAt = nil
@@ -53,7 +51,6 @@ final class HomeCatalogStore {
     func finish(
         recommendations: [Track]?,
         mixes: [MusicMix]?,
-        playlists: [Playlist]?,
         newReleases: [Album]? = nil,
         errorMessage: String?,
         refreshID: Int? = nil,
@@ -64,7 +61,6 @@ final class HomeCatalogStore {
         }
         if let recommendations { self.recommendations = recommendations }
         if let mixes { self.mixes = mixes }
-        if let playlists { self.playlists = playlists }
         if let newReleases { self.newReleases = newReleases }
         self.errorMessage = errorMessage
         lastAttemptedAt = now
