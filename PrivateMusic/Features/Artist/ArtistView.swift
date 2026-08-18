@@ -723,8 +723,6 @@ struct ArtistView: View {
             return result
         }
     }
-
-    @MainActor
 }
 
 enum ArtistLoadPolicy {
