@@ -32,17 +32,17 @@ final class MiniPlayerProgressPolicyTests: XCTestCase {
 
     func testSeekTimeMapsTapAcrossTheTrack() {
         XCTAssertEqual(
-            MiniPlayerProgressPolicy.seekTime(x: 50, width: 100, duration: 200),
+            MiniPlayerProgressPolicy.seekTime(x: 50, width: 100, duration: 200) ?? -1,
             100,
             accuracy: 0.0001
         )
         XCTAssertEqual(
-            MiniPlayerProgressPolicy.seekTime(x: -10, width: 100, duration: 200),
+            MiniPlayerProgressPolicy.seekTime(x: -10, width: 100, duration: 200) ?? -1,
             0,
             accuracy: 0.0001
         )
         XCTAssertEqual(
-            MiniPlayerProgressPolicy.seekTime(x: 150, width: 100, duration: 200),
+            MiniPlayerProgressPolicy.seekTime(x: 150, width: 100, duration: 200) ?? -1,
             200,
             accuracy: 0.0001
         )
