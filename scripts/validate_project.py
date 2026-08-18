@@ -178,6 +178,7 @@ for required_system_tab_symbol in (
     "tabViewBottomAccessory",
     "MainTab.search.title",
     "value: MainTab.search",
+    "role: .search",
     "SystemPlaybackAccessory",
 ):
     if required_system_tab_symbol not in main_tab_source:
@@ -185,16 +186,11 @@ for required_system_tab_symbol in (
             "iOS 26+ must use system Liquid Glass TabView like Apple Music: "
             f"{required_system_tab_symbol}"
         )
-for forbidden_system_tab_search_chrome in (
-    "role: .search",
-    "tabViewSearchActivation",
-):
-    if forbidden_system_tab_search_chrome in main_tab_source:
-        fail(
-            "iOS 26+ Search must be a regular fifth labeled tab, "
-            "not detached search chrome: "
-            f"{forbidden_system_tab_search_chrome}"
-        )
+if "tabViewSearchActivation" in main_tab_source:
+    fail(
+        "Search must stay a tab that opens a screen, not a search field "
+        "in the tab bar (tabViewSearchActivation)"
+    )
 if "tab.switch_hint" not in main_tab_source:
     fail("iPad sidebar tabs must expose a VoiceOver switch hint")
 watch_remote_view = (
@@ -975,6 +971,21 @@ if "@Environment(AudioPlayer.self)" in home_stage_source:
     )
 if "PlaybackHighlightModel.self" not in home_stage_source:
     fail("HomeStageView must observe PlaybackHighlightModel for hero state")
+if ".dynamicTypeSize(...DynamicTypeSize.large)" in catalog_view_source:
+    fail("Home must not freeze Dynamic Type at the default size")
+if ".dynamicTypeSize(...DynamicTypeSize.large)" in library_view_source:
+    fail("Library must not freeze Dynamic Type at the default size")
+premium_design_source = (
+    SOURCE / "Features" / "Shared" / "PremiumDesign.swift"
+).read_text(encoding="utf-8")
+if "glassEffect" in premium_design_source:
+    fail(
+        "premium cards are content, not chrome — they must not use Liquid Glass"
+    )
+if "regularMaterial" not in premium_design_source:
+    fail("premium cards must use a standard material in the content layer")
+if "colorSchemeContrast" not in premium_design_source:
+    fail("premium cards must thicken their stroke under Increase Contrast")
 album_detail_source = (
     SOURCE / "Features" / "Album" / "AlbumDetailView.swift"
 ).read_text(encoding="utf-8")

@@ -81,12 +81,29 @@ enum AppTextScale: String, CaseIterable, Identifiable {
         }
     }
 
-    var dynamicTypeSize: DynamicTypeSize {
-        switch self {
-        case .compact: .medium
-        case .system: .large
-        case .large: .xLarge
-        case .extraLarge: .xxLarge
+    /// How this in-app preference maps onto Dynamic Type.
+    ///
+    /// `nil` means follow the system size (including accessibility sizes).
+    /// A range never caps below an accessibility size the reader already
+    /// chose — the in-app steps only raise the floor.
+    var dynamicTypeRange: ClosedRange<DynamicTypeSize>? {
+        AppTextScalePolicy.range(for: self)
+    }
+}
+
+enum AppTextScalePolicy {
+    static func range(
+        for scale: AppTextScale
+    ) -> ClosedRange<DynamicTypeSize>? {
+        switch scale {
+        case .compact:
+            DynamicTypeSize.xSmall ... DynamicTypeSize.medium
+        case .system:
+            nil
+        case .large:
+            DynamicTypeSize.xLarge ... DynamicTypeSize.accessibility5
+        case .extraLarge:
+            DynamicTypeSize.xxLarge ... DynamicTypeSize.accessibility5
         }
     }
 }
@@ -484,7 +501,12 @@ final class AppSettings {
 }
 
 extension View {
+    @ViewBuilder
     func appTextScale(_ scale: AppTextScale) -> some View {
-        dynamicTypeSize(scale.dynamicTypeSize)
+        if let range = scale.dynamicTypeRange {
+            self.dynamicTypeSize(range)
+        } else {
+            self
+        }
     }
 }

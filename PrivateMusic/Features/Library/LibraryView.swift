@@ -149,7 +149,6 @@ struct LibraryView: View {
         .background(ThemeBackground())
         .navigationTitle(L10n.text("tab.library"))
         .navigationBarTitleDisplayMode(.inline)
-        .dynamicTypeSize(...DynamicTypeSize.large)
         .searchable(
             text: $trackSearchQuery,
             placement: .navigationBarDrawer(displayMode: .always),
