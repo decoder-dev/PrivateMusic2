@@ -352,14 +352,26 @@ struct HomeStageView: View {
     // MARK: - Context rail
 
     private var contexts: [HomeStageContext] {
-        HomeStageContextBuilder.build(
+        let hasCurrentTrack = player.currentTrack != nil
+        let occupancy = HomeNextStepPolicy.occupancy(
+            hasCurrentTrack: hasCurrentTrack,
+            queueSource: player.queueSource,
+            currentArtist: player.currentTrack?.artist,
+            mixes: homeCatalog.mixes
+        )
+        return HomeStageContextBuilder.build(
             mixes: homeCatalog.mixes,
             recentArtists: HomeStageContextBuilder.recentArtists(
                 from: history.entries
             ),
             selectedMood: settings.mixMoodPreference,
             stationTitle: L10n.text("selena.name"),
-            omitStation: presentation.showsCallToAction
+            omitStation: HomeStageContextBuilder.shouldOmitStation(
+                hasCurrentTrack: hasCurrentTrack,
+                queueSource: player.queueSource,
+                mixes: homeCatalog.mixes
+            ),
+            occupiedArtistKeys: occupancy.occupiedArtistKeys
         )
     }
 
