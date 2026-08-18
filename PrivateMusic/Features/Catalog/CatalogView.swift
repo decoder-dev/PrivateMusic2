@@ -304,7 +304,19 @@ struct CatalogView: View {
             Task { await environment.startCatalogMix(mix) }
         } label: {
             VStack(alignment: .leading, spacing: 6) {
-                HomeTrackArtwork(url: mix.artworkURL, size: artworkSize)
+                // The shared mix artwork, same as the Mix hub: VK's cover
+                // when it sent one, the curator's photo for a friend's mix,
+                // otherwise a generated cover keyed to what the mix is.
+                // `HomeTrackArtwork` is for tracks, and its grey note made
+                // every coverless mix look like a failed image load.
+                MixArtworkView(
+                    mix: mix,
+                    tracks: [],
+                    size: artworkSize,
+                    cornerRadius: PremiumLayout.artworkRadius(
+                        for: artworkSize
+                    )
+                )
                 Text(mix.title)
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.primary)
