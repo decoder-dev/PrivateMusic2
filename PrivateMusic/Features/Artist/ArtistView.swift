@@ -602,11 +602,6 @@ struct ArtistView: View {
     }
 
     @MainActor
-    private func fetchPage(
-        for requestedArtist: String
-    ) async throws -> MusicPage<Track> {
-        try await fetchSearchPage(for: requestedArtist)
-    }
 }
 
 enum ArtistLoadPolicy {

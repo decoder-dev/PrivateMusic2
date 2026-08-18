@@ -4,7 +4,6 @@ import SwiftUI
 /// to the inline placement. Relies on system chrome — no own glass plate.
 struct InlineMiniPlayerView: View {
     @Environment(AudioPlayer.self) private var player
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let playerNamespace: Namespace.ID
 
     var body: some View {
