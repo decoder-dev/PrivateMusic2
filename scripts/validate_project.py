@@ -1914,6 +1914,40 @@ def require_text_scales_with_dynamic_type() -> None:
 require_text_scales_with_dynamic_type()
 
 
+def require_motion_respects_reduce_motion() -> None:
+    """Animation started from an action must honour Reduce Motion.
+
+    Every declarative `.animation(...)` in the app already asks the
+    environment first. `withAnimation` is the imperative side, and it has
+    no environment to ask — so it either sits inside an explicit
+    `reduceMotion` branch or goes through `BubbleMotion.animate`, which
+    reads the setting itself.
+    """
+    home = "PrivateMusic/UI/Bubble/BubbleFoundation.swift"
+    offenders = []
+    for path in swift_files:
+        relative = str(path.relative_to(ROOT))
+        if relative == home:
+            continue
+        lines = path.read_text(encoding="utf-8").split("\n")
+        for index, line in enumerate(lines):
+            if "withAnimation(" not in line:
+                continue
+            window = "\n".join(
+                lines[max(0, index - 6):min(index + 5, len(lines))]
+            )
+            if "reduceMotion" in window or "BubbleMotion" in window:
+                continue
+            offenders.append(f"{relative}:{index + 1}")
+    if offenders:
+        fail(
+            "animation ignores Reduce Motion: " + ", ".join(offenders)
+        )
+
+
+require_motion_respects_reduce_motion()
+
+
 require_home_is_not_a_recommendation_feed()
 
 print(f"OK: {len(swift_files)} Swift files")
@@ -1926,3 +1960,4 @@ print("OK: edge-to-edge player and consistent Liquid Glass controls")
 print("OK: deterministic player presentation and lightweight action dock")
 print("OK: every control accepts the 44pt minimum touch area")
 print("OK: body text scales with Dynamic Type")
+print("OK: motion respects Reduce Motion")
