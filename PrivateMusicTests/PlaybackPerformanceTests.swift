@@ -32,12 +32,21 @@ final class PlaybackHighlightModelTests: XCTestCase {
             currentTrackID: "42",
             isPlaying: true,
             queueSource: .album(title: "Album"),
-            currentArtist: "RIVE"
+            currentArtist: "RIVE",
+            currentTrackTitle: "Track 42",
+            currentTrackArtworkURL: URL(string: "https://example.com/a.jpg"),
+            queueContextTitle: "Album"
         )
         XCTAssertEqual(highlight.currentTrackID, "42")
         XCTAssertTrue(highlight.isPlaying)
         XCTAssertEqual(highlight.queueSource, .album(title: "Album"))
         XCTAssertEqual(highlight.currentArtist, "RIVE")
+        XCTAssertEqual(highlight.currentTrackTitle, "Track 42")
+        XCTAssertEqual(
+            highlight.currentTrackArtworkURL?.absoluteString,
+            "https://example.com/a.jpg"
+        )
+        XCTAssertEqual(highlight.queueContextTitle, "Album")
         XCTAssertTrue(highlight.isCurrent("42"))
         XCTAssertFalse(highlight.isCurrent("7"))
     }
@@ -161,6 +170,8 @@ final class PlayerHighlightSyncTests: XCTestCase {
         )
         XCTAssertEqual(player.highlight.currentTrackID, first.id)
         XCTAssertEqual(player.highlight.queueSource, .album(title: "Album"))
+        XCTAssertEqual(player.highlight.currentTrackTitle, first.title)
+        XCTAssertEqual(player.highlight.queueContextTitle, "Album")
 
         player.next()
         XCTAssertEqual(player.highlight.currentTrackID, second.id)

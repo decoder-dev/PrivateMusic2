@@ -9,7 +9,7 @@ import SwiftUI
 struct HomeStageView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SessionStore.self) private var sessionStore
-    @Environment(AudioPlayer.self) private var player
+    @Environment(PlaybackHighlightModel.self) private var highlight
     @Environment(AppSettings.self) private var settings
     @Environment(MusicLibraryStore.self) private var libraryStore
     @Environment(ListeningHistoryStore.self) private var history
@@ -38,7 +38,7 @@ struct HomeStageView: View {
 
     private var presentation: HomeStagePresentation {
         HomeStagePresentation.resolve(
-            hasCurrentTrack: player.currentTrack != nil
+            hasCurrentTrack: highlight.currentTrackID != nil
         )
     }
 
@@ -80,7 +80,7 @@ struct HomeStageView: View {
             BubbleMotion.state(reduceMotion: reduceMotion),
             value: presentation
         )
-        .task(id: player.currentTrack?.id) { syncLibraryState() }
+        .task(id: highlight.currentTrackID) { syncLibraryState() }
         .onChange(of: libraryStore.signatures) { _ in syncLibraryState() }
         .onDisappear { launchTask?.cancel() }
     }
@@ -96,7 +96,7 @@ struct HomeStageView: View {
     /// tick is exactly what put this app on the heat path once already.
     private var atmosphere: some View {
         ZStack {
-            if let artworkURL = player.currentTrack?.artworkURL {
+            if let artworkURL = highlight.currentTrackArtworkURL {
                 CachedRemoteImage(
                     url: artworkURL,
                     maxPixelSize: PlayerArtworkBackgroundPolicy.maxPixelSize
@@ -172,11 +172,11 @@ struct HomeStageView: View {
 
     @ViewBuilder
     private var contextChip: some View {
-        if player.currentTrack != nil {
-            BubbleChip(title: player.queueContextTitle) {
+        if highlight.currentTrackID != nil {
+            BubbleChip(title: highlight.queueContextTitle ?? "") {
                 Button {
                     Haptics.selection()
-                    player.stop()
+                    environment.player.stop()
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .black))
@@ -217,13 +217,13 @@ struct HomeStageView: View {
     }
 
     private var headlineText: String {
-        guard let track = player.currentTrack else {
+        guard let title = highlight.currentTrackTitle else {
             return L10n.text("selena.name")
         }
-        let artist = track.artist.trimmingCharacters(
+        let artist = highlight.currentArtist?.trimmingCharacters(
             in: .whitespacesAndNewlines
-        )
-        guard !artist.isEmpty else { return track.title }
+        ) ?? ""
+        guard !artist.isEmpty else { return title }
         return ArtistCreditDisplay.readable(artist)
     }
 
@@ -232,9 +232,9 @@ struct HomeStageView: View {
     private var artwork: some View {
         let size = HomeStageMetrics.artworkSize(for: width)
         return Group {
-            if let track = player.currentTrack {
+            if highlight.currentTrackID != nil {
                 CachedRemoteImage(
-                    url: track.artworkURL,
+                    url: highlight.currentTrackArtworkURL,
                     maxPixelSize: size * 3
                 ) { image in
                     image.resizable().scaledToFill()
@@ -295,16 +295,16 @@ struct HomeStageView: View {
         } else {
             HStack(spacing: BubbleSpacing.s) {
                 BubbleIconButton(
-                    systemImage: player.isPlaying
+                    systemImage: highlight.isPlaying
                         ? "pause.fill"
                         : "play.fill",
                     size: height,
                     accessibilityLabel: L10n.text(
-                        player.isPlaying ? "pause" : "resume_playback"
+                        highlight.isPlaying ? "pause" : "resume_playback"
                     )
                 ) {
                     Haptics.selection()
-                    player.playPause()
+                    environment.player.playPause()
                 }
 
                 nowPlayingTitle(height: height)
@@ -335,9 +335,9 @@ struct HomeStageView: View {
     private func nowPlayingTitle(height: CGFloat) -> some View {
         Button {
             Haptics.open()
-            player.presentPlayer()
+            environment.player.presentPlayer()
         } label: {
-            Text(player.currentTrack?.title ?? "")
+            Text(highlight.currentTrackTitle ?? "")
                 .font(BubbleType.cardTitle)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -346,18 +346,18 @@ struct HomeStageView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(BubblePressStyle())
-        .accessibilityLabel(player.currentTrack?.title ?? "")
+        .accessibilityLabel(highlight.currentTrackTitle ?? "")
         .accessibilityHint(L10n.text("open_full_screen_player"))
     }
 
     // MARK: - Context rail
 
     private var contexts: [HomeStageContext] {
-        let hasCurrentTrack = player.currentTrack != nil
+        let hasCurrentTrack = highlight.currentTrackID != nil
         let occupancy = HomeNextStepPolicy.occupancy(
             hasCurrentTrack: hasCurrentTrack,
-            queueSource: player.queueSource,
-            currentArtist: player.currentTrack?.artist,
+            queueSource: highlight.queueSource,
+            currentArtist: highlight.currentArtist,
             mixes: homeCatalog.mixes
         )
         return HomeStageContextBuilder.build(
@@ -369,7 +369,7 @@ struct HomeStageView: View {
             stationTitle: L10n.text("selena.name"),
             omitStation: HomeStageContextBuilder.shouldOmitStation(
                 hasCurrentTrack: hasCurrentTrack,
-                queueSource: player.queueSource,
+                queueSource: highlight.queueSource,
                 mixes: homeCatalog.mixes
             ),
             occupiedArtistKeys: occupancy.occupiedArtistKeys
@@ -562,12 +562,12 @@ struct HomeStageView: View {
 
     /// Only the current track's own in-flight mutation disables its heart.
     private var isMutatingCurrentTrack: Bool {
-        guard let id = player.currentTrack?.id else { return false }
+        guard let id = highlight.currentTrackID else { return false }
         return pendingLibraryTrackIDs.contains(id)
     }
 
     private func syncLibraryState() {
-        guard let track = player.currentTrack else {
+        guard let track = environment.player.currentTrack else {
             isInLibrary = false
             return
         }
@@ -579,7 +579,7 @@ struct HomeStageView: View {
     /// for the previous track must not repaint the heart of the one now
     /// playing.
     private func toggleLibrary() {
-        guard let track = player.currentTrack,
+        guard let track = environment.player.currentTrack,
               sessionStore.accessToken != nil,
               !pendingLibraryTrackIDs.contains(track.id) else {
             return
@@ -614,13 +614,13 @@ struct HomeStageView: View {
                     MusicLibraryEvents.postAdded(added)
                 }
                 Haptics.selection()
-                guard player.currentTrack?.id == trackID else { return }
+                guard environment.player.currentTrack?.id == trackID else { return }
                 syncLibraryState()
             } catch is CancellationError {
-                guard player.currentTrack?.id == trackID else { return }
+                guard environment.player.currentTrack?.id == trackID else { return }
                 isInLibrary = removing
             } catch {
-                guard player.currentTrack?.id == trackID else { return }
+                guard environment.player.currentTrack?.id == trackID else { return }
                 isInLibrary = removing
                 environment.mixActionError = L10n.format(
                     removing
