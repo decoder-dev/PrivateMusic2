@@ -320,11 +320,12 @@ final class PrivateMusicMediaTests: XCTestCase {
     ) -> Data {
         var output = Data(count: plaintext.count + Int(PM_AES128_BLOCK_BYTES))
         var outputLength = 0
-        let status = output.withUnsafeMutableBytes { outputBytes in
+        var cryptStatus: CCCryptorStatus = CCCryptorStatus(kCCSuccess)
+        output.withUnsafeMutableBytes { outputBytes in
             plaintext.withUnsafeBytes { plaintextBytes in
                 key.withUnsafeBytes { keyBytes in
                     iv.withUnsafeBytes { ivBytes in
-                        CCCrypt(
+                        cryptStatus = CCCrypt(
                             CCOperation(kCCEncrypt),
                             CCAlgorithm(kCCAlgorithmAES),
                             CCOptions(kCCOptionPKCS7Padding),
@@ -341,7 +342,7 @@ final class PrivateMusicMediaTests: XCTestCase {
                 }
             }
         }
-        XCTAssertEqual(status, kCCSuccess)
+        XCTAssertEqual(cryptStatus, kCCSuccess)
         return output.prefix(outputLength)
     }
 }
