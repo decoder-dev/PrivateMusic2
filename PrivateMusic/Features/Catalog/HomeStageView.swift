@@ -135,7 +135,11 @@ struct HomeStageView: View {
             LinearGradient(
                 stops: [
                     .init(color: .black, location: 0),
-                    .init(color: .black.opacity(0.8), location: 0.5),
+                    // The mask is intentionally steep: Home's blurred artwork
+                    // should dissolve into the page by the transport row,
+                    // otherwise it reads as a large "black overlay" on small
+                    // screens.
+                    .init(color: .black.opacity(0.25), location: 0.55),
                     .init(color: .clear, location: 1)
                 ],
                 startPoint: .top,
