@@ -325,47 +325,60 @@ struct CatalogView: View {
         let artworkSize = metrics.nextStepWidth
         return VStack(alignment: .leading, spacing: BubbleSpacing.m) {
             PremiumSectionHeader("home_next.title")
-            HStack(alignment: .center, spacing: BubbleSpacing.m) {
-                nextStepArtwork(candidate, size: artworkSize)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(nextStepTitle(candidate))
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(L10n.text(candidate.subtitleKey))
-                        .font(BubbleType.metadata)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if candidate.sourceIsSelena {
-                        Text(L10n.text("home_next.source.selena"))
-                            .font(BubbleType.micro)
-                            .foregroundStyle(.tertiary)
-                    } else if candidate.kind == .vkMix {
-                        Text(L10n.text("home_next.vk.title"))
-                            .font(BubbleType.micro)
-                            .foregroundStyle(.tertiary)
-                    }
-                    HStack(spacing: BubbleSpacing.s) {
-                        nextStepActionButton(candidate)
-                        Spacer(minLength: 0)
-                        if nextStepHasMenu(candidate) {
-                            Menu {
-                                nextStepMenu(candidate)
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 32, height: 32)
-                                    .contentShape(Rectangle())
-                            }
-                            .accessibilityLabel(L10n.text("more"))
+            HStack(alignment: .center, spacing: 0) {
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(GravityTokens.brand)
+                    .frame(width: 3)
+                HStack(alignment: .center, spacing: BubbleSpacing.m) {
+                    nextStepArtwork(candidate, size: artworkSize)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(nextStepTitle(candidate))
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(L10n.text(candidate.subtitleKey))
+                            .font(BubbleType.metadata)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if candidate.sourceIsSelena {
+                            Text(L10n.text("home_next.source.selena"))
+                                .font(BubbleType.micro)
+                                .foregroundStyle(.tertiary)
+                        } else if candidate.kind == .vkMix {
+                            Text(L10n.text("home_next.vk.title"))
+                                .font(BubbleType.micro)
+                                .foregroundStyle(.tertiary)
                         }
+                        HStack(spacing: BubbleSpacing.s) {
+                            nextStepActionButton(candidate)
+                            Spacer(minLength: 0)
+                            if nextStepHasMenu(candidate) {
+                                Menu {
+                                    nextStepMenu(candidate)
+                                } label: {
+                                    Image(systemName: "ellipsis")
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 32, height: 32)
+                                        .contentShape(Rectangle())
+                                }
+                                .accessibilityLabel(L10n.text("more"))
+                            }
+                        }
+                        .padding(.top, 2)
                     }
-                    .padding(.top, 2)
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                .padding(BubbleSpacing.m)
             }
+            .background(
+                GravityTokens.genericSurface(isDark: settings.theme == .dark),
+                in: RoundedRectangle(
+                    cornerRadius: GravityTokens.controlRadius,
+                    style: .continuous
+                )
+            )
         }
     }
 
@@ -441,22 +454,14 @@ struct CatalogView: View {
     private func nextStepActionButton(
         _ candidate: HomeNextStepCandidate
     ) -> some View {
-        Button {
+        GravityActionButton(
+            title: L10n.text(candidate.actionKey),
+            compact: true,
+            isBusy: isNextStepLaunching,
+            accessibilityLabel: L10n.text(candidate.actionKey)
+        ) {
             launchNextStep(candidate)
-        } label: {
-            ZStack {
-                Text(L10n.text(candidate.actionKey))
-                    .opacity(isNextStepLaunching ? 0 : 1)
-                if isNextStepLaunching {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-            .frame(minWidth: 92)
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.small)
-        .disabled(isNextStepLaunching)
     }
 
     private func nextStepHasMenu(_ candidate: HomeNextStepCandidate) -> Bool {
