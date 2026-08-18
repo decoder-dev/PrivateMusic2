@@ -15,12 +15,14 @@ struct CatalogView: View {
     @Environment(HomePersonalizationStore.self) private var personalization
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var actionErrorMessage: String?
     @State private var sharingTrack: Track?
     @State private var selectedAlbum: Album?
     @State private var loadingAlbumTrackID: String?
     @State private var albumLookupTask: Task<Void, Never>?
     @State private var isDynamicArtistLaunching = false
+    @State private var pendingHiddenArtist: ArtistAffinityCandidate?
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -144,6 +146,33 @@ struct CatalogView: View {
         } message: {
             Text(actionErrorMessage ?? "")
         }
+        .confirmationDialog(
+            L10n.text("hide_artist_in_mixes"),
+            isPresented: Binding(
+                get: { pendingHiddenArtist != nil },
+                set: { if !$0 { pendingHiddenArtist = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(L10n.text("hide_artist"), role: .destructive) {
+                if let candidate = pendingHiddenArtist {
+                    hideDynamicArtist(candidate)
+                }
+                pendingHiddenArtist = nil
+            }
+            Button(L10n.text("action.cancel"), role: .cancel) {
+                pendingHiddenArtist = nil
+            }
+        } message: {
+            if let candidate = pendingHiddenArtist {
+                Text(
+                    L10n.format(
+                        "hide_artist_in_mixes_confirmation_0",
+                        candidate.displayName
+                    )
+                )
+            }
+        }
     }
 
     private func scrollToTop(
@@ -189,7 +218,8 @@ struct CatalogView: View {
         let candidates = ArtistAffinityPolicy.candidates(
             history: history.entries,
             isLiked: { libraryStore.contains($0) },
-            bannedArtistKeys: mixFeedback.bannedArtists
+            bannedArtistKeys: mixFeedback.bannedArtists,
+            bannedTrackIDs: mixFeedback.bannedTrackIDs
         )
         return ArtistAffinityPolicy.selectDynamicArtist(
             from: candidates,
@@ -317,42 +347,74 @@ struct CatalogView: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                     Text(dynamicArtistReasonText(candidate.reason))
-                        .font(.caption)
+                        .font(BubbleType.metadata)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: BubbleSpacing.s) {
-                        Button {
-                            continueDynamicArtist(candidate)
-                        } label: {
-                            if isDynamicArtistLaunching {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Text(
-                                    L10n.text(
-                                        "home_stage.dynamic_artist.continue"
-                                    )
-                                )
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(isDynamicArtistLaunching)
-
-                        Button(role: .destructive) {
-                            hideDynamicArtist(candidate)
-                        } label: {
-                            Text(L10n.text("hide_artist"))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .tint(.secondary)
-                    }
+                    dynamicArtistActions(candidate)
                     .padding(.top, 2)
                 }
                 Spacer(minLength: 0)
             }
         }
+    }
+
+    @ViewBuilder
+    private func dynamicArtistActions(
+        _ candidate: ArtistAffinityCandidate
+    ) -> some View {
+        let continueTitle = L10n.text("home_stage.dynamic_artist.continue")
+        let hideTitle = L10n.text("hide_artist")
+        ViewThatFits(
+            in: dynamicTypeSize.isAccessibilitySize ? .vertical : .horizontal
+        ) {
+            HStack(spacing: BubbleSpacing.s) {
+                continueDynamicArtistButton(title: continueTitle, candidate: candidate)
+                hideDynamicArtistButton(title: hideTitle, candidate: candidate)
+            }
+            VStack(alignment: .leading, spacing: BubbleSpacing.s) {
+                continueDynamicArtistButton(title: continueTitle, candidate: candidate)
+                hideDynamicArtistButton(title: hideTitle, candidate: candidate)
+            }
+        }
+    }
+
+    private func continueDynamicArtistButton(
+        title: String,
+        candidate: ArtistAffinityCandidate
+    ) -> some View {
+        Button {
+            continueDynamicArtist(candidate)
+        } label: {
+            ZStack {
+                Text(title)
+                    .opacity(isDynamicArtistLaunching ? 0 : 1)
+                if isDynamicArtistLaunching {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            .frame(minWidth: 92)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
+        .disabled(isDynamicArtistLaunching)
+    }
+
+    private func hideDynamicArtistButton(
+        title: String,
+        candidate: ArtistAffinityCandidate
+    ) -> some View {
+        Button(role: .destructive) {
+            pendingHiddenArtist = candidate
+        } label: {
+            Text(title)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .tint(.secondary)
     }
 
     private func dynamicArtistGlyph(
