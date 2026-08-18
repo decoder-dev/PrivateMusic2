@@ -331,6 +331,7 @@ final class HomeStageContextTests: XCTestCase {
         let artist = contexts.first { $0.kind == .artist }
         XCTAssertEqual(artist?.artist?.name, "Owar1")
         XCTAssertEqual(artist?.artist?.seed?.id, seed.id)
+        XCTAssertEqual(artist?.avatarURL, seed.artworkURL)
         XCTAssertNil(artist?.mixID, "artist must not resolve through a mix id")
     }
 

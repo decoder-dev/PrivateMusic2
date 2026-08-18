@@ -25,6 +25,7 @@ struct HomeStageView: View {
     /// One launch at a time. A second tap cancels the first so two radio
     /// requests cannot finish out of order and fight over the queue.
     @State private var launchTask: Task<Void, Never>?
+    @State private var tintCache = BubbleTintCache.shared
 
     let width: CGFloat
     /// Home's grid inset. The stage keeps its content on that grid and
@@ -431,9 +432,10 @@ struct HomeStageView: View {
         // Artwork-derived tints come from the shared cache once one has
         // been sampled; the role palette is the guaranteed fallback, so the
         // rail never loses its colour legend.
+        let _ = tintCache.revision
         let fill = BubblePalette.surface(
             context.kind.role,
-            tint: BubbleTintCache.shared.cached(for: context.avatarURL)
+            tint: tintCache.cached(for: context.avatarURL)
         )
         return Button {
             start(context)

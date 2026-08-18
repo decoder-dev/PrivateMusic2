@@ -221,6 +221,7 @@ enum HomeStageContextBuilder {
                 kind: .artist,
                 name: artist.name,
                 rank: rank,
+                avatarURL: artist.seed?.artworkURL,
                 artist: artist
             )
         }

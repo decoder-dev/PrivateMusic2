@@ -177,8 +177,12 @@ enum BubbleArtworkTint {
 /// Memoises artwork tints by URL. Extraction is cheap but not free, and
 /// SwiftUI will happily ask for the same colour on every body evaluation.
 @MainActor
+@Observable
 final class BubbleTintCache {
     static let shared = BubbleTintCache()
+
+    /// Bumps whenever a URL's tint is resolved so views can refresh fills.
+    private(set) var revision = 0
 
     private let storage = NSCache<NSString, TintBox>()
     /// URLs already sampled that produced nothing usable, so a grey cover
@@ -209,10 +213,28 @@ final class BubbleTintCache {
 
     func store(_ components: BubbleColorComponents?, for url: URL?) {
         guard let key = url?.absoluteString else { return }
+        let hadEntry = storage.object(forKey: key as NSString) != nil
+            || misses.contains(key)
         guard let components else {
-            misses.insert(key)
+            if !misses.contains(key) {
+                misses.insert(key)
+                revision &+= 1
+            }
             return
         }
         storage.setObject(TintBox(components), forKey: key as NSString)
+        misses.remove(key)
+        if !hadEntry {
+            revision &+= 1
+        }
+    }
+
+    /// Samples a loaded bitmap once and memoises the dominant colour. Every
+    /// image load path funnels through here so Home's context rail can tint
+    /// from artwork without re-decoding on every body pass.
+    func recordArtwork(_ image: UIImage, for url: URL?) {
+        guard let url else { return }
+        guard !hasResolved(url) else { return }
+        store(BubbleArtworkTint.extract(from: image), for: url)
     }
 }
