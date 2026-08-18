@@ -424,15 +424,13 @@ if "vDSP_maxmgv" in equalizer_source or "import Accelerate" in equalizer_source:
         "not vDSP from Swift"
     )
 metal_tint_source = (
-    SOURCE / "Native" / "Metal" / "ArtworkTint.metal"
-)
-if not metal_tint_source.is_file():
-    fail("ArtworkTint.metal compute kernel must exist under Native/Metal/")
-if "pm_artwork_tint_reduce" not in metal_tint_source.read_text(encoding="utf-8"):
-    fail("ArtworkTint.metal must define pm_artwork_tint_reduce")
-artwork_tint_gpu_source = (
     SOURCE / "Core" / "GPU" / "ArtworkTintGPU.swift"
 ).read_text(encoding="utf-8")
+if "pm_artwork_tint_reduce" not in metal_tint_source:
+    fail("ArtworkTintGPU must embed the pm_artwork_tint_reduce Metal kernel")
+if "makeLibrary(" not in metal_tint_source:
+    fail("ArtworkTintGPU must compile the Metal kernel at runtime")
+artwork_tint_gpu_source = metal_tint_source
 if "MTLCreateSystemDefaultDevice" not in artwork_tint_gpu_source:
     fail("ArtworkTintGPU must drive the Metal artwork tint kernel")
 bubble_palette_source = (

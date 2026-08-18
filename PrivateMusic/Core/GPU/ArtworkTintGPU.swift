@@ -1,16 +1,73 @@
 import Foundation
 import Metal
 
-/// GPU reduction for Bubble artwork tint extraction. Falls back to the C path
-/// in `BubbleArtworkTint` when Metal is unavailable (previews, sim edge cases).
+/// GPU reduction for Bubble artwork tint extraction. The kernel is compiled at
+/// runtime so CI archives do not require the standalone Metal Toolchain for a
+/// `.metal` build phase. Falls back to the C path in `BubbleArtworkTint` when
+/// Metal is unavailable.
 enum ArtworkTintGPU {
+    private static let kernelSource = """
+    #include <metal_stdlib>
+    using namespace metal;
+
+    kernel void pm_artwork_tint_reduce(
+        constant uint &pixel_count [[buffer(0)]],
+        device const uchar4 *pixels [[buffer(1)]],
+        device atomic_float *weighted_rgbw [[buffer(2)]],
+        uint id [[thread_position_in_grid]]
+    ) {
+        if (id >= pixel_count) {
+            return;
+        }
+
+        const uchar4 pixel = pixels[id];
+        const float alpha = float(pixel.w) / 255.0f;
+        if (alpha <= 0.4f) {
+            return;
+        }
+
+        const float red = float(pixel.x) / 255.0f;
+        const float green = float(pixel.y) / 255.0f;
+        const float blue = float(pixel.z) / 255.0f;
+        const float high = max(red, max(green, blue));
+        const float low = min(red, min(green, blue));
+        const float saturation = high > 0.0f ? (high - low) / high : 0.0f;
+        const float weight = alpha * (0.08f + saturation);
+
+        atomic_fetch_add_explicit(
+            &weighted_rgbw[0],
+            red * weight,
+            memory_order_relaxed
+        );
+        atomic_fetch_add_explicit(
+            &weighted_rgbw[1],
+            green * weight,
+            memory_order_relaxed
+        );
+        atomic_fetch_add_explicit(
+            &weighted_rgbw[2],
+            blue * weight,
+            memory_order_relaxed
+        );
+        atomic_fetch_add_explicit(
+            &weighted_rgbw[3],
+            weight,
+            memory_order_relaxed
+        );
+    }
+    """
+
     private static let device = MTLCreateSystemDefaultDevice()
     private static let pipeline: MTLComputePipelineState? = {
-        guard let device,
-              let library = device.makeDefaultLibrary(),
-              let function = library.makeFunction(
-                  name: "pm_artwork_tint_reduce"
-              ) else {
+        guard let device else { return nil }
+        let source = kernelSource
+        guard let library = try? device.makeLibrary(
+            source: source,
+            options: nil
+        ),
+            let function = library.makeFunction(
+                name: "pm_artwork_tint_reduce"
+            ) else {
             return nil
         }
         return try? device.makeComputePipelineState(function: function)
