@@ -703,6 +703,17 @@ final class HomeStageMetricsTests: XCTestCase {
         }
     }
 
+    func testHomeAtmosphereUsesLighterDecodeThanFullPlayer() {
+        XCTAssertLessThan(
+            HomeStageAtmospherePolicy.maxPixelSize,
+            PlayerArtworkBackgroundPolicy.maxPixelSize
+        )
+        XCTAssertLessThan(
+            HomeStageAtmospherePolicy.blurRadius,
+            PlayerArtworkBackgroundPolicy.blurRadius
+        )
+    }
+
     /// `CatalogView` intentionally lets Home's atmospheric background underlap
     /// the top safe area. The Hero foreground still needs the safe top band
     /// plus Home's own breathing room when local geometry reports zero.
