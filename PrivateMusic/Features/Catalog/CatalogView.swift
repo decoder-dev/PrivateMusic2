@@ -26,8 +26,8 @@ struct CatalogView: View {
         ScrollViewReader { scrollProxy in
             GeometryReader { proxy in
                 let metrics = HomeMetrics(containerWidth: proxy.size.width)
-                let resolvedForegroundTopInset =
-                    HomeStageMetrics.resolvedForegroundTopInset(
+                let heroForegroundTopOrigin =
+                    HomeStageMetrics.resolvedForegroundTopOrigin(
                         reportedTopSafeAreaInset: proxy.safeAreaInsets.top
                     )
                 ScrollView {
@@ -36,12 +36,12 @@ struct CatalogView: View {
                             HomeStageView(
                                 width: proxy.size.width,
                                 horizontalPadding: metrics.horizontalPadding,
-                                topSafeAreaInset: resolvedForegroundTopInset
+                                foregroundTopOrigin: heroForegroundTopOrigin
                             )
                             .id(MainTabScrollDestination.home)
                         } else {
                             welcomeHeader
-                                .padding(.top, resolvedForegroundTopInset)
+                                .padding(.top, heroForegroundTopOrigin)
                                 .id(MainTabScrollDestination.home)
                         }
 

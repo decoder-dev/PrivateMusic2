@@ -8,20 +8,26 @@ import CoreGraphics
 /// is to fit inside the first viewport with the next shelf already
 /// starting to show underneath.
 enum HomeStageMetrics {
+    /// Clear breathing room between the compact navigation title band and the
+    /// first Hero foreground element. Applied through the resolved foreground
+    /// origin, not as an extra independent padding layer.
+    static let navigationGap = BubbleSpacing.l
+
     /// Home underlaps the top chrome with the atmospheric background, but its
-    /// foreground must still start below the compact navigation/header band.
-    /// On some hierarchies the stage's `GeometryReader` can report zero after
-    /// the parent ignores the top safe area; in that case fall back to the
-    /// window's current top inset rather than collapsing the hero upward.
+    /// foreground must still start below the effective navigation/header
+    /// boundary plus one consistent breathing gap. On some hierarchies the
+    /// stage's `GeometryReader` can report zero after the parent ignores the
+    /// top safe area; in that case fall back to the window's current top inset
+    /// rather than collapsing the hero upward.
     @MainActor
-    static func resolvedForegroundTopInset(
+    static func resolvedForegroundTopOrigin(
         reportedTopSafeAreaInset: CGFloat,
         windowTopSafeAreaInset: CGFloat? = nil
     ) -> CGFloat {
         NavigationChromeMetrics.resolvedTopSafeAreaInset(
             reportedTopSafeAreaInset: reportedTopSafeAreaInset,
             windowTopSafeAreaInset: windowTopSafeAreaInset
-        )
+        ) + navigationGap
     }
 
     /// 32–38 pt, bold. A short name at the top of this band used to read
@@ -50,10 +56,10 @@ enum HomeStageMetrics {
     /// tight enough that the stage read as one dense block rather than
     /// status, artist, artwork and controls as distinct beats.
     static let chipHeight: CGFloat = 34
-    static let belowChip = BubbleSpacing.m
-    static let belowHeadline = BubbleSpacing.xl
-    static let belowArtwork = BubbleSpacing.l
-    static let belowTransport = BubbleSpacing.xl
+    static let belowChip = BubbleSpacing.xl
+    static let belowHeadline = BubbleSpacing.xxl
+    static let belowArtwork = BubbleSpacing.xxl
+    static let belowTransport = BubbleSpacing.xxl
 
     static var fixedSpacing: CGFloat {
         chipHeight + belowChip + belowHeadline + belowArtwork
