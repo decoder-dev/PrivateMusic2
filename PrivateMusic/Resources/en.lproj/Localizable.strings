@@ -183,11 +183,6 @@
 "home_stage.kind.artist" = "Like this artist";
 "home_stage.kind.mix" = "Mix";
 "home_stage.artist_plus_d0" = "%@ +%d";
-"home_stage.dynamic_artist.title" = "Looks like you're into %@";
-"home_stage.dynamic_artist.continue" = "Continue";
-"home_stage.dynamic_artist.reason.liked" = "One of their tracks is already in your library";
-"home_stage.dynamic_artist.reason.frequent" = "You've been listening to them a lot lately";
-"home_stage.dynamic_artist.reason.multiple" = "A few of their tracks in the last few days";
 "home_next.title" = "What's Next";
 "home_next.continue_with_0" = "Continue with %@";
 "home_next.reason.into_now" = "Looks like you're into this right now";
