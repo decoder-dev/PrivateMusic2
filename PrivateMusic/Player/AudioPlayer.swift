@@ -2429,12 +2429,22 @@ final class AudioPlayer {
     }
 
     private func resolvePlaybackURL(from url: URL) -> URL {
-        StreamQualityPolicy.playbackURL(
+        // Whether processing will actually run, not merely whether the user
+        // switched it on: `allowRealtimeAudioProcessing` already withholds
+        // the tap under Low Power Mode and thermal pressure, so those states
+        // do not force a rewrite for a tap that will not attach anyway.
+        let requiresAudioProcessing = PlaybackResourcePolicy
+            .allowRealtimeAudioProcessing(
+                requiresAudioTap: equalizer.requiresAudioTap
+            )
+        return StreamQualityPolicy.playbackURL(
             url,
             preferHighQuality: preferHighQuality,
+            requiresAudioProcessing: requiresAudioProcessing,
             allowProgressiveUpgrade: playbackURLStrategy == .automatic
                 && PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
-                    preferHighQuality: preferHighQuality
+                    preferHighQuality: preferHighQuality,
+                    requiresAudioProcessing: requiresAudioProcessing
                 )
         )
     }

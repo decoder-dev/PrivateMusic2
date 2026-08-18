@@ -43,12 +43,21 @@ enum StreamQualityPolicy {
     }
 
     /// URL to hand to `AVPlayer` for a remote VK stream.
+    ///
+    /// `requiresAudioProcessing` rewrites for a reason other than quality:
+    /// on-device processing needs a progressive file because a tap cannot
+    /// attach to an HLS playlist. Without it the data saver silently
+    /// disabled the equalizer along with the bitrate.
     static func playbackURL(
         _ url: URL,
         preferHighQuality: Bool,
+        requiresAudioProcessing: Bool = false,
         allowProgressiveUpgrade: Bool = true
     ) -> URL {
-        guard preferHighQuality, allowProgressiveUpgrade else { return url }
+        guard preferHighQuality || requiresAudioProcessing,
+              allowProgressiveUpgrade else {
+            return url
+        }
         return progressiveURL(from: url) ?? url
     }
 

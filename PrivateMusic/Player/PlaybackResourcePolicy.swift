@@ -7,12 +7,24 @@ enum PlaybackResourcePolicy {
     /// extra decode/buffer work. MP3 is still lighter than HPS segment churn
     /// for AVPlayer, but skipping the rewrite on low power keeps the ladder
     /// and avoids a second URL attempt on weak networks.
+    ///
+    /// `requiresAudioProcessing` is the second reason to rewrite, and it is
+    /// not about quality at all: `MTAudioProcessingTap` cannot attach to an
+    /// HLS playlist, so a listener who turned the data saver on lost the
+    /// equalizer, loudness normalization, dynamic range compression and
+    /// spatial audio with it — silently, while every one of those toggles
+    /// still read as on. Processing the user explicitly asked for outranks
+    /// the ladder; the peak-bitrate cap still applies either way.
     static func allowProgressiveStreamUpgrade(
         preferHighQuality: Bool,
+        requiresAudioProcessing: Bool = false,
         lowPowerMode: Bool = ProcessInfo.processInfo.isLowPowerModeEnabled,
         thermalState: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState
     ) -> Bool {
-        guard preferHighQuality, !lowPowerMode else { return false }
+        guard preferHighQuality || requiresAudioProcessing else {
+            return false
+        }
+        guard !lowPowerMode else { return false }
         return !thermalState.shouldThrottlePlaybackProcessing
     }
 
