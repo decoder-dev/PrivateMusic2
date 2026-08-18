@@ -2507,6 +2507,10 @@ final class AudioPlayer {
             return
         }
         let track = queue[nextIndex]
+        if preloadStreamRefreshTrackID == track.id,
+           preloadStreamRefreshTask != nil {
+            return
+        }
         if let refreshTrackID = preloadStreamRefreshTrackID,
            refreshTrackID != track.id {
             preloadStreamRefreshTask?.cancel()
@@ -2522,6 +2526,18 @@ final class AudioPlayer {
             return
         }
         let url = offlineURL ?? resolvePlaybackURL(from: sourceURL)
+        if offlineURL == nil,
+           StreamQualityPolicy.shouldRefreshHLSBeforePlay(
+            sourceURL: track.streamURL,
+            playbackURL: url,
+            alreadyRefreshed: attemptedPreloadRefreshes.contains(
+                Self.preloadRefreshKey(trackID: track.id, url: url)
+            )
+           ),
+           streamRefreshProvider != nil {
+            startPreloadStreamRefresh(track: track, playlistURL: url)
+            return
+        }
         if let existing = preloadedPlayback,
            PlaybackPreloadPolicy.isValid(
             trackID: track.id,
@@ -2637,19 +2653,37 @@ final class AudioPlayer {
         let failedURL = slot.url
         invalidatePreloadedPlayback()
         guard !failedURL.isFileURL,
-              preloadStreamRefreshTask == nil,
-              let provider = streamRefreshProvider,
               let track = queue.first(where: { $0.id == trackID }) else {
             return
         }
-        let refreshKey = "\(trackID)#\(failedURL.absoluteString)"
+        startPreloadStreamRefresh(track: track, playlistURL: failedURL)
+    }
+
+    private static func preloadRefreshKey(trackID: String, url: URL) -> String {
+        "\(trackID)#\(url.absoluteString)"
+    }
+
+    /// One `audio.getById` for the upcoming track when the resolved URL is
+    /// still HLS, so skip / crossfade can warm a progressive MP3 instead.
+    private func startPreloadStreamRefresh(track: Track, playlistURL: URL) {
+        guard !playlistURL.isFileURL,
+              preloadStreamRefreshTask == nil,
+              let provider = streamRefreshProvider else {
+            return
+        }
+        let trackID = track.id
+        let refreshKey = Self.preloadRefreshKey(
+            trackID: trackID,
+            url: playlistURL
+        )
         guard attemptedPreloadRefreshes.insert(refreshKey).inserted else {
             return
         }
+        invalidatePreloadedPlayback()
         let refreshID = UUID()
         preloadStreamRefreshTrackID = trackID
         preloadStreamRefreshID = refreshID
-        preloadStreamRefreshTask = Task { [weak self] in
+        preloadStreamRefreshTask = Task { @MainActor [weak self] in
             defer {
                 if let self,
                    self.preloadStreamRefreshID == refreshID {
@@ -2678,7 +2712,9 @@ final class AudioPlayer {
                 self.scheduleNeighborPreloads()
             } catch is CancellationError {
                 self?.attemptedPreloadRefreshes.remove(refreshKey)
-            } catch {}
+            } catch {
+                self?.scheduleNeighborPreloads()
+            }
         }
     }
 

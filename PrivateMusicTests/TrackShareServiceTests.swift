@@ -48,7 +48,7 @@ final class TrackShareServiceTests: XCTestCase {
     func testHLSNeverFallsBackToAStreamingLink() async {
         let track = makeTrack(
             streamURL: URL(
-                string: "https://example.com/audio/index.m3u8?token=secret"
+                string: "https://example.com/audio/playlist.m3u8?token=secret"
             )
         )
         let service = TrackShareService()
@@ -60,6 +60,71 @@ final class TrackShareServiceTests: XCTestCase {
                 requiresMP3: true
             )
             XCTFail("HLS must not be shared as an MP3 or a link")
+        } catch {
+            XCTAssertFalse(error.localizedDescription.contains("token=secret"))
+        }
+    }
+
+    func testRewriteableHLSDownloadsProgressiveMP3() async throws {
+        let playlist = URL(
+            string: "https://psv4.example.com/s/v1/a2/abc123/index.m3u8?extra=foo"
+        )!
+        let mp3 = URL(string: "https://psv4.example.com/s/v1/a2/abc123.mp3")!
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ShareURLProtocol.self]
+        ShareURLProtocol.handler = { request in
+            XCTAssertEqual(request.url, mp3)
+            let response = HTTPURLResponse(
+                url: mp3,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: [
+                    "Content-Type": "audio/mpeg",
+                    "Content-Length": "8"
+                ]
+            )!
+            return (response, Data("ID3audio".utf8))
+        }
+        let service = TrackShareService(
+            session: URLSession(configuration: configuration)
+        )
+
+        let payload = try await service.preparePayload(
+            for: makeTrack(streamURL: playlist),
+            userAgent: "PrivateMusicTests",
+            requiresMP3: true
+        )
+        XCTAssertEqual(payload.fileURL.pathExtension, "mp3")
+        XCTAssertEqual(try Data(contentsOf: payload.fileURL), Data("ID3audio".utf8))
+        await service.removeExportedFile(payload)
+    }
+
+    func testRewriteableHLSMissingMP3StillRejectsRequiresMP3() async {
+        let playlist = URL(
+            string: "https://psv4.example.com/s/v1/a2/abc123/index.m3u8?token=secret"
+        )!
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ShareURLProtocol.self]
+        ShareURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 404,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data())
+        }
+        let service = TrackShareService(
+            session: URLSession(configuration: configuration)
+        )
+
+        do {
+            _ = try await service.preparePayload(
+                for: makeTrack(streamURL: playlist),
+                userAgent: nil,
+                requiresMP3: true
+            )
+            XCTFail("A missing rewritten MP3 must not fall back to the playlist")
         } catch {
             XCTAssertFalse(error.localizedDescription.contains("token=secret"))
         }
