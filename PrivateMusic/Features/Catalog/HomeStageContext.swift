@@ -149,7 +149,8 @@ enum HomeStageContextBuilder {
         recentArtists: [HomeStageArtist],
         selectedMood: MixMoodPreference,
         stationTitle: String,
-        omitStation: Bool = false
+        omitStation: Bool = false,
+        occupiedArtistKeys: Set<String> = []
     ) -> [HomeStageContext] {
         var contexts: [HomeStageContext] = []
         var takenNames = Set<String>()
@@ -204,12 +205,17 @@ enum HomeStageContextBuilder {
             append(
                 id: "vibe-\(selectedMood.rawValue)",
                 kind: .vibe,
-                name: selectedMood.title,
+                name: L10n.format(
+                    "home_stage.vibe_launch_d0",
+                    selectedMood.title
+                ),
                 mood: selectedMood
             )
         }
 
         for (rank, artist) in recentArtists.enumerated() {
+            guard !isOccupiedArtist(artist.name, keys: occupiedArtistKeys)
+            else { continue }
             append(
                 id: "artist-\(artist.name.lowercased())",
                 kind: .artist,
@@ -225,6 +231,34 @@ enum HomeStageContextBuilder {
         return Array(contexts.prefix(limit))
     }
 
+    /// The Hero already names this artist; the rail must not offer the same
+    /// «В стиле» shortcut underneath it.
+    static func isOccupiedArtist(
+        _ name: String,
+        keys: Set<String>
+    ) -> Bool {
+        guard !keys.isEmpty else { return false }
+        for component in ArtistCreditDisplay.components(name) {
+            let key = MixFeedbackPolicy.normalized(component)
+            if keys.contains(key) { return true }
+        }
+        return false
+    }
+
+    /// Personal Selena is already the session when idle (Hero CTA) or when
+    /// that mix is what's playing — the rail must not repeat it.
+    static func shouldOmitStation(
+        hasCurrentTrack: Bool,
+        queueSource: QueueSource?,
+        mixes: [MusicMix]
+    ) -> Bool {
+        HomeNextStepPolicy.occupancy(
+            hasCurrentTrack: hasCurrentTrack,
+            queueSource: queueSource,
+            currentArtist: nil,
+            mixes: mixes
+        ).occupiedKinds.contains(.personalStation)
+    }
 
     /// The artists behind the most recent plays, newest first, without
     /// repeats — an evening spent looping one album should not fill the
