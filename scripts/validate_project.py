@@ -300,6 +300,7 @@ for symbol in (
     "pm_biquad_process_channel",
     "pm_spatial_process_planar",
     "pm_spatial_process_interleaved",
+    "pm_buffer_peak_magnitude",
 ):
     if symbol not in native_dsp_header_text:
         fail(f"PrivateMusicDSP.h must expose {symbol}")
@@ -310,6 +311,9 @@ for symbol in (
     "pm_text_identity_hash",
     "pm_text_fold_utf8",
     "pm_text_find",
+    "pm_text_normalize_identity",
+    "pm_artwork_extract_tint_rgba",
+    "PMArtworkTint",
     "pm_mix_select_best",
     "pm_mix_score_candidate",
     # Fixed-memory buffer-health ring estimator feeding the network-aware
@@ -412,6 +416,32 @@ if "for frame in 0..<frameCount" in equalizer_source:
         "EqualizerDSP must not walk audio frames from Swift: the realtime tap "
         "hot paths live in PrivateMusicDSP.c"
     )
+if "pm_buffer_peak_magnitude(" not in equalizer_source:
+    fail("EqualizerDSP silence gate must call pm_buffer_peak_magnitude")
+if "vDSP_maxmgv" in equalizer_source or "import Accelerate" in equalizer_source:
+    fail(
+        "EqualizerDSP silence gate must use pm_buffer_peak_magnitude in C, "
+        "not vDSP from Swift"
+    )
+metal_tint_source = (
+    SOURCE / "Native" / "Metal" / "ArtworkTint.metal"
+)
+if not metal_tint_source.is_file():
+    fail("ArtworkTint.metal compute kernel must exist under Native/Metal/")
+if "pm_artwork_tint_reduce" not in metal_tint_source.read_text(encoding="utf-8"):
+    fail("ArtworkTint.metal must define pm_artwork_tint_reduce")
+artwork_tint_gpu_source = (
+    SOURCE / "Core" / "GPU" / "ArtworkTintGPU.swift"
+).read_text(encoding="utf-8")
+if "MTLCreateSystemDefaultDevice" not in artwork_tint_gpu_source:
+    fail("ArtworkTintGPU must drive the Metal artwork tint kernel")
+bubble_palette_source = (
+    SOURCE / "UI" / "Bubble" / "BubblePalette.swift"
+).read_text(encoding="utf-8")
+if "pm_artwork_extract_tint_rgba(" not in bubble_palette_source:
+    fail("BubbleArtworkTint must fall back to pm_artwork_extract_tint_rgba")
+if "ArtworkTintGPU.extract" not in bubble_palette_source:
+    fail("BubbleArtworkTint must prefer ArtworkTintGPU when Metal is available")
 spatial_source = (SOURCE / "Player" / "SpatialAudioDSP.swift").read_text(
     encoding="utf-8"
 )
@@ -425,6 +455,8 @@ if "pm_mix_select_best(" not in mix_ranker_source:
 for symbol in ("pm_hash_fnv1a64_bytes(", "pm_text_identity_hash("):
     if symbol not in mix_ranker_source:
         fail(f"MixQueueRanker must hash through {symbol[:-1]}")
+if "pm_text_normalize_identity(" not in mix_ranker_source:
+    fail("MixQueueRanker must normalize artist/album names through C")
 native_text_source_path = SOURCE / "Core" / "Text" / "NativeTextSearch.swift"
 if not native_text_source_path.is_file():
     fail("NativeTextSearch must live under Core/Text/")
