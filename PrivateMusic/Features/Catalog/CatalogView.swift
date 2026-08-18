@@ -117,7 +117,6 @@ struct CatalogView: View {
         .background(ThemeBackground())
         .navigationTitle(L10n.text("tab.home"))
         .navigationBarTitleDisplayMode(.inline)
-        .dynamicTypeSize(...DynamicTypeSize.large)
         .trackShareSheet(track: $sharingTrack)
         .navigationDestination(
             isPresented: Binding(
