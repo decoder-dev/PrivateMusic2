@@ -135,9 +135,7 @@ struct ProfileView: View {
             } label: {
                 groupedRow(
                     title: L10n.text("sign_out"),
-                    subtitle: L10n.text(
-                        "signing_out_removes_the_saved_session_from_this_device_you_will_need_to_"
-                    ),
+                    subtitle: nil,
                     systemImage: "rectangle.portrait.and.arrow.right",
                     trailing: nil,
                     foregroundStyle: .red,
