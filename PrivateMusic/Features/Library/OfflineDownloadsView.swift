@@ -522,8 +522,10 @@ struct OfflineDownloadsView: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title3)
                         .foregroundStyle(.secondary)
+                        .minimumHitTarget(visualSize: 24)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(L10n.text("cancel_download"))
             }
             if let progress = status.progress {
                 AnimatedProgressView(progress: progress)

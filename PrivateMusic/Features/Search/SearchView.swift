@@ -294,6 +294,7 @@ struct SearchView: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .frame(width: 32, height: 32)
+                            .minimumHitTarget(visualSize: 32)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(
