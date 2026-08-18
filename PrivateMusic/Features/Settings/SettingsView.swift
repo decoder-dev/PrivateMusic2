@@ -284,7 +284,7 @@ private struct AppearanceSettingsView: View {
                 }
 
                 Button(L10n.text("reset_appearance")) {
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    BubbleMotion.animate(.easeInOut(duration: 0.25)) {
                         settings.resetAppearance()
                     }
                 }
@@ -295,7 +295,7 @@ private struct AppearanceSettingsView: View {
                     isOn: Binding(
                         get: { settings.hapticsEnabled },
                         set: { newValue in
-                            withAnimation(
+                            BubbleMotion.animate(
                                 .spring(response: 0.3, dampingFraction: 0.8)
                             ) {
                                 settings.hapticsEnabled = newValue
@@ -328,7 +328,7 @@ private struct AppearanceSettingsView: View {
         ) {
             ForEach(AppTheme.allCases) { theme in
                 Button {
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    BubbleMotion.animate(.easeInOut(duration: 0.25)) {
                         settings.theme = theme
                         settings.appearance =
                             theme == .dark ? .dark : .light
