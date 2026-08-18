@@ -68,6 +68,7 @@ struct CachedRemoteImage<
             loadedIdentity = identity
             fallbackImage = nil
             loadingIdentity = nil
+            BubbleTintCache.shared.recordArtwork(cached, for: url)
             return
         }
 
@@ -106,6 +107,7 @@ struct CachedRemoteImage<
             if loadingIdentity == identity {
                 loadingIdentity = nil
             }
+            BubbleTintCache.shared.recordArtwork(loaded, for: url)
         } catch is CancellationError {
             if loadingIdentity == identity {
                 loadingIdentity = nil
@@ -289,6 +291,9 @@ final class ArtworkImageCache: @unchecked Sendable {
                 return
             }
             insert(artwork, for: url, maxPixelSize: maxPixelSize)
+            await MainActor.run {
+                BubbleTintCache.shared.recordArtwork(artwork, for: url)
+            }
         } catch {
             return
         }
