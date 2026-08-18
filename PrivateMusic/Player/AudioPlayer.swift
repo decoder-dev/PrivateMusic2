@@ -352,6 +352,40 @@ enum AudioProcessingRoutePolicy {
     }
 }
 
+/// Configures `AVAudioSession` for music playback with graceful fallbacks.
+///
+/// `allowBluetoothA2DP` is rejected on some simulator / policy combinations
+/// when paired with `longFormAudio`; fall back to the plain category so CI
+/// and older runtimes still activate the session.
+enum PlaybackAudioSessionPolicy {
+    static func configure(
+        _ session: AVAudioSession = .sharedInstance()
+    ) -> Bool {
+        let optionSets: [AVAudioSession.CategoryOptions] = [
+            [.allowBluetoothA2DP],
+            []
+        ]
+        for options in optionSets {
+            do {
+                try session.setCategory(
+                    .playback,
+                    mode: .default,
+                    policy: .longFormAudio,
+                    options: options
+                )
+                try? session.setPreferredSampleRate(48_000)
+                if #available(iOS 17.0, *) {
+                    try? session.setPrefersInterruptionOnRouteDisconnect(true)
+                }
+                return true
+            } catch {
+                continue
+            }
+        }
+        return false
+    }
+}
+
 /// Whether `MTAudioProcessingTap` can be attached for a given source URL.
 ///
 /// Apple documents that `AVAudioMix` / audio taps work on file-based and
@@ -2653,27 +2687,9 @@ final class AudioPlayer {
 
     @discardableResult
     private func configureAudioSession() -> Bool {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(
-                .playback,
-                mode: .default,
-                policy: .longFormAudio,
-                options: [.allowBluetoothA2DP]
-            )
-            try? session.setPreferredSampleRate(48_000)
-            if #available(iOS 17.0, *) {
-                // Keep the system's expected media-app behavior when wired or
-                // wireless headphones disappear: interrupt playback instead
-                // of leaking audio through the device speaker.
-                try? session.setPrefersInterruptionOnRouteDisconnect(true)
-            }
-            audioSessionConfigured = true
-            return true
-        } catch {
-            audioSessionConfigured = false
-            return false
-        }
+        let configured = PlaybackAudioSessionPolicy.configure()
+        audioSessionConfigured = configured
+        return configured
     }
 
     private func activateAudioSession() -> Bool {
