@@ -1458,7 +1458,7 @@ actor HLSSegmentExporter {
               iv.count == PM_AES128_IV_BYTES else {
             throw HLSExportError.decryptionFailed
         }
-        let outputCapacity = data.count + PM_AES128_BLOCK_BYTES
+        let outputCapacity = data.count + Int(PM_AES128_BLOCK_BYTES)
         var output = Data(count: outputCapacity)
         var outputLength: Int32 = 0
         let status = output.withUnsafeMutableBytes { outputBytes in
