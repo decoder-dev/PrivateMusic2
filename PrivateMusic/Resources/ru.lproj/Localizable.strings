@@ -127,6 +127,7 @@
 "vk_did_not_return_any_available_tracks_for_this_artist" = "Для этого исполнителя VK не вернул доступных треков.";
 "connect_vk_to_open_the_artist_page" = "Подключите VK, чтобы открыть страницу исполнителя.";
 "play_next" = "Играть следующим";
+"play_last" = "В конец очереди";
 "open_player" = "Открыть плеер";
 "open_full_screen_player" = "Открыть полноэкранный плеер";
 "previous_track" = "Предыдущий трек";
@@ -377,6 +378,8 @@
 "player" = "Плеер";
 "choose_a_track_from_your_library_or_a_mix" = "Выберите трек в медиатеке или миксе.";
 "player.now_playing_kicker" = "СЕЙЧАС ИГРАЕТ";
+"player.up_next" = "Дальше";
+"player.open_artist" = "Открыть исполнителя";
 "remove_from_library" = "Удалить из медиатеки";
 "add_to_library_2" = "Добавить в медиатеку";
 "playback_position" = "Позиция воспроизведения";

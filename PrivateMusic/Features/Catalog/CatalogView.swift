@@ -750,6 +750,13 @@ struct CatalogView: View {
             Label(L10n.text("play_next"), systemImage: "text.badge.plus")
         }
         Button {
+            environment.player.playLast(track)
+        } label: {
+            Label(L10n.text("play_last"),
+                systemImage: "text.line.last.and.arrowtriangle.forward"
+            )
+        }
+        Button {
             environment.player.play(track, in: queue, source: source)
             environment.player.presentPlayer()
         } label: {
