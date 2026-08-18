@@ -341,6 +341,7 @@ final class PrivateMusicMediaTests: XCTestCase {
             }
         }
         XCTAssertEqual(Int32(cryptStatus), Int32(kCCSuccess))
-        return Data(output.prefix(outputLength))
+        let encrypted = output
+        return Data(encrypted.prefix(outputLength))
     }
 }
