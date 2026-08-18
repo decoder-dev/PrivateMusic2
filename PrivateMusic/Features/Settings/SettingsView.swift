@@ -389,6 +389,19 @@ private struct PlayerAudioSettingsView: View {
                 .foregroundStyle(.secondary)
 
                 Toggle(
+                    isOn: $settings.crossfadeEnabled
+                ) {
+                    Label(L10n.text("crossfade"),
+                        systemImage: "arrow.left.arrow.right"
+                    )
+                }
+                Text(
+                    L10n.text("overlaps_the_next_track_for_a_short_fade_skipped_on_hls_eq_and_low_powe")
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+                Toggle(
                     isOn: $settings.loudnessNormalization
                 ) {
                     Label(L10n.text("volume_normalization"),

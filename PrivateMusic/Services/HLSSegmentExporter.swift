@@ -94,8 +94,7 @@ actor HLSSegmentExporter {
                 initialization,
                 headers: headers,
                 keyCache: &keyCache,
-                cache: &initializationCache,
-                nextOffsetByURL: &nextOffsetByURL
+                cache: &initializationCache
             )
             logger.info(
                 "HLS export: init fetched, \(initializationData?.count ?? 0) bytes"
@@ -1117,8 +1116,10 @@ actor HLSSegmentExporter {
         return result
     }
 
-    /// Resolves a BYTERANGE spec. An implicit offset continues the previous
-    /// range of the *same URL*; each URL keeps its own offset.
+    /// Resolves a media-segment BYTERANGE spec. An implicit offset continues
+    /// the previous *media* range of the same URL (RFC 8216 §4.4.4.2). Map
+    /// ranges are independent and must not advance this cursor — vkpymusic
+    /// PR #41 / RFC 8216 §4.4.4.5.
     private func resolveByteRange(
         _ spec: HLSByteRangeSpec?,
         for url: URL,
@@ -1142,6 +1143,23 @@ actor HLSSegmentExporter {
         return start..<end
     }
 
+    /// Map BYTERANGE: omitted offset starts at byte 0 of the resource, never
+    /// at the next media-segment cursor.
+    private func resolveMapByteRange(
+        _ spec: HLSByteRangeSpec?
+    ) throws -> Range<Int>? {
+        guard let spec else { return nil }
+        guard spec.length > 0 else {
+            throw HLSExportError.invalidByteRange
+        }
+        let start = spec.explicitOffset ?? 0
+        guard start >= 0,
+              start <= Int.max - spec.length else {
+            throw HLSExportError.invalidByteRange
+        }
+        return start..<(start + spec.length)
+    }
+
     private func resolvedURL(_ string: String, base: URL) -> URL {
         if let absolute = URL(string: string), absolute.scheme != nil {
             return absolute
@@ -1158,17 +1176,12 @@ actor HLSSegmentExporter {
         _ initialization: HLSInitializationSection,
         headers: [String: String],
         keyCache: inout [URL: Data],
-        cache: inout [InitializationCacheKey: Data],
-        nextOffsetByURL: inout [URL: Int]
+        cache: inout [InitializationCacheKey: Data]
     ) async throws -> Data {
         if let cached = cache[initialization.cacheKey] {
             return cached
         }
-        let range = try resolveByteRange(
-            initialization.byteRangeSpec,
-            for: initialization.url,
-            nextOffsetByURL: &nextOffsetByURL
-        )
+        let range = try resolveMapByteRange(initialization.byteRangeSpec)
         var data = try await fetchData(
             from: initialization.url,
             kind: .initialization,

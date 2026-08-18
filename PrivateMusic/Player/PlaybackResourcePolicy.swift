@@ -28,6 +28,20 @@ enum PlaybackResourcePolicy {
         guard requiresAudioTap, !lowPowerMode else { return false }
         return !thermalState.shouldThrottlePlaybackProcessing
     }
+
+    /// Overlapping two AVPlayers for a short crossfade. Skip when the
+    /// device is already decoding under constraint or running a tap.
+    static func allowOverlappingPlayback(
+        userEnabled: Bool,
+        requiresAudioTap: Bool,
+        lowPowerMode: Bool = ProcessInfo.processInfo.isLowPowerModeEnabled,
+        thermalState: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState
+    ) -> Bool {
+        guard userEnabled, !requiresAudioTap, !lowPowerMode else {
+            return false
+        }
+        return !thermalState.shouldThrottlePlaybackProcessing
+    }
 }
 
 private extension ProcessInfo.ThermalState {
