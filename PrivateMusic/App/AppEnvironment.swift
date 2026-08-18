@@ -360,7 +360,6 @@ final class AppEnvironment {
         let refreshID = homeCatalogStore.beginRefreshing()
         var recommendations: [Track]?
         var mixes: [MusicMix]?
-        var playlists: [Playlist]?
         var newReleases: [Album]?
         var failures: [String] = []
 
@@ -386,31 +385,6 @@ final class AppEnvironment {
                 return .failure(error)
             }
         }()
-        // «Ваши плейлисты» on the home screen is the same list as the
-        // library shelf, so it asks for a full page and applies the same
-        // duplicate collapse policy.
-        let playlistOwnerID = sessionStore.resolvedOfflineAccountID
-        async let playlistsResult: Result<[Playlist], Error> = {
-            do {
-                let value = try await withAuthorizedToken { token in
-                    let page = try await musicService.playlists(
-                        accessToken: token,
-                        offset: 0,
-                        count: LibraryPlaylistPagePolicy.pageSize
-                    )
-                    return page.items
-                }
-                return .success(
-                    LibraryPlaylistShelfPolicy.normalized(
-                        value,
-                        ownerID: playlistOwnerID
-                    )
-                )
-            } catch {
-                return .failure(error)
-            }
-        }()
-
         switch await recommendationsResult {
         case let .success(value):
             recommendations = value
@@ -435,21 +409,9 @@ final class AppEnvironment {
             newReleases = []
         }
 
-        switch await playlistsResult {
-        case let .success(value):
-            playlists = value
-        case let .failure(error):
-            if error is CancellationError {
-                homeCatalogStore.cancelRefreshing(refreshID: refreshID)
-                return
-            }
-            failures.append(error.localizedDescription)
-        }
-
         homeCatalogStore.finish(
             recommendations: recommendations,
             mixes: mixes,
-            playlists: playlists,
             newReleases: newReleases,
             errorMessage: failures.first,
             refreshID: refreshID
