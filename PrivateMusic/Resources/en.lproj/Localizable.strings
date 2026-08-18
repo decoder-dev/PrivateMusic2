@@ -28,6 +28,9 @@
 "tab.search" = "Search";
 "tab.profile" = "Profile";
 "tab.settings" = "Settings";
+"account" = "Account";
+"support" = "Support";
+"session" = "Session";
 "artist" = "Artist";
 "tab.mix" = "Mix";
 "listen_together" = "Listen Together";

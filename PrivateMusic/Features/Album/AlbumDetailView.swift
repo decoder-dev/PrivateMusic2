@@ -28,7 +28,8 @@ struct AlbumDetailView: View {
                             ? "music.note.list"
                             : "lock.fill",
                         description: model.errorMessage
-                            ?? "vk_returned_no_available_audio"
+                            ?? "vk_returned_no_available_audio",
+                        descriptionIsLocalizedKey: model.errorMessage == nil
                     )
                     Button(L10n.text("action.retry")) {
                         Task { await load(force: true) }

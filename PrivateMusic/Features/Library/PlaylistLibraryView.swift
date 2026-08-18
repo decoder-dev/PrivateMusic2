@@ -16,7 +16,8 @@ struct PlaylistLibraryView: View {
                 EmptyStateView(
                     title: "could_not_load_playlists",
                     systemImage: "wifi.exclamationmark",
-                    description: error
+                    description: error,
+                    descriptionIsLocalizedKey: false
                 )
             } else if model.playlists.isEmpty {
                 EmptyStateView(
