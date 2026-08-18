@@ -12,15 +12,19 @@ struct CachedRemoteImage<
     @ViewBuilder let placeholder: () -> Placeholder
 
     @State private var image: UIImage?
+    @State private var fallbackImage: UIImage?
     @State private var loadedIdentity: LoadIdentity?
+    @State private var loadingIdentity: LoadIdentity?
 
     var body: some View {
         let displayedImage = loadedIdentity == loadIdentity ? image : nil
+        let visibleImage = displayedImage
+            ?? (loadingIdentity == loadIdentity ? fallbackImage : nil)
 
         ZStack {
             placeholder()
-                .opacity(displayedImage == nil ? 1 : 0)
-            if let image = displayedImage {
+                .opacity(visibleImage == nil ? 1 : 0)
+            if let image = visibleImage {
                 content(Image(uiImage: image))
             }
         }
@@ -40,16 +44,21 @@ struct CachedRemoteImage<
 
     @MainActor
     private func load(_ identity: LoadIdentity) async {
-        // SwiftUI keeps @State when this view receives another URL. Clear the
-        // previous bitmap before either the cache or network path can finish.
         if loadedIdentity != identity {
+            // Keep the last settled bitmap visible while the replacement loads,
+            // but only for that load's lifetime — a failed request must still
+            // end on the placeholder instead of leaving the wrong artwork up.
+            fallbackImage = image
             image = nil
             loadedIdentity = nil
         }
 
         guard let url = identity.url else {
+            fallbackImage = nil
+            loadingIdentity = nil
             return
         }
+        loadingIdentity = identity
         let pixelSize = CGFloat(identity.pixelSize)
         if let cached = ArtworkImageCache.shared.image(
             for: url,
@@ -57,6 +66,8 @@ struct CachedRemoteImage<
         ) {
             image = cached
             loadedIdentity = identity
+            fallbackImage = nil
+            loadingIdentity = nil
             return
         }
 
@@ -91,12 +102,22 @@ struct CachedRemoteImage<
             )
             image = loaded
             loadedIdentity = identity
+            fallbackImage = nil
+            if loadingIdentity == identity {
+                loadingIdentity = nil
+            }
         } catch is CancellationError {
+            if loadingIdentity == identity {
+                loadingIdentity = nil
+            }
             return
         } catch {
             guard loadIdentity == identity else { return }
             image = nil
             loadedIdentity = nil
+            if loadingIdentity == identity {
+                loadingIdentity = nil
+            }
             return
         }
     }
