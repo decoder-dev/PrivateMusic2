@@ -291,15 +291,16 @@ enum MixQueueRanker {
     }
 
     private static func normalized(_ value: String) -> String {
-        var value = value
-        return value.withUTF8 { input -> String in
+        let fallback = value
+        var mutable = value
+        return mutable.withUTF8 { input -> String in
             guard let base = input.baseAddress else { return "" }
             return withUnsafeTemporaryAllocation(
                 of: UInt8.self,
                 capacity: input.count
             ) { scratch -> String in
                 guard let output = scratch.baseAddress else {
-                    return foundationNormalized(value)
+                    return foundationNormalized(fallback)
                 }
                 let written = pm_text_normalize_identity(
                     base,
@@ -308,7 +309,7 @@ enum MixQueueRanker {
                     Int32(input.count)
                 )
                 guard written >= 0 else {
-                    return foundationNormalized(value)
+                    return foundationNormalized(fallback)
                 }
                 return String(
                     decoding: UnsafeBufferPointer(
