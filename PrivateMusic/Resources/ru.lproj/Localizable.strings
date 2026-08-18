@@ -178,6 +178,11 @@
 "home_stage.kind.artist" = "В стиле артиста";
 "home_stage.kind.mix" = "Микс";
 "home_stage.artist_plus_d0" = "%@ +%d";
+"home_stage.dynamic_artist.title" = "Похоже, тебе заходит %@";
+"home_stage.dynamic_artist.continue" = "Продолжить";
+"home_stage.dynamic_artist.reason.liked" = "Ты добавил его трек в медиатеку";
+"home_stage.dynamic_artist.reason.frequent" = "Ты часто слушаешь его в последнее время";
+"home_stage.dynamic_artist.reason.multiple" = "Несколько треков за последние дни";
 "player_look" = "Вид плеера";
 "classic_player_look" = "Старый вид плеера";
 "classic_player_look.footnote" = "Возвращает оформление iOS 18: обычная нижняя панель с мини-плеером вместо плавающей, матовые панели и плоские кнопки вместо Liquid Glass. Действует на плеер, мини-плеер, нижнюю панель и остальные панели приложения.";

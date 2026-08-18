@@ -5,16 +5,25 @@ import SwiftUI
 /// credit — the lead artist survives, with the rest folded into a short
 /// count instead of the raw string running on past where it reads.
 enum ArtistCreditDisplay {
+    /// Splits VK's comma-joined multi-artist credit into individual names.
+    /// The one place this happens — `readable`, `summarize` and
+    /// `ArtistAffinityPolicy` all read a credit through this rather than
+    /// re-splitting on "," themselves, so a featuring credit resolves to
+    /// the same artists everywhere it is scored or displayed.
+    static func components(_ raw: String) -> [String] {
+        raw
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
     /// The Hero needs the artist's real name in full — never the bubble's
     /// "+N" shorthand. VK's raw multi-artist credit is comma-joined; this
     /// reads like a byline ("SKWLKR & Lastfragment") instead of a
     /// database field. Used only for the Hero headline; bubbles keep the
     /// compact `summarize(_:)` policy below.
     static func readable(_ raw: String) -> String {
-        let parts = raw
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        let parts = components(raw)
         guard let first = parts.first else { return raw }
         guard parts.count > 1 else { return first }
         let allButLast = parts.dropLast().joined(separator: ", ")
@@ -22,10 +31,7 @@ enum ArtistCreditDisplay {
     }
 
     static func summarize(_ raw: String) -> String {
-        let parts = raw
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        let parts = components(raw)
         // No comma at all (or nothing usable behind it) — pass the
         // original through rather than an empty string.
         guard let first = parts.first else { return raw }

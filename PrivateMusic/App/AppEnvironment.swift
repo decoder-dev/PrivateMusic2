@@ -14,6 +14,7 @@ final class AppEnvironment {
     let offlineStore: OfflineTrackStore
     let pinnedMixStore: PinnedMixStore
     let mixFeedbackStore: MixFeedbackStore
+    let homePersonalizationStore: HomePersonalizationStore
     let trackShareService: TrackShareService
     let player: AudioPlayer
     let watchRemoteCoordinator: WatchRemoteCoordinator
@@ -76,6 +77,11 @@ final class AppEnvironment {
             accountID: sessionStore.resolvedOfflineAccountID
         )
         self.mixFeedbackStore = mixFeedbackStore
+        let homePersonalizationStore = HomePersonalizationStore()
+        homePersonalizationStore.configure(
+            accountID: sessionStore.resolvedOfflineAccountID
+        )
+        self.homePersonalizationStore = homePersonalizationStore
         let player = AudioPlayer(
             settings: settings,
             historyStore: historyStore,
@@ -253,6 +259,7 @@ final class AppEnvironment {
         OfflinePlaylistStore.shared.configure(accountID: accountID)
         pinnedMixStore.configure(accountID: accountID)
         mixFeedbackStore.configure(accountID: accountID)
+        homePersonalizationStore.configure(accountID: accountID)
     }
 
     /// Walks the whole personal library and rebuilds the liked-track index.

@@ -178,6 +178,11 @@
 "home_stage.kind.artist" = "Like this artist";
 "home_stage.kind.mix" = "Mix";
 "home_stage.artist_plus_d0" = "%@ +%d";
+"home_stage.dynamic_artist.title" = "Looks like you're into %@";
+"home_stage.dynamic_artist.continue" = "Continue";
+"home_stage.dynamic_artist.reason.liked" = "You added one of their tracks to your library";
+"home_stage.dynamic_artist.reason.frequent" = "You've been listening to them a lot lately";
+"home_stage.dynamic_artist.reason.multiple" = "A few of their tracks in the last few days";
 "player_look" = "Player Look";
 "classic_player_look" = "Classic Player";
 "classic_player_look.footnote" = "Restores the iOS 18 look: a regular bottom bar with the mini player instead of the floating one, frosted panels and flat buttons instead of Liquid Glass. Applies to the player, the mini player, the bottom bar and the app's other panels.";

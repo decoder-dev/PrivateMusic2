@@ -10,6 +10,9 @@ struct CatalogView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(ListeningHistoryStore.self) private var history
     @Environment(HomeCatalogStore.self) private var homeCatalog
+    @Environment(MusicLibraryStore.self) private var libraryStore
+    @Environment(MixFeedbackStore.self) private var mixFeedback
+    @Environment(HomePersonalizationStore.self) private var personalization
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var actionErrorMessage: String?
@@ -17,6 +20,7 @@ struct CatalogView: View {
     @State private var selectedAlbum: Album?
     @State private var loadingAlbumTrackID: String?
     @State private var albumLookupTask: Task<Void, Never>?
+    @State private var isDynamicArtistLaunching = false
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -37,17 +41,12 @@ struct CatalogView: View {
                                 .id(MainTabScrollDestination.home)
                         }
 
-                        if !history.entries.isEmpty {
-                            recentlyPlayedSection(metrics: metrics)
+                        if !vkMixCandidates.isEmpty {
+                            vkMixesSection(metrics: metrics)
                         }
                         if isLoading && contentIsEmpty {
                             catalogSkeleton(metrics: metrics)
                         } else {
-                            // One discovery section, full stop — station,
-                            // mood and the VK mix catalog already have a
-                            // home in the stage rail and the Mix tab.
-                            // Duplicating them here is what made Home read
-                            // as a second copy of the rest of the app.
                             if !recommendations.isEmpty {
                                 recommendationsSection(metrics: metrics)
                             }
@@ -55,6 +54,15 @@ struct CatalogView: View {
                             if let errorMessage, !contentIsEmpty {
                                 retryRow(errorMessage)
                             }
+                        }
+                        if let dynamicArtistCandidate {
+                            dynamicArtistSection(
+                                dynamicArtistCandidate,
+                                metrics: metrics
+                            )
+                        }
+                        if !history.entries.isEmpty {
+                            recentlyPlayedSection(metrics: metrics)
                         }
                     }
                     .padding(.horizontal, metrics.horizontalPadding)
@@ -105,6 +113,15 @@ struct CatalogView: View {
             actionErrorMessage = error
             environment.mixActionError = nil
         }
+        // The candidate is recomputed on every body pass; recording it here
+        // (rather than inside the computed property) is what makes the
+        // "prefer what's already shown" stickiness actually stick instead
+        // of just reading its own last write back immediately.
+        .onChange(of: dynamicArtistCandidate?.artistKey) { _, key in
+            if let key {
+                personalization.recordShown(artistKey: key)
+            }
+        }
         .onReceive(
             NotificationCenter.default.publisher(
                 for: MusicLibraryEvents.didChangePlaylists
@@ -147,11 +164,42 @@ struct CatalogView: View {
         actionErrorMessage ?? homeCatalog.errorMessage
     }
 
-    /// Home's own discovery signal: the one section it still renders.
-    /// Mixes, new releases and playlists moved to the Mix and Library
-    /// tabs that already own them — their emptiness no longer belongs in
-    /// this check.
+    /// Home's own discovery signal, plus the VK mixes and dynamic-artist
+    /// sections below — new releases and playlists still belong to
+    /// Library, which owns saved content; their emptiness doesn't belong
+    /// in this check.
     private var contentIsEmpty: Bool { recommendations.isEmpty }
+
+    /// VK's own feed already comes relevance-ordered — this is dedup and
+    /// a cap, not a second ranking model layered on data this app has no
+    /// basis to second-guess.
+    private var vkMixCandidates: [MusicMix] {
+        HomeVKMixesPolicy.candidates(from: homeCatalog.mixes)
+    }
+
+    /// The one artist Home's own listening signals currently support,
+    /// still respecting whatever `MixFeedbackStore` has suppressed and
+    /// preferring the artist already shown so the section does not
+    /// reshuffle after every track.
+    private var dynamicArtistCandidate: ArtistAffinityCandidate? {
+        let candidates = ArtistAffinityPolicy.candidates(
+            history: history.entries,
+            isLiked: { libraryStore.contains($0) },
+            bannedArtistKeys: mixFeedback.bannedArtists
+        )
+        return ArtistAffinityPolicy.selectDynamicArtist(
+            from: candidates,
+            previouslyShownKey: personalization.lastShownArtistKey
+        )
+    }
+
+    private func seedTrack(forArtistKey key: String) -> Track? {
+        history.entries.first { entry in
+            ArtistCreditDisplay.components(entry.track.artist).contains {
+                MixFeedbackPolicy.normalized($0) == key
+            }
+        }?.track
+    }
 
     private var welcomeHeader: some View {
         HStack(spacing: 12) {
@@ -186,6 +234,184 @@ struct CatalogView: View {
         case 18..<23: L10n.text("good_evening")
         default: L10n.text("good_night")
         }
+    }
+
+    // MARK: - VK Mixes
+
+    /// Media-first: artwork carries the section, source metadata stays
+    /// small. `MixesHubView` still owns the full catalog and advanced
+    /// Radio tuning — this is a taste, not a second copy of that screen.
+    private func vkMixesSection(metrics: HomeMetrics) -> some View {
+        VStack(alignment: .leading, spacing: BubbleSpacing.m) {
+            HStack(alignment: .firstTextBaseline) {
+                PremiumSectionHeader("vk_mixes")
+                Spacer(minLength: BubbleSpacing.m)
+                NavigationLink(L10n.text("all_mixes")) {
+                    MixesHubView()
+                }
+                .font(.subheadline.weight(.semibold))
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: metrics.cardSpacing) {
+                    ForEach(vkMixCandidates) { mix in
+                        vkMixCard(mix, artworkSize: metrics.trackWidth)
+                    }
+                }
+            }
+        }
+    }
+
+    private func vkMixCard(
+        _ mix: MusicMix,
+        artworkSize: CGFloat
+    ) -> some View {
+        Button {
+            Haptics.selection()
+            Task { await environment.startCatalogMix(mix) }
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HomeTrackArtwork(url: mix.artworkURL, size: artworkSize)
+                Text(mix.title)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !mix.subtitle.isEmpty {
+                    Text(mix.subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(width: artworkSize, alignment: .leading)
+        }
+        .buttonStyle(PremiumPressStyle())
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Dynamic artist
+
+    /// Only rendered when `ArtistAffinityPolicy` actually has evidence —
+    /// weak or absent affinity means no section, not a filler card.
+    private func dynamicArtistSection(
+        _ candidate: ArtistAffinityCandidate,
+        metrics: HomeMetrics
+    ) -> some View {
+        VStack(alignment: .leading, spacing: BubbleSpacing.m) {
+            PremiumSectionHeader("selena.name")
+            HStack(spacing: BubbleSpacing.m) {
+                dynamicArtistGlyph(candidate, size: metrics.recentWidth)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(
+                        L10n.format(
+                            "home_stage.dynamic_artist.title",
+                            candidate.displayName
+                        )
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    Text(dynamicArtistReasonText(candidate.reason))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: BubbleSpacing.s) {
+                        Button {
+                            continueDynamicArtist(candidate)
+                        } label: {
+                            if isDynamicArtistLaunching {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Text(
+                                    L10n.text(
+                                        "home_stage.dynamic_artist.continue"
+                                    )
+                                )
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(isDynamicArtistLaunching)
+
+                        Button(role: .destructive) {
+                            hideDynamicArtist(candidate)
+                        } label: {
+                            Text(L10n.text("hide_artist"))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .tint(.secondary)
+                    }
+                    .padding(.top, 2)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func dynamicArtistGlyph(
+        _ candidate: ArtistAffinityCandidate,
+        size: CGFloat
+    ) -> some View {
+        let tint = BubblePalette.surface(.artist, tint: nil).color
+        return ZStack {
+            LinearGradient(
+                colors: [tint, tint.opacity(0.55)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Image(systemName: "person.wave.2.fill")
+                .font(.system(size: size * 0.32, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
+        }
+        .frame(width: size * 0.62, height: size * 0.62)
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: PremiumLayout.artworkRadius(for: size * 0.62),
+                style: .continuous
+            )
+        )
+    }
+
+    private func dynamicArtistReasonText(
+        _ reason: ArtistAffinityCandidate.Reason
+    ) -> String {
+        switch reason {
+        case .likedAndPlayed:
+            L10n.text("home_stage.dynamic_artist.reason.liked")
+        case .frequentRecently:
+            L10n.text("home_stage.dynamic_artist.reason.frequent")
+        case .multipleTracks:
+            L10n.text("home_stage.dynamic_artist.reason.multiple")
+        }
+    }
+
+    private func continueDynamicArtist(_ candidate: ArtistAffinityCandidate) {
+        guard !isDynamicArtistLaunching else { return }
+        Haptics.selection()
+        let seed = seedTrack(forArtistKey: candidate.artistKey)
+        isDynamicArtistLaunching = true
+        Task {
+            defer { isDynamicArtistLaunching = false }
+            await environment.startMixFromArtist(
+                named: candidate.displayName,
+                seed: seed
+            )
+        }
+    }
+
+    /// Reuses `MixFeedbackStore` rather than a second suppression list —
+    /// the same ban already keeps this artist out of Mix Radio, and now
+    /// out of `ArtistAffinityPolicy`'s candidates too.
+    private func hideDynamicArtist(_ candidate: ArtistAffinityCandidate) {
+        Haptics.selection()
+        guard let seed = seedTrack(forArtistKey: candidate.artistKey) else {
+            return
+        }
+        mixFeedback.ban(seed, includeArtist: true)
+        personalization.clearIfShowing(artistKey: candidate.artistKey)
     }
 
     private func recommendationsSection(metrics: HomeMetrics) -> some View {

@@ -1,8 +1,12 @@
 import SwiftUI
 
+/// Mix is no longer a permanent root destination — VK Mixes now live on
+/// Home, and the full hub (advanced Radio tuning, the VK catalog, Selena
+/// controls) is one tap away from there. Four intentional root tabs read
+/// as one product; five, with Mix duplicating what Home already surfaces,
+/// read as two apps stitched together.
 private enum MainTab: CaseIterable, Hashable, Identifiable {
     case home
-    case mix
     case library
     case search
     case profile
@@ -12,7 +16,6 @@ private enum MainTab: CaseIterable, Hashable, Identifiable {
     var title: String {
         switch self {
         case .home: L10n.text("tab.home")
-        case .mix: L10n.text("tab.mix")
         case .library: L10n.text("tab.library")
         case .search: L10n.text("tab.search")
         case .profile: L10n.text("tab.profile")
@@ -22,7 +25,6 @@ private enum MainTab: CaseIterable, Hashable, Identifiable {
     var image: String {
         switch self {
         case .home: "house.fill"
-        case .mix: "sparkles"
         case .library: "music.note.list"
         case .search: "magnifyingglass"
         case .profile: "person.crop.circle"
@@ -32,7 +34,6 @@ private enum MainTab: CaseIterable, Hashable, Identifiable {
     var scrollDestination: MainTabScrollDestination {
         switch self {
         case .home: .home
-        case .mix: .mix
         case .library: .library
         case .search: .search
         case .profile: .profile
@@ -136,8 +137,6 @@ struct MainTabView: View {
         switch selectedTab {
         case .home:
             NavigationStack { CatalogView() }
-        case .mix:
-            NavigationStack { MixesHubView() }
         case .library:
             NavigationStack { LibraryView() }
         case .search:
@@ -150,7 +149,7 @@ struct MainTabView: View {
     }
 
     private var sidebarTabs: [MainTab] {
-        [.home, .mix, .library, .search, .profile]
+        [.home, .library, .search, .profile]
     }
 
     /// Custom floating dock for iOS 16–25. iOS 26.0+ uses the system
@@ -159,9 +158,6 @@ struct MainTabView: View {
         ZStack {
             tabScreen(.home) {
                 NavigationStack { CatalogView() }
-            }
-            tabScreen(.mix) {
-                NavigationStack { MixesHubView() }
             }
             tabScreen(.library) {
                 NavigationStack { LibraryView() }
@@ -254,14 +250,6 @@ private struct SystemLiquidGlassTabView: View {
                 value: MainTab.home
             ) {
                 NavigationStack { CatalogView() }
-            }
-
-            Tab(
-                MainTab.mix.title,
-                systemImage: MainTab.mix.image,
-                value: MainTab.mix
-            ) {
-                NavigationStack { MixesHubView() }
             }
 
             Tab(
@@ -455,7 +443,7 @@ private struct PlaybackTabDock: View {
     }
 
     private var primaryTabs: [MainTab] {
-        [.home, .mix, .library, .profile]
+        [.home, .library, .profile]
     }
 
     private var searchTabButton: some View {
