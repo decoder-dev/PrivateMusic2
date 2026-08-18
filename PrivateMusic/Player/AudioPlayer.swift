@@ -1174,7 +1174,9 @@ final class AudioPlayer {
     private(set) var queueSource: QueueSource? {
         didSet { syncHighlight() }
     }
-    private(set) var queueSeedTrackTitle: String?
+    private(set) var queueSeedTrackTitle: String? {
+        didSet { syncHighlight() }
+    }
     /// Active mix radio ordering. Owned here because it describes the
     /// live queue: every surface offering the control (mix hub, queue
     /// sheet) reads one value instead of keeping its own `@State`, which
@@ -1184,8 +1186,10 @@ final class AudioPlayer {
         didSet { syncHighlight() }
     }
     private(set) var isBuffering = false
-    /// Exact transport clock. Not `@Published` — UI observes `progress` so
-    /// catalog/library EnvironmentObject consumers are not invalidated at 2 Hz.
+    /// Exact transport clock. Not observed by list rows — UI reads
+    /// `progress` instead so catalog/library surfaces are not invalidated
+    /// at ~4 Hz.
+    @ObservationIgnored
     private(set) var elapsedTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
     /// Shuffle mode of the queue that is playing right now.
@@ -1360,7 +1364,13 @@ final class AudioPlayer {
             currentTrackID: currentTrack?.id,
             isPlaying: isPlaying,
             queueSource: queueSource,
-            currentArtist: currentTrack?.artist
+            currentArtist: currentTrack?.artist,
+            currentTrackTitle: currentTrack?.title,
+            currentTrackArtworkURL: currentTrack?.artworkURL,
+            queueContextTitle: QueueContextTitlePolicy.resolve(
+                queueSource: queueSource,
+                queueSeedTrackTitle: queueSeedTrackTitle
+            )
         )
     }
 
@@ -1368,24 +1378,10 @@ final class AudioPlayer {
     /// "player.now_playing_kicker" in the full-screen player in place of a bare
     /// "N of M" position (that position now lives in the queue screen).
     var queueContextTitle: String {
-        switch queueSource {
-        case let .mix(title) where QueueSourceTitle.isUsable(title):
-            return title
-        case let .playlist(title) where QueueSourceTitle.isUsable(title):
-            return title
-        case let .album(title) where QueueSourceTitle.isUsable(title):
-            return title
-        case .history:
-            return L10n.text("listening_history")
-        case .library:
-            return L10n.text("library.your_tracks")
-        default:
-            if let seed = queueSeedTrackTitle,
-               QueueSourceTitle.isUsable(seed) {
-                return L10n.format("mix_based_on_0", seed)
-            }
-            return L10n.text("player.your_queue")
-        }
+        QueueContextTitlePolicy.resolve(
+            queueSource: queueSource,
+            queueSeedTrackTitle: queueSeedTrackTitle
+        )
     }
 
     func presentPlayer() {
