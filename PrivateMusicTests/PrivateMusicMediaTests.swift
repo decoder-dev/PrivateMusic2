@@ -102,7 +102,8 @@ final class PrivateMusicMediaTests: XCTestCase {
             }
         }
         XCTAssertEqual(status, PM_AES128_OK)
-        XCTAssertEqual(output.prefix(Int(outputLength)), plaintext)
+        let decrypted = output
+        XCTAssertEqual(decrypted.prefix(Int(outputLength)), plaintext)
     }
 
     func testAES128CBCDecryptRejectsNonBlockAlignedCiphertext() {
@@ -314,7 +315,8 @@ final class PrivateMusicMediaTests: XCTestCase {
         key: Data,
         iv: Data
     ) -> Data {
-        var output = Data(count: plaintext.count + Int(PM_AES128_BLOCK_BYTES))
+        let capacity = plaintext.count + Int(PM_AES128_BLOCK_BYTES)
+        var output = Data(count: capacity)
         var outputLength = 0
         var cryptStatus: CCCryptorStatus = CCCryptorStatus(kCCSuccess)
         output.withUnsafeMutableBytes { outputBytes in
@@ -331,7 +333,7 @@ final class PrivateMusicMediaTests: XCTestCase {
                             plaintextBytes.baseAddress,
                             plaintext.count,
                             outputBytes.baseAddress,
-                            output.count,
+                            capacity,
                             &outputLength
                         )
                     }
@@ -339,6 +341,6 @@ final class PrivateMusicMediaTests: XCTestCase {
             }
         }
         XCTAssertEqual(Int32(cryptStatus), Int32(kCCSuccess))
-        return output.prefix(outputLength)
+        return Data(output.prefix(outputLength))
     }
 }
