@@ -375,3 +375,35 @@ final class MiniPlayerAccessoryPolicyTests: XCTestCase {
         )
     }
 }
+
+final class QueuePresentationPolicyTests: XCTestCase {
+    func testUpcomingStartsAfterTheCurrentIndex() {
+        XCTAssertEqual(
+            QueuePresentationPolicy.upcomingOffsets(
+                queueCount: 4,
+                currentIndex: 1
+            ),
+            [2, 3]
+        )
+    }
+
+    func testLastTrackHasNoUpcoming() {
+        XCTAssertEqual(
+            QueuePresentationPolicy.upcomingOffsets(
+                queueCount: 3,
+                currentIndex: 2
+            ),
+            []
+        )
+    }
+
+    func testMissingCurrentIndexListsTheWholeQueue() {
+        XCTAssertEqual(
+            QueuePresentationPolicy.upcomingOffsets(
+                queueCount: 2,
+                currentIndex: nil
+            ),
+            [0, 1]
+        )
+    }
+}

@@ -58,6 +58,14 @@ struct ListeningHistoryView: View {
                                     )
                                 }
                                 Button {
+                                    environment.player.playLast(entry.track)
+                                } label: {
+                                    Label(L10n.text("play_last"),
+                                        systemImage:
+                                            "text.line.last.and.arrowtriangle.forward"
+                                    )
+                                }
+                                Button {
                                     Haptics.open()
                                     sharingTrack = entry.track
                                 } label: {
@@ -83,6 +91,15 @@ struct ListeningHistoryView: View {
                                     )
                                 }
                                 .tint(settings.theme.accent)
+                                Button {
+                                    environment.player.playLast(entry.track)
+                                } label: {
+                                    Label(L10n.text("play_last"),
+                                        systemImage:
+                                            "text.line.last.and.arrowtriangle.forward"
+                                    )
+                                }
+                                .tint(BubbleGamut.mix.color)
                                 Button {
                                     playlistTarget = entry.track
                                 } label: {
