@@ -109,6 +109,7 @@ struct QueueView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .environment(\.defaultMinListRowHeight, QueueRowMetrics.minRowHeight)
     }
 
     private func queueRow(
@@ -138,6 +139,8 @@ struct QueueView: View {
             )
         }
         .buttonStyle(.plain)
+        .listRowInsets(QueueRowMetrics.listRowInsets)
+        .listRowSeparator(.hidden)
         .listRowBackground(
             isCurrent
                 ? settings.theme.accent.opacity(0.08)
