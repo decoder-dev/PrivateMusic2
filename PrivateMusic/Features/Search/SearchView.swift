@@ -50,7 +50,8 @@ struct SearchView: View {
             .modifier(SystemSearchTabModifier(
                 query: $model.query,
                 isPresented: $isSystemSearchPresented,
-                onSubmit: submitSearch
+                onSubmit: submitSearch,
+                isEnabled: usesSystemSearchChrome
             ))
             .onChange(of: model.query) { _ in
                 scheduleSearch()
@@ -61,10 +62,12 @@ struct SearchView: View {
             }
             .onChange(of: isActive) { active in
                 if active {
-                    // Activate the system search field when the search tab
-                    // is selected (belt-and-suspenders with tab activation).
-                    if #available(iOS 26.0, *) {
-                        isSystemSearchPresented = true
+                    if usesSystemSearchChrome {
+                        if #available(iOS 26.0, *) {
+                            isSystemSearchPresented = true
+                        }
+                    } else {
+                        isSearchFocused = true
                     }
                     return
                 }
@@ -107,13 +110,20 @@ struct SearchView: View {
         }
     }
 
-    /// Inline field only on the pre–iOS 26 custom dock path. System tabs
-    /// use `.searchable` instead so the search tab is not empty.
-    private var showsInlineSearchField: Bool {
+    /// Inline field when the legacy dock owns bottom chrome (pre–iOS 26 or
+    /// classic player look on iOS 26). System tabs use `.searchable` instead.
+    private var usesSystemSearchChrome: Bool {
         if #available(iOS 26.0, *) {
-            return false
+            return SearchChromePolicy.usesSystemSearchChrome(
+                isIOS26OrLater: true,
+                classicChrome: settings.classicChrome
+            )
         }
-        return true
+        return false
+    }
+
+    private var showsInlineSearchField: Bool {
+        !usesSystemSearchChrome
     }
 
     private func searchLayout(showsCustomField: Bool) -> some View {
@@ -846,16 +856,17 @@ struct SearchView: View {
     }
 }
 
-/// Binds system search chrome for the regular Search tab on iOS 26.0+.
-/// Older OS versions keep the inline custom field in `SearchView`.
+/// Binds system search chrome for the regular Search tab on iOS 26.0+ when
+/// the system tab bar is in use. Classic / legacy dock keeps the inline field.
 private struct SystemSearchTabModifier: ViewModifier {
     @Binding var query: String
     @Binding var isPresented: Bool
     let onSubmit: () -> Void
+    var isEnabled: Bool = true
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), isEnabled {
             content
                 .searchable(
                     text: $query,
