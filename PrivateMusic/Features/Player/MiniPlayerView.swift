@@ -11,6 +11,10 @@ struct MiniPlayerView: View {
     /// `tabViewBottomAccessory` already provides system chrome — stacking
     /// another plate reads as a detached black pill over the tab bar.
     var showsOwnGlassChrome: Bool = true
+    /// System `tabViewBottomAccessory` is a short slot above the tab bar.
+    /// The dock card (progress under the row) overflows that slot and paints
+    /// over the tabs — fold progress into the row and cap the height.
+    var fillsAccessorySlot: Bool = false
 
     var body: some View {
         if let track = player.currentTrack {
@@ -20,15 +24,29 @@ struct MiniPlayerView: View {
                     transportControls
                 }
                 .padding(.horizontal, MiniPlayerLayoutMetrics.horizontalPadding)
-                .padding(.top, MiniPlayerLayoutMetrics.verticalPadding)
-                .padding(
-                    .bottom,
-                    MiniPlayerLayoutMetrics.progressTopSpacing
-                )
+                .padding(.top, rowTopPadding)
+                .padding(.bottom, rowBottomPadding)
 
-                progressBar
+                if !fillsAccessorySlot {
+                    progressBar
+                }
             }
-            .frame(minHeight: MiniPlayerLayoutMetrics.minHeight)
+            .overlay(alignment: .bottom) {
+                if fillsAccessorySlot {
+                    progressBar
+                }
+            }
+            .frame(
+                minHeight: fillsAccessorySlot
+                    ? nil
+                    : MiniPlayerLayoutMetrics.minHeight
+            )
+            .frame(
+                maxHeight: fillsAccessorySlot
+                    ? MiniPlayerLayoutMetrics.accessoryMaxHeight
+                    : nil
+            )
+            .clipped()
             .modifier(
                 MiniPlayerChromeModifier(
                     showsOwnGlassChrome: showsOwnGlassChrome,
@@ -214,6 +232,14 @@ struct MiniPlayerView: View {
 
     // MARK: - Progress
 
+    private var rowTopPadding: CGFloat {
+        fillsAccessorySlot ? 4 : MiniPlayerLayoutMetrics.verticalPadding
+    }
+
+    private var rowBottomPadding: CGFloat {
+        fillsAccessorySlot ? 4 : MiniPlayerLayoutMetrics.progressTopSpacing
+    }
+
     private var progressBar: some View {
         GeometryReader { proxy in
             Capsule()
@@ -223,12 +249,48 @@ struct MiniPlayerView: View {
                         .fill(.tint)
                         .frame(width: proxy.size.width * progressFraction)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .highPriorityGesture(progressSeekGesture(width: proxy.size.width))
         }
         .frame(height: MiniPlayerLayoutMetrics.progressHeight)
         .padding(.horizontal, MiniPlayerLayoutMetrics.progressSideInset)
-        .padding(.bottom, MiniPlayerLayoutMetrics.progressBottomInset)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+        .padding(
+            .bottom,
+            fillsAccessorySlot ? 3 : MiniPlayerLayoutMetrics.progressBottomInset
+        )
+        .accessibilityLabel(L10n.text("playback_position"))
+        .accessibilityValue(progress.elapsedTime.formattedDuration)
+        .accessibilityAdjustableAction { direction in
+            let step = max(player.duration * 0.05, 5)
+            switch direction {
+            case .increment:
+                player.seek(to: min(player.duration, progress.elapsedTime + step))
+            case .decrement:
+                player.seek(to: max(0, progress.elapsedTime - step))
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    private func progressSeekGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onEnded { value in
+                seekFromProgress(x: value.location.x, width: width)
+            }
+    }
+
+    private func seekFromProgress(x: CGFloat, width: CGFloat) {
+        guard let time = MiniPlayerProgressPolicy.seekTime(
+            x: x,
+            width: width,
+            duration: player.duration
+        ) else {
+            return
+        }
+        Haptics.selection()
+        player.seek(to: time)
     }
 
     // MARK: - Gestures / chrome
