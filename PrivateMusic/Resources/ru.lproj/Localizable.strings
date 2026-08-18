@@ -226,6 +226,8 @@
 "on" = "Вкл";
 "off" = "Выкл";
 "audio_processing" = "Обработка звука";
+"audio_processing.paused_low_power" = "Приостановлена: включён режим энергосбережения. Возобновится автоматически.";
+"audio_processing.paused_thermal" = "Приостановлена: устройство перегрелось. Возобновится автоматически.";
 "spatial_audio" = "Пространственный звук";
 "expanded_stereo_soundstage" = "Расширенная стереосцена";
 "settings.intensity" = "Интенсивность";

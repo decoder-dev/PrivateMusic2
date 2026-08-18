@@ -347,6 +347,76 @@ final class PlaybackResourcePolicyTests: XCTestCase {
         )
     }
 
+    /// A tap cannot attach to an HLS playlist, so leaving the stream on the
+    /// ladder with processing switched on silently disabled the equalizer,
+    /// loudness normalization, DRC and spatial audio — while every one of
+    /// those toggles still read as on. Processing the listener explicitly
+    /// asked for now earns the rewrite on its own.
+    func testProcessingEarnsTheProgressiveUpgradeWithoutHighQuality() {
+        XCTAssertTrue(
+            PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
+                preferHighQuality: false,
+                requiresAudioProcessing: true,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+
+        let hls = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123/index.m3u8"
+        )!
+        let upgraded = StreamQualityPolicy.playbackURL(
+            hls,
+            preferHighQuality: false,
+            requiresAudioProcessing: true
+        )
+        XCTAssertEqual(
+            upgraded,
+            StreamQualityPolicy.progressiveURL(from: hls)
+        )
+        XCTAssertFalse(StreamQualityPolicy.isHLSStream(upgraded))
+        XCTAssertTrue(
+            AudioProcessingAttachPolicy.supportsAudioTap(
+                url: upgraded,
+                isOffline: false
+            ),
+            "the rewritten URL has to be tappable, or the fix bought nothing"
+        )
+    }
+
+    /// The rewrite is still not free: a constrained device keeps the ladder
+    /// even with processing on, because the tap is withheld there anyway.
+    func testProcessingDoesNotForceTheUpgradeOnAConstrainedDevice() {
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
+                preferHighQuality: false,
+                requiresAudioProcessing: true,
+                lowPowerMode: true,
+                thermalState: .nominal
+            )
+        )
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
+                preferHighQuality: false,
+                requiresAudioProcessing: true,
+                lowPowerMode: false,
+                thermalState: .critical
+            )
+        )
+    }
+
+    /// With nothing switched on, the data saver still keeps the ladder.
+    func testDataSaverStillSkipsTheUpgradeWithoutProcessing() {
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
+                preferHighQuality: false,
+                requiresAudioProcessing: false,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+    }
+
     func testRealtimeProcessingBlockedWhenThermalStateIsSerious() {
         XCTAssertFalse(
             PlaybackResourcePolicy.allowRealtimeAudioProcessing(

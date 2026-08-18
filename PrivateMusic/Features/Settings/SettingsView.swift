@@ -566,6 +566,18 @@ struct EqualizerSettingsView: View {
                 Toggle(L10n.text("dynamic_range_compression"),
                     isOn: $settings.dynamicRangeCompression
                 )
+                // Low Power Mode and thermal pressure suspend the realtime
+                // tap on purpose. Saying so is the difference between a
+                // deliberate pause and a switch that reads as on while
+                // doing nothing.
+                if let suspension = processingSuspensionKey {
+                    Label(
+                        L10n.text(suspension),
+                        systemImage: "pause.circle"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
             }
 
             Section(L10n.text("equalizer_preset")) {
@@ -657,6 +669,24 @@ struct EqualizerSettingsView: View {
                 Button(L10n.text("done")) { dismiss() }
             }
         }
+    }
+
+    /// Why on-device processing is not running right now, or `nil` when it
+    /// is. Only meaningful once something is actually switched on — with
+    /// every toggle off there is nothing being suspended.
+    private var processingSuspensionKey: String? {
+        let wantsProcessing = settings.equalizerEnabled
+            || settings.loudnessNormalization
+            || settings.dynamicRangeCompression
+        guard wantsProcessing else { return nil }
+        guard !PlaybackResourcePolicy.allowRealtimeAudioProcessing(
+            requiresAudioTap: true
+        ) else {
+            return nil
+        }
+        return ProcessInfo.processInfo.isLowPowerModeEnabled
+            ? "audio_processing.paused_low_power"
+            : "audio_processing.paused_thermal"
     }
 
     private var equalizerEnabledBinding: Binding<Bool> {
