@@ -1507,36 +1507,6 @@ actor HLSSegmentExporter {
 
     // MARK: - .movpkg handling
 
-    private func collectFragments(in packageURL: URL) throws -> [URL] {
-        guard let enumerator = fileManager.enumerator(
-            at: packageURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return []
-        }
-        var fragments: [URL] = []
-        for case let url as URL in enumerator {
-            let values = try? url.resourceValues(
-                forKeys: [.isRegularFileKey, .fileSizeKey]
-            )
-            guard values?.isRegularFile == true,
-                  (values?.fileSize ?? 0) > 188 else {
-                continue
-            }
-            let ext = url.pathExtension.lowercased()
-            guard ext != "plist", ext != "json", ext != "xml",
-                  ext != "m3u8", ext != "txt" else {
-                continue
-            }
-            guard isMPEGTS(url) else { continue }
-            fragments.append(url)
-        }
-        return fragments.sorted { lhs, rhs in
-            lhs.path.localizedStandardCompare(rhs.path) == .orderedAscending
-        }
-    }
-
     /// MPEG-TS packets are 188 bytes long and start with the 0x47 sync byte.
     private func isMPEGTS(_ url: URL) -> Bool {
         guard let handle = try? FileHandle(forReadingFrom: url) else {
