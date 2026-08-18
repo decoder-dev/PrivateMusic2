@@ -45,6 +45,11 @@ final class PlaybackHighlightModel {
     /// Artist credit of the current track. Home's What's Next occupancy
     /// needs it without observing `AudioPlayer` on every progress tick.
     private(set) var currentArtist: String?
+    /// Display metadata mirrored for Home's hero without observing
+    /// `AudioPlayer` on transport ticks.
+    private(set) var currentTrackTitle: String?
+    private(set) var currentTrackArtworkURL: URL?
+    private(set) var queueContextTitle: String?
 
     /// No-op when nothing changed: the player mirrors its state here on every
     /// queue / index / transport mutation, and most of those repeat the same
@@ -53,7 +58,10 @@ final class PlaybackHighlightModel {
         currentTrackID: String?,
         isPlaying: Bool,
         queueSource: QueueSource? = nil,
-        currentArtist: String? = nil
+        currentArtist: String? = nil,
+        currentTrackTitle: String? = nil,
+        currentTrackArtworkURL: URL? = nil,
+        queueContextTitle: String? = nil
     ) {
         if self.currentTrackID != currentTrackID {
             self.currentTrackID = currentTrackID
@@ -66,6 +74,15 @@ final class PlaybackHighlightModel {
         }
         if self.currentArtist != currentArtist {
             self.currentArtist = currentArtist
+        }
+        if self.currentTrackTitle != currentTrackTitle {
+            self.currentTrackTitle = currentTrackTitle
+        }
+        if self.currentTrackArtworkURL != currentTrackArtworkURL {
+            self.currentTrackArtworkURL = currentTrackArtworkURL
+        }
+        if self.queueContextTitle != queueContextTitle {
+            self.queueContextTitle = queueContextTitle
         }
     }
 

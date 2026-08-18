@@ -23,58 +23,83 @@ struct CatalogView: View {
     @State private var isNextStepLaunching = false
     @State private var pendingHiddenArtist: HomeNextStepCandidate?
     @State private var openingMixID: String?
+    @State private var containerWidth: CGFloat = 390
+    @State private var topSafeAreaInset: CGFloat = 0
 
     var body: some View {
         ScrollViewReader { scrollProxy in
-            GeometryReader { proxy in
-                let metrics = HomeMetrics(containerWidth: proxy.size.width)
-                let heroForegroundTopOrigin =
-                    HomeStageMetrics.resolvedForegroundTopOrigin(
-                        reportedTopSafeAreaInset: proxy.safeAreaInsets.top
-                    )
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: BubbleSpacing.xxl) {
-                        if settings.homeStageEnabled {
-                            HomeStageView(
-                                width: proxy.size.width,
-                                horizontalPadding: metrics.horizontalPadding,
-                                foregroundTopOrigin: heroForegroundTopOrigin
-                            )
+            let metrics = HomeMetrics(containerWidth: containerWidth)
+            let heroForegroundTopOrigin =
+                HomeStageMetrics.resolvedForegroundTopOrigin(
+                    reportedTopSafeAreaInset: topSafeAreaInset
+                )
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: BubbleSpacing.xxl) {
+                    if settings.homeStageEnabled {
+                        HomeStageView(
+                            width: containerWidth,
+                            horizontalPadding: metrics.horizontalPadding,
+                            foregroundTopOrigin: heroForegroundTopOrigin
+                        )
+                        .id(MainTabScrollDestination.home)
+                    } else {
+                        welcomeHeader
+                            .padding(.top, heroForegroundTopOrigin)
                             .id(MainTabScrollDestination.home)
-                        } else {
-                            welcomeHeader
-                                .padding(.top, heroForegroundTopOrigin)
-                                .id(MainTabScrollDestination.home)
-                        }
-
-                        if let nextStepCandidate {
-                            nextStepSection(
-                                nextStepCandidate,
-                                metrics: metrics
-                            )
-                        }
-                        if homeCatalog.errorMessage != nil,
-                           nextStepCandidate == nil,
-                           history.entries.isEmpty {
-                            retryRow(errorMessage ?? homeCatalog.errorMessage ?? "")
-                        }
-                        if !history.entries.isEmpty {
-                            recentlyPlayedSection(metrics: metrics)
-                        }
-                        exploreMusicEntry
                     }
-                    .padding(.horizontal, metrics.horizontalPadding)
-                    .padding(.top, BubbleSpacing.xs)
+
+                    if let nextStepCandidate {
+                        nextStepSection(
+                            nextStepCandidate,
+                            metrics: metrics
+                        )
+                    }
+                    if homeCatalog.errorMessage != nil,
+                       nextStepCandidate == nil,
+                       history.entries.isEmpty {
+                        retryRow(errorMessage ?? homeCatalog.errorMessage ?? "")
+                    }
+                    if !history.entries.isEmpty {
+                        recentlyPlayedSection(metrics: metrics)
+                    }
+                    exploreMusicEntry
                 }
-                // The vertical indicator sat right over the stage's
-                // artwork and controls at the top of the scroll — the one
-                // place on Home it can't afford to compete for attention.
-                .scrollIndicators(.hidden)
-                // Applied on the ScrollView inside GeometryReader so the
-                // last shelf clears the iOS 26 accessory mini player. The
-                // legacy overlay dock already reserves this in `tabScreen`.
-                .clearsMiniPlayer()
+                .padding(.horizontal, metrics.horizontalPadding)
+                .padding(.top, BubbleSpacing.xs)
             }
+            // The vertical indicator sat right over the stage's
+            // artwork and controls at the top of the scroll — the one
+            // place on Home it can't afford to compete for attention.
+            .scrollIndicators(.hidden)
+            // Read the viewport once from the background. Wrapping the
+            // ScrollView in a GeometryReader re-laid the whole Home tree
+            // on every scroll frame and is what made Главная feel sticky.
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: HomeContainerLayoutKey.self,
+                        value: HomeContainerLayout(
+                            width: proxy.size.width,
+                            topSafeAreaInset: proxy.safeAreaInsets.top
+                        )
+                    )
+                }
+            }
+            .onPreferenceChange(HomeContainerLayoutKey.self) { layout in
+                let roundedWidth = layout.width.rounded()
+                if roundedWidth > 0,
+                   abs(roundedWidth - containerWidth) >= 1 {
+                    containerWidth = roundedWidth
+                }
+                let roundedTop = layout.topSafeAreaInset.rounded()
+                if abs(roundedTop - topSafeAreaInset) >= 1 {
+                    topSafeAreaInset = roundedTop
+                }
+            }
+            // Applied on the ScrollView so the last shelf clears the iOS 26
+            // accessory mini player. The legacy overlay dock already reserves
+            // this in `tabScreen`.
+            .clearsMiniPlayer()
             // Gives up its own top safe-area reservation so the stage's
             // artwork-derived atmosphere can paint behind the status bar
             // and the compact nav title instead of stopping at a hard
@@ -796,6 +821,22 @@ struct CatalogView: View {
 
     private func load(force: Bool = false) async {
         await environment.refreshHomeCatalog(force: force)
+    }
+}
+
+private struct HomeContainerLayout: Equatable {
+    var width: CGFloat = 0
+    var topSafeAreaInset: CGFloat = 0
+}
+
+private struct HomeContainerLayoutKey: PreferenceKey {
+    static var defaultValue: HomeContainerLayout { HomeContainerLayout() }
+
+    static func reduce(
+        value: inout HomeContainerLayout,
+        nextValue: () -> HomeContainerLayout
+    ) {
+        value = nextValue()
     }
 }
 

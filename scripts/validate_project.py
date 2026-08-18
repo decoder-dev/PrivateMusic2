@@ -913,11 +913,26 @@ if "playbackDockReservesContent" not in main_tab_source:
 catalog_view_source = (
     SOURCE / "Features" / "Catalog" / "CatalogView.swift"
 ).read_text(encoding="utf-8")
-album_detail_source = (
-    SOURCE / "Features" / "Album" / "AlbumDetailView.swift"
+home_stage_source = (
+    SOURCE / "Features" / "Catalog" / "HomeStageView.swift"
 ).read_text(encoding="utf-8")
 if ".clearsMiniPlayer()" not in catalog_view_source:
     fail("Home scroll content must lift above the mini player")
+if "HomeContainerLayoutKey" not in catalog_view_source:
+    fail(
+        "Home must measure the viewport from a ScrollView background, "
+        "not wrap the scroll view in GeometryReader"
+    )
+if "@Environment(AudioPlayer.self)" in home_stage_source:
+    fail(
+        "HomeStageView must not observe AudioPlayer — use "
+        "PlaybackHighlightModel so Главная does not rebuild on transport ticks"
+    )
+if "PlaybackHighlightModel.self" not in home_stage_source:
+    fail("HomeStageView must observe PlaybackHighlightModel for hero state")
+album_detail_source = (
+    SOURCE / "Features" / "Album" / "AlbumDetailView.swift"
+).read_text(encoding="utf-8")
 if "clearsMiniPlayer(includingWhenDockReservesSpace: true)" not in album_detail_source:
     fail("album track lists must lift above the mini player")
 if "func miniPlayerClearance(hasMiniPlayer: Bool)" not in all_source:
