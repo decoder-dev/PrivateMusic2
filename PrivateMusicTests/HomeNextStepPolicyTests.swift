@@ -56,6 +56,7 @@ private func request(
     mixes: [MusicMix] = [],
     selectedMood: MixMoodPreference = .any,
     occupancy: HomeNextStepOccupancy = .none,
+    hasCurrentTrack: Bool? = nil,
     hasListeningHistory: Bool = true,
     hasRecommendations: Bool = true
 ) -> HomeNextStepRequest {
@@ -66,6 +67,7 @@ private func request(
         mixes: mixes,
         selectedMood: selectedMood,
         occupancy: occupancy,
+        hasCurrentTrack: hasCurrentTrack ?? (occupancy != .idle),
         hasListeningHistory: hasListeningHistory,
         hasRecommendations: hasRecommendations
     )
