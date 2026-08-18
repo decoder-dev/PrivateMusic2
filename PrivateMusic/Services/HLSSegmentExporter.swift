@@ -1,5 +1,4 @@
 import AVFoundation
-import CommonCrypto
 import Foundation
 import OSLog
 
@@ -1455,37 +1454,42 @@ actor HLSSegmentExporter {
         key: Data,
         iv: Data
     ) throws -> Data {
-        guard key.count == kCCKeySizeAES128, iv.count == kCCBlockSizeAES128 else {
+        guard key.count == PM_AES128_KEY_BYTES,
+              iv.count == PM_AES128_IV_BYTES else {
             throw HLSExportError.decryptionFailed
         }
-        let outputCapacity = data.count + kCCBlockSizeAES128
+        let outputCapacity = data.count + PM_AES128_BLOCK_BYTES
         var output = Data(count: outputCapacity)
-        var outputLength = 0
+        var outputLength: Int32 = 0
         let status = output.withUnsafeMutableBytes { outputBytes in
             data.withUnsafeBytes { dataBytes in
                 key.withUnsafeBytes { keyBytes in
                     iv.withUnsafeBytes { ivBytes in
-                        CCCrypt(
-                            CCOperation(kCCDecrypt),
-                            CCAlgorithm(kCCAlgorithmAES),
-                            CCOptions(kCCOptionPKCS7Padding),
-                            keyBytes.baseAddress,
-                            key.count,
-                            ivBytes.baseAddress,
-                            dataBytes.baseAddress,
-                            data.count,
-                            outputBytes.baseAddress,
-                            outputCapacity,
+                        pm_aes128_cbc_decrypt(
+                            dataBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            Int32(data.count),
+                            keyBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            ivBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            outputBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            Int32(outputCapacity),
                             &outputLength
                         )
                     }
                 }
             }
         }
-        guard status == kCCSuccess else {
+        guard status == PM_AES128_OK else {
             throw HLSExportError.decryptionFailed
         }
-        return output.prefix(outputLength)
+        return output.prefix(Int(outputLength))
     }
 
     // MARK: - .movpkg handling

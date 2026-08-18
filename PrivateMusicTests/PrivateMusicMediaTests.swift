@@ -1,3 +1,4 @@
+import CommonCrypto
 import XCTest
 @testable import PrivateMusic
 
@@ -63,6 +64,64 @@ final class PrivateMusicMediaTests: XCTestCase {
             pm_buffer_max_loaded_ahead(.nan, buffer.baseAddress, 4)
         }
         XCTAssertEqual(nonFinitePosition, 0)
+    }
+
+    func testAES128CBCDecryptRoundTrip() {
+        let key = Data(repeating: 0x2A, count: PM_AES128_KEY_BYTES)
+        let iv = Data(repeating: 0x19, count: PM_AES128_IV_BYTES)
+        let plaintext = Data("PrivateMusic HLS segment payload".utf8)
+        let ciphertext = encryptAES128CBC(plaintext, key: key, iv: iv)
+
+        var output = [UInt8](repeating: 0, count: ciphertext.count + PM_AES128_BLOCK_BYTES)
+        var outputLength: Int32 = 0
+        let status = ciphertext.withUnsafeBytes { cipherBytes in
+            key.withUnsafeBytes { keyBytes in
+                iv.withUnsafeBytes { ivBytes in
+                    output.withUnsafeMutableBytes { outBytes in
+                        pm_aes128_cbc_decrypt(
+                            cipherBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            Int32(ciphertext.count),
+                            keyBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            ivBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            outBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            Int32(output.count),
+                            &outputLength
+                        )
+                    }
+                }
+            }
+        }
+        XCTAssertEqual(status, PM_AES128_OK)
+        XCTAssertEqual(
+            Data(output.prefix(Int(outputLength))),
+            plaintext
+        )
+    }
+
+    func testAES128CBCDecryptRejectsNonBlockAlignedCiphertext() {
+        var outputLength: Int32 = 0
+        var output = [UInt8](repeating: 0, count: 32)
+        let key = [UInt8](repeating: 1, count: PM_AES128_KEY_BYTES)
+        let iv = [UInt8](repeating: 2, count: PM_AES128_IV_BYTES)
+        let ciphertext = [UInt8](repeating: 0, count: 15)
+        let status = pm_aes128_cbc_decrypt(
+            ciphertext,
+            15,
+            key,
+            iv,
+            &output,
+            32,
+            &outputLength
+        )
+        XCTAssertEqual(status, PM_AES128_OUTPUT_TOO_SMALL)
     }
 
     func testVKUnmaskRestoresAMaskedStreamURL() {
@@ -249,5 +308,37 @@ final class PrivateMusicMediaTests: XCTestCase {
         data.append(contentsOf: type.utf8)
         data.append(payload)
         return data
+    }
+
+    private func encryptAES128CBC(
+        _ plaintext: Data,
+        key: Data,
+        iv: Data
+    ) -> Data {
+        var output = Data(count: plaintext.count + PM_AES128_BLOCK_BYTES)
+        var outputLength = 0
+        let status = output.withUnsafeMutableBytes { outputBytes in
+            plaintext.withUnsafeBytes { plaintextBytes in
+                key.withUnsafeBytes { keyBytes in
+                    iv.withUnsafeBytes { ivBytes in
+                        CCCrypt(
+                            CCOperation(kCCEncrypt),
+                            CCAlgorithm(kCCAlgorithmAES),
+                            CCOptions(kCCOptionPKCS7Padding),
+                            keyBytes.baseAddress,
+                            key.count,
+                            ivBytes.baseAddress,
+                            plaintextBytes.baseAddress,
+                            plaintext.count,
+                            outputBytes.baseAddress,
+                            output.count,
+                            &outputLength
+                        )
+                    }
+                }
+            }
+        }
+        XCTAssertEqual(status, kCCSuccess)
+        return output.prefix(outputLength)
     }
 }

@@ -1,5 +1,6 @@
 #include "PrivateMusicMedia.h"
 
+#include <CommonCrypto/CommonCrypto.h>
 #include <math.h>
 #include <stdint.h>
 #include <string.h>
@@ -1626,4 +1627,52 @@ double pm_buffer_max_loaded_ahead(
         return 0.0;
     }
     return loaded_ahead;
+}
+
+#pragma mark - HLS AES-128 CBC
+
+int32_t pm_aes128_cbc_decrypt(
+    const uint8_t *ciphertext,
+    int32_t ciphertext_length,
+    const uint8_t *key,
+    const uint8_t *iv,
+    uint8_t *out,
+    int32_t out_capacity,
+    int32_t *out_length
+) {
+    if (out_length == NULL) {
+        return PM_AES128_INVALID_ARGUMENT;
+    }
+    *out_length = 0;
+    if (ciphertext == NULL || key == NULL || iv == NULL || out == NULL) {
+        return PM_AES128_INVALID_ARGUMENT;
+    }
+    if (ciphertext_length <= 0
+        || (ciphertext_length % PM_AES128_BLOCK_BYTES) != 0
+        || out_capacity < ciphertext_length + PM_AES128_BLOCK_BYTES) {
+        return PM_AES128_OUTPUT_TOO_SMALL;
+    }
+
+    size_t plaintext_length = 0;
+    const CCCryptorStatus status = CCCrypt(
+        kCCDecrypt,
+        kCCAlgorithmAES,
+        kCCOptionPKCS7Padding,
+        key,
+        PM_AES128_KEY_BYTES,
+        iv,
+        ciphertext,
+        (size_t)ciphertext_length,
+        out,
+        (size_t)out_capacity,
+        &plaintext_length
+    );
+    if (status != kCCSuccess) {
+        return PM_AES128_DECRYPT_FAILED;
+    }
+    if (plaintext_length > (size_t)out_capacity) {
+        return PM_AES128_OUTPUT_TOO_SMALL;
+    }
+    *out_length = (int32_t)plaintext_length;
+    return PM_AES128_OK;
 }

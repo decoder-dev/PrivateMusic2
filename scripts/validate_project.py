@@ -341,6 +341,7 @@ for symbol in (
     "pm_cmaf_extract_fragment",
     "pm_vk_unmask",
     "pm_buffer_max_loaded_ahead",
+    "pm_aes128_cbc_decrypt",
 ):
     if symbol not in native_media_header_text:
         fail(f"PrivateMusicMedia.h must expose {symbol}")
@@ -390,6 +391,10 @@ hls_exporter_source = (
 ).read_text(encoding="utf-8")
 if "pm_iso_contains_types(" not in hls_exporter_source:
     fail("HLSSegmentExporter must detect ftyp/moov/moof/mdat via pm_iso_contains_types")
+if "pm_aes128_cbc_decrypt(" not in hls_exporter_source:
+    fail("HLSSegmentExporter must decrypt AES-128 segments through C")
+if "CCCrypt(" in hls_exporter_source or "import CommonCrypto" in hls_exporter_source:
+    fail("HLS AES-128 decrypt must live in PrivateMusicMedia.c, not Swift")
 vk_resolver_source = (
     SOURCE / "Services" / "VKAudioURLResolver.swift"
 ).read_text(encoding="utf-8")

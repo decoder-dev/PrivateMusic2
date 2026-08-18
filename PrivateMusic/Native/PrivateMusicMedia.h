@@ -179,6 +179,30 @@ double pm_buffer_max_loaded_ahead(
     int32_t count
 );
 
+#pragma mark - HLS AES-128 CBC
+
+#define PM_AES128_KEY_BYTES 16
+#define PM_AES128_IV_BYTES 16
+#define PM_AES128_BLOCK_BYTES 16
+
+#define PM_AES128_OK 0
+#define PM_AES128_INVALID_ARGUMENT (-1)
+#define PM_AES128_DECRYPT_FAILED (-2)
+#define PM_AES128_OUTPUT_TOO_SMALL (-3)
+
+/// Decrypt AES-128-CBC with PKCS#7 padding (RFC 8216 HLS segments).
+/// `out_capacity` must be at least `ciphertext_length + PM_AES128_BLOCK_BYTES`.
+/// On success writes the plaintext length to `out_length`.
+int32_t pm_aes128_cbc_decrypt(
+    const uint8_t *ciphertext,
+    int32_t ciphertext_length,
+    const uint8_t *key,
+    const uint8_t *iv,
+    uint8_t *out,
+    int32_t out_capacity,
+    int32_t *out_length
+);
+
 #ifdef __cplusplus
 }
 #endif
