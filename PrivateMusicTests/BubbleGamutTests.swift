@@ -56,3 +56,40 @@ final class BubbleGamutTests: XCTestCase {
         }
     }
 }
+
+@MainActor
+final class BubbleTintCacheTests: XCTestCase {
+    func testRecordArtworkPopulatesCachedTint() {
+        let cache = BubbleTintCache.shared
+        let url = URL(string: "https://example.com/tint-test-\(UUID().uuidString).jpg")!
+        let startRevision = cache.revision
+
+        var pixels: [UInt8] = []
+        for _ in 0..<64 {
+            pixels.append(contentsOf: [220, 40, 30, 255])
+        }
+        let image = makeTestImage(rgba: pixels)
+        cache.recordArtwork(image, for: url)
+
+        XCTAssertGreaterThan(cache.revision, startRevision)
+        XCTAssertNotNil(cache.cached(for: url))
+    }
+
+    private func makeTestImage(rgba: [UInt8]) -> UIImage {
+        let edge = 8
+        let space = CGColorSpaceCreateDeviceRGB()
+        let info = CGImageAlphaInfo.premultipliedLast.rawValue
+        var buffer = rgba
+        let context = CGContext(
+            data: &buffer,
+            width: edge,
+            height: edge,
+            bitsPerComponent: 8,
+            bytesPerRow: edge * 4,
+            space: space,
+            bitmapInfo: info
+        )!
+        let cgImage = context.makeImage()!
+        return UIImage(cgImage: cgImage)
+    }
+}
