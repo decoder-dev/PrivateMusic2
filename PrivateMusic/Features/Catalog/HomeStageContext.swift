@@ -27,7 +27,8 @@ enum ArtistCreditDisplay {
         guard let first = parts.first else { return raw }
         guard parts.count > 1 else { return first }
         let allButLast = parts.dropLast().joined(separator: ", ")
-        return "\(allButLast) & \(parts.last!)"
+        guard let last = parts.last else { return allButLast }
+        return "\(allButLast) & \(last)"
     }
 
     static func summarize(_ raw: String) -> String {
