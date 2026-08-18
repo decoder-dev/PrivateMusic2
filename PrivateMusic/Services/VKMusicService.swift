@@ -162,6 +162,9 @@ struct VKMusicService: MusicService {
         return try await mixTracks(.common, accessToken: accessToken)
     }
 
+    /// Fresh `audio.getById` URL. Clients such as LavaSrc do this immediately
+    /// before play; we do it when the live URL is still HLS after the local
+    /// m3u8→mp3 rewrite. No board-comment rip, no unofficial API proxy.
     func refreshedTrack(
         _ track: Track,
         accessToken: String
