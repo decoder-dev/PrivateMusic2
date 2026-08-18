@@ -118,7 +118,7 @@ struct HomeStageView: View {
                         // The glyph stays small so the chip stays a status,
                         // not a button; the hit area still clears 44×44 by
                         // growing only the tap region, not the layout.
-                        .contentShape(Circle().inset(by: -11))
+                        .minimumHitTarget(visualSize: 22)
                 }
                 .buttonStyle(BubblePressStyle())
                 .accessibilityLabel(L10n.text("home_stage.clear_queue"))

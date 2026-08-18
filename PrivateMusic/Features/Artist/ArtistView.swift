@@ -101,6 +101,7 @@ struct ArtistView: View {
                         Color(uiColor: .tertiarySystemFill),
                         in: Circle()
                     )
+                    .minimumHitTarget(visualSize: 34)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(L10n.text("action.close"))

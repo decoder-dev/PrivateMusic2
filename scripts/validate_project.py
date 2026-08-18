@@ -1794,6 +1794,83 @@ def require_home_is_not_a_recommendation_feed() -> None:
             fail(f"HomeNextStepPolicy is missing {required_symbol}")
 
 
+def require_minimum_hit_targets() -> None:
+    """Every control drawn smaller than 44x44 must still accept 44x44.
+
+    The Human Interface Guidelines put the floor at 44 points. Some of our
+    controls are deliberately drawn smaller — the play chip in the corner of
+    a cover reads as a chip, not a button — so the rule is not "draw it
+    bigger", it is "accept touches wider than you draw". A square frame
+    under 44 points inside a Button is that situation, and it has to be
+    paired with `minimumHitTarget`.
+    """
+    square_frame = re.compile(
+        r"\.frame\(width:\s*(\d+),\s*height:\s*(\d+)\)"
+    )
+    offenders = []
+    for path in swift_files:
+        lines = path.read_text(encoding="utf-8").split("\n")
+        for index, line in enumerate(lines):
+            if not re.search(r"\bButton\s*[({]", line):
+                continue
+            depth = 0
+            opened = False
+            end = min(index + 60, len(lines) - 1)
+            for cursor in range(index, min(index + 140, len(lines))):
+                depth += lines[cursor].count("{") - lines[cursor].count("}")
+                if lines[cursor].count("{"):
+                    opened = True
+                if opened and depth <= 0:
+                    end = cursor
+                    break
+            tail = end
+            while (
+                tail + 1 < len(lines)
+                and lines[tail + 1].strip().startswith(".")
+            ):
+                tail += 1
+            body = "\n".join(lines[index:tail + 1])
+            sizes = [
+                int(width)
+                for width, height in square_frame.findall(body)
+                if width == height
+            ]
+            if not sizes or min(sizes) >= 44:
+                continue
+            if "minimumHitTarget" in body or "minimumTapTarget" in body:
+                continue
+            # A small square inside a control that is *also* laid out large
+            # — a row, a card — is decoration sitting on a target that
+            # already clears 44 on its own.
+            if ".infinity" in body or max(sizes) >= 44:
+                continue
+            # Artwork sets the size of the row or card it sits in.
+            if "AsyncArtwork" in body:
+                continue
+            if re.search(r"\.frame\((?:min)?(?:Width|Height):\s*(\d+)", body):
+                spans = [
+                    int(value)
+                    for value in re.findall(
+                        r"\.frame\(min(?:Width|Height):\s*(\d+)", body
+                    )
+                ]
+                if spans and max(spans) >= 44:
+                    continue
+            # System button styles bring their own padding and hit metrics.
+            if re.search(r"\.buttonStyle\(\.(bordered|borderedProminent|glass)", body):
+                continue
+            relative = path.relative_to(ROOT)
+            offenders.append(f"{relative}:{index + 1} ({min(sizes)}pt)")
+    if offenders:
+        fail(
+            "controls drawn under 44pt without minimumHitTarget: "
+            + ", ".join(offenders)
+        )
+
+
+require_minimum_hit_targets()
+
+
 require_home_is_not_a_recommendation_feed()
 
 print(f"OK: {len(swift_files)} Swift files")
@@ -1804,3 +1881,4 @@ print("OK: Info.plist, HTTPS endpoints and release icons")
 print("OK: valid no-tracking privacy manifest")
 print("OK: edge-to-edge player and consistent Liquid Glass controls")
 print("OK: deterministic player presentation and lightweight action dock")
+print("OK: every control accepts the 44pt minimum touch area")

@@ -817,6 +817,7 @@ struct LibraryView: View {
             .foregroundStyle(.black)
             .frame(width: 32, height: 32)
             .background(.white, in: Circle())
+            .minimumHitTarget(visualSize: 32)
         }
         .buttonStyle(PremiumPressStyle())
         .padding(8)
@@ -918,6 +919,7 @@ struct LibraryView: View {
             .foregroundStyle(.black)
             .frame(width: 32, height: 32)
             .background(.white, in: Circle())
+            .minimumHitTarget(visualSize: 32)
         }
         .buttonStyle(PremiumPressStyle())
         .padding(8)
