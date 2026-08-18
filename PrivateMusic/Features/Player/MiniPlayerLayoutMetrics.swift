@@ -35,6 +35,9 @@ enum MiniPlayerLayoutMetrics {
     /// 56–60 pt visual height: the compact bar Apple Music itself uses,
     /// not a second, shorter player.
     static let minHeight: CGFloat = 58
+    /// iOS 26 `tabViewBottomAccessory` expanded slot is shorter than the
+    /// floating dock card. Taller content paints over the tab bar.
+    static let accessoryMaxHeight: CGFloat = 48
     static let cornerRadius: CGFloat = 16
     static let containerShadowRadius: CGFloat = 8
     static let containerShadowY: CGFloat = 3

@@ -29,6 +29,30 @@ final class MiniPlayerProgressPolicyTests: XCTestCase {
             accuracy: 0.0001
         )
     }
+
+    func testSeekTimeMapsTapAcrossTheTrack() {
+        XCTAssertEqual(
+            MiniPlayerProgressPolicy.seekTime(x: 50, width: 100, duration: 200),
+            100,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            MiniPlayerProgressPolicy.seekTime(x: -10, width: 100, duration: 200),
+            0,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            MiniPlayerProgressPolicy.seekTime(x: 150, width: 100, duration: 200),
+            200,
+            accuracy: 0.0001
+        )
+        XCTAssertNil(
+            MiniPlayerProgressPolicy.seekTime(x: 50, width: 0, duration: 200)
+        )
+        XCTAssertNil(
+            MiniPlayerProgressPolicy.seekTime(x: 50, width: 100, duration: 0)
+        )
+    }
 }
 
 final class MiniPlayerGesturePolicyTests: XCTestCase {
@@ -337,6 +361,17 @@ final class MiniPlayerAccessoryPolicyTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(
             contentHeight,
             MiniPlayerLayoutMetrics.minHeight
+        )
+    }
+
+    func testAccessorySlotIsShorterThanTheDockCard() {
+        XCTAssertGreaterThan(
+            MiniPlayerLayoutMetrics.minHeight,
+            MiniPlayerLayoutMetrics.accessoryMaxHeight
+        )
+        XCTAssertLessThanOrEqual(
+            MiniPlayerLayoutMetrics.accessoryMaxHeight,
+            48
         )
     }
 }
