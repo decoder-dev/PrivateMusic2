@@ -672,6 +672,7 @@ struct CatalogView: View {
                 .foregroundStyle(settings.theme.buttonForeground)
                 .frame(width: 32, height: 32)
                 .background(settings.theme.accent, in: Circle())
+                .minimumHitTarget(visualSize: 32)
             }
             .buttonStyle(PremiumPressStyle())
             .offset(x: artworkSize - 39, y: artworkSize - 39)
