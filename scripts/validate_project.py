@@ -1115,6 +1115,20 @@ if "AdaptiveGlassContainer(spacing: 14)" in player_view_source:
         "player quick actions must not use GlassEffectContainer "
         "(morphs into one gooey blob)"
     )
+if "PlayerProgressControls" not in player_view_source:
+    fail("player progress must use isolated PlayerProgressControls")
+if "enum PlayerProgressPolicy" not in all_source:
+    fail("PlayerProgressPolicy must exist for unit-tested scrubber math")
+if ".title3.monospacedDigit()" in player_view_source:
+    fail(
+        "player scrub labels must not jump to title3 — fixed metrics only"
+    )
+if "struct HomeStageAtmosphereLayer" not in all_source:
+    fail("Home atmosphere must live in an isolated layer view")
+if "HomeNextStepRefreshKey" not in all_source:
+    fail("Home must cache What's Next behind HomeNextStepRefreshKey")
+if "task(id: nextStepRefreshKey)" not in catalog_view_source:
+    fail("CatalogView must rebuild What's Next only when inputs change")
 # Mini-player uses plain controls; full-screen player keeps glassProminent.
 for required_preload_symbol in (
     "PlaybackPreloadPolicy.nextIndex",

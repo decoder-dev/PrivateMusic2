@@ -25,6 +25,7 @@ struct CatalogView: View {
     @State private var openingMixID: String?
     @State private var containerWidth: CGFloat = 390
     @State private var topSafeAreaInset: CGFloat = 0
+    @State private var nextStepCandidate: HomeNextStepCandidate?
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -140,6 +141,9 @@ struct CatalogView: View {
         .task(id: sessionStore.resolvedOfflineAccountID) {
             await load()
         }
+        .task(id: nextStepRefreshKey) {
+            nextStepCandidate = resolveNextStepCandidate()
+        }
         // Liked-album mutations update `LikedAlbumsStore` in place. Reloading
         // the whole home snapshot here used to fan out recommendations /
         // mixes / playlists / releases for a single follow tap.
@@ -226,7 +230,24 @@ struct CatalogView: View {
         actionErrorMessage ?? homeCatalog.errorMessage
     }
 
-    private var nextStepCandidate: HomeNextStepCandidate? {
+    private var nextStepRefreshKey: HomeNextStepRefreshKey {
+        HomeNextStepRefreshKey(
+            currentTrackID: highlight.currentTrackID,
+            queueSource: highlight.queueSource,
+            currentArtist: highlight.currentArtist,
+            selectedMood: settings.mixMoodPreference,
+            historyHeadTrackIDs: history.entries.prefix(24).map(\.track.id),
+            mixIDs: homeCatalog.mixes.map(\.id),
+            recommendationsEmpty: homeCatalog.recommendations.isEmpty,
+            previouslyShownArtistKey: personalization.lastShownArtistKey,
+            previouslyShownKey: personalization.lastShownNextStepKey,
+            bannedArtistKeys: mixFeedback.bannedArtists.sorted(),
+            bannedTrackIDs: mixFeedback.bannedTrackIDs.sorted(),
+            librarySignatures: libraryStore.signatures.sorted()
+        )
+    }
+
+    private func resolveNextStepCandidate() -> HomeNextStepCandidate? {
         HomeNextStepPolicy.select(
             HomeNextStepRequest(
                 affinityCandidates: ArtistAffinityPolicy.candidates(
