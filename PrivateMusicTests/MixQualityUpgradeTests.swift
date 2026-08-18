@@ -305,3 +305,35 @@ final class MixRationaleEnrichmentTests: XCTestCase {
         )
     }
 }
+
+final class PlaybackResourcePolicyTests: XCTestCase {
+    func testProgressiveUpgradeBlockedInLowPowerMode() {
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
+                preferHighQuality: true,
+                lowPowerMode: true,
+                thermalState: .nominal
+            )
+        )
+    }
+
+    func testRealtimeProcessingBlockedWhenThermalStateIsSerious() {
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowRealtimeAudioProcessing(
+                requiresAudioTap: true,
+                lowPowerMode: false,
+                thermalState: .serious
+            )
+        )
+    }
+
+    func testRealtimeProcessingAllowedInNominalConditions() {
+        XCTAssertTrue(
+            PlaybackResourcePolicy.allowRealtimeAudioProcessing(
+                requiresAudioTap: true,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+    }
+}
