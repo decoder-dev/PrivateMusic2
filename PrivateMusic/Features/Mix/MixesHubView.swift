@@ -104,6 +104,7 @@ struct MixesHubView: View {
                     .padding(.horizontal, metrics.horizontalPadding)
                     .padding(.top, 8)
                 }
+                .clearsMiniPlayer(includingWhenDockReservesSpace: true)
             }
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .mix else { return }
