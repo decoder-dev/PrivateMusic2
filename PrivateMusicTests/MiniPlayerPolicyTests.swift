@@ -407,3 +407,16 @@ final class QueuePresentationPolicyTests: XCTestCase {
         )
     }
 }
+
+final class QueueRowMetricsTests: XCTestCase {
+    func testRowsReserveVerticalBreathingRoom() {
+        XCTAssertGreaterThan(
+            QueueRowMetrics.listRowInsets.top,
+            0
+        )
+        XCTAssertGreaterThanOrEqual(
+            QueueRowMetrics.minRowHeight,
+            48 + QueueRowMetrics.verticalInset * 2
+        )
+    }
+}

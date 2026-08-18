@@ -72,6 +72,20 @@ enum LibraryPlaylistShelfPolicy {
         }
     }
 
+    /// Liked releases VK still hands back as playlists share the same
+    /// `owner_id` + `id` as their Albums-shelf card. Drop them here so a
+    /// followed album never renders twice — once as a playlist chip and
+    /// once on the Albums shelf.
+    static func excludingLikedAlbums(
+        _ playlists: [Playlist],
+        likedAlbumCompositeIDs: Set<String>
+    ) -> [Playlist] {
+        guard !likedAlbumCompositeIDs.isEmpty else { return playlists }
+        return playlists.filter {
+            !likedAlbumCompositeIDs.contains($0.libraryIdentity)
+        }
+    }
+
     /// Returns the copy worth keeping: the one you own beats a followed
     /// copy, then the fuller one, then the one that actually has a cover.
     private static func preferred(

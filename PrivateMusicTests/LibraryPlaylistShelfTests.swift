@@ -235,6 +235,25 @@ final class LibraryPlaylistShelfTests: XCTestCase {
         )
     }
 
+    func testShelfHidesPlaylistsThatAlreadyLiveOnTheAlbumsShelf() throws {
+        let albumAsPlaylist = try makePlaylist(
+            id: 42,
+            ownerID: 100,
+            title: "Release"
+        )
+        let realPlaylist = try makePlaylist(
+            id: 7,
+            ownerID: 100,
+            title: "Road mix"
+        )
+        let filtered = LibraryPlaylistShelfPolicy.excludingLikedAlbums(
+            [albumAsPlaylist, realPlaylist],
+            likedAlbumCompositeIDs: ["100_42"]
+        )
+
+        XCTAssertEqual(filtered.map(\.libraryIdentity), ["100_7"])
+    }
+
     private func makePlaylist(
         id: Int,
         ownerID: Int,
