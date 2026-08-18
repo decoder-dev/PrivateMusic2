@@ -527,7 +527,10 @@ final class HomeStageMetricsTests: XCTestCase {
             let heroOnly = withRail - rail
 
             XCTAssertGreaterThanOrEqual(heroOnly, 280)
-            XCTAssertLessThanOrEqual(heroOnly, 360)
+            // The stabilized navigation gap makes the Hero read slightly
+            // lower/airier than before, but it still must stay comfortably
+            // short of becoming a second full-screen player.
+            XCTAssertLessThanOrEqual(heroOnly, 364)
         }
     }
 
