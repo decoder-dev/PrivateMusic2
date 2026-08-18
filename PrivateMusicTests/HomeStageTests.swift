@@ -594,6 +594,20 @@ final class HomeStageMetricsTests: XCTestCase {
             ),
             59 + HomeStageMetrics.navigationGap
         )
+        // Nothing measured anywhere — neither the local geometry nor the
+        // window — must still yield the documented non-zero band. Asserting
+        // only "> the gap" let a window reporting `0` (early layout, or a
+        // test host) pass while the Hero collapsed under the Dynamic Island.
+        XCTAssertEqual(
+            HomeStageMetrics.resolvedForegroundTopOrigin(
+                reportedTopSafeAreaInset: 0,
+                windowTopSafeAreaInset: 0
+            ),
+            NavigationChromeMetrics.fallbackTopSafeAreaInset
+                + HomeStageMetrics.navigationGap
+        )
+        // The live path still has to clear the gap by a real safe-area band,
+        // whatever the host simulator's chrome happens to be.
         XCTAssertGreaterThan(
             HomeStageMetrics.resolvedForegroundTopOrigin(
                 reportedTopSafeAreaInset: 0,
