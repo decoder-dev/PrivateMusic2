@@ -30,11 +30,10 @@ struct HomeStageView: View {
     /// Home's grid inset. The stage keeps its content on that grid and
     /// lets only the decorative layers cross it.
     let horizontalPadding: CGFloat
-    /// The status bar / nav bar reservation above the stage, read once from
-    /// Home's own `GeometryReader` — not a magic number, and not something
-    /// the stage can find itself while sitting inside scrollable content.
-    /// The atmosphere uses it to bleed its background past the safe area;
-    /// none of the foreground content changes position because of it.
+    /// The resolved top inset the Hero foreground must respect. `CatalogView`
+    /// may let the atmospheric background underlap the top safe area, so this
+    /// value is resolved once by the parent rather than trusting local scroll
+    /// geometry to stay non-zero on every OS/chrome combination.
     let topSafeAreaInset: CGFloat
 
     private var presentation: HomeStagePresentation {
