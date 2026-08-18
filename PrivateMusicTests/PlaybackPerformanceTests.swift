@@ -31,11 +31,13 @@ final class PlaybackHighlightModelTests: XCTestCase {
         highlight.update(
             currentTrackID: "42",
             isPlaying: true,
-            queueSource: .album(title: "Album")
+            queueSource: .album(title: "Album"),
+            currentArtist: "RIVE"
         )
         XCTAssertEqual(highlight.currentTrackID, "42")
         XCTAssertTrue(highlight.isPlaying)
         XCTAssertEqual(highlight.queueSource, .album(title: "Album"))
+        XCTAssertEqual(highlight.currentArtist, "RIVE")
         XCTAssertTrue(highlight.isCurrent("42"))
         XCTAssertFalse(highlight.isCurrent("7"))
     }

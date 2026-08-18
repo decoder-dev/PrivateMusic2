@@ -200,7 +200,9 @@ final class ArtistAffinityEngineTests: XCTestCase {
                 score: 2.0,
                 evidenceTrackCount: 3,
                 isLiked: false,
-                reason: .multipleTracks
+                reason: .multipleTracks,
+                artworkURL: nil,
+                seedTrackID: nil
             ),
             ArtistAffinityCandidate(
                 artistKey: "b",
@@ -208,7 +210,9 @@ final class ArtistAffinityEngineTests: XCTestCase {
                 score: 1.0,
                 evidenceTrackCount: 2,
                 isLiked: false,
-                reason: .multipleTracks
+                reason: .multipleTracks,
+                artworkURL: nil,
+                seedTrackID: nil
             )
         ]
 

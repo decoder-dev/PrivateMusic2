@@ -39,6 +39,30 @@ private func makeMix(
 
 @MainActor
 final class HomeStageContextTests: XCTestCase {
+    func testOmittingTheStationLeavesTheRailWithoutTheHeroDuplicate() {
+        let idle = HomeStageContextBuilder.build(
+            mixes: [],
+            recentArtists: [HomeStageArtist(name: "Owar1", seed: nil)],
+            selectedMood: .any,
+            stationTitle: "Селена",
+            omitStation: true
+        )
+
+        XCTAssertFalse(idle.contains { $0.kind == .station })
+        XCTAssertEqual(idle.map(\.kind), [.artist])
+    }
+
+    func testOmittingTheStationWithNothingElseYieldsAnEmptyRail() {
+        let idle = HomeStageContextBuilder.build(
+            mixes: [],
+            recentArtists: [],
+            selectedMood: .any,
+            stationTitle: "Селена",
+            omitStation: true
+        )
+        XCTAssertTrue(idle.isEmpty)
+    }
+
     func testStationAlwaysLeadsEvenWithNothingElse() {
         let contexts = HomeStageContextBuilder.build(
             mixes: [],
@@ -72,7 +96,7 @@ final class HomeStageContextTests: XCTestCase {
         XCTAssertEqual(picked.first { $0.kind == .vibe }?.mood, .energetic)
     }
 
-    func testOrderPutsArtistsAheadOfCatalogMixes() {
+    func testOrderIsStationThenVibeThenArtists() {
         let contexts = HomeStageContextBuilder.build(
             mixes: [makeMix("m1", title: "В дорогу")],
             recentArtists: [HomeStageArtist(name: "Owar1", seed: nil)],
@@ -82,8 +106,9 @@ final class HomeStageContextTests: XCTestCase {
 
         XCTAssertEqual(
             contexts.map(\.kind),
-            [.station, .vibe, .artist, .mix]
+            [.station, .vibe, .artist]
         )
+        XCTAssertFalse(contexts.contains { $0.kind == .mix })
     }
 
     /// Prominence has to come from what a context is. The builder used to
@@ -127,14 +152,13 @@ final class HomeStageContextTests: XCTestCase {
             withMood.first { $0.kind == .artist }?.priority,
             withoutMood.first { $0.kind == .artist }?.priority
         )
-        XCTAssertEqual(
-            withMood.first { $0.kind == .mix }?.priority,
-            withoutMood.first { $0.kind == .mix }?.priority
-        )
+        XCTAssertFalse(withMood.contains { $0.kind == .mix })
+        XCTAssertFalse(withoutMood.contains { $0.kind == .mix })
     }
 
-    /// A mix whose title repeats an artist bubble would render as two
-    /// identical circles side by side.
+    /// Catalog mixes used to share the rail with artists, so a mix named
+    /// after an artist rendered as two identical tiles. Mixes no longer
+    /// sit on the rail; the artist still appears once.
     func testDuplicateNamesCollapse() {
         let contexts = HomeStageContextBuilder.build(
             mixes: [makeMix("m1", title: "owar1")],
@@ -147,9 +171,10 @@ final class HomeStageContextTests: XCTestCase {
             contexts.filter { $0.name.lowercased() == "owar1" }.count,
             1
         )
+        XCTAssertFalse(contexts.contains { $0.kind == .mix })
     }
 
-    func testRailIsCapped() {
+    func testCatalogMixesDoNotFillTheRail() {
         let mixes = (0..<20).map { makeMix("m\($0)", title: "Микс \($0)") }
         let contexts = HomeStageContextBuilder.build(
             mixes: mixes,
@@ -161,7 +186,9 @@ final class HomeStageContextTests: XCTestCase {
             stationTitle: "Селена"
         )
 
-        XCTAssertEqual(contexts.count, HomeStageContextBuilder.limit)
+        XCTAssertLessThanOrEqual(contexts.count, HomeStageContextBuilder.limit)
+        XCTAssertFalse(contexts.contains { $0.kind == .mix })
+        XCTAssertEqual(contexts.map(\.kind), [.station, .vibe, .artist, .artist])
     }
 
     func testBlankNamesNeverBecomeBubbles() {
@@ -175,7 +202,7 @@ final class HomeStageContextTests: XCTestCase {
         XCTAssertEqual(contexts.map(\.kind), [.station])
     }
 
-    func testCuratorPhotoBecomesTheBubbleAvatar() {
+    func testCatalogMixesDoNotBecomeRailTiles() {
         let photo = URL(string: "https://example.com/a.jpg")
         let contexts = HomeStageContextBuilder.build(
             mixes: [
@@ -194,7 +221,8 @@ final class HomeStageContextTests: XCTestCase {
             stationTitle: "Селена"
         )
 
-        XCTAssertEqual(contexts.last?.avatarURL, photo)
+        XCTAssertEqual(contexts.map(\.kind), [.station])
+        XCTAssertNil(contexts.first?.avatarURL)
     }
 
     /// Tapping an artist used to launch a generic library mix, because the
