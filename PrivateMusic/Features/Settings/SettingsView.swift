@@ -737,7 +737,8 @@ private struct OfflineStorageSettingsView: View {
                                             cornerRadius: 4
                                         )
                                         .fill(
-                                            Color.orange.opacity(0.7)
+                                            BubbleGamut.warning.color
+                                                .opacity(0.7)
                                         )
                                         .frame(
                                             width: max(
@@ -778,7 +779,8 @@ private struct OfflineStorageSettingsView: View {
                             } icon: {
                                 Circle()
                                     .fill(
-                                        Color.orange.opacity(0.7)
+                                        BubbleGamut.warning.color
+                                            .opacity(0.7)
                                     )
                                     .frame(width: 8, height: 8)
                             }
@@ -1023,11 +1025,13 @@ private struct OfflineStorageSettingsView: View {
         case .deleting:
             return .secondary
         case .completed:
-            return .green
+            return BubbleGamut.success.color
         case .incomplete:
-            return .orange
+            return BubbleGamut.warning.color
         case .idle:
-            return hasSavedOrActiveContent ? Color.red : Color.green
+            return hasSavedOrActiveContent
+                ? BubbleGamut.destructive.color
+                : BubbleGamut.success.color
         }
     }
 
@@ -1046,11 +1050,11 @@ private struct OfflineStorageSettingsView: View {
 
     private func usageColor(usage: StorageUsage) -> Color {
         if usage.usageRatio > 0.8 {
-            return .red
+            return BubbleGamut.destructive.color
         } else if usage.usageRatio > 0.5 {
-            return .orange
+            return BubbleGamut.warning.color
         }
-        return .green
+        return BubbleGamut.success.color
     }
 }
 
@@ -1165,7 +1169,7 @@ private struct ConnectionSettingsView: View {
                 if let refreshError {
                     Text(refreshError)
                         .font(.footnote)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(BubbleGamut.destructive.color)
                 }
                 Text(
                     L10n.text("the_saved_session_remains_in_the_system_keychain_during_temporary_outage")
@@ -1232,7 +1236,9 @@ private struct ConnectionSettingsView: View {
     }
 
     private var networkTint: Color {
-        networkMonitor.state == .offline ? .orange : .green
+        networkMonitor.state == .offline
+            ? BubbleGamut.warning.color
+            : BubbleGamut.success.color
     }
 
     private var sessionTitle: String {

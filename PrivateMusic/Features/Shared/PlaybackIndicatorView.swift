@@ -2,7 +2,12 @@ import SwiftUI
 
 struct PlaybackIndicatorView: View {
     let isPlaying: Bool
-    var color: Color = .accentColor
+    var color: Color?
+    @Environment(AppSettings.self) private var settings
+
+    private var resolvedColor: Color {
+        color ?? settings.theme.accent
+    }
 
     var body: some View {
         Group {
@@ -20,7 +25,7 @@ struct PlaybackIndicatorView: View {
                 Image(systemName: "pause.fill")
             }
         }
-        .foregroundStyle(color)
+        .foregroundStyle(resolvedColor)
         .accessibilityLabel(
             L10n.text(isPlaying ? "current_track" : "paused")
         )
