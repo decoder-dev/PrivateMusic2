@@ -19,12 +19,17 @@ enum HomeStageMetrics {
     /// stage's `GeometryReader` can report zero after the parent ignores the
     /// top safe area; in that case fall back to the window's current top inset
     /// rather than collapsing the hero upward.
+    ///
+    /// The boundary is the *bottom of the inline title band*, not the safe
+    /// area alone: Home carries a `.inline` navigation title, so clearing
+    /// only the status bar left the status chip sitting underneath
+    /// "Главная" instead of below it.
     @MainActor
     static func resolvedForegroundTopOrigin(
         reportedTopSafeAreaInset: CGFloat,
         windowTopSafeAreaInset: CGFloat? = nil
     ) -> CGFloat {
-        NavigationChromeMetrics.resolvedTopSafeAreaInset(
+        NavigationChromeMetrics.inlineTitleRegionBottom(
             reportedTopSafeAreaInset: reportedTopSafeAreaInset,
             windowTopSafeAreaInset: windowTopSafeAreaInset
         ) + navigationGap
