@@ -32,7 +32,7 @@ struct PremiumCardModifier: ViewModifier {
         content
             .background {
                 Group {
-                    if reduceTransparency {
+                    if reduceTransparency || increased {
                         shape.fill(Color(uiColor: .secondarySystemBackground))
                     } else {
                         shape.fill(.regularMaterial)
@@ -42,9 +42,13 @@ struct PremiumCardModifier: ViewModifier {
             .overlay {
                 shape.stroke(
                     Color.primary.opacity(
-                        increased || reduceTransparency ? 0.18 : 0.07
+                        ContrastPolicy.strokeOpacity(
+                            increased: increased,
+                            reduceTransparency: reduceTransparency,
+                            base: 0.07
+                        )
                     ),
-                    lineWidth: increased ? 1.2 : 0.75
+                    lineWidth: ContrastPolicy.strokeWidth(increased: increased)
                 )
             }
             .clipShape(shape)
