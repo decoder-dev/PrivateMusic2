@@ -997,15 +997,6 @@ final class OfflineTrackStore {
         URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
     }
 
-    private func relativePathFromHome(for url: URL) -> String {
-        let homePath = homeDirectory.standardizedFileURL.path
-        let path = url.standardizedFileURL.path
-        guard path.hasPrefix(homePath + "/") else {
-            return url.lastPathComponent
-        }
-        return String(path.dropFirst(homePath.count + 1))
-    }
-
     private func isInsideAppContainer(_ url: URL) -> Bool {
         url.standardizedFileURL.path.hasPrefix(
             homeDirectory.standardizedFileURL.path + "/"
