@@ -18,6 +18,12 @@ struct ArtistView: View {
     @State private var showsAllTracks = false
     @State private var pendingAlbumIDs = Set<String>()
     @State private var albumActionErrorMessage: String?
+    /// Where the next page of tracks starts, or `nil` once VK has no more.
+    /// The first load used to throw this away, which is why the artist page
+    /// stopped dead at its first 50 tracks.
+    @State private var nextTracksOffset: Int?
+    @State private var isLoadingMoreTracks = false
+    @State private var loadMoreTracksTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -59,6 +65,7 @@ struct ArtistView: View {
         } message: {
             Text(albumActionErrorMessage ?? "")
         }
+        .onDisappear { loadMoreTracksTask?.cancel() }
         .task(id: artist) {
             resolvedArtist = nil
             if sessionStore.accessToken != nil {
@@ -133,12 +140,34 @@ struct ArtistView: View {
         .sheet(isPresented: $showsAllTracks) {
             NavigationStack {
                 List {
-                    ForEach(tracks) { track in
+                    ForEach(Array(tracks.enumerated()), id: \.element.id) {
+                        index, track in
                         TrackRow(
                             track: track,
                             queue: tracks
                         )
                         .listRowBackground(Color.clear)
+                        .onAppear {
+                            guard ArtistTrackPagePolicy.shouldLoadMore(
+                                visibleIndex: index,
+                                loadedCount: tracks.count,
+                                hasMore: nextTracksOffset != nil,
+                                isLoading: isLoadingMoreTracks
+                            ) else {
+                                return
+                            }
+                            loadMoreTracks()
+                        }
+                    }
+                    if isLoadingMoreTracks {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .accessibilityLabel(L10n.text("loading_more"))
                     }
                 }
                 .listStyle(.plain)
@@ -420,6 +449,12 @@ struct ArtistView: View {
     @MainActor
     private func load(resetContent: Bool) async {
         let requestedArtist = artist
+        // A reload replaces the whole list, so any page in flight is about
+        // to append rows that no longer belong to it.
+        loadMoreTracksTask?.cancel()
+        loadMoreTracksTask = nil
+        isLoadingMoreTracks = false
+        nextTracksOffset = nil
         if resetContent {
             tracks = []
         }
@@ -468,12 +503,100 @@ struct ArtistView: View {
                 artist: requestedArtist
             )
             tracks = filtered.isEmpty ? page.items : filtered
+            nextTracksOffset = page.nextOffset
             errorMessage = nil
         } catch is CancellationError {
             return
         } catch {
             guard artist == requestedArtist else { return }
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Pulls the next page behind the full-track list. VK answers with the
+    /// offset to continue from, so "no more" is its answer rather than a
+    /// guess from the page size — a short page in the middle of a
+    /// discography does not end the list early.
+    @MainActor
+    private func loadMoreTracks() {
+        guard !isLoadingMoreTracks,
+              let offset = nextTracksOffset,
+              sessionStore.accessToken != nil else {
+            return
+        }
+        let requestedArtist = artist
+        let artistID = resolvedArtist?.id
+        isLoadingMoreTracks = true
+        loadMoreTracksTask?.cancel()
+        loadMoreTracksTask = Task { @MainActor in
+            defer {
+                if artist == requestedArtist {
+                    isLoadingMoreTracks = false
+                }
+            }
+            do {
+                let page = try await nextTracksPage(
+                    artistID: artistID,
+                    query: requestedArtist,
+                    offset: offset
+                )
+                try Task.checkCancellation()
+                // The artist can change while a page is in flight; appending
+                // then would file one artist's tracks under another's name.
+                guard artist == requestedArtist else { return }
+
+                let filtered = ArtistTrackFilter.filtered(
+                    page.items,
+                    artist: requestedArtist
+                )
+                let incoming = filtered.isEmpty ? page.items : filtered
+                var seen = Set(tracks.map(\.id))
+                let unique = incoming.filter { seen.insert($0.id).inserted }
+                tracks.append(contentsOf: unique)
+                // Stop when VK stops offering a continuation, and also when a
+                // page brought nothing new — a server that keeps handing back
+                // the same rows would otherwise scroll forever.
+                nextTracksOffset = unique.isEmpty ? nil : page.nextOffset
+            } catch is CancellationError {
+                return
+            } catch {
+                // A cancelled request surfaces as a transport error rather
+                // than `CancellationError`, and the reload that cancelled it
+                // has already cleared the offset — do not put it back.
+                guard !Task.isCancelled, artist == requestedArtist else {
+                    return
+                }
+                // Leave the list as it is and let the next scroll retry;
+                // a failed page is not worth replacing the rows on screen
+                // with an error state.
+                nextTracksOffset = offset
+            }
+        }
+    }
+
+    @MainActor
+    private func nextTracksPage(
+        artistID: String?,
+        query: String,
+        offset: Int
+    ) async throws -> MusicPage<Track> {
+        try await withArtistDeadline {
+            try await environment.withAuthorizedToken { token in
+                if let artistID {
+                    return try await environment.musicService.artistTracks(
+                        artistID: artistID,
+                        accessToken: token,
+                        offset: offset,
+                        count: ArtistTrackPagePolicy.pageSize
+                    )
+                }
+                return try await environment.musicService.search(
+                    query: query,
+                    accessToken: token,
+                    offset: offset,
+                    count: ArtistTrackPagePolicy.pageSize
+                )
+            }
         }
     }
 
@@ -606,6 +729,26 @@ struct ArtistView: View {
 
 enum ArtistLoadPolicy {
     static let timeout: TimeInterval = 25
+}
+
+/// Paging for the artist's full track list.
+enum ArtistTrackPagePolicy {
+    static let pageSize = 50
+
+    /// How close to the end of the loaded rows the list asks for more. Kept
+    /// well inside the page so the next batch is already arriving before the
+    /// listener reaches the bottom.
+    static let prefetchDistance = 8
+
+    static func shouldLoadMore(
+        visibleIndex: Int,
+        loadedCount: Int,
+        hasMore: Bool,
+        isLoading: Bool
+    ) -> Bool {
+        guard hasMore, !isLoading, loadedCount > 0 else { return false }
+        return visibleIndex >= loadedCount - prefetchDistance
+    }
 }
 
 enum ArtistAlbumFilter {

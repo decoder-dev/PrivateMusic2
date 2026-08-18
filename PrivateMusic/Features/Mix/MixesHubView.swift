@@ -43,7 +43,6 @@ struct MixesHubView: View {
     @State private var loadErrorMessage: String?
     @State private var loadingMixID: String?
     @State private var actionError: String?
-    @State private var queueFillTask: Task<Void, Never>?
     @State private var trackLoadTask: Task<Void, Never>?
     @State private var seedRadioTask: Task<Void, Never>?
 
@@ -154,7 +153,6 @@ struct MixesHubView: View {
             environment.mixActionError = nil
         }
         .onDisappear {
-            queueFillTask?.cancel()
             trackLoadTask?.cancel()
             seedRadioTask?.cancel()
         }
@@ -2383,7 +2381,6 @@ struct MixesHubView: View {
             return
         }
         loadingMixID = mix.id
-        queueFillTask?.cancel()
         Task {
             defer { loadingMixID = nil }
             do {
@@ -2437,27 +2434,6 @@ struct MixesHubView: View {
         // user got here by choosing a mode rather than pressing play.
         if let mode, mode != .balanced {
             applyRadio(mode, mix: mix)
-        }
-    }
-
-    private func fillQueueInBackground(_ mix: MusicMix) {
-        queueFillTask?.cancel()
-        let continuation = mixContinuationProvider(
-            for: mix,
-            knownTracks: tracks(for: mix)
-        )
-        queueFillTask = Task {
-            do {
-                let more = try await continuation()
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    player.appendToQueue(more)
-                    storeTracks(
-                        mergeTracks(tracks(for: mix), more),
-                        for: mix
-                    )
-                }
-            } catch {}
         }
     }
 
