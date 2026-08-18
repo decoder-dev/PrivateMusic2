@@ -25,7 +25,6 @@ struct HomeStageView: View {
     /// One launch at a time. A second tap cancels the first so two radio
     /// requests cannot finish out of order and fight over the queue.
     @State private var launchTask: Task<Void, Never>?
-    @State private var tintCache = BubbleTintCache.shared
 
     let width: CGFloat
     /// Home's grid inset. The stage keeps its content on that grid and
@@ -42,130 +41,65 @@ struct HomeStageView: View {
         )
     }
 
+    private var stageMotion: Animation? {
+        BubbleMotion.state(reduceMotion: reduceMotion)
+    }
+
+    private var showsContextRail: Bool {
+        HomeStageContextBuilder.resolveRailContexts(
+            hasCurrentTrack: highlight.currentTrackID != nil,
+            queueSource: highlight.queueSource,
+            currentArtist: highlight.currentArtist,
+            mixes: homeCatalog.mixes,
+            historyEntries: history.entries,
+            selectedMood: settings.mixMoodPreference,
+            stationTitle: L10n.text("selena.name")
+        ).isEmpty == false
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             contextChip
                 .frame(height: HomeStageMetrics.chipHeight)
                 .padding(.bottom, HomeStageMetrics.belowChip)
+                .animation(stageMotion, value: presentation)
 
             headline
                 .padding(.bottom, HomeStageMetrics.belowHeadline)
+                .animation(stageMotion, value: presentation)
 
             artwork
                 .padding(.bottom, HomeStageMetrics.belowArtwork)
+                .animation(stageMotion, value: presentation)
 
             controls
                 .padding(
                     .bottom,
-                    contexts.isEmpty
-                        ? BubbleSpacing.m
-                        : HomeStageMetrics.belowTransport
+                    showsContextRail
+                        ? HomeStageMetrics.belowTransport
+                        : BubbleSpacing.m
                 )
+                .animation(stageMotion, value: presentation)
 
-            if !contexts.isEmpty {
-                bubbleRail
-            }
+            HomeStageBubbleRail(
+                width: width,
+                horizontalPadding: horizontalPadding,
+                startingContextID: startingContextID,
+                onStart: start
+            )
         }
         .padding(.top, foregroundTopOrigin)
         .frame(maxWidth: .infinity)
-        // A background, deliberately not a ZStack layer. `atmosphere`
-        // carries negative horizontal padding so it can bleed past Home's
-        // grid; inside a ZStack that wider layer sizes the stack, and the
-        // column's `maxWidth: .infinity` then stretched to match — which
-        // pushed the play and like buttons clean off both screen edges.
-        // A background paints outside its host without resizing it, and
-        // still covers the top padding above, so the bleed survives.
-        .background(alignment: .top) { atmosphere }
-        .animation(
-            BubbleMotion.state(reduceMotion: reduceMotion),
-            value: presentation
-        )
+        .background(alignment: .top) {
+            HomeStageAtmosphereLayer(
+                width: width,
+                horizontalPadding: horizontalPadding,
+                foregroundTopOrigin: foregroundTopOrigin
+            )
+        }
         .task(id: highlight.currentTrackID) { syncLibraryState() }
         .onChange(of: libraryStore.signatures) { _ in syncLibraryState() }
         .onDisappear { launchTask?.cancel() }
-    }
-
-    // MARK: - Atmosphere
-
-    /// The blurred-artwork treatment the player already uses, bounded to
-    /// the hero and masked to nothing at its base so there is no seam
-    /// where the shelves begin.
-    ///
-    /// Keyed on the artwork URL rather than the track, and never animated:
-    /// Home is on screen constantly, and redecoding here on every playback
-    /// tick is exactly what put this app on the heat path once already.
-    private var atmosphere: some View {
-        ZStack {
-            if let artworkURL = highlight.currentTrackArtworkURL {
-                CachedRemoteImage(
-                    url: artworkURL,
-                    maxPixelSize: PlayerArtworkBackgroundPolicy.maxPixelSize
-                ) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .blur(
-                            radius: PlayerArtworkBackgroundPolicy.blurRadius
-                        )
-                        .saturation(1.15)
-                        // A tint the status/artist/artwork/controls sit in,
-                        // not a wallpaper behind them — 0.78 read as a
-                        // second background, 0.58 read as a weak glow
-                        // localized behind the artwork instead of one field
-                        // the whole hero sits in.
-                        .opacity(settings.theme == .light ? 0.22 : 0.64)
-                } placeholder: {
-                    Color.clear
-                }
-                .id(artworkURL)
-            } else {
-                // Idle still gets a whisper of the station's own colour
-                // instead of flat black — the same role palette the idle
-                // artwork glyph already draws from, not a second engine.
-                idleAtmosphereTint
-            }
-        }
-        .frame(
-            maxWidth: .infinity,
-            maxHeight: HomeStageMetrics.atmosphereHeight(
-                for: width,
-                topSafeAreaInset: foregroundTopOrigin
-            )
-        )
-        .clipped()
-        // Fades to nothing, not to a colour, so it dissolves into whatever
-        // ThemeBackground is painting underneath instead of ending on a
-        // rectangle.
-        .mask {
-            LinearGradient(
-                stops: [
-                    .init(color: .black, location: 0),
-                    // The mask is intentionally steep: Home's blurred artwork
-                    // should dissolve into the page by the transport row,
-                    // otherwise it reads as a large "black overlay" on small
-                    // screens.
-                    .init(color: .black.opacity(0.25), location: 0.55),
-                    .init(color: .clear, location: 1)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-        .padding(.horizontal, -horizontalPadding)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-
-    private var idleAtmosphereTint: some View {
-        let tint = BubblePalette.surface(.station, tint: nil).color
-        return LinearGradient(
-            colors: [
-                tint.opacity(settings.theme == .light ? 0.10 : 0.20),
-                .clear
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
     }
 
     // MARK: - Chip
@@ -350,165 +284,17 @@ struct HomeStageView: View {
         .accessibilityHint(L10n.text("open_full_screen_player"))
     }
 
-    // MARK: - Context rail
-
-    private var contexts: [HomeStageContext] {
-        let hasCurrentTrack = highlight.currentTrackID != nil
-        let occupancy = HomeNextStepPolicy.occupancy(
-            hasCurrentTrack: hasCurrentTrack,
-            queueSource: highlight.queueSource,
-            currentArtist: highlight.currentArtist,
-            mixes: homeCatalog.mixes
-        )
-        return HomeStageContextBuilder.build(
-            mixes: homeCatalog.mixes,
-            recentArtists: HomeStageContextBuilder.recentArtists(
-                from: history.entries
-            ),
-            selectedMood: settings.mixMoodPreference,
-            stationTitle: L10n.text("selena.name"),
-            omitStation: HomeStageContextBuilder.shouldOmitStation(
-                hasCurrentTrack: hasCurrentTrack,
-                queueSource: highlight.queueSource,
-                mixes: homeCatalog.mixes
-            ),
-            occupiedArtistKeys: occupancy.occupiedArtistKeys
-        )
-    }
-
     private var stationContext: HomeStageContext {
-        contexts.first { $0.kind == .station }
-            ?? HomeStageContext(
-                id: "station",
-                kind: .station,
-                name: L10n.text("selena.name"),
-                priority: .primary,
-                avatarURL: nil,
-                mixID: nil,
-                mood: nil,
-                artist: nil
-            )
-    }
-
-    /// Tiles are shown whole. The rail used to shrink its own frame to
-    /// fake bubbles rising off the bottom edge, which on a device simply
-    /// read as clipping. Running past the screen edges horizontally is the
-    /// decorative part; `contentMargins` keeps the first tile on Home's
-    /// grid and lets the last one scroll fully clear.
-    private var bubbleRail: some View {
-        ScrollView(.horizontal) {
-            HStack(alignment: .center, spacing: BubbleSpacing.m) {
-                ForEach(contexts) { context in
-                    bubble(context)
-                }
-            }
-        }
-        .scrollIndicators(.hidden)
-        .contentMargins(.leading, horizontalPadding, for: .scrollContent)
-        .contentMargins(
-            .trailing,
-            horizontalPadding + BubbleMetrics.railTrailingInset(for: width),
-            for: .scrollContent
+        HomeStageContext(
+            id: "station",
+            kind: .station,
+            name: L10n.text("selena.name"),
+            priority: .primary,
+            avatarURL: nil,
+            mixID: nil,
+            mood: nil,
+            artist: nil
         )
-        .frame(height: HomeStageMetrics.railHeight(for: width))
-        .padding(.horizontal, -horizontalPadding)
-    }
-
-    /// A shortcut, not a second hero: soft geometry, contextual colour and
-    /// compact grouping rather than a circle sized to compete with the
-    /// artwork above it. Height is uniform across the rail — only width
-    /// (and, faintly, colour) carries priority.
-    private func bubble(_ context: HomeStageContext) -> some View {
-        let tileHeight = HomeStageMetrics.railHeight(for: width)
-        let tileWidth = BubbleMetrics.contextTileWidth(
-            for: width,
-            priority: context.priority
-        )
-        let glyphSize = BubbleMetrics.contextGlyphSize(for: tileHeight)
-        let shape = RoundedRectangle(
-            cornerRadius: BubbleRadius.contextTile,
-            style: .continuous
-        )
-        // Artwork-derived tints come from the shared cache once one has
-        // been sampled; the role palette is the guaranteed fallback, so the
-        // rail never loses its colour legend.
-        let _ = tintCache.revision
-        let fill = BubblePalette.surface(
-            context.kind.role,
-            tint: tintCache.cached(for: context.avatarURL)
-        )
-        return Button {
-            start(context)
-        } label: {
-            HStack(spacing: BubbleSpacing.s) {
-                bubbleGlyph(context, size: glyphSize)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(context.kind.kicker)
-                        .font(BubbleType.bubbleKicker)
-                        .foregroundStyle(.white.opacity(0.72))
-                        .lineLimit(1)
-                    Text(context.displayName)
-                        .font(BubbleType.bubbleTitle)
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .minimumScaleFactor(0.88)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, BubbleSpacing.m)
-            .frame(width: tileWidth, height: tileHeight, alignment: .leading)
-            .bubbleSurface(shape, fill: .solid(fill), elevation: .resting)
-            .overlay {
-                if startingContextID == context.id {
-                    ZStack {
-                        shape.fill(.black.opacity(0.28))
-                        ProgressView().tint(.white)
-                    }
-                }
-            }
-            .contentShape(shape)
-        }
-        .buttonStyle(BubblePressStyle())
-        .frame(minHeight: BubbleMetrics.minimumTapTarget)
-        // One element, one sentence — not image, then kicker, then name.
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(context.accessibilityLabel)
-        .accessibilityAddTraits(.isButton)
-    }
-
-    /// A real photo earns its own circle; the symbol fallback sits directly
-    /// on the tile's own tinted surface. Wrapping the fallback in a second
-    /// filled circle was a bubble stacked inside a bubble for no reason —
-    /// the tile is already the coloured surface.
-    @ViewBuilder
-    private func bubbleGlyph(
-        _ context: HomeStageContext,
-        size: CGFloat
-    ) -> some View {
-        if let avatarURL = context.avatarURL {
-            CachedRemoteImage(url: avatarURL, maxPixelSize: size * 3) {
-                image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                glyphFallback(context, size: size)
-            }
-            .frame(width: size, height: size)
-            .clipShape(Circle())
-            .overlay { Circle().stroke(.white.opacity(0.18), lineWidth: 1) }
-        } else {
-            glyphFallback(context, size: size)
-        }
-    }
-
-    private func glyphFallback(
-        _ context: HomeStageContext,
-        size: CGFloat
-    ) -> some View {
-        Image(systemName: context.kind.symbol)
-            .font(.system(size: size * 0.6, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.92))
-            .frame(width: size, height: size)
     }
 
     // MARK: - Launching

@@ -230,6 +230,38 @@ final class RemoteCommandCoalescingTests: XCTestCase {
     }
 }
 
+final class PlayerProgressPolicyTests: XCTestCase {
+    func testDisplayedElapsedPrefersScrubPosition() {
+        XCTAssertEqual(
+            PlayerProgressPolicy.displayedElapsed(
+                scrubPosition: 42,
+                elapsedTime: 10
+            ),
+            42,
+            accuracy: 0.000_1
+        )
+    }
+
+    func testRemainingTimeNeverNegative() {
+        XCTAssertEqual(
+            PlayerProgressPolicy.remainingTime(elapsed: 90, duration: 100),
+            10,
+            accuracy: 0.000_1
+        )
+        XCTAssertEqual(
+            PlayerProgressPolicy.remainingTime(elapsed: 120, duration: 100),
+            0,
+            accuracy: 0.000_1
+        )
+    }
+
+    func testTimeRowUsesStableMetrics() {
+        XCTAssertEqual(PlayerProgressPolicy.timeLabelFontSize, 11)
+        XCTAssertEqual(PlayerProgressPolicy.thumbDiameter, 12)
+        XCTAssertGreaterThan(PlayerProgressPolicy.timeRowHeight, 0)
+    }
+}
+
 final class PlaybackArtworkPerformancePolicyTests: XCTestCase {
     func testPlayerBackgroundUsesSmallBlurSource() {
         XCTAssertLessThanOrEqual(

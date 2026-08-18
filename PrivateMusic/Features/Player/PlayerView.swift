@@ -6,7 +6,6 @@ struct PlayerView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SessionStore.self) private var sessionStore
     @Environment(AudioPlayer.self) private var player
-    @Environment(PlaybackProgressModel.self) private var progress
     @Environment(AppSettings.self) private var settings
     @Environment(MusicLibraryStore.self) private var libraryStore
     @Environment(OfflineTrackStore.self) private var offlineStore
@@ -17,7 +16,6 @@ struct PlayerView: View {
     @State private var deferredPlayerAction: DeferredPlayerAction?
     @State private var isInLibrary = false
     @State private var isUpdatingLibrary = false
-    @State private var scrubPosition: TimeInterval?
     @State private var showCopiedToast = false
     @State private var showRouteHint = false
     @State private var routeHintToken = UUID()
@@ -83,7 +81,6 @@ struct PlayerView: View {
         }
         .onChange(of: player.currentTrack?.id) { _ in
             deferredPlayerAction = nil
-            scrubPosition = nil
             updateLibraryState()
             isUpdatingLibrary = false
             if isActionSheetPresented {
@@ -503,44 +500,13 @@ struct PlayerView: View {
     }
 
     private var progressControls: some View {
-        VStack(spacing: 3) {
-            CompactPlayerSlider(
-                value: Binding(
-                    get: { displayedElapsedTime },
-                    set: { scrubPosition = $0 }
-                ),
-                range: 0...max(player.duration, 1),
-                tintColor: UIColor(playerForeground),
-                onEditingBegan: {
-                    scrubPosition = progress.elapsedTime
-                },
-                onCommit: commitScrubbing
-            )
-            .frame(height: 20)
-            .accessibilityLabel(
-                L10n.text("playback_position")
-            )
-            .accessibilityValue(
-                "\(displayedElapsedTime.formattedDuration) / "
-                    + player.duration.formattedDuration
-            )
-
-            HStack {
-                Text(displayedElapsedTime.formattedDuration)
-                Spacer()
-                Text("-\(remainingTime.formattedDuration)")
-            }
-            .font(
-                isScrubbing
-                    ? .title3.monospacedDigit().weight(.semibold)
-                    : .system(size: 11, weight: .medium).monospacedDigit()
-            )
-            .foregroundStyle(isScrubbing ? playerForeground : playerSecondary)
-            .animation(
-                reduceMotion ? nil : .easeOut(duration: 0.12),
-                value: isScrubbing
-            )
-        }
+        PlayerProgressControls(
+            duration: player.duration,
+            foreground: playerForeground,
+            secondary: playerSecondary,
+            onSeek: { player.seek(to: $0) }
+        )
+        .id(player.currentTrack?.id)
     }
 
     private func actionMenuButton(_ track: Track) -> some View {
@@ -824,10 +790,6 @@ struct PlayerView: View {
         }
     }
 
-    private var remainingTime: TimeInterval {
-        max(player.duration - displayedElapsedTime, 0)
-    }
-
     private var playerForeground: Color {
         settings.theme == .light ? .black : .white
     }
@@ -853,17 +815,6 @@ struct PlayerView: View {
             .black.opacity(0.42),
             .black.opacity(0.92),
         ]
-    }
-
-    private var displayedElapsedTime: TimeInterval {
-        scrubPosition ?? progress.elapsedTime
-    }
-
-    private var isScrubbing: Bool { scrubPosition != nil }
-
-    private func commitScrubbing(_ position: TimeInterval) {
-        player.seek(to: position)
-        scrubPosition = nil
     }
 
     @ViewBuilder
@@ -2080,147 +2031,6 @@ private struct AirPlayRoutePicker: UIViewRepresentable {
             _ routePickerView: AVRoutePickerView
         ) {
             onWillPresent()
-        }
-    }
-}
-
-private final class TappableSlider: UISlider {
-    /// Jump the thumb to the touch so a tap anywhere on the track seeks,
-    /// instead of requiring a grab of the 12 pt knob.
-    override func beginTracking(
-        _ touch: UITouch,
-        with event: UIEvent?
-    ) -> Bool {
-        let point = touch.location(in: self)
-        let track = trackRect(forBounds: bounds)
-        let span = max(track.width, 1)
-        let percent = min(max((point.x - track.minX) / span, 0), 1)
-        let next = minimumValue + Float(percent) * (maximumValue - minimumValue)
-        setValue(next, animated: false)
-        sendActions(for: .valueChanged)
-        return super.beginTracking(touch, with: event)
-    }
-}
-
-private struct CompactPlayerSlider: UIViewRepresentable {
-    @Binding var value: TimeInterval
-    let range: ClosedRange<TimeInterval>
-    let tintColor: UIColor
-    let onEditingBegan: () -> Void
-    let onCommit: (TimeInterval) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeUIView(context: Context) -> UISlider {
-        let slider = TappableSlider(frame: .zero)
-        slider.isContinuous = true
-        configureColors(slider, coordinator: context.coordinator)
-        slider.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.valueChanged(_:)),
-            for: .valueChanged
-        )
-        slider.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.editingBegan(_:)),
-            for: .touchDown
-        )
-        slider.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.editingEnded(_:)),
-            for: [.touchUpInside, .touchUpOutside, .touchCancel]
-        )
-        return slider
-    }
-
-    func updateUIView(_ slider: UISlider, context: Context) {
-        context.coordinator.parent = self
-        if context.coordinator.cachedTintColor != tintColor {
-            configureColors(slider, coordinator: context.coordinator)
-        }
-        slider.minimumValue = Float(range.lowerBound)
-        slider.maximumValue = Float(max(range.upperBound, range.lowerBound + 1))
-        guard !slider.isTracking else { return }
-        let safeValue = value.isFinite ? value : range.lowerBound
-        let next = Float(min(max(safeValue, range.lowerBound), range.upperBound))
-        if abs(slider.value - next) >= 0.05 {
-            slider.setValue(next, animated: false)
-        }
-    }
-
-    private func configureColors(
-        _ slider: UISlider,
-        coordinator: Coordinator
-    ) {
-        slider.minimumTrackTintColor = tintColor
-        slider.maximumTrackTintColor = tintColor.withAlphaComponent(0.18)
-        slider.setThumbImage(
-            coordinator.thumb(diameter: 12, tint: tintColor),
-            for: .normal
-        )
-        slider.setThumbImage(
-            coordinator.thumb(diameter: 15, tint: tintColor),
-            for: .highlighted
-        )
-        coordinator.cachedTintColor = tintColor
-    }
-
-    final class Coordinator: NSObject {
-        var parent: CompactPlayerSlider
-        var cachedTintColor: UIColor?
-        private var thumbCache: [String: UIImage] = [:]
-
-        init(parent: CompactPlayerSlider) {
-            self.parent = parent
-        }
-
-        func thumb(diameter: CGFloat, tint: UIColor) -> UIImage {
-            let key = "\(diameter)-\(tint.hash)"
-            if let cached = thumbCache[key] {
-                return cached
-            }
-            let size = CGSize(width: diameter, height: diameter)
-            let image = UIGraphicsImageRenderer(size: size).image { context in
-                context.cgContext.setShadow(
-                    offset: CGSize(width: 0, height: 1),
-                    blur: 3,
-                    color: UIColor.black.withAlphaComponent(0.28).cgColor
-                )
-                tint.setFill()
-                UIBezierPath(
-                    ovalIn: CGRect(origin: .zero, size: size).insetBy(
-                        dx: 0.5,
-                        dy: 0.5
-                    )
-                )
-                .fill()
-            }
-            thumbCache[key] = image
-            return image
-        }
-
-        @objc
-        func valueChanged(_ slider: UISlider) {
-            if !slider.isTracking {
-                parent.onEditingBegan()
-            }
-            parent.value = TimeInterval(slider.value)
-            if !slider.isTracking {
-                parent.onCommit(TimeInterval(slider.value))
-            }
-        }
-
-        @objc
-        func editingBegan(_ slider: UISlider) {
-            parent.onEditingBegan()
-        }
-
-        @objc
-        func editingEnded(_ slider: UISlider) {
-            parent.value = TimeInterval(slider.value)
-            parent.onCommit(TimeInterval(slider.value))
         }
     }
 }
