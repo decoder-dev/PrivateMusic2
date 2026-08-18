@@ -216,7 +216,7 @@ struct TrackRowContent: View {
             VStack(alignment: .leading, spacing: 3) {
                 if let title {
                     Text(title)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.callout.weight(.semibold))
                         .foregroundStyle(titleColor)
                         .lineLimit(1)
                 }

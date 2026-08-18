@@ -1871,6 +1871,49 @@ def require_minimum_hit_targets() -> None:
 require_minimum_hit_targets()
 
 
+def require_text_scales_with_dynamic_type() -> None:
+    """Body text must use a text style, not a fixed point size.
+
+    `Font.system(size:)` is frozen: it ignores the reader's text-size
+    setting entirely, which is the accessibility setting people actually
+    change. Text styles (`.subheadline`, `.callout`, ...) scale.
+
+    The exceptions are text set inside a canvas of a fixed size — a badge
+    pill, a generated cover — where larger type has nowhere to go and would
+    simply overrun the artwork rather than push anything aside.
+    """
+    allowed = {
+        "PrivateMusic/Features/Library/LibraryView.swift",
+        "PrivateMusic/Features/Shared/PlaylistArtworkView.swift",
+    }
+    offenders = []
+    for path in swift_files:
+        relative = str(path.relative_to(ROOT))
+        if relative in allowed:
+            continue
+        lines = path.read_text(encoding="utf-8").split("\n")
+        for index, line in enumerate(lines):
+            if ".font(.system(size:" not in line:
+                continue
+            for back in range(index - 1, max(-1, index - 12), -1):
+                previous = lines[back].strip()
+                if previous.startswith(("Image(", "Label(")):
+                    break
+                if previous.startswith("Text("):
+                    offenders.append(f"{relative}:{index + 1}")
+                    break
+                if re.match(
+                    r"^(ProgressView|Group|VStack|HStack|ZStack|Button)\b",
+                    previous,
+                ):
+                    break
+    if offenders:
+        fail("text frozen against Dynamic Type: " + ", ".join(offenders))
+
+
+require_text_scales_with_dynamic_type()
+
+
 require_home_is_not_a_recommendation_feed()
 
 print(f"OK: {len(swift_files)} Swift files")
@@ -1882,3 +1925,4 @@ print("OK: valid no-tracking privacy manifest")
 print("OK: edge-to-edge player and consistent Liquid Glass controls")
 print("OK: deterministic player presentation and lightweight action dock")
 print("OK: every control accepts the 44pt minimum touch area")
+print("OK: body text scales with Dynamic Type")

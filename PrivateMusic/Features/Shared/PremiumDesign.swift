@@ -252,7 +252,7 @@ struct AppInlineMessageCard: View {
             Spacer(minLength: BubbleSpacing.xs)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.footnote.weight(.semibold))
             }
         }
         .padding(.horizontal, BubbleSpacing.l)
@@ -295,7 +295,7 @@ struct AppStatusPanel: View {
                 .foregroundStyle(settings.theme.accent)
                 .accessibilityHidden(true)
             Text(titleIsLocalizedKey ? L10n.text(title) : title)
-                .font(.system(size: 22, weight: .bold))
+                .font(.title2.weight(.bold))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             Text(
@@ -315,7 +315,7 @@ struct AppStatusPanel: View {
                         : actionTitle,
                     action: action
                 )
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .buttonStyle(.borderedProminent)
             }
         }

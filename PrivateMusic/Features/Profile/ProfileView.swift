@@ -73,11 +73,11 @@ struct ProfileView: View {
                     sessionStore.profile?.displayName
                         ?? L10n.text("listener")
                 )
-                .font(.system(size: 21, weight: .semibold))
+                .font(.title2.weight(.semibold))
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
                 Text(L10n.text("private_music"))
-                    .font(.system(size: 15, weight: .regular))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -163,7 +163,7 @@ struct ProfileView: View {
                     .frame(width: 28)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.callout.weight(.semibold))
                         .foregroundStyle(foregroundStyle)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)

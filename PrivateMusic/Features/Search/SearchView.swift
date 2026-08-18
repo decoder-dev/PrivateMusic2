@@ -259,7 +259,7 @@ struct SearchView: View {
             Button(L10n.text("clear")) {
                 model.clearRecent()
             }
-            .font(.system(size: 13, weight: .semibold))
+            .font(.footnote.weight(.semibold))
             .accessibilityLabel(L10n.text("clear_recent_searches"))
         } content: {
             ForEach(Array(model.recentQueries.enumerated()), id: \.element) {
@@ -274,7 +274,7 @@ struct SearchView: View {
                                     .foregroundStyle(.secondary)
                                     .frame(width: 18)
                                 Text(query)
-                                    .font(.system(size: 15, weight: .semibold))
+                                    .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
                             }
@@ -626,7 +626,7 @@ struct SearchView: View {
                     .foregroundStyle(settings.theme.accent)
                     .frame(width: 24)
                 Text(artist)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -648,7 +648,7 @@ struct SearchView: View {
                             ? album.title
                             : L10n.text("album")
                     )
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                     Text(album.artistText)
@@ -678,7 +678,7 @@ struct SearchView: View {
                 )
                 VStack(alignment: .leading, spacing: BubbleSpacing.xs) {
                     Text(playlist.title)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.subheadline.weight(.semibold))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(L10n.trackCount(playlist.count))

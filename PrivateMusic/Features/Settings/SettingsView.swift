@@ -198,7 +198,7 @@ struct SettingsView: View {
         } label: {
             AppGroupedRow {
                 Label(L10n.text(title), systemImage: systemImage)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .foregroundStyle(.primary)
             } trailing: {
                 Image(systemName: "chevron.right")
@@ -212,7 +212,7 @@ struct SettingsView: View {
     private func labeledValueRow(title: String, value: String) -> some View {
         AppGroupedRow {
             Text(title)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.callout.weight(.semibold))
         } trailing: {
             Text(value)
                 .font(BubbleType.metadata)

@@ -156,7 +156,7 @@ struct MiniPlayerView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Text(track.artist)
-                .font(.system(size: 13, weight: .regular))
+                .font(.footnote)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)

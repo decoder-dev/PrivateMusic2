@@ -274,7 +274,7 @@ struct PlayerView: View {
                         .tracking(1.1)
                         .foregroundStyle(playerSecondary)
                     Text(player.queueContextTitle.uppercased())
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.caption2.weight(.medium))
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                         .truncationMode(.middle)
