@@ -144,6 +144,35 @@ struct HomeStageContext: Identifiable, Hashable, Sendable {
 enum HomeStageContextBuilder {
     static let limit = 6
 
+    static func resolveRailContexts(
+        hasCurrentTrack: Bool,
+        queueSource: QueueSource?,
+        currentArtist: String?,
+        mixes: [MusicMix],
+        historyEntries: [any HomeStagePlayable],
+        selectedMood: MixMoodPreference,
+        stationTitle: String
+    ) -> [HomeStageContext] {
+        let occupancy = HomeNextStepPolicy.occupancy(
+            hasCurrentTrack: hasCurrentTrack,
+            queueSource: queueSource,
+            currentArtist: currentArtist,
+            mixes: mixes
+        )
+        return build(
+            mixes: mixes,
+            recentArtists: recentArtists(from: historyEntries),
+            selectedMood: selectedMood,
+            stationTitle: stationTitle,
+            omitStation: shouldOmitStation(
+                hasCurrentTrack: hasCurrentTrack,
+                queueSource: queueSource,
+                mixes: mixes
+            ),
+            occupiedArtistKeys: occupancy.occupiedArtistKeys
+        )
+    }
+
     static func build(
         mixes: [MusicMix],
         recentArtists: [HomeStageArtist],

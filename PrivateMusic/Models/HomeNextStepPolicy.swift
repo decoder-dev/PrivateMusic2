@@ -78,9 +78,24 @@ struct HomeNextStepRequest: Equatable, Sendable {
     var hasRecommendations: Bool
 }
 
-/// Deterministic Home "What's Next" picker. Candidate generation, scoring,
-/// occupancy, dedup and stickiness live here so SwiftUI only renders the
-/// winner.
+/// Inputs that can change the Home "What's Next" winner. Catalog caches
+/// the resolved candidate behind this key so scrolling does not re-run the
+/// full picker on every body pass.
+struct HomeNextStepRefreshKey: Equatable, Sendable {
+    var currentTrackID: String?
+    var queueSource: QueueSource?
+    var currentArtist: String?
+    var selectedMood: MixMoodPreference
+    var historyHeadTrackIDs: [String]
+    var mixIDs: [String]
+    var recommendationsEmpty: Bool
+    var previouslyShownArtistKey: String?
+    var previouslyShownKey: String?
+    var bannedArtistKeys: [String]
+    var bannedTrackIDs: [String]
+    var librarySignatures: [String]
+}
+
 enum HomeNextStepPolicy {
     static let qualifyingConfidence = 1.0
     static let retentionConfidence = 0.85
