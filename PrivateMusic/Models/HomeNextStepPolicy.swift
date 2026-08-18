@@ -176,9 +176,13 @@ enum HomeNextStepPolicy {
                challenger.confidence >= sticky.confidence + hysteresis {
                 return challenger
             }
-            if sticky.confidence >= qualifyingConfidence {
-                return sticky
-            }
+            // Holding the slot down to `retentionConfidence` is the whole
+            // point of having a second, lower bar — `visible` has already
+            // applied it. Re-testing against `qualifyingConfidence` here
+            // made the retention band dead: a card that dipped just under
+            // the entry bar was dropped for a weaker one, or for nothing
+            // at all, which is the flicker the hysteresis exists to damp.
+            return sticky
         }
 
         return qualified.max(by: Self.isOrderedBefore)
