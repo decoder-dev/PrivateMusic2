@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Bubble UI tokens. These extend the existing `PremiumLayout` /
 /// `PremiumPressStyle` vocabulary rather than replacing it — the app
@@ -98,6 +99,25 @@ enum BubbleMotion {
 
     static func press(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : press
+    }
+
+    /// The imperative twin of `state(reduceMotion:)`, for the changes made
+    /// from an action rather than declared on a view.
+    ///
+    /// `withAnimation` is called from closures and plain methods that have
+    /// no view to read `\.accessibilityReduceMotion` from, and threading
+    /// the environment down to each of them buys nothing: the setting is
+    /// the same switch either way. So this reads it from UIAccessibility
+    /// and applies the change with no animation at all when it is on.
+    @MainActor
+    static func animate<Result>(
+        _ animation: Animation,
+        _ body: () throws -> Result
+    ) rethrows -> Result {
+        guard !UIAccessibility.isReduceMotionEnabled else {
+            return try body()
+        }
+        return try withAnimation(animation, body)
     }
 }
 

@@ -126,7 +126,7 @@ struct OfflineDownloadsView: View {
                 } else if section != .playlists,
                           !recordsForCurrentSection.isEmpty {
                     Button(L10n.text("select")) {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        BubbleMotion.animate(.easeInOut(duration: 0.2)) {
                             selection = []
                         }
                     }
@@ -477,7 +477,7 @@ struct OfflineDownloadsView: View {
             },
             onLongPress: {
                 guard selection == nil else { return }
-                withAnimation(.easeInOut(duration: 0.2)) {
+                BubbleMotion.animate(.easeInOut(duration: 0.2)) {
                     selection = [record.track.id]
                 }
                 Haptics.selection()
@@ -796,14 +796,14 @@ struct OfflineDownloadsView: View {
         } else {
             current.insert(track.id)
         }
-        withAnimation(.easeInOut(duration: 0.2)) {
+        BubbleMotion.animate(.easeInOut(duration: 0.2)) {
             selection = current
         }
         Haptics.selection()
     }
 
     private func exitSelection() {
-        withAnimation(.easeInOut(duration: 0.2)) {
+        BubbleMotion.animate(.easeInOut(duration: 0.2)) {
             selection = nil
         }
     }
@@ -1178,7 +1178,7 @@ private struct AnimatedProgressView: View {
             animatedProgress = progress
         }
         .onChange(of: progress) { newProgress in
-            withAnimation(.easeInOut(duration: 0.4)) {
+            BubbleMotion.animate(.easeInOut(duration: 0.4)) {
                 animatedProgress = newProgress
             }
         }
