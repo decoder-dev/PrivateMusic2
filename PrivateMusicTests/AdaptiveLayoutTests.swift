@@ -51,21 +51,37 @@ final class AdaptiveLayoutTests: XCTestCase {
         XCTAssertLessThanOrEqual(iPad, 220)
     }
 
-    /// Home carries only its own discovery row now — the playlist and new
-    /// release shelves moved to the Library and Mix tabs that already own
-    /// that content, and `HomeMetrics` dropped the widths that existed
-    /// only to size them.
+    /// Home is a hero, one What's Next and Recently Played now — the For You
+    /// and VK Mixes shelves moved to the tabs that already own that content,
+    /// so `HomeMetrics` dropped the recommendation card width and sizes only
+    /// the What's Next artwork and the Recently Played rail.
     func testHomeMetricsPreservePhone390AndGrowOnIPad() {
         let phone = HomeMetrics(containerWidth: phoneWidth)
         let iPad = HomeMetrics(containerWidth: iPadWidth)
 
         XCTAssertEqual(phone.horizontalPadding, 16)
-        XCTAssertEqual(phone.trackWidth, 140.4, accuracy: 0.01)
+        XCTAssertEqual(phone.nextStepWidth, 70.2, accuracy: 0.01)
         XCTAssertEqual(phone.recentWidth, 126, accuracy: 0.01)
 
         XCTAssertEqual(iPad.horizontalPadding, 24)
-        XCTAssertGreaterThan(iPad.trackWidth, phone.trackWidth)
+        XCTAssertEqual(iPad.nextStepWidth, 76, accuracy: 0.01)
+        XCTAssertEqual(iPad.recentWidth, 184.32, accuracy: 0.01)
+        XCTAssertGreaterThan(iPad.nextStepWidth, phone.nextStepWidth)
         XCTAssertGreaterThan(iPad.recentWidth, phone.recentWidth)
+    }
+
+    /// The single What's Next row is a suggestion, not a second hero: its
+    /// artwork stays inside the 64–76pt band and well under the Hero
+    /// artwork at every width, including iPad where the rails grow.
+    func testNextStepArtworkStaysWellUnderHeroArtwork() {
+        for width in [CGFloat(320), 350, phoneWidth, 430, 744, iPadWidth] {
+            let nextStep = HomeMetrics(containerWidth: width).nextStepWidth
+            let hero = HomeStageMetrics.artworkSize(for: width)
+
+            XCTAssertGreaterThanOrEqual(nextStep, 64)
+            XCTAssertLessThanOrEqual(nextStep, 76)
+            XCTAssertLessThan(nextStep, hero * 0.65)
+        }
     }
 
     func testMixHubMetricsPreservePhone390CardShareAndGrowOnIPad() {
