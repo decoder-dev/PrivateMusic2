@@ -469,6 +469,7 @@ struct MixesHubView: View {
                         .frame(width: 30, height: 30)
                         .foregroundStyle(.black)
                         .background(.white, in: Circle())
+                        .minimumHitTarget(visualSize: 30)
                 }
                 .buttonStyle(PremiumPressStyle())
                 .padding(8)
