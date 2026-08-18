@@ -2,8 +2,9 @@ import Foundation
 
 enum SpatialAudioDSP {
     static let defaultIntensity = 0.35
-    /// High-pass the side channel so bass stays mono (centered in mid).
-    static let sideHighPassFrequency: Double = 180
+    /// High-pass the side channel so sub-bass stays mono. Keep this low so
+    /// spatial width does not thin out the body of the mix («pipe» sound).
+    static let sideHighPassFrequency: Double = 90
 
     static func process(
         left: Float,

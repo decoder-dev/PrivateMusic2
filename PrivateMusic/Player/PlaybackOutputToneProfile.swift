@@ -39,8 +39,8 @@ enum PlaybackOutputToneProfile: Equatable {
     var boomCutDB: Double {
         switch self {
         case .intimate: return 0
-        case .room: return -2.0
-        case .cabin: return -3.5
+        case .room: return -1.0
+        case .cabin: return -2.0
         }
     }
 
