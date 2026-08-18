@@ -109,6 +109,7 @@ struct CuratorMixesView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .background(ThemeBackground())
         .navigationTitle(curator.displayName)
         .navigationBarTitleDisplayMode(.inline)

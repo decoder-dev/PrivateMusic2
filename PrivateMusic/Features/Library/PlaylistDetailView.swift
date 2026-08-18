@@ -40,6 +40,7 @@ struct PlaylistDetailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ThemeBackground())
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .collapsingInlineNavigationTitle(
             playlist.title,
             isVisible: $showsNavTitle

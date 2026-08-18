@@ -43,6 +43,7 @@ struct AlbumDetailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ThemeBackground())
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .collapsingInlineNavigationTitle(
             displayedTitle,
             isVisible: $showsNavTitle

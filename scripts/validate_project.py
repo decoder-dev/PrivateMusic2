@@ -898,6 +898,23 @@ if "showsOwnGlassChrome: false" not in main_tab_source:
     fail(
         "system tab accessory mini player must disable stacked glass chrome"
     )
+if "playbackDockReservesContent" not in main_tab_source:
+    fail(
+        "legacy and regular-width docks must publish playbackDockReservesContent "
+        "so tab roots are not padded twice for the mini player"
+    )
+catalog_view_source = (
+    SOURCE / "Features" / "Catalog" / "CatalogView.swift"
+).read_text(encoding="utf-8")
+album_detail_source = (
+    SOURCE / "Features" / "Album" / "AlbumDetailView.swift"
+).read_text(encoding="utf-8")
+if ".clearsMiniPlayer()" not in catalog_view_source:
+    fail("Home scroll content must lift above the mini player")
+if "clearsMiniPlayer(includingWhenDockReservesSpace: true)" not in album_detail_source:
+    fail("album track lists must lift above the mini player")
+if "func miniPlayerClearance(hasMiniPlayer: Bool)" not in all_source:
+    fail("BottomAccessoryMetrics must expose mini-player-only clearance")
 if "LikedTrackBadge(track: track)" in mini_player_source:
     fail("mini-player must not overlay a liked-track badge on artwork")
 if ".buttonStyle(.glassProminent)" in mini_player_source:

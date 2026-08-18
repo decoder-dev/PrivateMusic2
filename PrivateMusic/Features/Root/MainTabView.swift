@@ -115,6 +115,7 @@ struct MainTabView: View {
             .listStyle(.sidebar)
         } detail: {
             regularTabDetail
+                .environment(\.playbackDockReservesContent, true)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     RegularWidthPlaybackBar(
                         playerNamespace: playerNamespace
@@ -225,6 +226,7 @@ struct MainTabView: View {
             .allowsHitTesting(selectedTab == tab)
             .accessibilityHidden(selectedTab != tab)
             .zIndex(selectedTab == tab ? 1 : 0)
+            .environment(\.playbackDockReservesContent, true)
             .animation(
                 reduceMotion ? nil : .easeInOut(duration: 0.18),
                 value: selectedTab
