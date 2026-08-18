@@ -63,6 +63,97 @@ final class HomeStageContextTests: XCTestCase {
         XCTAssertTrue(idle.isEmpty)
     }
 
+    func testPersonalStationPlayingOmitsTheStationTile() {
+        let personal = makeMix(
+            MusicMix.common.id,
+            title: "Составлено Селеной"
+        )
+        XCTAssertTrue(
+            HomeStageContextBuilder.shouldOmitStation(
+                hasCurrentTrack: true,
+                queueSource: .mix(title: personal.title),
+                mixes: [personal]
+            )
+        )
+        let contexts = HomeStageContextBuilder.build(
+            mixes: [personal],
+            recentArtists: [],
+            selectedMood: .any,
+            stationTitle: "Селена",
+            omitStation: HomeStageContextBuilder.shouldOmitStation(
+                hasCurrentTrack: true,
+                queueSource: .mix(title: personal.title),
+                mixes: [personal]
+            )
+        )
+        XCTAssertFalse(contexts.contains { $0.kind == .station })
+    }
+
+    func testAlbumPlaybackKeepsTheStationTile() {
+        let personal = makeMix(
+            MusicMix.common.id,
+            title: "Составлено Селеной"
+        )
+        XCTAssertFalse(
+            HomeStageContextBuilder.shouldOmitStation(
+                hasCurrentTrack: true,
+                queueSource: .album(title: "Album"),
+                mixes: [personal]
+            )
+        )
+    }
+
+    func testHeroArtistIsNotRepeatedOnTheRail() {
+        let contexts = HomeStageContextBuilder.build(
+            mixes: [],
+            recentArtists: [
+                HomeStageArtist(name: "Owar1", seed: nil),
+                HomeStageArtist(name: "Три дня дождя", seed: nil)
+            ],
+            selectedMood: .any,
+            stationTitle: "Селена",
+            occupiedArtistKeys: [MixFeedbackPolicy.normalized("Owar1")]
+        )
+
+        XCTAssertEqual(contexts.map(\.kind), [.station, .artist])
+        XCTAssertEqual(contexts.first { $0.kind == .artist }?.name, "Три дня дождя")
+    }
+
+    func testHeroMultiArtistCreditSuppressesMatchingRailTile() {
+        let contexts = HomeStageContextBuilder.build(
+            mixes: [],
+            recentArtists: [
+                HomeStageArtist(name: "SKWLKR", seed: nil),
+                HomeStageArtist(name: "Owar1", seed: nil)
+            ],
+            selectedMood: .any,
+            stationTitle: "Селена",
+            occupiedArtistKeys: [
+                MixFeedbackPolicy.normalized("SKWLKR"),
+                MixFeedbackPolicy.normalized("Lastfragment")
+            ]
+        )
+
+        XCTAssertEqual(contexts.map(\.kind), [.station, .artist])
+        XCTAssertEqual(contexts.first { $0.kind == .artist }?.name, "Owar1")
+    }
+
+    func testVibeTileNamesTheLaunchActionNotTheMoodAlone() {
+        let contexts = HomeStageContextBuilder.build(
+            mixes: [],
+            recentArtists: [],
+            selectedMood: .energetic,
+            stationTitle: "Селена"
+        )
+
+        let vibe = contexts.first { $0.kind == .vibe }
+        XCTAssertEqual(vibe?.mood, .energetic)
+        XCTAssertEqual(
+            vibe?.displayName,
+            L10n.format("home_stage.vibe_launch_d0", MixMoodPreference.energetic.title)
+        )
+    }
+
     func testStationAlwaysLeadsEvenWithNothingElse() {
         let contexts = HomeStageContextBuilder.build(
             mixes: [],
