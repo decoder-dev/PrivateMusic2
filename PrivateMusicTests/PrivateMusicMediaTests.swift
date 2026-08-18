@@ -72,15 +72,14 @@ final class PrivateMusicMediaTests: XCTestCase {
         let plaintext = Data("PrivateMusic HLS segment payload".utf8)
         let ciphertext = encryptAES128CBC(plaintext, key: key, iv: iv)
 
-        var output = [UInt8](
-            repeating: 0,
+        var output = Data(
             count: ciphertext.count + Int(PM_AES128_BLOCK_BYTES)
         )
         var outputLength: Int32 = 0
-        let status = ciphertext.withUnsafeBytes { cipherBytes in
-            key.withUnsafeBytes { keyBytes in
-                iv.withUnsafeBytes { ivBytes in
-                    output.withUnsafeMutableBytes { outBytes in
+        let status = output.withUnsafeMutableBytes { outBytes in
+            ciphertext.withUnsafeBytes { cipherBytes in
+                key.withUnsafeBytes { keyBytes in
+                    iv.withUnsafeBytes { ivBytes in
                         pm_aes128_cbc_decrypt(
                             cipherBytes.baseAddress?.assumingMemoryBound(
                                 to: UInt8.self
@@ -95,7 +94,7 @@ final class PrivateMusicMediaTests: XCTestCase {
                             outBytes.baseAddress?.assumingMemoryBound(
                                 to: UInt8.self
                             ),
-                            Int32(output.count),
+                            Int32(outBytes.count),
                             &outputLength
                         )
                     }
@@ -103,10 +102,7 @@ final class PrivateMusicMediaTests: XCTestCase {
             }
         }
         XCTAssertEqual(status, PM_AES128_OK)
-        XCTAssertEqual(
-            Data(output.prefix(Int(outputLength))),
-            plaintext
-        )
+        XCTAssertEqual(output.prefix(Int(outputLength)), plaintext)
     }
 
     func testAES128CBCDecryptRejectsNonBlockAlignedCiphertext() {
