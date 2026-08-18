@@ -2064,6 +2064,24 @@ private struct AirPlayRoutePicker: UIViewRepresentable {
     }
 }
 
+private final class TappableSlider: UISlider {
+    /// Jump the thumb to the touch so a tap anywhere on the track seeks,
+    /// instead of requiring a grab of the 12 pt knob.
+    override func beginTracking(
+        _ touch: UITouch,
+        with event: UIEvent?
+    ) -> Bool {
+        let point = touch.location(in: self)
+        let track = trackRect(forBounds: bounds)
+        let span = max(track.width, 1)
+        let percent = min(max((point.x - track.minX) / span, 0), 1)
+        let next = minimumValue + Float(percent) * (maximumValue - minimumValue)
+        setValue(next, animated: false)
+        sendActions(for: .valueChanged)
+        return super.beginTracking(touch, with: event)
+    }
+}
+
 private struct CompactPlayerSlider: UIViewRepresentable {
     @Binding var value: TimeInterval
     let range: ClosedRange<TimeInterval>
@@ -2076,7 +2094,7 @@ private struct CompactPlayerSlider: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UISlider {
-        let slider = UISlider(frame: .zero)
+        let slider = TappableSlider(frame: .zero)
         slider.isContinuous = true
         configureColors(slider, coordinator: context.coordinator)
         slider.addTarget(

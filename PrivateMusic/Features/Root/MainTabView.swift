@@ -327,9 +327,12 @@ private struct SystemPlaybackAccessory: View {
             // a second glass plate (looks like a floating black pill).
             MiniPlayerView(
                 playerNamespace: playerNamespace,
-                showsOwnGlassChrome: false
+                showsOwnGlassChrome: false,
+                fillsAccessorySlot: true
             )
             .padding(.horizontal, 4)
+            .frame(maxHeight: MiniPlayerLayoutMetrics.accessoryMaxHeight)
+            .clipped()
         case .inline:
             // Compact chrome sized for the minimized system tab bar.
             InlineMiniPlayerView(playerNamespace: playerNamespace)
@@ -403,7 +406,7 @@ private struct PlaybackTabDock: View {
         // above the home indicator, because the overlay is already aligned
         // to the safe area. Keep it tight: the dock reads as detached and
         // wastes usable screen when it floats high.
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             if player.currentTrack != nil {
                 MiniPlayerView(playerNamespace: playerNamespace)
                     .transition(
