@@ -59,16 +59,8 @@ private enum CollapsingNavMetrics {
     /// Status bar + inline nav bar — hero title crossing this line
     /// means the large in-content title is no longer readable.
     static var titleRevealThreshold: CGFloat {
-        let scenes = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-        for scene in scenes {
-            for window in scene.windows where window.isKeyWindow {
-                return window.safeAreaInsets.top + 52
-            }
-        }
-        if let fallback = scenes.first?.windows.first {
-            return fallback.safeAreaInsets.top + 52
-        }
-        return 47 + 52
+        NavigationChromeMetrics.inlineTitleRegionBottom(
+            reportedTopSafeAreaInset: 0
+        )
     }
 }

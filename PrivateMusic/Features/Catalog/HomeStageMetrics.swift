@@ -8,6 +8,22 @@ import CoreGraphics
 /// is to fit inside the first viewport with the next shelf already
 /// starting to show underneath.
 enum HomeStageMetrics {
+    /// Home underlaps the top chrome with the atmospheric background, but its
+    /// foreground must still start below the compact navigation/header band.
+    /// On some hierarchies the stage's `GeometryReader` can report zero after
+    /// the parent ignores the top safe area; in that case fall back to the
+    /// window's current top inset rather than collapsing the hero upward.
+    @MainActor
+    static func resolvedForegroundTopInset(
+        reportedTopSafeAreaInset: CGFloat,
+        windowTopSafeAreaInset: CGFloat? = nil
+    ) -> CGFloat {
+        NavigationChromeMetrics.resolvedTopSafeAreaInset(
+            reportedTopSafeAreaInset: reportedTopSafeAreaInset,
+            windowTopSafeAreaInset: windowTopSafeAreaInset
+        )
+    }
+
     /// 32–38 pt, bold. A short name at the top of this band used to read
     /// as shouting; the band leans on two lines and a tighter scale factor
     /// before it ever reaches for a bigger font.
