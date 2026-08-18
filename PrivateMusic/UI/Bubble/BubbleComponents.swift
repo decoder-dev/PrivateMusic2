@@ -182,10 +182,6 @@ private struct BubbleGlassIfNeeded: ViewModifier {
 
 /// Status and context: "Составлено Селеной", "Ничего не играет". Quiet by
 /// default — a chip that shouts competes with the headline under it.
-///
-/// Home currently paints this as a Gravity Label (4 pt corners, brand
-/// wash) instead of a glass capsule, so the status reads as metadata
-/// rather than another floating control.
 struct BubbleChip<Trailing: View>: View {
     let title: String
     var isProminent = true
@@ -202,22 +198,14 @@ struct BubbleChip<Trailing: View>: View {
                 .fontWeight(isProminent ? .semibold : .medium)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .foregroundStyle(
-                    isProminent ? GravityTokens.brand : .secondary
-                )
+                .foregroundStyle(isProminent ? .primary : .secondary)
             trailing()
         }
         .padding(.leading, BubbleSpacing.m)
         .padding(.trailing, hasTrailing ? BubbleSpacing.xs : BubbleSpacing.m)
-        .padding(.vertical, BubbleSpacing.xs)
-        .background(
-            GravityTokens.labelFill(isProminent: isProminent),
-            in: RoundedRectangle(
-                cornerRadius: GravityTokens.labelRadius,
-                style: .continuous
-            )
-        )
-        .opacity(isProminent ? 1 : 0.85)
+        .padding(.vertical, BubbleSpacing.xs + 2)
+        .adaptiveGlass(in: Capsule(style: .continuous))
+        .opacity(isProminent ? 1 : 0.75)
     }
 }
 
@@ -242,12 +230,14 @@ struct BubbleCallToAction: View {
     var isBusy = false
     let action: () -> Void
 
+    @Environment(AppSettings.self) private var settings
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: BubbleSpacing.s) {
                 if isBusy {
                     ProgressView()
-                        .tint(.black)
+                        .tint(.white)
                 } else {
                     Image(systemName: systemImage)
                         .font(.system(size: 16, weight: .bold))
@@ -256,17 +246,11 @@ struct BubbleCallToAction: View {
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
             }
-            .foregroundStyle(.black)
+            .foregroundStyle(.white)
             .padding(.horizontal, BubbleSpacing.xxl)
             .frame(height: height)
             .frame(minWidth: 0)
-            .background(
-                GravityTokens.brand,
-                in: RoundedRectangle(
-                    cornerRadius: GravityTokens.controlRadius,
-                    style: .continuous
-                )
-            )
+            .background(settings.theme.accent, in: Capsule(style: .continuous))
         }
         .buttonStyle(BubblePressStyle())
         .disabled(isBusy)

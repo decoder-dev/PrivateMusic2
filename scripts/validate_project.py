@@ -39,7 +39,6 @@ required = {
     "PrivateMusic/Models/OfflineTrackStore.swift",
     "PrivateMusic/Features/Library/OfflineDownloadsView.swift",
     "PrivateMusic/Services/HLSOfflineDownloadService.swift",
-    "PrivateMusic/UI/Bubble/GravityTokens.swift",
 }
 for relative in required:
     if not (ROOT / relative).is_file():
@@ -976,12 +975,6 @@ if "@Environment(AudioPlayer.self)" in home_stage_source:
     )
 if "PlaybackHighlightModel.self" not in home_stage_source:
     fail("HomeStageView must observe PlaybackHighlightModel for hero state")
-if "GravityActionButton(" not in home_stage_source:
-    fail("HomeStageView must use a Gravity action play control")
-if "HomeStagePlayButton(" in home_stage_source:
-    fail("HomeStageView must not keep the old glass play capsule")
-if "BubbleIconButton(" not in home_stage_source:
-    fail("HomeStageView must keep the glass heart next to Gravity play")
 album_detail_source = (
     SOURCE / "Features" / "Album" / "AlbumDetailView.swift"
 ).read_text(encoding="utf-8")
@@ -1802,55 +1795,6 @@ def require_home_is_not_a_recommendation_feed() -> None:
 
 
 require_home_is_not_a_recommendation_feed()
-
-
-def require_home_gravity_trial() -> None:
-    """Home may overlay Gravity tokens; player and tabs must stay Bubble."""
-    gravity = (SOURCE / "UI" / "Bubble" / "GravityTokens.swift").read_text(
-        encoding="utf-8"
-    )
-    chips = (SOURCE / "UI" / "Bubble" / "BubbleComponents.swift").read_text(
-        encoding="utf-8"
-    )
-    catalog = (
-        SOURCE / "Features" / "Catalog" / "CatalogView.swift"
-    ).read_text(encoding="utf-8")
-    player = (
-        SOURCE / "Features" / "Player" / "PlayerView.swift"
-    ).read_text(encoding="utf-8")
-    tabs = (
-        SOURCE / "Features" / "Root" / "MainTabView.swift"
-    ).read_text(encoding="utf-8")
-    for required_symbol in (
-        "#FFBE5C",
-        "controlRadius: CGFloat = 8",
-        "labelRadius: CGFloat = 4",
-        "struct GravityActionButton",
-        ".foregroundStyle(.black)",
-    ):
-        if required_symbol not in gravity:
-            fail(f"GravityTokens.swift is missing {required_symbol}")
-    if "GravityTokens.labelRadius" not in chips:
-        fail("Home BubbleChip must use Gravity label corners")
-    if "Capsule().fill(Material.ultraThin)" in chips:
-        fail("Home BubbleChip must not paint a glass capsule")
-    if "GravityTokens.genericSurface" not in catalog:
-        fail("What's Next must sit on a Gravity generic surface")
-    if "GravityActionButton(" not in catalog:
-        fail("What's Next continue must be a Gravity action")
-    if ".buttonStyle(.borderedProminent)" in catalog:
-        fail("What's Next must not keep the system prominent button")
-    if "GravityActionButton(" in player or "GravityTokens." in player:
-        fail("the full player must stay off the Home Gravity trial")
-    if "GravityActionButton(" in tabs or "GravityTokens." in tabs:
-        fail("the tab bar must stay off the Home Gravity trial")
-    if (ROOT / "node_modules" / "@gravity-ui").exists():
-        fail("do not vendor Gravity UI web packages")
-    if "gravity-ui" in (ROOT / "project.yml").read_text(encoding="utf-8").lower():
-        fail("project.yml must not pull Gravity UI web packages")
-
-
-require_home_gravity_trial()
 
 print(f"OK: {len(swift_files)} Swift files")
 print("OK: no embedded client secret or CAPTCHA interception")
