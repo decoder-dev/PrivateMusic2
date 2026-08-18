@@ -554,47 +554,48 @@ struct PlayerView: View {
     }
 
     private var primaryControls: some View {
-        AdaptiveGlassContainer(spacing: 18) {
-            HStack(spacing: 0) {
-                secondaryButton(
-                    "shuffle",
-                    active: player.shuffleEnabled,
-                    label: "shuffle",
-                    accessibilityValue: player.shuffleEnabled
-                        ? "shuffle_on"
-                        : "shuffle_off"
-                ) {
-                    Haptics.selection()
-                    player.toggleShuffle()
-                }
-                Spacer()
-                transportSkipButton(
-                    systemImage: "backward.fill",
-                    accessibilityLabel: "previous_track"
-                ) {
-                    Haptics.trackChange()
-                    player.previous()
-                }
-                Spacer()
-                playPauseButton
-                Spacer()
-                transportSkipButton(
-                    systemImage: "forward.fill",
-                    accessibilityLabel: "next_track"
-                ) {
-                    Haptics.trackChange()
-                    player.next()
-                }
-                Spacer()
-                secondaryButton(
-                    player.repeatMode.systemImage,
-                    active: player.repeatMode != .off,
-                    label: "repeat",
-                    accessibilityValue: repeatAccessibilityValue
-                ) {
-                    Haptics.selection()
-                    player.cycleRepeatMode()
-                }
+        // Do NOT wrap transport buttons in GlassEffectContainer: iOS 26
+        // morphs sibling .glass controls into one merged blob with a
+        // liquid neck animation that reads broken and costs frames.
+        HStack(spacing: 0) {
+            secondaryButton(
+                "shuffle",
+                active: player.shuffleEnabled,
+                label: "shuffle",
+                accessibilityValue: player.shuffleEnabled
+                    ? "shuffle_on"
+                    : "shuffle_off"
+            ) {
+                Haptics.selection()
+                player.toggleShuffle()
+            }
+            Spacer()
+            transportSkipButton(
+                systemImage: "backward.fill",
+                accessibilityLabel: "previous_track"
+            ) {
+                Haptics.trackChange()
+                player.previous()
+            }
+            Spacer()
+            playPauseButton
+            Spacer()
+            transportSkipButton(
+                systemImage: "forward.fill",
+                accessibilityLabel: "next_track"
+            ) {
+                Haptics.trackChange()
+                player.next()
+            }
+            Spacer()
+            secondaryButton(
+                player.repeatMode.systemImage,
+                active: player.repeatMode != .off,
+                label: "repeat",
+                accessibilityValue: repeatAccessibilityValue
+            ) {
+                Haptics.selection()
+                player.cycleRepeatMode()
             }
         }
     }
@@ -646,16 +647,14 @@ struct PlayerView: View {
     }
 
     private func quickActions(_ track: Track) -> some View {
-        AdaptiveGlassContainer(spacing: 14) {
-            HStack(spacing: 0) {
-                ForEach(PlayerQuickAction.allCases) { item in
-                    quickAction(item) {
-                        switch item {
-                        case .lyrics: present(.lyrics(track))
-                        case .queue: present(.queue)
-                        case .playlist: present(.playlists(track))
-                        case .share: startShare(track)
-                        }
+        HStack(spacing: 0) {
+            ForEach(PlayerQuickAction.allCases) { item in
+                quickAction(item) {
+                    switch item {
+                    case .lyrics: present(.lyrics(track))
+                    case .queue: present(.queue)
+                    case .playlist: present(.playlists(track))
+                    case .share: startShare(track)
                     }
                 }
             }

@@ -1098,13 +1098,23 @@ for required_player_symbol in (
     ".background(playerBackground.ignoresSafeArea())",
     ".buttonStyle(.glass)",
     "AdaptiveGlassContainer(spacing: 8)",
-    "AdaptiveGlassContainer(spacing: 18)",
+    "Do NOT wrap transport buttons in GlassEffectContainer",
     ".simultaneousGesture(fullScreenDismissGesture)",
     "PlayerDismissGesturePolicy.shouldDismiss",
     "PlayerArtworkCarouselPolicy.neighborIndices",
 ):
     if required_player_symbol not in player_view_source:
         fail(f"player is missing full-bleed/glass symbol: {required_player_symbol}")
+if "AdaptiveGlassContainer(spacing: 18)" in player_view_source:
+    fail(
+        "player transport controls must not use GlassEffectContainer "
+        "(morphs into one gooey blob)"
+    )
+if "AdaptiveGlassContainer(spacing: 14)" in player_view_source:
+    fail(
+        "player quick actions must not use GlassEffectContainer "
+        "(morphs into one gooey blob)"
+    )
 # Mini-player uses plain controls; full-screen player keeps glassProminent.
 for required_preload_symbol in (
     "PlaybackPreloadPolicy.nextIndex",
