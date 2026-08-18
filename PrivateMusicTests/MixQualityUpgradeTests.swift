@@ -109,7 +109,70 @@ final class StreamQualityPolicyTests: XCTestCase {
         )
         XCTAssertEqual(
             StreamQualityPolicy.preferredPeakBitRate(preferHighQuality: false),
-            160_000
+            256_000
+        )
+    }
+
+    func testProgressiveURLFromIndexM3U8() {
+        let hls = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123/index.m3u8?extra=foo"
+        )!
+        let mp3 = StreamQualityPolicy.progressiveURL(from: hls)
+        XCTAssertEqual(
+            mp3?.absoluteString,
+            "https://psv4.vkuseraudio.net/s/v1/a2/abc123.mp3"
+        )
+        XCTAssertEqual(
+            StreamQualityPolicy.playbackURL(
+                hls,
+                preferHighQuality: true
+            ),
+            mp3
+        )
+    }
+
+    func testProgressiveURLFromLegacyHexPattern() {
+        let hls = URL(
+            string: "https://cs9-11v5.vkuseraudio.net/abc123/audios/def456/index.m3u8"
+        )!
+        let mp3 = StreamQualityPolicy.progressiveURL(from: hls)
+        XCTAssertEqual(
+            mp3?.absoluteString,
+            "https://cs9-11v5.vkuseraudio.net/abc123/audios/def456.mp3"
+        )
+    }
+
+    func testPlaybackURLSkipsUpgradeWhenDataSaverEnabled() {
+        let hls = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123/index.m3u8"
+        )!
+        XCTAssertEqual(
+            StreamQualityPolicy.playbackURL(
+                hls,
+                preferHighQuality: false
+            ),
+            hls
+        )
+    }
+
+    func testUsedProgressiveUpgradeDetectsHLSRewrite() {
+        let hls = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123/index.m3u8"
+        )!
+        let mp3 = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123.mp3"
+        )!
+        XCTAssertTrue(
+            StreamQualityPolicy.usedProgressiveUpgrade(
+                original: hls,
+                playback: mp3
+            )
+        )
+        XCTAssertFalse(
+            StreamQualityPolicy.usedProgressiveUpgrade(
+                original: mp3,
+                playback: mp3
+            )
         )
     }
 
