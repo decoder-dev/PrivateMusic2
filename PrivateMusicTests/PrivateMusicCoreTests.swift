@@ -96,6 +96,27 @@ final class NativeTextSearchTests: XCTestCase {
         }
     }
 
+    func testNativeNormalizeIdentityMatchesMixRankerFoundation() {
+        let samples = [
+            "  Hello World  ",
+            "RIVE",
+            "  ЁЖИК  ",
+            "МоЯ МуЗыКа",
+            "\n\tArtist Name\r\n"
+        ]
+        for sample in samples {
+            let native = normalizeIdentity(sample)
+            let expected = sample
+                .folding(
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    locale: Locale(identifier: "en_US_POSIX")
+                )
+                .lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            XCTAssertEqual(native, expected, sample)
+        }
+    }
+
     func testMatchesAgreesWithTheFoundationPredicate() {
         let candidates = [
             "Мой Плейлист",
@@ -150,6 +171,33 @@ final class NativeTextSearchTests: XCTestCase {
                     Int32(haystackBuffer.count),
                     needleBuffer.baseAddress,
                     Int32(needleBuffer.count)
+                )
+            }
+        }
+    }
+
+    private func normalizeIdentity(_ text: String) -> String {
+        var text = text
+        return text.withUTF8 { input -> String in
+            guard let base = input.baseAddress else { return "" }
+            return withUnsafeTemporaryAllocation(
+                of: UInt8.self,
+                capacity: input.count
+            ) { scratch -> String in
+                guard let output = scratch.baseAddress else { return "" }
+                let written = pm_text_normalize_identity(
+                    base,
+                    Int32(input.count),
+                    output,
+                    Int32(input.count)
+                )
+                guard written >= 0 else { return "" }
+                return String(
+                    decoding: UnsafeBufferPointer(
+                        start: output,
+                        count: Int(written)
+                    ),
+                    as: UTF8.self
                 )
             }
         }
@@ -641,6 +689,50 @@ final class MixQueueRankerNativeParityTests: XCTestCase {
             )
             .lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+final class NativeArtworkTintTests: XCTestCase {
+    func testNativeExtractMatchesReferenceImplementation() {
+        var pixels: [UInt8] = []
+        for _ in 0..<64 {
+            pixels.append(contentsOf: [220, 40, 30, 255])
+        }
+        let native = extractNative(rgba: pixels)
+        XCTAssertNotNil(native)
+        XCTAssertEqual(native?.red ?? 0, 220.0 / 255.0, accuracy: 0.02)
+        XCTAssertEqual(native?.green ?? 0, 40.0 / 255.0, accuracy: 0.02)
+        XCTAssertEqual(native?.blue ?? 0, 30.0 / 255.0, accuracy: 0.02)
+    }
+
+    func testNativeExtractRejectsTransparentPixels() {
+        var pixels = [UInt8](repeating: 0, count: 64 * 4)
+        for index in stride(from: 3, to: pixels.count, by: 4) {
+            pixels[index] = 32
+        }
+        XCTAssertNil(extractNative(rgba: pixels))
+    }
+
+    private func extractNative(rgba: [UInt8]) -> BubbleColorComponents? {
+        var tint = PMArtworkTint()
+        let ok = rgba.withUnsafeBytes { buffer -> Bool in
+            guard let base = buffer.baseAddress?.assumingMemoryBound(
+                to: UInt8.self
+            ) else {
+                return false
+            }
+            return pm_artwork_extract_tint_rgba(
+                base,
+                Int32(rgba.count),
+                &tint
+            )
+        }
+        guard ok else { return nil }
+        return BubbleColorComponents(
+            red: Double(tint.red),
+            green: Double(tint.green),
+            blue: Double(tint.blue)
+        )
     }
 }
 
