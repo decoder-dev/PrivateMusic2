@@ -178,6 +178,7 @@
 "home_stage.clear_queue" = "Очистить очередь";
 "home_stage.kind.station" = "Станция";
 "home_stage.kind.vibe" = "Вайб";
+"home_stage.vibe_launch_d0" = "Запустить: %@";
 "home_stage.kind.artist" = "В стиле артиста";
 "home_stage.kind.mix" = "Микс";
 "home_stage.artist_plus_d0" = "%@ +%d";

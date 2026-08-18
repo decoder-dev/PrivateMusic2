@@ -178,6 +178,7 @@
 "home_stage.clear_queue" = "Clear queue";
 "home_stage.kind.station" = "Station";
 "home_stage.kind.vibe" = "Vibe";
+"home_stage.vibe_launch_d0" = "Start: %@";
 "home_stage.kind.artist" = "Like this artist";
 "home_stage.kind.mix" = "Mix";
 "home_stage.artist_plus_d0" = "%@ +%d";
