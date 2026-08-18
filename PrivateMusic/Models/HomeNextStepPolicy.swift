@@ -73,6 +73,7 @@ struct HomeNextStepRequest: Equatable, Sendable {
     var mixes: [MusicMix]
     var selectedMood: MixMoodPreference
     var occupancy: HomeNextStepOccupancy
+    var hasCurrentTrack: Bool
     var hasListeningHistory: Bool
     var hasRecommendations: Bool
 }

@@ -216,6 +216,7 @@ struct CatalogView: View {
                     currentArtist: highlight.currentArtist,
                     mixes: homeCatalog.mixes
                 ),
+                hasCurrentTrack: highlight.currentTrackID != nil,
                 hasListeningHistory: !history.entries.isEmpty,
                 hasRecommendations: !homeCatalog.recommendations.isEmpty
             )
