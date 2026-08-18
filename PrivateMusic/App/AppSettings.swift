@@ -169,6 +169,11 @@ final class AppSettings {
             defaults.set(preferHighQuality, forKey: Keys.preferHighQuality)
         }
     }
+    var crossfadeEnabled: Bool {
+        didSet {
+            defaults.set(crossfadeEnabled, forKey: Keys.crossfadeEnabled)
+        }
+    }
     var mixMoodPreference: MixMoodPreference {
         didSet {
             defaults.set(
@@ -342,6 +347,9 @@ final class AppSettings {
         preferHighQuality = defaults.object(
             forKey: Keys.preferHighQuality
         ) as? Bool ?? true
+        crossfadeEnabled = defaults.object(
+            forKey: Keys.crossfadeEnabled
+        ) as? Bool ?? true
         mixMoodPreference = MixMoodPreference(
             rawValue: defaults.string(forKey: Keys.mixMoodPreference) ?? ""
         ) ?? .any
@@ -457,6 +465,7 @@ final class AppSettings {
             "offline.cache.automatic.enabled"
         static let hapticsEnabled = "feedback.haptics.enabled"
         static let preferHighQuality = "audio.playback.preferHighQuality"
+        static let crossfadeEnabled = "audio.playback.crossfadeEnabled"
         static let mixMoodPreference = "mix.filters.mood"
         static let mixLanguagePreference = "mix.filters.language"
         static let mixFamiliarityPreference = "mix.filters.familiarity"

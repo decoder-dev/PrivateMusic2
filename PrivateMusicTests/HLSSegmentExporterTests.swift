@@ -490,6 +490,56 @@ final class HLSSegmentExporterTests: XCTestCase {
         try? FileManager.default.removeItem(at: parent)
     }
 
+    func testMapByterangeDoesNotAdvanceMediaSegmentCursor() async throws {
+        let playlist = """
+        #EXTM3U
+        #EXT-X-VERSION:7
+        #EXT-X-MEDIA-SEQUENCE:0
+        #EXT-X-MAP:URI="all.mp4",BYTERANGE="50@0"
+        #EXTINF:0.1,
+        #EXT-X-BYTERANGE:50
+        all.mp4
+        #EXT-X-ENDLIST
+        """
+        let lock = NSLock()
+        var ranges: [String] = []
+        let exporter = makeExporter { request in
+            if request.url?.pathExtension == "m3u8" {
+                return (
+                    Self.successResponse(for: request),
+                    Data(playlist.utf8)
+                )
+            }
+            if let range = request.value(forHTTPHeaderField: "Range") {
+                lock.lock()
+                ranges.append(range)
+                lock.unlock()
+            }
+            return (
+                Self.successResponse(for: request),
+                Data(repeating: 0x47, count: 200)
+            )
+        }
+        let (parent, destination) = makeDestination()
+
+        try? await exporter.exportToM4A(
+            streamURL: URL(string: "https://example.com/hls/index.m3u8")!,
+            headers: [:],
+            destination: destination,
+            fileSizeLimit: 150_000_000
+        )
+
+        lock.lock()
+        let captured = ranges
+        lock.unlock()
+        XCTAssertEqual(
+            captured,
+            ["bytes=0-49", "bytes=0-49"],
+            "RFC 8216: MAP ranges are independent of media-segment implicit offsets"
+        )
+        try? FileManager.default.removeItem(at: parent)
+    }
+
     // MARK: - Encryption
 
     func testMethodNoneClearsKey() async throws {
