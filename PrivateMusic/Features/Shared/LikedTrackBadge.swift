@@ -8,6 +8,7 @@ struct LikedTrackBadge: View {
 
     @Environment(MusicLibraryStore.self) private var libraryStore
     @Environment(SessionStore.self) private var sessionStore
+    @Environment(AppSettings.self) private var settings
     let track: Track
     var style: Style = .compact
 
@@ -18,7 +19,11 @@ struct LikedTrackBadge: View {
         ) {
             Image(systemName: "heart.fill")
                 .font(style == .artwork ? .caption.weight(.bold) : .caption2)
-                .foregroundStyle(style == .artwork ? Color.white : Color.accentColor)
+                .foregroundStyle(
+                    style == .artwork
+                        ? Color.white
+                        : BubbleGamut.liked(for: settings.theme)
+                )
                 .padding(style == .artwork ? 7 : 0)
                 .background {
                     if style == .artwork {

@@ -5,6 +5,7 @@ struct ListeningHistoryView: View {
     /// Playback is only triggered from here — observing `AudioPlayer` would
     /// rebuild the whole history list on every buffering / duration tick.
     @Environment(AppEnvironment.self) private var environment
+    @Environment(AppSettings.self) private var settings
     @State private var query = ""
     @State private var showingClearConfirmation = false
     @State private var sharingTrack: Track?
@@ -81,7 +82,7 @@ struct ListeningHistoryView: View {
                                         systemImage: "text.badge.plus"
                                     )
                                 }
-                                .tint(.indigo)
+                                .tint(settings.theme.accent)
                                 Button {
                                     playlistTarget = entry.track
                                 } label: {
@@ -89,7 +90,7 @@ struct ListeningHistoryView: View {
                                         systemImage: "rectangle.stack.badge.plus"
                                     )
                                 }
-                                .tint(.blue)
+                                .tint(BubbleGamut.mix.color)
                             }
                             .swipeActions {
                                 Button {
@@ -99,7 +100,7 @@ struct ListeningHistoryView: View {
                                         systemImage: "square.and.arrow.up"
                                     )
                                 }
-                                .tint(.orange)
+                                .tint(BubbleGamut.warning.color)
                                 Button(role: .destructive) {
                                     history.remove(entry)
                                 } label: {

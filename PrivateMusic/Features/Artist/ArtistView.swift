@@ -3,6 +3,7 @@ import SwiftUI
 struct ArtistView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SessionStore.self) private var sessionStore
+    @Environment(AppSettings.self) private var settings
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let artist: String
@@ -173,7 +174,7 @@ struct ArtistView: View {
                                 .font(.caption2.weight(.semibold))
                         }
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(settings.theme.accent)
                     }
                 }
             }

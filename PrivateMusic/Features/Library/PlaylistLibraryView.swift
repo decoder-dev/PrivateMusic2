@@ -3,6 +3,7 @@ import SwiftUI
 struct PlaylistLibraryView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SessionStore.self) private var sessionStore
+    @Environment(AppSettings.self) private var settings
     @State private var model = PlaylistLibraryViewModel()
     @State private var showingEditor = false
     @State private var editingPlaylist: Playlist?
@@ -74,7 +75,7 @@ struct PlaylistLibraryView: View {
                                     systemImage: "pencil"
                                 )
                             }
-                            .tint(.orange)
+                            .tint(settings.theme.accent)
                         }
                     }
                     .onAppear {

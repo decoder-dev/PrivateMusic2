@@ -153,7 +153,9 @@ struct AlbumDetailView: View {
                     Image(systemName: isFollowed ? "heart.fill" : "heart")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(
-                            isFollowed ? Color.red : settings.theme.accent
+                            isFollowed
+                                ? BubbleGamut.liked(for: settings.theme)
+                                : settings.theme.accent
                         )
                         .frame(width: 46, height: 46)
                         .contentShape(Circle())

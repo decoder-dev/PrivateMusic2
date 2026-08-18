@@ -1,26 +1,8 @@
 import SwiftUI
 
+/// Legacy connect-screen entry point. Colour tokens live in `BubbleGamut`.
 enum Brand {
-    static let background = Color(
-        red: 0.025,
-        green: 0.03,
-        blue: 0.075
-    )
-    static let surface = Color(
-        red: 0.075,
-        green: 0.085,
-        blue: 0.16
-    )
-    static let accent = Color(
-        red: 0.30,
-        green: 0.45,
-        blue: 1.0
-    )
-    static let violet = Color(
-        red: 0.52,
-        green: 0.30,
-        blue: 1.0
-    )
+    static var accent: Color { BubbleGamut.accentColor(for: .dark) }
 }
 
 struct PrimaryButtonStyle: ButtonStyle {

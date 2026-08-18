@@ -668,7 +668,7 @@ struct LibraryView: View {
     }
 
     private var currentTrackColor: Color {
-        .accentColor
+        settings.theme.accent
     }
 
     private func playlistShelf(width: CGFloat) -> some View {
