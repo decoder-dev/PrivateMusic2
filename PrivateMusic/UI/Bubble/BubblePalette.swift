@@ -19,7 +19,7 @@ enum BubbleRole: String, Hashable, Sendable, CaseIterable {
 
 /// Colour components kept as numbers rather than `Color` so the resolver
 /// stays `Sendable` and, more usefully, testable without a renderer.
-struct BubbleColorComponents: Equatable, Sendable {
+struct BubbleColorComponents: Equatable, Hashable, Sendable {
     var red: Double
     var green: Double
     var blue: Double
