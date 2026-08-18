@@ -458,6 +458,13 @@ if "id: \\.offset" in queue_view_source:
     fail("QueueView must use stable track identity, not list offset")
 if "id: \\.element.id" not in queue_view_source:
     fail("QueueView must identify rows by track id")
+if "QueueRowMetrics.listRowInsets" not in queue_view_source:
+    fail("QueueView must add vertical breathing room between queue rows")
+if "excludingLikedAlbums" not in library_view_source:
+    fail(
+        "Library playlist shelf must hide entries that already live on the "
+        "Albums shelf"
+    )
 if "PlaybackAccessoryModifier" not in main_tab_source:
     fail(
         "iOS 26.0 must attach bottom accessory via PlaybackAccessoryModifier "

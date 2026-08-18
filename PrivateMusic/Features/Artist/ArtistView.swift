@@ -5,6 +5,8 @@ struct ArtistView: View {
     @Environment(SessionStore.self) private var sessionStore
     @Environment(AppSettings.self) private var settings
     @Environment(\.dismiss) private var dismiss
+    @Environment(LikedAlbumsStore.self) private var likedAlbumsStore
+    @Environment(PlaybackHighlightModel.self) private var highlight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let artist: String
     @State private var tracks: [Track] = []
@@ -14,6 +16,8 @@ struct ArtistView: View {
     @State private var errorMessage: String?
     @State private var selectedAlbum: Album?
     @State private var showsAllTracks = false
+    @State private var pendingAlbumIDs = Set<String>()
+    @State private var albumActionErrorMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,6 +47,17 @@ struct ArtistView: View {
         )
         .sheet(item: $selectedAlbum) { album in
             NavigationStack { AlbumDetailView(album: album) }
+        }
+        .alert(
+            "could_not_play_album",
+            isPresented: Binding(
+                get: { albumActionErrorMessage != nil },
+                set: { if !$0 { albumActionErrorMessage = nil } }
+            )
+        ) {
+            Button(L10n.text("action.ok"), role: .cancel) {}
+        } message: {
+            Text(albumActionErrorMessage ?? "")
         }
         .task(id: artist) {
             resolvedArtist = nil
@@ -200,34 +215,161 @@ struct ArtistView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 14) {
                     ForEach(albums) { album in
-                        Button {
-                            Haptics.selection()
-                            selectedAlbum = album
-                        } label: {
-                            VStack(alignment: .leading, spacing: 8) {
-                                AsyncArtwork(url: album.artworkURL, size: 116)
-                                Text(
-                                    Album.isUsableTitle(album.title)
-                                        ? album.title
-                                        : L10n.text("album")
-                                )
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                Text(L10n.trackCount(album.count))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            .frame(width: 116, alignment: .leading)
-                        }
-                        .buttonStyle(PremiumPressStyle())
+                        artistAlbumCard(album)
                     }
                 }
                 .padding(.horizontal, 18)
             }
         }
         .padding(.bottom, 4)
+    }
+
+    private func artistAlbumCard(_ album: Album) -> some View {
+        Button {
+            Haptics.selection()
+            selectedAlbum = album
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                AsyncArtwork(url: album.artworkURL, size: 116)
+                Text(
+                    Album.isUsableTitle(album.title)
+                        ? album.title
+                        : L10n.text("album")
+                )
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(L10n.trackCount(album.count))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(width: 116, alignment: .leading)
+        }
+        .buttonStyle(PremiumPressStyle())
+        .contextMenu {
+            Button {
+                performArtistAlbumPlaybackAction(
+                    artistAlbumPlaybackAction(for: album),
+                    for: album
+                )
+            } label: {
+                Label(
+                    L10n.text("listen"),
+                    systemImage: "play.fill"
+                )
+            }
+            Button {
+                toggleArtistAlbumFollow(album)
+            } label: {
+                Label(
+                    likedAlbumsStore.isFollowed(album)
+                        ? "remove_album_from_library"
+                        : "add_album_to_library",
+                    systemImage: likedAlbumsStore.isFollowed(album)
+                        ? "heart.slash"
+                        : "heart"
+                )
+            }
+            .disabled(pendingAlbumIDs.contains(album.compositeID))
+            if let url = AlbumShareLinkBuilder.url(for: album) {
+                ShareLink(item: url) {
+                    Label(L10n.text("share_link"),
+                        systemImage: "square.and.arrow.up"
+                    )
+                }
+            }
+        }
+    }
+
+    private func artistAlbumPlaybackTitle(_ album: Album) -> String {
+        Album.isUsableTitle(album.title) ? album.title : L10n.text("album")
+    }
+
+    private func artistAlbumQueueSource(for album: Album) -> QueueSource {
+        .album(title: artistAlbumPlaybackTitle(album))
+    }
+
+    private func artistAlbumPlaybackAction(
+        for album: Album
+    ) -> QueueSourcePlaybackAction {
+        QueueSourcePlaybackAction.resolve(
+            target: artistAlbumQueueSource(for: album),
+            isPlaying: highlight.isPlaying,
+            queueSource: highlight.queueSource
+        )
+    }
+
+    private func performArtistAlbumPlaybackAction(
+        _ action: QueueSourcePlaybackAction,
+        for album: Album
+    ) {
+        switch action {
+        case .start:
+            playArtistAlbum(album)
+        case .resume:
+            environment.player.resume()
+        case .pause:
+            environment.player.pause()
+        }
+    }
+
+    private func playArtistAlbum(_ album: Album) {
+        guard sessionStore.accessToken != nil else { return }
+        Task {
+            do {
+                let page = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.albumTracks(
+                        album,
+                        accessToken: token,
+                        offset: 0,
+                        count: 50
+                    )
+                }
+                guard let first = page.items.first else { return }
+                environment.player.play(
+                    first,
+                    in: page.items,
+                    source: artistAlbumQueueSource(for: album)
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                albumActionErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func toggleArtistAlbumFollow(_ album: Album) {
+        guard pendingAlbumIDs.insert(album.compositeID).inserted else {
+            return
+        }
+        let desired = !likedAlbumsStore.isFollowed(album)
+        Task {
+            defer { pendingAlbumIDs.remove(album.compositeID) }
+            do {
+                try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.toggleAlbumFollow(
+                        album,
+                        follow: desired,
+                        accessToken: token
+                    )
+                }
+                if desired {
+                    likedAlbumsStore.markFollowed(album)
+                } else {
+                    likedAlbumsStore.markUnfollowed(album)
+                }
+                NotificationCenter.default.post(
+                    name: .likedAlbumsDidChange,
+                    object: nil
+                )
+                Haptics.success()
+            } catch {
+                albumActionErrorMessage = error.localizedDescription
+                Haptics.error()
+            }
+        }
     }
 
     private var artistHeader: some View {
