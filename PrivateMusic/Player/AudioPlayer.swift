@@ -1748,6 +1748,27 @@ final class AudioPlayer {
         scheduleNeighborPreloads()
     }
 
+    /// Appends `track` at the end of the queue (Play Last). Starts playback
+    /// when nothing is queued yet.
+    func playLast(_ track: Track) {
+        guard let currentIndex, let currentTrack else {
+            play(track, in: [track])
+            return
+        }
+        guard track.id != currentTrack.id else { return }
+        cancelContinuation()
+        cancelMixRadioRefill()
+        queue.removeAll { $0.id == track.id }
+        let adjustedCurrentIndex = queue.firstIndex {
+            $0.id == currentTrack.id
+        } ?? min(currentIndex, max(queue.count - 1, 0))
+        self.currentIndex = adjustedCurrentIndex
+        queue.append(track)
+        persistPlayback()
+        publishNowPlayingQueue()
+        scheduleNeighborPreloads()
+    }
+
     func removeFromQueue(at index: Int) {
         guard queue.indices.contains(index),
               let currentIndex,

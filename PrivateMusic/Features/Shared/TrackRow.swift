@@ -49,12 +49,39 @@ struct TrackRow: View {
         .modifier(CurrentTrackAccessibilityValueModifier(isCurrent: isCurrent))
         .accessibilityHint(L10n.text("play_track"))
         .trackShareSheet(track: $sharingTrack)
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button {
+                Haptics.selection()
+                environment.player.playNext(track)
+            } label: {
+                Label(L10n.text("play_next"),
+                    systemImage: "text.line.first.and.arrowtriangle.forward"
+                )
+            }
+            .tint(settings.theme.accent)
+            Button {
+                Haptics.selection()
+                environment.player.playLast(track)
+            } label: {
+                Label(L10n.text("play_last"),
+                    systemImage: "text.line.last.and.arrowtriangle.forward"
+                )
+            }
+            .tint(BubbleGamut.mix.color)
+        }
         .contextMenu {
             Button {
                 environment.player.playNext(track)
             } label: {
                 Label(L10n.text("play_next"),
                     systemImage: "text.line.first.and.arrowtriangle.forward"
+                )
+            }
+            Button {
+                environment.player.playLast(track)
+            } label: {
+                Label(L10n.text("play_last"),
+                    systemImage: "text.line.last.and.arrowtriangle.forward"
                 )
             }
             Button {

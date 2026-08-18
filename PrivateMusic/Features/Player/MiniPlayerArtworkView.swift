@@ -153,6 +153,7 @@ struct MiniPlayerArtworkView: View {
         generation: Int
     ) async {
         guard generation == loadGeneration else { return }
+        BubbleTintCache.shared.recordArtwork(image, for: url)
 
         if displayedImage == nil {
             displayedImage = image

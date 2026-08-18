@@ -6,6 +6,7 @@ struct MiniPlayerView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @GestureState private var dragOffset: CGSize = .zero
+    @State private var tintCache = BubbleTintCache.shared
     let playerNamespace: Namespace.ID
     /// Legacy floating dock needs its own glass plate. The iOS 26.1+
     /// `tabViewBottomAccessory` already provides system chrome — stacking
@@ -51,12 +52,11 @@ struct MiniPlayerView: View {
                 MiniPlayerChromeModifier(
                     showsOwnGlassChrome: showsOwnGlassChrome,
                     shape: containerShape,
-                    tint: settings.theme.accent.opacity(
-                        MiniPlayerLayoutMetrics.glassTintOpacity
-                    ),
+                    tint: chromeTint,
                     shadowOpacity: settings.theme == .dark ? 0.18 : 0.08
                 )
             )
+            .tint(artworkTintColor)
             .miniPlayerTransitionSource(playerNamespace)
             .offset(liveDragOffset)
             .animation(
@@ -69,6 +69,25 @@ struct MiniPlayerView: View {
             .simultaneousGesture(miniPlayerGesture)
             .accessibilityElement(children: .contain)
         }
+    }
+
+    private var artworkTintColor: Color {
+        _ = tintCache.revision
+        return BubblePalette.surface(
+            .accent,
+            tint: tintCache.cached(for: player.currentTrack?.artworkURL)
+        ).color
+    }
+
+    private var chromeTint: Color {
+        _ = tintCache.revision
+        let hasArtworkTint = tintCache.cached(
+            for: player.currentTrack?.artworkURL
+        ) != nil
+        let opacity = hasArtworkTint
+            ? (settings.theme == .dark ? 0.32 : 0.18)
+            : MiniPlayerLayoutMetrics.glassTintOpacity
+        return artworkTintColor.opacity(opacity)
     }
 
     // MARK: - Open zone (artwork + metadata)
