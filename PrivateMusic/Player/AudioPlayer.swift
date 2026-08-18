@@ -373,7 +373,8 @@ enum PlaybackAudioSessionPolicy {
                     policy: .longFormAudio,
                     options: options
                 )
-                try? session.setPreferredSampleRate(48_000)
+                // Leave sample rate at the hardware / stream default (VK MP3 is
+                // usually 44.1 kHz). Forcing 48 kHz resamples every buffer.
                 if #available(iOS 17.0, *) {
                     try? session.setPrefersInterruptionOnRouteDisconnect(true)
                 }
@@ -2295,11 +2296,10 @@ final class AudioPlayer {
         let isOffline = offlineURL != nil
         let item = takePreloadedPlayback(for: track, url: url)
             ?? makePlaybackItem(url: url, isOffline: isOffline)
-        let wantsAudioTap = equalizer.requiresAudioTap
-            && AudioProcessingAttachPolicy.supportsAudioTap(
-                url: url,
-                isOffline: isOffline
-            )
+        let wantsAudioTap = shouldAttachAudioProcessing(
+            url: url,
+            isOffline: isOffline
+        )
         player.allowsExternalPlayback = AudioProcessingRoutePolicy
             .allowsExternalPlayback(requiresAudioTap: wantsAudioTap)
         // Defer mix attach until tracks exist (readyToPlay). Premature
@@ -2408,6 +2408,9 @@ final class AudioPlayer {
             url,
             preferHighQuality: preferHighQuality,
             allowProgressiveUpgrade: playbackURLStrategy == .automatic
+                && PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
+                    preferHighQuality: preferHighQuality
+                )
         )
     }
 
@@ -2887,10 +2890,13 @@ final class AudioPlayer {
                     spatialAudio: spatialAudio,
                     spatialIntensity: spatialIntensity
                 )
-                let requiresAudioTap = self.equalizer.requiresAudioTap
+                let requiresEffectiveTap = self.effectiveRequiresAudioTap(
+                    url: (self.player.currentItem?.asset as? AVURLAsset)?.url,
+                    isOffline: self.loadedOfflineTrackID == self.currentTrack?.id
+                )
                 self.player.allowsExternalPlayback = AudioProcessingRoutePolicy
                     .allowsExternalPlayback(
-                        requiresAudioTap: requiresAudioTap
+                        requiresAudioTap: requiresEffectiveTap
                     )
                 if requiredTap != requiresAudioTap,
                    self.player.currentItem != nil {
@@ -2990,6 +2996,24 @@ final class AudioPlayer {
                 self?.handleMediaServicesReset()
             }
         })
+        registrations.notifications.append(center.addObserver(
+            forName: .NSProcessInfoPowerStateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handlePlaybackResourceConstraintsChanged()
+            }
+        }))
+        registrations.notifications.append(center.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handlePlaybackResourceConstraintsChanged()
+            }
+        }))
         outputVolumeObservation = AVAudioSession.sharedInstance().observe(
             \.outputVolume,
             options: [.initial, .new]
@@ -3557,11 +3581,17 @@ final class AudioPlayer {
         let requiredTap = equalizer.requiresAudioTap
         equalizer.setOutputProfile(profile)
         let requiresAudioTap = equalizer.requiresAudioTap
+        let currentItem = player.currentItem
         player.allowsExternalPlayback = AudioProcessingRoutePolicy
-            .allowsExternalPlayback(requiresAudioTap: requiresAudioTap)
+            .allowsExternalPlayback(
+                requiresAudioTap: effectiveRequiresAudioTap(
+                    url: (currentItem?.asset as? AVURLAsset)?.url,
+                    isOffline: loadedOfflineTrackID == currentTrack?.id
+                )
+            )
         guard reloadIfNeeded,
               requiredTap != requiresAudioTap,
-              let item = player.currentItem else {
+              let item = currentItem else {
             return
         }
         // A tone-profile change (e.g. connecting to CarKit) can flip
@@ -3579,11 +3609,45 @@ final class AudioPlayer {
               ) else {
             return
         }
-        if requiresAudioTap {
+        if shouldAttachAudioProcessing(
+            url: url,
+            isOffline: loadedOfflineTrackID == currentTrack?.id
+        ) {
             attachAudioProcessing(to: item)
         } else {
             item.audioMix = nil
         }
+    }
+
+    private func shouldAttachAudioProcessing(
+        url: URL,
+        isOffline: Bool
+    ) -> Bool {
+        PlaybackResourcePolicy.allowRealtimeAudioProcessing(
+            requiresAudioTap: equalizer.requiresAudioTap
+        )
+        && AudioProcessingAttachPolicy.supportsAudioTap(
+            url: url,
+            isOffline: isOffline
+        )
+    }
+
+    private func effectiveRequiresAudioTap(
+        url: URL?,
+        isOffline: Bool
+    ) -> Bool {
+        guard let url else {
+            return equalizer.requiresAudioTap
+                && PlaybackResourcePolicy.allowRealtimeAudioProcessing(
+                    requiresAudioTap: true
+                )
+        }
+        return shouldAttachAudioProcessing(url: url, isOffline: isOffline)
+    }
+
+    private func handlePlaybackResourceConstraintsChanged() {
+        guard currentTrack != nil, player.currentItem != nil else { return }
+        reloadCurrentItemForAudioProcessing()
     }
 
     private func handleOutputVolume(
