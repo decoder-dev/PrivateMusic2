@@ -268,10 +268,14 @@ private struct SystemLiquidGlassTabView: View {
                 NavigationStack { ProfileView() }
             }
 
+            // `role: .search` pins Search to the trailing cluster the way
+            // Music does. The tab still opens a full Search screen; the
+            // field lives in the navigation chrome, not in the tab bar.
             Tab(
                 MainTab.search.title,
                 systemImage: MainTab.search.image,
-                value: MainTab.search
+                value: MainTab.search,
+                role: .search
             ) {
                 NavigationStack {
                     SearchView(isActive: selection == .search)

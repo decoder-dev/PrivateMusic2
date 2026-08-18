@@ -17,47 +17,43 @@ enum PremiumLayout {
 struct PremiumCardModifier: ViewModifier {
     let interactive: Bool
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
-    @ViewBuilder
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(
             cornerRadius: PremiumLayout.cardRadius,
             style: .continuous
         )
-
-        if #available(iOS 26.0, *), !reduceTransparency {
-            // Real Liquid Glass card surface. glassEffect(in:) already
-            // constrains the shape, so no separate clipShape here (that
-            // combination is a documented source of rendering artifacts).
-            content
-                .contentShape(shape)
-                .glassEffect(
-                    .regular.interactive(interactive),
-                    in: shape
-                )
-                .shadow(
-                    color: .black.opacity(interactive ? 0.07 : 0.04),
-                    radius: interactive ? 14 : 9,
-                    y: interactive ? 7 : 4
-                )
-        } else {
-            content
-                .background(
-                    Color(uiColor: .secondarySystemBackground)
-                        .opacity(0.82),
-                    in: shape
-                )
-                .overlay {
-                    shape.stroke(.primary.opacity(0.07), lineWidth: 0.75)
+        // Cards live in the content layer. Liquid Glass is the control
+        // layer (tabs, accessory, buttons) — putting glass on a shelf
+        // card collapses that hierarchy. Standard materials (or a solid
+        // fill when Reduce Transparency is on) keep the distinction.
+        let increased = colorSchemeContrast == .increased
+        content
+            .background {
+                Group {
+                    if reduceTransparency {
+                        shape.fill(Color(uiColor: .secondarySystemBackground))
+                    } else {
+                        shape.fill(.regularMaterial)
+                    }
                 }
-                .clipShape(shape)
-                .contentShape(shape)
-                .shadow(
-                    color: .black.opacity(interactive ? 0.07 : 0.04),
-                    radius: interactive ? 14 : 9,
-                    y: interactive ? 7 : 4
+            }
+            .overlay {
+                shape.stroke(
+                    Color.primary.opacity(
+                        increased || reduceTransparency ? 0.18 : 0.07
+                    ),
+                    lineWidth: increased ? 1.2 : 0.75
                 )
-        }
+            }
+            .clipShape(shape)
+            .contentShape(shape)
+            .shadow(
+                color: .black.opacity(interactive ? 0.07 : 0.04),
+                radius: interactive ? 14 : 9,
+                y: interactive ? 7 : 4
+            )
     }
 }
 

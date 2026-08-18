@@ -22,4 +22,17 @@ final class SearchChromePolicyTests: XCTestCase {
             )
         )
     }
+
+    func testIOS26SearchTabUsesTheSemanticRoleNotBarActivation() {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = (try? String(
+            contentsOf: root
+                .appendingPathComponent("PrivateMusic/Features/Root/MainTabView.swift"),
+            encoding: .utf8
+        )) ?? ""
+        XCTAssertTrue(source.contains("role: .search"))
+        XCTAssertFalse(source.contains("tabViewSearchActivation"))
+    }
 }
