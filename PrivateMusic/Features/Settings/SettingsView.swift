@@ -214,7 +214,8 @@ struct SettingsView: View {
                 .font(.system(size: 16, weight: .semibold))
         } trailing: {
             Text(value)
-                .font(BubbleType.metadata.monospacedDigit())
+                .font(BubbleType.metadata)
+                .monospacedDigit()
                 .foregroundStyle(.secondary)
         }
     }
