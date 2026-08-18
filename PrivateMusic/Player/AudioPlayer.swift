@@ -2893,9 +2893,17 @@ final class AudioPlayer {
                 self.handleItemFailure(failed.error)
             }
         })
+        // Deliberately unfiltered (`object: nil`). There is exactly one
+        // `AVAudioSession` per process, so naming it as the sender buys no
+        // selectivity — but it does mean any of these the system posts
+        // without that sender, or with an internal one, is silently
+        // dropped. Automatic Ear Detection is the case that costs: it
+        // arrives as an interruption while the buds stay the route, so a
+        // missed notification is a pause that never happens and no other
+        // branch can recover it.
         registrations.notifications.append(center.addObserver(
             forName: AVAudioSession.interruptionNotification,
-            object: AVAudioSession.sharedInstance(),
+            object: nil,
             queue: .main
         ) { [weak self] notification in
             let boxed = IsolatedNotification(raw: notification)
@@ -2905,7 +2913,7 @@ final class AudioPlayer {
         })
         registrations.notifications.append(center.addObserver(
             forName: AVAudioSession.routeChangeNotification,
-            object: AVAudioSession.sharedInstance(),
+            object: nil,
             queue: .main
         ) { [weak self] notification in
             let boxed = IsolatedNotification(raw: notification)
@@ -2915,7 +2923,7 @@ final class AudioPlayer {
         })
         registrations.notifications.append(center.addObserver(
             forName: AVAudioSession.mediaServicesWereResetNotification,
-            object: AVAudioSession.sharedInstance(),
+            object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
