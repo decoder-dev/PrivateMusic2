@@ -30,11 +30,10 @@ struct HomeStageView: View {
     /// Home's grid inset. The stage keeps its content on that grid and
     /// lets only the decorative layers cross it.
     let horizontalPadding: CGFloat
-    /// The resolved top inset the Hero foreground must respect. `CatalogView`
-    /// may let the atmospheric background underlap the top safe area, so this
-    /// value is resolved once by the parent rather than trusting local scroll
-    /// geometry to stay non-zero on every OS/chrome combination.
-    let topSafeAreaInset: CGFloat
+    /// The resolved top origin the Hero foreground must respect. `CatalogView`
+    /// resolves this once from the top chrome boundary plus Home's own
+    /// breathing gap, so the Hero block never starts underneath "Главная".
+    let foregroundTopOrigin: CGFloat
 
     private var presentation: HomeStagePresentation {
         HomeStagePresentation.resolve(
@@ -67,7 +66,7 @@ struct HomeStageView: View {
 
                 bubbleRail
             }
-            .padding(.top, topSafeAreaInset)
+            .padding(.top, foregroundTopOrigin)
             .frame(maxWidth: .infinity)
         }
         .animation(
@@ -123,7 +122,7 @@ struct HomeStageView: View {
             maxWidth: .infinity,
             maxHeight: HomeStageMetrics.atmosphereHeight(
                 for: width,
-                topSafeAreaInset: topSafeAreaInset
+                topSafeAreaInset: foregroundTopOrigin
             )
         )
         .clipped()

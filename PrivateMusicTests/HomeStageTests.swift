@@ -581,35 +581,42 @@ final class HomeStageMetricsTests: XCTestCase {
     }
 
     /// `CatalogView` intentionally lets Home's atmospheric background underlap
-    /// the top safe area. The foreground must still get a non-zero inset even
-    /// if that local geometry reports zero.
-    func testResolvedForegroundTopInsetFallsBackWhenReportedInsetIsZero() {
+    /// the top safe area. The Hero foreground still needs the safe top band
+    /// plus Home's own breathing room when local geometry reports zero.
+    func testResolvedForegroundTopOriginFallsBackWhenReportedInsetIsZero() {
         XCTAssertEqual(
-            HomeStageMetrics.resolvedForegroundTopInset(
+            HomeStageMetrics.resolvedForegroundTopOrigin(
                 reportedTopSafeAreaInset: 0,
                 windowTopSafeAreaInset: 59
             ),
-            59
+            59 + HomeStageMetrics.navigationGap
         )
         XCTAssertGreaterThan(
-            HomeStageMetrics.resolvedForegroundTopInset(
+            HomeStageMetrics.resolvedForegroundTopOrigin(
                 reportedTopSafeAreaInset: 0,
                 windowTopSafeAreaInset: nil
             ),
-            0
+            HomeStageMetrics.navigationGap
         )
     }
 
-    /// When the parent already reports a valid safe-area value, keep it — the
-    /// Hero must not stack a second full top inset on top of the existing one.
-    func testResolvedForegroundTopInsetDoesNotDoubleInset() {
+    /// The authoritative Hero origin is "resolved top safe area + one Hero
+    /// breathing gap", and the gap is stable regardless of source / artist.
+    func testResolvedForegroundTopOriginAddsOneStableNavigationGap() {
         XCTAssertEqual(
-            HomeStageMetrics.resolvedForegroundTopInset(
+            HomeStageMetrics.resolvedForegroundTopOrigin(
                 reportedTopSafeAreaInset: 64,
                 windowTopSafeAreaInset: 59
             ),
-            64
+            64 + HomeStageMetrics.navigationGap
         )
+    }
+
+    func testHeroVerticalRhythmUsesTheSharedSpacingRamp() {
+        XCTAssertEqual(HomeStageMetrics.belowChip, BubbleSpacing.xl)
+        XCTAssertEqual(HomeStageMetrics.belowHeadline, BubbleSpacing.xxl)
+        XCTAssertEqual(HomeStageMetrics.belowArtwork, BubbleSpacing.xxl)
+        XCTAssertEqual(HomeStageMetrics.belowTransport, BubbleSpacing.xxl)
     }
 }
 
