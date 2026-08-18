@@ -579,6 +579,38 @@ final class HomeStageMetricsTests: XCTestCase {
             )
         }
     }
+
+    /// `CatalogView` intentionally lets Home's atmospheric background underlap
+    /// the top safe area. The foreground must still get a non-zero inset even
+    /// if that local geometry reports zero.
+    func testResolvedForegroundTopInsetFallsBackWhenReportedInsetIsZero() {
+        XCTAssertEqual(
+            HomeStageMetrics.resolvedForegroundTopInset(
+                reportedTopSafeAreaInset: 0,
+                windowTopSafeAreaInset: 59
+            ),
+            59
+        )
+        XCTAssertGreaterThan(
+            HomeStageMetrics.resolvedForegroundTopInset(
+                reportedTopSafeAreaInset: 0,
+                windowTopSafeAreaInset: nil
+            ),
+            0
+        )
+    }
+
+    /// When the parent already reports a valid safe-area value, keep it — the
+    /// Hero must not stack a second full top inset on top of the existing one.
+    func testResolvedForegroundTopInsetDoesNotDoubleInset() {
+        XCTAssertEqual(
+            HomeStageMetrics.resolvedForegroundTopInset(
+                reportedTopSafeAreaInset: 64,
+                windowTopSafeAreaInset: 59
+            ),
+            64
+        )
+    }
 }
 
 @MainActor

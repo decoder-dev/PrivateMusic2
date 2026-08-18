@@ -26,18 +26,22 @@ struct CatalogView: View {
         ScrollViewReader { scrollProxy in
             GeometryReader { proxy in
                 let metrics = HomeMetrics(containerWidth: proxy.size.width)
+                let resolvedForegroundTopInset =
+                    HomeStageMetrics.resolvedForegroundTopInset(
+                        reportedTopSafeAreaInset: proxy.safeAreaInsets.top
+                    )
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: BubbleSpacing.xxl) {
                         if settings.homeStageEnabled {
                             HomeStageView(
                                 width: proxy.size.width,
                                 horizontalPadding: metrics.horizontalPadding,
-                                topSafeAreaInset: proxy.safeAreaInsets.top
+                                topSafeAreaInset: resolvedForegroundTopInset
                             )
                             .id(MainTabScrollDestination.home)
                         } else {
                             welcomeHeader
-                                .padding(.top, proxy.safeAreaInsets.top)
+                                .padding(.top, resolvedForegroundTopInset)
                                 .id(MainTabScrollDestination.home)
                         }
 
