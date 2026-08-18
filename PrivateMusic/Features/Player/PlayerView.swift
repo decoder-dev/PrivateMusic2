@@ -1551,6 +1551,7 @@ private struct PlayerActionsSheet: View {
     @Binding var spatialAudioEnabled: Bool
     @Binding var preferHighQuality: Bool
     @Environment(AudioPlayer.self) private var player
+    @Environment(AppSettings.self) private var settings
     @State private var systemVolume = SystemVolumeObserver()
     @State private var showsSleepTimerOptions = false
     let onDismiss: () -> Void
@@ -1719,13 +1720,13 @@ private struct PlayerActionsSheet: View {
                         : "speaker.wave.2.fill"
                 )
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(settings.theme.accent)
                 .frame(width: 30, height: 30)
-                .background(Color.accentColor.opacity(0.12), in: Circle())
+                .background(settings.theme.accent.opacity(0.12), in: Circle())
                 .accessibilityHidden(true)
 
                 SystemVolumeSlider(
-                    tintColor: UIColor(named: "AccentColor") ?? .systemBlue
+                    tintColor: BubbleGamut.accent(for: settings.theme).uiColor
                 )
                 .frame(height: 28)
                 .accessibilityLabel(L10n.text("volume"))
@@ -1784,7 +1785,7 @@ private struct PlayerActionsSheet: View {
                     systemImage: "dot.radiowaves.left.and.right"
                 )
             }
-            .tint(.accentColor)
+            .tint(settings.theme.accent)
             .padding(.horizontal, 16)
             .frame(minHeight: PlayerActionSheetMetrics.minimumTapTarget)
 
@@ -1804,11 +1805,11 @@ private struct PlayerActionsSheet: View {
                     if let endDate = player.sleepTimerEndDate {
                         Text(endDate, style: .timer)
                             .font(.subheadline.monospacedDigit().weight(.medium))
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(settings.theme.accent)
                     } else if let mode = player.sleepTimerMode {
                         Text(mode.statusLabel)
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(settings.theme.accent)
                             .lineLimit(1)
                     }
                     Image(systemName: "chevron.right")
@@ -1852,9 +1853,9 @@ private struct PlayerActionsSheet: View {
         } icon: {
             Image(systemName: systemImage)
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(settings.theme.accent)
                 .frame(width: 30, height: 30)
-                .background(Color.accentColor.opacity(0.12), in: Circle())
+                .background(settings.theme.accent.opacity(0.12), in: Circle())
         }
     }
 
@@ -1924,11 +1925,11 @@ private struct PlayerActionsSheet: View {
                 )
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(
-                    isInLibrary ? Color.red : Color.accentColor
+                    BubbleGamut.liked(for: settings.theme)
                 )
                 .frame(width: 34, height: 34)
                 .background(
-                    (isInLibrary ? Color.red : Color.accentColor)
+                    BubbleGamut.liked(for: settings.theme)
                         .opacity(0.12),
                     in: Circle()
                 )
@@ -1962,7 +1963,7 @@ private struct PlayerActionsSheet: View {
                 style: .continuous
             ),
             interactive: true,
-            tint: (isInLibrary ? Color.red : Color.accentColor).opacity(0.08)
+            tint: BubbleGamut.liked(for: settings.theme).opacity(0.08)
         )
         .disabled(!availability.canModifyLibrary)
         .padding(.top, 14)
@@ -1989,10 +1990,10 @@ private struct PlayerActionsSheet: View {
             VStack(alignment: .leading, spacing: 9) {
                 Image(systemName: systemImage)
                     .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(settings.theme.accent)
                     .frame(width: 36, height: 36)
                     .background(
-                        Color.accentColor.opacity(0.12),
+                        settings.theme.accent.opacity(0.12),
                         in: Circle()
                     )
                 Text(L10n.text(title))

@@ -77,28 +77,10 @@ enum BubblePalette {
     static let surfaceLuminanceFloor: Double = 0.16
 
     /// The fallback every role resolves to when no artwork tint applies.
-    /// Deliberately desaturated: these sit behind white labels all day.
+    /// Values come from `BubbleGamut` so the legend and the rest of the app
+    /// share one palette.
     static func fallback(_ role: BubbleRole) -> BubbleColorComponents {
-        switch role {
-        case .station:
-            BubbleColorComponents(red: 0.76, green: 0.33, blue: 0.18)
-        case .artist:
-            BubbleColorComponents(red: 0.70, green: 0.25, blue: 0.30)
-        case .mood:
-            BubbleColorComponents(red: 0.17, green: 0.53, blue: 0.36)
-        case .mix:
-            BubbleColorComponents(red: 0.44, green: 0.25, blue: 0.66)
-        case .recommendation:
-            BubbleColorComponents(red: 0.20, green: 0.40, blue: 0.72)
-        case .neutral:
-            BubbleColorComponents(red: 0.30, green: 0.30, blue: 0.34)
-        case .accent:
-            BubbleColorComponents(red: 0.04, green: 0.50, blue: 1.00)
-        case .success:
-            BubbleColorComponents(red: 0.16, green: 0.56, blue: 0.32)
-        case .destructive:
-            BubbleColorComponents(red: 0.72, green: 0.22, blue: 0.22)
-        }
+        BubbleGamut.components(for: role)
     }
 
     static func color(_ role: BubbleRole) -> Color {
