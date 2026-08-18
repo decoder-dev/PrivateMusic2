@@ -3,7 +3,7 @@ import UIKit
 import UserNotifications
 
 enum PremiumLayout {
-    static let screenPadding: CGFloat = 16
+    static let screenPadding: CGFloat = BubbleSpacing.l
     static let cardRadius: CGFloat = 22
     static let compactRadius: CGFloat = 16
     static let controlRadius: CGFloat = 14
@@ -119,7 +119,7 @@ struct PremiumSectionHeader: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: BubbleSpacing.xs) {
             // Both labels need an explicit line budget and `fixedSize`.
             // Without it a wrapped title or subtitle is laid out in the
             // height of a single line, so the extra lines render over the
@@ -127,12 +127,12 @@ struct PremiumSectionHeader: View {
             // overlap seen across the mix screens, whose long localized
             // section names wrap on narrow phones and at larger text sizes.
             Text(L10n.text(title))
-                .font(.title2.weight(.semibold))
+                .font(BubbleType.section)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             if let subtitle {
                 Text(L10n.text(subtitle))
-                    .font(.subheadline)
+                    .font(BubbleType.metadata)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -140,6 +140,168 @@ struct PremiumSectionHeader: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+}
+
+struct AppGroupedSection<Content: View, Trailing: View>: View {
+    let title: String
+    var subtitle: String?
+    @ViewBuilder var trailing: () -> Trailing
+    @ViewBuilder var content: () -> Content
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() },
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.trailing = trailing
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BubbleSpacing.m) {
+            HStack(alignment: .firstTextBaseline, spacing: BubbleSpacing.m) {
+                PremiumSectionHeader(title, subtitle: subtitle)
+                Spacer(minLength: 0)
+                trailing()
+            }
+            AppGroupedSurface {
+                content()
+            }
+        }
+    }
+}
+
+struct AppGroupedSurface<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content()
+        }
+        .padding(.horizontal, BubbleSpacing.xs)
+        .premiumCard()
+    }
+}
+
+struct AppGroupedRow<Leading: View, Trailing: View>: View {
+    @ViewBuilder var leading: () -> Leading
+    @ViewBuilder var trailing: () -> Trailing
+    var minHeight: CGFloat = 56
+
+    init(
+        minHeight: CGFloat = 56,
+        @ViewBuilder leading: @escaping () -> Leading,
+        @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }
+    ) {
+        self.leading = leading
+        self.trailing = trailing
+        self.minHeight = minHeight
+    }
+
+    var body: some View {
+        HStack(spacing: BubbleSpacing.m) {
+            leading()
+            Spacer(minLength: BubbleSpacing.s)
+            trailing()
+        }
+        .padding(.horizontal, BubbleSpacing.m)
+        .frame(minHeight: minHeight)
+        .contentShape(Rectangle())
+    }
+}
+
+struct AppInlineMessageCard: View {
+    @Environment(AppSettings.self) private var settings
+    let message: String
+    let systemImage: String
+    var tint: Color = .orange
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(spacing: BubbleSpacing.s) {
+            Image(systemName: systemImage)
+                .foregroundStyle(tint)
+            Text(message)
+                .font(BubbleType.metadata)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: BubbleSpacing.xs)
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .font(.system(size: 13, weight: .semibold))
+            }
+        }
+        .padding(.horizontal, BubbleSpacing.l)
+        .padding(.vertical, BubbleSpacing.m)
+        .background(
+            tint.opacity(settings.theme == .dark ? 0.12 : 0.09),
+            in: RoundedRectangle(
+                cornerRadius: BubbleRadius.compact,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: BubbleRadius.compact,
+                style: .continuous
+            )
+            .stroke(
+                tint.opacity(settings.theme == .dark ? 0.28 : 0.2),
+                lineWidth: 0.7
+            )
+        }
+    }
+}
+
+struct AppStatusPanel: View {
+    @Environment(AppSettings.self) private var settings
+    let title: String
+    let systemImage: String
+    let description: String
+    var titleIsLocalizedKey = true
+    var descriptionIsLocalizedKey = true
+    var actionTitle: String? = nil
+    var actionTitleIsLocalizedKey = true
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(spacing: BubbleSpacing.m) {
+            Image(systemName: systemImage)
+                .font(.system(size: 34, weight: .medium))
+                .foregroundStyle(settings.theme.accent)
+                .accessibilityHidden(true)
+            Text(titleIsLocalizedKey ? L10n.text(title) : title)
+                .font(.system(size: 22, weight: .bold))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                descriptionIsLocalizedKey
+                    ? L10n.text(description)
+                    : description
+            )
+                .font(BubbleType.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 320)
+                .fixedSize(horizontal: false, vertical: true)
+            if let actionTitle, let action {
+                Button(
+                    actionTitleIsLocalizedKey
+                        ? L10n.text(actionTitle)
+                        : actionTitle,
+                    action: action
+                )
+                    .font(.system(size: 15, weight: .semibold))
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(BubbleSpacing.xxl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

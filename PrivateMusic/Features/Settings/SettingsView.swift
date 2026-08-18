@@ -104,86 +104,75 @@ struct SettingsView: View {
     @Environment(OfflineTrackStore.self) private var offlineStore
 
     var body: some View {
-        Form {
-            Section {
-                NavigationLink {
-                    AppearanceSettingsView()
-                } label: {
-                    Label(L10n.text("appearance"),
+        ScrollView {
+            VStack(alignment: .leading, spacing: BubbleSpacing.section) {
+                AppGroupedSection(title: "tab.settings") {
+                    settingsDestination(
+                        title: "appearance",
                         systemImage: "paintpalette"
-                    )
-                }
-
-                NavigationLink {
-                    PlayerAudioSettingsView()
-                } label: {
-                    Label(L10n.text("player_audio"),
+                    ) { AppearanceSettingsView() }
+                    Divider().padding(.leading, 54)
+                    settingsDestination(
+                        title: "player_audio",
                         systemImage: "waveform"
-                    )
-                }
-
-                NavigationLink {
-                    EqualizerSettingsView()
-                } label: {
-                    Label(L10n.text("equalizer"),
+                    ) { PlayerAudioSettingsView() }
+                    Divider().padding(.leading, 54)
+                    settingsDestination(
+                        title: "equalizer",
                         systemImage: "slider.horizontal.3"
-                    )
-                }
-
-                if OfflineDownloadsFeature.showsControls,
-                   !environment.isShareSessionActive {
-                    NavigationLink {
-                        OfflineStorageSettingsView()
-                    } label: {
-                        Label(L10n.text("offline_storage"),
+                    ) { EqualizerSettingsView() }
+                    if OfflineDownloadsFeature.showsControls,
+                       !environment.isShareSessionActive {
+                        Divider().padding(.leading, 54)
+                        settingsDestination(
+                            title: "offline_storage",
                             systemImage: "externaldrive"
-                        )
+                        ) { OfflineStorageSettingsView() }
                     }
-                }
-
-                NavigationLink {
-                    SleepTimerSettingsView()
-                } label: {
-                    Label(L10n.text("sleep_timer"),
+                    Divider().padding(.leading, 54)
+                    settingsDestination(
+                        title: "sleep_timer",
                         systemImage: "moon.zzz"
-                    )
-                }
-
-                NavigationLink {
-                    ConnectionSettingsView()
-                } label: {
-                    Label(L10n.text("connection"),
+                    ) { SleepTimerSettingsView() }
+                    Divider().padding(.leading, 54)
+                    settingsDestination(
+                        title: "connection",
                         systemImage: "network"
-                    )
-                }
-
-                NavigationLink {
-                    MixFiltersSettingsView()
-                } label: {
-                    Label(L10n.text("mix_filters"),
+                    ) { ConnectionSettingsView() }
+                    Divider().padding(.leading, 54)
+                    settingsDestination(
+                        title: "mix_filters",
                         systemImage: "line.3.horizontal.decrease.circle"
-                    )
-                }
-
-                NavigationLink {
-                    MixFeedbackManagerView()
-                } label: {
-                    Label(L10n.text("hidden_in_mixes"),
+                    ) { MixFiltersSettingsView() }
+                    Divider().padding(.leading, 54)
+                    settingsDestination(
+                        title: "hidden_in_mixes",
                         systemImage: "hand.thumbsdown"
+                    ) { MixFeedbackManagerView() }
+                }
+
+                AppGroupedSection(title: "about") {
+                    labeledValueRow(
+                        title: L10n.text("app"),
+                        value: L10n.text("private_music")
+                    )
+                    Divider().padding(.leading, 54)
+                    labeledValueRow(title: L10n.text("version"), value: version)
+                    Divider().padding(.leading, 54)
+                    labeledValueRow(
+                        title: L10n.text("developer"),
+                        value: "decoder-dev"
+                    )
+                    Divider().padding(.leading, 54)
+                    labeledValueRow(
+                        title: L10n.text("analytics"),
+                        value: L10n.text("not_used")
                     )
                 }
             }
-
-            Section(L10n.text("about")) {
-                LabeledContent(L10n.text("app"), value: L10n.text("private_music"))
-                LabeledContent(L10n.text("version"), value: version)
-                LabeledContent(L10n.text("developer"), value: "decoder-dev")
-                LabeledContent(L10n.text("analytics"),
-                    value: L10n.text("not_used")
-                )
-            }
+            .padding(.horizontal, PremiumLayout.screenPadding)
+            .padding(.vertical, BubbleSpacing.l)
         }
-        .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("tab.settings"))
     }
@@ -196,6 +185,38 @@ struct SettingsView: View {
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "—"
         return "\(short) (\(build))"
+    }
+
+    private func settingsDestination<Destination: View>(
+        title: String,
+        systemImage: String,
+        @ViewBuilder destination: @escaping () -> Destination
+    ) -> some View {
+        NavigationLink {
+            destination()
+        } label: {
+            AppGroupedRow {
+                Label(L10n.text(title), systemImage: systemImage)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
+            } trailing: {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func labeledValueRow(title: String, value: String) -> some View {
+        AppGroupedRow {
+            Text(title)
+                .font(.system(size: 16, weight: .semibold))
+        } trailing: {
+            Text(value)
+                .font(BubbleType.metadata.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

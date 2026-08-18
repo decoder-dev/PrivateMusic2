@@ -80,7 +80,8 @@ struct LibraryView: View {
                             EmptyStateView(
                                 title: "could_not_load_tracks",
                                 systemImage: "wifi.exclamationmark",
-                                description: error
+                                description: error,
+                                descriptionIsLocalizedKey: false
                             )
                             Button(L10n.text("action.retry")) {
                                 Task { await loadTracks(force: true) }
