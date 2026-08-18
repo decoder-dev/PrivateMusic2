@@ -14,6 +14,10 @@ struct TrackRow: View {
     let track: Track
     let queue: [Track]
     var source: QueueSource? = nil
+    var showsOfflineState = true
+    var showsLikedBadge = true
+    var showsDuration = true
+    var showsPlaybackIndicator = true
     @State private var sharingTrack: Track?
 
     var body: some View {
@@ -21,68 +25,23 @@ struct TrackRow: View {
             Haptics.selection()
             environment.player.play(track, in: queue, source: source)
         } label: {
-            HStack(spacing: 12) {
-                AsyncArtwork(url: track.artworkURL, size: 48)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    if let title = usableMetadata(track.title) {
-                        Text(title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(
-                                isCurrent
-                                    ? currentTrackColor
-                                    : Color.primary
-                            )
-                            .lineLimit(1)
-                    }
-                    if let artist = usableMetadata(track.artist) {
-                        Text(artist)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .layoutPriority(1)
-
-                HStack(spacing: 8) {
-                    if OfflineDownloadsFeature.showsControls,
-                       !environment.isShareSessionActive {
-                        if offlineStore.contains(track) {
-                            Image(systemName: "arrow.down.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .accessibilityLabel(
-                                    L10n.text("available_offline")
-                                )
-                        } else if offlineStore.downloadingTrackIDs
-                            .contains(track.id) {
-                            ProgressView()
-                                .controlSize(.small)
-                                .accessibilityLabel(L10n.text("downloading"))
-                        }
-                    }
-
-                    LikedTrackBadge(track: track)
-
-                    Text(track.duration.formattedDuration)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(minWidth: 36, alignment: .trailing)
-
-                    if isCurrent {
-                        PlaybackIndicatorView(
-                            isPlaying: highlight.isPlaying,
-                            color: currentTrackColor
-                        )
-                        .font(.caption)
-                        .foregroundStyle(currentTrackColor)
-                        .frame(width: 14, alignment: .center)
-                    }
-                }
-                .fixedSize(horizontal: true, vertical: false)
-            }
-            .contentShape(Rectangle())
+            TrackRowContent(
+                artworkURL: track.artworkURL,
+                title: usableMetadata(track.title),
+                artist: usableMetadata(track.artist),
+                titleColor: isCurrent ? currentTrackColor : .primary,
+                showsOfflineState: showsOfflineState
+                    && OfflineDownloadsFeature.showsControls
+                    && !environment.isShareSessionActive,
+                isOffline: offlineStore.contains(track),
+                isDownloading: offlineStore.downloadingTrackIDs.contains(track.id),
+                showsLikedBadge: showsLikedBadge,
+                likedTrack: showsLikedBadge ? track : nil,
+                durationText: showsDuration ? track.duration.formattedDuration : nil,
+                showsPlaybackIndicator: showsPlaybackIndicator && isCurrent,
+                isPlaying: highlight.isPlaying,
+                playbackIndicatorColor: currentTrackColor
+            )
         }
         .buttonStyle(PremiumPressStyle())
         .accessibilityElement(children: .ignore)
@@ -205,6 +164,83 @@ struct TrackRow: View {
     private func usableMetadata(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+struct TrackRowContent: View {
+    let artworkURL: URL?
+    let title: String?
+    let artist: String?
+    var titleColor: Color = .primary
+    var showsOfflineState = false
+    var isOffline = false
+    var isDownloading = false
+    var showsLikedBadge = true
+    var likedTrack: Track?
+    var durationText: String?
+    var showsPlaybackIndicator = false
+    var isPlaying = false
+    var playbackIndicatorColor: Color = .primary
+
+    var body: some View {
+        HStack(spacing: BubbleSpacing.m) {
+            AsyncArtwork(url: artworkURL, size: 48)
+
+            VStack(alignment: .leading, spacing: 3) {
+                if let title {
+                    Text(title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(titleColor)
+                        .lineLimit(1)
+                }
+                if let artist {
+                    Text(artist)
+                        .font(BubbleType.metadata)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
+
+            HStack(spacing: BubbleSpacing.s) {
+                if showsOfflineState {
+                    if isOffline {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(L10n.text("available_offline"))
+                    } else if isDownloading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel(L10n.text("downloading"))
+                    }
+                }
+
+                if showsLikedBadge, let likedTrack {
+                    LikedTrackBadge(track: likedTrack)
+                }
+
+                if let durationText {
+                    Text(durationText)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 36, alignment: .trailing)
+                }
+
+                if showsPlaybackIndicator {
+                    PlaybackIndicatorView(
+                        isPlaying: isPlaying,
+                        color: playbackIndicatorColor
+                    )
+                    .font(.caption)
+                    .foregroundStyle(playbackIndicatorColor)
+                    .frame(width: 14, alignment: .center)
+                }
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        .contentShape(Rectangle())
     }
 }
 

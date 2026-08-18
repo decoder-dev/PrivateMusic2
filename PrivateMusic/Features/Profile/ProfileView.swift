@@ -11,14 +11,16 @@ struct ProfileView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(spacing: BubbleSpacing.section) {
                     identityHeader
-                    groupedActions
-                    logoutRow
+                    accountSection
+                    supportSection
+                    sessionSection
                     footer
                 }
                 .id(MainTabScrollDestination.profile)
-                .padding()
+                .padding(.horizontal, PremiumLayout.screenPadding)
+                .padding(.vertical, BubbleSpacing.l)
             }
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .profile else { return }
@@ -82,12 +84,8 @@ struct ProfileView: View {
         .padding(.vertical, 4)
     }
 
-    /// One grouped surface, three rows — Settings used to be its own
-    /// full-width card floating between the identity and the links card,
-    /// which is what made the screen read as a stack of separate panels
-    /// rather than one settings-style list.
-    private var groupedActions: some View {
-        VStack(spacing: 0) {
+    private var accountSection: some View {
+        AppGroupedSection(title: "account") {
             NavigationLink {
                 SettingsView()
             } label: {
@@ -99,9 +97,11 @@ struct ProfileView: View {
                 )
             }
             .buttonStyle(.plain)
+        }
+    }
 
-            Divider().padding(.leading, 54)
-
+    private var supportSection: some View {
+        AppGroupedSection(title: "support") {
             Button {
                 openURL(environment.configuration.telegramGroupURL)
             } label: {
@@ -113,9 +113,7 @@ struct ProfileView: View {
                 )
             }
             .buttonStyle(.plain)
-
             Divider().padding(.leading, 54)
-
             Button {
                 openURL(environment.configuration.telegramVPNURL)
             } label: {
@@ -128,70 +126,66 @@ struct ProfileView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 4)
-        .premiumCard()
     }
 
-    /// Shared row so Settings and both external links carry identical
-    /// height, typography and trailing-indicator placement — a chevron
-    /// for the in-app destination, an external-link glyph for the two
-    /// that leave the app.
+    private var sessionSection: some View {
+        AppGroupedSection(title: "session") {
+            Button(role: .destructive) {
+                showingLogoutConfirmation = true
+            } label: {
+                groupedRow(
+                    title: L10n.text("sign_out"),
+                    subtitle: L10n.text(
+                        "signing_out_removes_the_saved_session_from_this_device_you_will_need_to_"
+                    ),
+                    systemImage: "rectangle.portrait.and.arrow.right",
+                    trailing: nil,
+                    foregroundStyle: .red,
+                    isDestructive: true
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     private func groupedRow(
         title: String,
         subtitle: String?,
         systemImage: String,
-        trailing: String
+        trailing: String?,
+        foregroundStyle: Color = .primary,
+        isDestructive: Bool = false
     ) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: systemImage)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        AppGroupedRow {
+            HStack(spacing: BubbleSpacing.m) {
+                Image(systemName: systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(foregroundStyle)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(foregroundStyle)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(BubbleType.metadata)
+                            .foregroundStyle(
+                                isDestructive ? .red.opacity(0.82) : .secondary
+                            )
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
-            Spacer(minLength: 8)
-            Image(systemName: trailing)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, 12)
-        .frame(minHeight: 52)
-        .contentShape(Rectangle())
-    }
-
-    /// Destructive, but one row — not a second full-width billboard
-    /// beneath the settings list.
-    private var logoutRow: some View {
-        Button(role: .destructive) {
-            showingLogoutConfirmation = true
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(width: 28)
-                Text(L10n.text("sign_out"))
-                    .font(.system(size: 16, weight: .semibold))
-                Spacer(minLength: 8)
+        } trailing: {
+            if let trailing {
+                Image(systemName: trailing)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
-            .foregroundStyle(.red)
-            .padding(.horizontal, 12)
-            .frame(minHeight: 52)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .premiumCard(interactive: true)
     }
 
     /// Tertiary information stays tertiary: a 60pt icon and two full-size

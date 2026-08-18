@@ -21,7 +21,8 @@ struct AddToPlaylistView: View {
                         title: "no_available_playlists",
                         systemImage: "rectangle.stack.badge.plus",
                         description: errorMessage
-                            ?? "create_a_playlist_in_your_library"
+                            ?? "create_a_playlist_in_your_library",
+                        descriptionIsLocalizedKey: errorMessage == nil
                     )
                 } else {
                     List(playlists) { playlist in
