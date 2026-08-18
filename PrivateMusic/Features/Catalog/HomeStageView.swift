@@ -114,6 +114,7 @@ struct HomeStageView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .black))
+                        .foregroundStyle(GravityTokens.brand)
                         .frame(width: 22, height: 22)
                         // The glyph stays small so the chip stays a status,
                         // not a button; the hit area still clears 44×44 by
@@ -228,11 +229,11 @@ struct HomeStageView: View {
             }
         } else {
             HStack(spacing: BubbleSpacing.s) {
-                BubbleIconButton(
+                GravityActionButton(
                     systemImage: highlight.isPlaying
                         ? "pause.fill"
                         : "play.fill",
-                    size: height,
+                    height: height,
                     accessibilityLabel: L10n.text(
                         highlight.isPlaying ? "pause" : "resume_playback"
                     )
@@ -262,10 +263,10 @@ struct HomeStageView: View {
         }
     }
 
-    /// Flat on purpose: Play and Like on either side are genuine floating
-    /// controls and keep their glass, but the title between them is a
-    /// label, not its own surface — a third glass pill made three
-    /// unrelated objects out of one playback group.
+    /// Flat on purpose: Play is a Gravity action and Like stays a glass
+    /// heart, but the title between them is a label, not its own surface
+    /// — a third glass pill made three unrelated objects out of one
+    /// playback group.
     private func nowPlayingTitle(height: CGFloat) -> some View {
         Button {
             Haptics.open()
