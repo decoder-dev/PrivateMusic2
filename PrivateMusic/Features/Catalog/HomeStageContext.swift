@@ -294,7 +294,7 @@ enum HomeStageContextBuilder {
     /// repeats — an evening spent looping one album should not fill the
     /// rail with the same face.
     static func recentArtists(
-        from entries: [some HomeStagePlayable],
+        from entries: [any HomeStagePlayable],
         limit: Int = 3
     ) -> [HomeStageArtist] {
         var seen = Set<String>()
