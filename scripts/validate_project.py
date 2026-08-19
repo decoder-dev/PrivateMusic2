@@ -92,6 +92,7 @@ required = {
     "PrivateMusic/Services/HLSOfflineDownloadService.swift",
     "PrivateMusic/UI/ContrastPolicy.swift",
     "PrivateMusic/UI/HitTarget.swift",
+    "PrivateMusic/Models/SelenaBanditPolicy.swift",
 }
 for relative in required:
     if not (ROOT / relative).is_file():
@@ -2042,6 +2043,42 @@ def require_motion_respects_reduce_motion() -> None:
 require_motion_respects_reduce_motion()
 
 
+def require_ranking_lives_in_a_tested_policy() -> None:
+    """Queue ranking belongs in a policy with tests, not inside a view.
+
+    Every other decision of this kind — HomeNextStepPolicy,
+    ArtistAffinityPolicy, MixMoodLaunchPolicy, ContinuationPrefetchPolicy —
+    is a named enum a test can call. Ranking that lives as a private method
+    on a 2700-line view cannot be exercised at all, so a change to it can
+    only be checked by listening to the app and hoping.
+    """
+    hub = swift_code(
+        (SOURCE / "Features" / "Mix" / "MixesHubView.swift")
+        .read_text(encoding="utf-8")
+    )
+    if "SelenaBanditPolicy.rerank(" not in hub:
+        fail("MixesHubView must rerank through SelenaBanditPolicy")
+    for inlined in ("func selenaBanditRerank", "sqrt(log("):
+        if inlined in hub:
+            fail(f"ranking maths must stay in SelenaBanditPolicy: {inlined}")
+    policy = swift_code(
+        (SOURCE / "Models" / "SelenaBanditPolicy.swift")
+        .read_text(encoding="utf-8")
+    )
+    for required_symbol in (
+        "enum SelenaBanditPolicy",
+        "struct SelenaExposure",
+        "static func rerank(",
+        "static func explorationBonus(",
+        "static func breakingUpRuns(",
+    ):
+        if required_symbol not in policy:
+            fail(f"SelenaBanditPolicy is missing {required_symbol}")
+
+
+require_ranking_lives_in_a_tested_policy()
+
+
 require_home_is_not_a_recommendation_feed()
 
 print(f"OK: {len(swift_files)} Swift files")
@@ -2055,3 +2092,4 @@ print("OK: deterministic player presentation and lightweight action dock")
 print("OK: every control accepts the 44pt minimum touch area")
 print("OK: body text scales with Dynamic Type")
 print("OK: motion respects Reduce Motion")
+print("OK: mix ranking lives in a tested policy")
