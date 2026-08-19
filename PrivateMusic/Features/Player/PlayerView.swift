@@ -11,6 +11,8 @@ struct PlayerView: View {
     @Environment(OfflineTrackStore.self) private var offlineStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @GestureState private var artworkDrag: CGSize = .zero
     @State private var presentedSheet: PlayerSheet?
     @State private var deferredPlayerAction: DeferredPlayerAction?
@@ -20,13 +22,23 @@ struct PlayerView: View {
     @State private var showRouteHint = false
     @State private var routeHintToken = UUID()
     @State private var sharingTrack: Track?
+    /// Set from the layout so a vertical scroll on the accessibility
+    /// player is not also read as a full-screen dismiss.
+    @State private var usesScrollingLayout = false
 
     /// The tester feedback that started this: on iOS 26 the player picks up
     /// Liquid Glass, and people coming from iOS 18 read the translucent
     /// pills as visual noise. Every glass branch here already carries a
     /// complete pre-26 fallback, so the switch just routes to it.
+    /// Increase Contrast and Reduce Transparency flatten custom glass
+    /// the same way `adaptiveGlass` does — a lone glass pill on an
+    /// otherwise opaque player reads as a rendering bug.
     private var usesGlassChrome: Bool {
-        !settings.classicChrome
+        !ContrastPolicy.flattensCustomGlass(
+            reduceTransparency: reduceTransparency,
+            increaseContrast: colorSchemeContrast == .increased,
+            prefersClassicChrome: settings.classicChrome
+        )
     }
 
     var body: some View {
@@ -48,6 +60,7 @@ struct PlayerView: View {
                     )
                     .foregroundStyle(playerForeground)
                     .padding()
+                    .onAppear { usesScrollingLayout = false }
                 }
             }
             .frame(
@@ -160,6 +173,9 @@ struct PlayerView: View {
             ),
             hasAlbum: track.albumTitle?.isEmpty == false
         )
+        let scrolling = metrics.requiresAccessibilityScrolling(
+            containerHeight: size.height
+        )
 
         Group {
             if metrics.requiresAccessibilityScrolling(
@@ -205,6 +221,10 @@ struct PlayerView: View {
         .padding(.leading, metrics.leadingPadding)
         .padding(.trailing, metrics.trailingPadding)
         .foregroundStyle(playerForeground)
+        .onAppear { usesScrollingLayout = scrolling }
+        .onChange(of: scrolling) { _, value in
+            usesScrollingLayout = value
+        }
     }
 
     private func portraitPlayerContent(
@@ -237,7 +257,7 @@ struct PlayerView: View {
             playerStackGap(metrics.quickActionsTopSpacing, flexible: flexible)
 
             quickActions(track)
-                .frame(height: metrics.quickActionsHeight)
+                .frame(minHeight: metrics.quickActionsHeight)
 
             Color.clear
                 .frame(height: metrics.bottomPadding)
@@ -285,7 +305,7 @@ struct PlayerView: View {
             playerStackGap(metrics.quickActionsTopSpacing, flexible: flexible)
 
             quickActions(track)
-                .frame(height: metrics.quickActionsHeight)
+                .frame(minHeight: metrics.quickActionsHeight)
 
             Color.clear
                 .frame(height: metrics.bottomPadding)
@@ -1029,7 +1049,8 @@ struct PlayerView: View {
     private var fullScreenDismissGesture: some Gesture {
         DragGesture(minimumDistance: 20)
             .onEnded { value in
-                guard presentedSheet == nil,
+                guard !usesScrollingLayout,
+                      presentedSheet == nil,
                       sharingTrack == nil,
                       PlayerDismissGesturePolicy.shouldDismiss(
                         translation: value.translation,
@@ -1402,6 +1423,13 @@ struct PlayerLayoutMetrics: Equatable {
 
     func requiresAccessibilityScrolling(containerHeight: CGFloat) -> Bool {
         minimumContentHeight > containerHeight + 0.5
+    }
+
+    /// Fitted player: gaps are `Spacer`s that share leftover height.
+    /// Scrolling player: gaps are fixed, so a `ScrollView` has a finite
+    /// content size instead of growing without a ceiling.
+    func usesFlexibleGaps(containerHeight: CGFloat) -> Bool {
+        !requiresAccessibilityScrolling(containerHeight: containerHeight)
     }
 }
 

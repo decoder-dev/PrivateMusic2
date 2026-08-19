@@ -269,8 +269,9 @@ private struct SystemLiquidGlassTabView: View {
             }
 
             // `role: .search` pins Search to the trailing cluster the way
-            // Music does. The tab still opens a full Search screen; the
-            // field lives in the navigation chrome, not in the tab bar.
+            // Music does. Selecting the tab morphs the tab bar into the
+            // system search field; the Search screen underneath stays the
+            // results surface.
             Tab(
                 MainTab.search.title,
                 systemImage: MainTab.search.image,
