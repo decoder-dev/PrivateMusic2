@@ -69,6 +69,17 @@ enum MixFamiliarityPreference: String, CaseIterable, Identifiable, Sendable {
 }
 
 enum MixQueueFilter {
+    /// The app folds Russian text two different ways on purpose, and this
+    /// is the strict one:
+    ///
+    /// - Forgiving (`й` → `и`, `ё` → `е`): `pm_text_fold_utf8` behind
+    ///   `NativeTextSearch`, `pm_text_normalize_identity` behind
+    ///   `MixQueueRanker`, and `MixFeedbackPolicy.normalized` for ban keys.
+    ///   Someone typing "мои" should find "мой", and an artist should match
+    ///   however VK spelled them.
+    /// - Strict (`й` kept, only `ё` → `е`): here. Mood markers are a curated
+    ///   word list, and collapsing `й` makes them match text that has
+    ///   nothing to do with the mood.
     private static func normalizeMoodText(_ value: String) -> String {
         // Canonicalize decomposed sequences (e.g. "и" + combining breve → "й")
         // so we can do stable substring matching for Cyrillic markers.
