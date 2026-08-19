@@ -82,6 +82,20 @@ final class MixQueueFilterTests: XCTestCase {
             )
         )
     }
+
+    func testMoodShelfMatchHandlesDecomposedY() {
+        // "й" may be represented as "и" + combining breve (U+0306).
+        // When that happens, diacritic-insensitive folding can
+        // effectively erase the breve and break substring matching for
+        // mood markers that include "й".
+        let decomposedY = "и\u{0306}"
+        XCTAssertTrue(
+            MixQueueFilter.shelfMatchesMood(
+                "Споко" + decomposedY,
+                mood: .calm
+            )
+        )
+    }
 }
 
 final class SnippetPreviewPolicyTests: XCTestCase {
