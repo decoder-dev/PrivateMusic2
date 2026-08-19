@@ -1312,15 +1312,21 @@ struct PlayerLayoutMetrics: Equatable {
                 containerSize.height - fixedWithoutArtwork,
                 0
             )
+            // Accessibility 3+ must not crush the cover to make the
+            // column fit: keep a 112pt floor and let the screen scroll.
+            let artworkFloor: CGFloat =
+                usesAccessibilityText && accessibilityStep >= 3
+                    ? 112
+                    : min(112, availableArtworkHeight)
             artworkSize = max(
                 min(
                     min(
                         contentWidth,
                         containerSize.height * artworkRatio
                     ),
-                    availableArtworkHeight
+                    max(availableArtworkHeight, artworkFloor)
                 ),
-                min(112, availableArtworkHeight)
+                artworkFloor
             )
             minimumContentHeight = fixedWithoutArtwork + artworkSize
         }
