@@ -2403,6 +2403,13 @@ struct MixesHubView: View {
         if mix.id != MusicMix.common.id, selectedVKMix?.id != mix.id {
             selectVKMix(mix)
         }
+        if mix.id == MusicMix.common.id {
+            // Selena is a personal recommendation session: reset
+            // exploration counters so the UCB decision matches the
+            // *current* queue, not some older one.
+            selenaArtistPullCounts = [:]
+            selenaTotalPulls = 0
+        }
         // If the mix was already bootstrapped under different filter
         // settings, refresh the cached queue from the unfiltered baseline.
         let base = baseTracks(for: mix)
@@ -2718,12 +2725,27 @@ struct MixesHubView: View {
                 return (track, score, index)
             }
 
-        return scored
+        var result = scored
             .sorted {
                 if $0.score != $1.score { return $0.score > $1.score }
                 return $0.index < $1.index
             }
             .map(\.track)
+
+        // Small post-repair so we don't end up with runs of the same
+        // artist; this keeps the queue from feeling “stuck”.
+        for index in 1..<result.count {
+            let prevKey = MixFeedbackPolicy.normalized(result[index - 1].artist)
+            let key = MixFeedbackPolicy.normalized(result[index].artist)
+            guard !prevKey.isEmpty, prevKey == key else { continue }
+            if let swapIndex = (index + 1..<result.count).first(where: {
+                MixFeedbackPolicy.normalized(result[$0].artist) != prevKey
+            }) {
+                result.swapAt(index, swapIndex)
+            }
+        }
+
+        return result
     }
 
     @MainActor
