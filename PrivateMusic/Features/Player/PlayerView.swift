@@ -165,21 +165,37 @@ struct PlayerView: View {
             if metrics.requiresAccessibilityScrolling(
                 containerHeight: size.height
             ) {
+                // Spacers inside a ScrollView grow without a ceiling and
+                // the player becomes infinitely tall. Stack with fixed
+                // gaps so the scroll view's content size is the layout.
                 ScrollView(.vertical) {
-                    Group {
-                        if metrics.mode == .landscape {
-                            landscapePlayerContent(track, metrics: metrics)
-                        } else {
-                            portraitPlayerContent(track, metrics: metrics)
-                        }
+                    if metrics.mode == .landscape {
+                        landscapePlayerContent(
+                            track,
+                            metrics: metrics,
+                            flexible: false
+                        )
+                    } else {
+                        portraitPlayerContent(
+                            track,
+                            metrics: metrics,
+                            flexible: false
+                        )
                     }
-                    .frame(minHeight: metrics.minimumContentHeight)
                 }
                 .scrollIndicators(.hidden)
             } else if metrics.mode == .landscape {
-                landscapePlayerContent(track, metrics: metrics)
+                landscapePlayerContent(
+                    track,
+                    metrics: metrics,
+                    flexible: true
+                )
             } else {
-                portraitPlayerContent(track, metrics: metrics)
+                portraitPlayerContent(
+                    track,
+                    metrics: metrics,
+                    flexible: true
+                )
             }
         }
         .frame(
@@ -193,31 +209,32 @@ struct PlayerView: View {
 
     private func portraitPlayerContent(
         _ track: Track,
-        metrics: PlayerLayoutMetrics
+        metrics: PlayerLayoutMetrics,
+        flexible: Bool
     ) -> some View {
         VStack(spacing: 0) {
             playerHeader(track)
                 .frame(height: metrics.headerHeight)
                 .padding(.top, metrics.headerTopPadding)
 
-            Spacer(minLength: metrics.artworkTopSpacing)
+            playerStackGap(metrics.artworkTopSpacing, flexible: flexible)
 
             playerArtwork(track, size: metrics.artworkSize)
 
-            Spacer(minLength: metrics.metadataTopSpacing)
+            playerStackGap(metrics.metadataTopSpacing, flexible: flexible)
 
             trackMetadata(track)
 
-            Spacer(minLength: metrics.progressTopSpacing)
+            playerStackGap(metrics.progressTopSpacing, flexible: flexible)
 
             progressControls
 
-            Spacer(minLength: metrics.controlsTopSpacing)
+            playerStackGap(metrics.controlsTopSpacing, flexible: flexible)
 
             primaryControls
                 .frame(height: metrics.primaryControlsHeight)
 
-            Spacer(minLength: metrics.quickActionsTopSpacing)
+            playerStackGap(metrics.quickActionsTopSpacing, flexible: flexible)
 
             quickActions(track)
                 .frame(height: metrics.quickActionsHeight)
@@ -230,14 +247,15 @@ struct PlayerView: View {
 
     private func landscapePlayerContent(
         _ track: Track,
-        metrics: PlayerLayoutMetrics
+        metrics: PlayerLayoutMetrics,
+        flexible: Bool
     ) -> some View {
         VStack(spacing: 0) {
             playerHeader(track)
                 .frame(height: metrics.headerHeight)
                 .padding(.top, metrics.headerTopPadding)
 
-            Spacer(minLength: metrics.artworkTopSpacing)
+            playerStackGap(metrics.artworkTopSpacing, flexible: flexible)
 
             HStack(spacing: metrics.landscapeColumnSpacing) {
                 playerArtwork(track, size: metrics.artworkSize)
@@ -245,26 +263,48 @@ struct PlayerView: View {
                 VStack(spacing: 0) {
                     trackMetadata(track)
 
-                    Spacer(minLength: metrics.progressTopSpacing)
+                    playerStackGap(
+                        metrics.progressTopSpacing,
+                        flexible: flexible
+                    )
 
                     progressControls
 
-                    Spacer(minLength: metrics.controlsTopSpacing)
+                    playerStackGap(
+                        metrics.controlsTopSpacing,
+                        flexible: flexible
+                    )
 
                     primaryControls
                         .frame(height: metrics.primaryControlsHeight)
                 }
-                .frame(maxHeight: .infinity)
+                .frame(maxHeight: flexible ? .infinity : nil)
             }
-            .frame(maxHeight: .infinity)
+            .frame(maxHeight: flexible ? .infinity : nil)
 
-            Spacer(minLength: metrics.quickActionsTopSpacing)
+            playerStackGap(metrics.quickActionsTopSpacing, flexible: flexible)
 
             quickActions(track)
                 .frame(height: metrics.quickActionsHeight)
 
             Color.clear
                 .frame(height: metrics.bottomPadding)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// `Spacer` is for the fitted player. Inside a ScrollView it expands
+    /// without bound, so the accessibility layout uses a fixed gap.
+    @ViewBuilder
+    private func playerStackGap(
+        _ length: CGFloat,
+        flexible: Bool
+    ) -> some View {
+        if flexible {
+            Spacer(minLength: length)
+        } else {
+            Color.clear
+                .frame(height: length)
                 .accessibilityHidden(true)
         }
     }
@@ -457,14 +497,17 @@ struct PlayerView: View {
                 Text(track.title)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(playerForeground)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 1)
+                    .minimumScaleFactor(
+                        dynamicTypeSize.isAccessibilitySize ? 1 : 0.88
+                    )
                 Button {
                     present(.artist(track.artist))
                 } label: {
                     HStack(spacing: 4) {
                         Text(track.artist)
                             .font(.subheadline)
-                            .lineLimit(1)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                         Image(systemName: "chevron.right")
                             .font(.caption2.weight(.semibold))
                     }
@@ -482,7 +525,7 @@ struct PlayerView: View {
                     Text(album)
                         .font(.caption2)
                         .foregroundStyle(playerSecondary)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                 }
             }
 
