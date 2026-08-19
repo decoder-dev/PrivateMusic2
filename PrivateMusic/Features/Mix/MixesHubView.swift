@@ -47,6 +47,10 @@ struct MixesHubView: View {
     @State private var seedRadioTask: Task<Void, Never>?
 
     @State private var selenaTracks: [Track] = []
+    /// Lightweight bandit-style exploration (UCB-ish) for Selena only:
+    /// how often each artist already appeared in the suggested queue.
+    @State private var selenaArtistPullCounts: [String: Int] = [:]
+    @State private var selenaTotalPulls: Int = 0
     /// Unfiltered baseline for current Selena queue.
     /// Filters (language/familiarity/mood) may change without having to
     /// ask the server again.
@@ -2390,6 +2394,7 @@ struct MixesHubView: View {
         }
     }
 
+    @MainActor
     private func start(
         _ mix: MusicMix,
         applying mode: MixRadioMode? = nil
@@ -2405,8 +2410,23 @@ struct MixesHubView: View {
             storeTracks(base, for: mix)
         }
         let loaded = tracks(for: mix)
-        if let first = loaded.first {
-            playTrack(first, queue: loaded, mix: mix, applying: mode)
+        let queueToPlay: [Track] = if mix.id == MusicMix.common.id {
+            selenaBanditRerank(
+                loaded,
+                pulls: selenaArtistPullCounts,
+                totalPulls: selenaTotalPulls,
+                bannedArtists: mixFeedbackStore.bannedArtists
+            )
+        } else {
+            loaded
+        }
+        if let first = queueToPlay.first {
+            if mix.id == MusicMix.common.id {
+                Task { @MainActor in
+                    selenaRecordExposure(queueToPlay)
+                }
+            }
+            playTrack(first, queue: queueToPlay, mix: mix, applying: mode)
             return
         }
         loadingMixID = mix.id
@@ -2414,10 +2434,28 @@ struct MixesHubView: View {
             defer { loadingMixID = nil }
             do {
                 let bootstrap = try await bootstrapTracks(for: mix)
-                guard let first = bootstrap.first else { return }
                 MixBootstrapPrefetch.artwork(for: bootstrap)
                 storeTracks(bootstrap, for: mix)
-                playTrack(first, queue: bootstrap, mix: mix, applying: mode)
+                let initialQueue = environment.filteredMixTracks(bootstrap)
+                guard !initialQueue.isEmpty else { return }
+
+                let queue: [Track] = if mix.id == MusicMix.common.id {
+                    await MainActor.run {
+                        let reranked = selenaBanditRerank(
+                            initialQueue,
+                            pulls: selenaArtistPullCounts,
+                            totalPulls: selenaTotalPulls,
+                            bannedArtists: mixFeedbackStore.bannedArtists
+                        )
+                        selenaRecordExposure(reranked)
+                        return reranked
+                    }
+                } else {
+                    initialQueue
+                }
+
+                guard let started = queue.first else { return }
+                playTrack(started, queue: queue, mix: mix, applying: mode)
             } catch is CancellationError {
                 return
             } catch {
@@ -2479,7 +2517,17 @@ struct MixesHubView: View {
                         musicService: environment.musicService
                     )
                 }
-                return environment.filteredMixTracks(more)
+                let filtered = environment.filteredMixTracks(more)
+                return await MainActor.run {
+                    let reranked = selenaBanditRerank(
+                        filtered,
+                        pulls: selenaArtistPullCounts,
+                        totalPulls: selenaTotalPulls,
+                        bannedArtists: mixFeedbackStore.bannedArtists
+                    )
+                    selenaRecordExposure(reranked)
+                    return reranked
+                }
             }
         }
 
@@ -2554,6 +2602,7 @@ struct MixesHubView: View {
         }
     }
 
+    @MainActor
     private func startResolvedMood(_ mood: MixMoodPreference) {
         switch MixMoodLaunchPolicy.resolve(mood: mood, in: mixes) {
         case let .mix(mix):
@@ -2635,6 +2684,56 @@ struct MixesHubView: View {
             result.append(track)
         }
         return Array(result.prefix(MixTrackRequestPolicy.queueLimit))
+    }
+
+    /// UCB-ish rerank: exploitation via dislike/ban, exploration via
+    /// under-explored artists in the current Selena session.
+    ///
+    /// Pure function: no state mutation, so it is safe to call from
+    /// continuation callbacks.
+    private func selenaBanditRerank(
+        _ tracks: [Track],
+        pulls: [String: Int],
+        totalPulls: Int,
+        bannedArtists: Set<String>
+    ) -> [Track] {
+        guard tracks.count > 1 else { return tracks }
+
+        let total = Double(max(1, totalPulls))
+        let alpha: Double = 0.45
+
+        let scored: [(track: Track, score: Double, index: Int)] =
+            tracks.enumerated().map { index, track in
+                let artistKey = MixFeedbackPolicy.normalized(track.artist)
+                let count = Double(pulls[artistKey] ?? 0)
+                let dislike = bannedArtists.contains(artistKey) ? 1.0 : 0.0
+
+                // Exploitation: keep good (not banned) artists.
+                let exploitation = 1.0 - dislike
+
+                // Exploration: sqrt(log(N)/n).
+                let bonus = sqrt(log(total + 1.0) / (count + 1.0))
+
+                let score = exploitation + alpha * bonus
+                return (track, score, index)
+            }
+
+        return scored
+            .sorted {
+                if $0.score != $1.score { return $0.score > $1.score }
+                return $0.index < $1.index
+            }
+            .map(\.track)
+    }
+
+    @MainActor
+    private func selenaRecordExposure(_ tracks: [Track]) {
+        for track in tracks {
+            let key = MixFeedbackPolicy.normalized(track.artist)
+            guard !key.isEmpty else { continue }
+            selenaArtistPullCounts[key, default: 0] += 1
+            selenaTotalPulls += 1
+        }
     }
 }
 
