@@ -2069,11 +2069,18 @@ def require_ranking_lives_in_a_tested_policy() -> None:
         "enum SelenaBanditPolicy",
         "struct SelenaExposure",
         "static func rerank(",
-        "static func explorationBonus(",
-        "static func breakingUpRuns(",
+        "static func familiarity(",
+        "static func novelty(",
+        "static func spacedOrder(",
+        "ArtistAffinityPolicy.qualifyingScore",
     ):
         if required_symbol not in policy:
             fail(f"SelenaBanditPolicy is missing {required_symbol}")
+    if "affinityByArtistKey:" not in hub:
+        fail(
+            "the personal mix must rank on real listening evidence: "
+            "pass ArtistAffinityPolicy scores into SelenaBanditPolicy"
+        )
 
 
 require_ranking_lives_in_a_tested_policy()

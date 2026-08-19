@@ -2419,6 +2419,7 @@ struct MixesHubView: View {
         let queueToPlay: [Track] = if mix.id == MusicMix.common.id {
             SelenaBanditPolicy.rerank(
                 loaded,
+                affinityByArtistKey: selenaArtistAffinity(),
                 exposure: selenaExposure,
                 bannedArtists: mixFeedbackStore.bannedArtists
             )
@@ -2448,6 +2449,7 @@ struct MixesHubView: View {
                     await MainActor.run {
                         let reranked = SelenaBanditPolicy.rerank(
                             initialQueue,
+                            affinityByArtistKey: selenaArtistAffinity(),
                             exposure: selenaExposure,
                             bannedArtists: mixFeedbackStore.bannedArtists
                         )
@@ -2525,6 +2527,7 @@ struct MixesHubView: View {
                 return await MainActor.run {
                     let reranked = SelenaBanditPolicy.rerank(
                         filtered,
+                        affinityByArtistKey: selenaArtistAffinity(),
                         exposure: selenaExposure,
                         bannedArtists: mixFeedbackStore.bannedArtists
                     )
@@ -2587,6 +2590,24 @@ struct MixesHubView: View {
             vkTracks = cleaned
             vkRationale = rationale
         }
+    }
+
+    /// What the listener has shown they like, keyed the way bans and the
+    /// affinity engine both key artists. Reused from `ArtistAffinityPolicy`
+    /// so the mix and Home's "What's Next" cannot disagree about who a
+    /// favourite is.
+    @MainActor
+    private func selenaArtistAffinity() -> [String: Double] {
+        var affinity: [String: Double] = [:]
+        for candidate in ArtistAffinityPolicy.candidates(
+            history: history.entries,
+            isLiked: { environment.libraryStore.contains($0) },
+            bannedArtistKeys: mixFeedbackStore.bannedArtists,
+            bannedTrackIDs: mixFeedbackStore.bannedTrackIDs
+        ) {
+            affinity[candidate.artistKey] = candidate.score
+        }
+        return affinity
     }
 
     private func baseTracks(for mix: MusicMix) -> [Track] {

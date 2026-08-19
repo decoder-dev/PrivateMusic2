@@ -18,228 +18,303 @@ final class SelenaBanditPolicyTests: XCTestCase {
         )
     }
 
+    private func queue(_ artists: [String]) -> [Track] {
+        artists.enumerated().map { index, artist in
+            track(index + 1, artist: artist)
+        }
+    }
+
     private func artists(_ tracks: [Track]) -> [String] {
         tracks.map(\.artist)
+    }
+
+    private func key(_ artist: String) -> String {
+        MixFeedbackPolicy.normalized(artist)
+    }
+
+    /// The closest any artist comes to appearing twice. `Int.max` when
+    /// nobody repeats at all.
+    private func minimumGap(_ tracks: [Track]) -> Int {
+        var lastSeen: [String: Int] = [:]
+        var gap = Int.max
+        for (index, track) in tracks.enumerated() {
+            let artistKey = key(track.artist)
+            if let previous = lastSeen[artistKey] {
+                gap = min(gap, index - previous)
+            }
+            lastSeen[artistKey] = index
+        }
+        return gap
+    }
+
+    /// How many times two neighbours are by the same artist.
+    private func adjacentRepeats(_ tracks: [Track]) -> Int {
+        zip(tracks, tracks.dropFirst()).filter { lhs, rhs in
+            !key(lhs.artist).isEmpty && key(lhs.artist) == key(rhs.artist)
+        }.count
+    }
+
+    private func rerank(
+        _ tracks: [Track],
+        affinity: [String: Double] = [:],
+        exposure: SelenaExposure = SelenaExposure(),
+        banned: Set<String> = []
+    ) -> [Track] {
+        SelenaBanditPolicy.rerank(
+            tracks,
+            affinityByArtistKey: affinity,
+            exposure: exposure,
+            bannedArtists: banned
+        )
     }
 
     // MARK: - Bans
 
     /// "Не нравится" has to mean the artist stops playing. The queue is
     /// normally filtered before it gets here, but a listener can ban an
-    /// artist after the queue was cached, and a demotion would still put
-    /// them on a few tracks later.
+    /// artist while a queue is cached, and a demotion would still put them
+    /// on a few tracks later.
     func testABannedArtistIsRemovedRatherThanDemoted() {
-        let queue = [
-            track(1, artist: "Banned"),
-            track(2, artist: "Kept"),
-            track(3, artist: "Banned"),
-            track(4, artist: "Other")
-        ]
-
-        let result = SelenaBanditPolicy.rerank(
-            queue,
-            exposure: SelenaExposure(),
-            bannedArtists: [MixFeedbackPolicy.normalized("Banned")]
+        let result = rerank(
+            queue(["Banned", "Kept", "Banned", "Other"]),
+            banned: [key("Banned")]
         )
 
         XCTAssertFalse(artists(result).contains("Banned"))
         XCTAssertEqual(Set(artists(result)), ["Kept", "Other"])
     }
 
-    func testBanningEveryArtistLeavesAnEmptyQueueRatherThanASurprise() {
-        let queue = [track(1, artist: "Banned"), track(2, artist: "Banned")]
-
-        let result = SelenaBanditPolicy.rerank(
-            queue,
-            exposure: SelenaExposure(),
-            bannedArtists: [MixFeedbackPolicy.normalized("Banned")]
+    func testBanningEveryArtistLeavesAnEmptyQueue() {
+        XCTAssertTrue(
+            rerank(queue(["Banned", "Banned"]), banned: [key("Banned")])
+                .isEmpty
         )
-
-        XCTAssertTrue(result.isEmpty)
     }
 
-    /// A track with no artist at all cannot match a ban key, and dropping
-    /// it would quietly lose playable music.
+    /// A track with no artist cannot match a ban key, and dropping it would
+    /// quietly lose playable music.
     func testATrackWithNoArtistSurvives() {
-        let queue = [track(1, artist: ""), track(2, artist: "Kept")]
-
-        let result = SelenaBanditPolicy.rerank(
-            queue,
-            exposure: SelenaExposure(),
-            bannedArtists: ["anything"]
-        )
-
-        XCTAssertEqual(result.count, 2)
-    }
-
-    // MARK: - Exploration
-
-    func testTheBonusFallsAsAnArtistIsUsed() {
-        let fresh = SelenaBanditPolicy.explorationBonus(
-            pulls: 0,
-            totalPulls: 20
-        )
-        let used = SelenaBanditPolicy.explorationBonus(
-            pulls: 8,
-            totalPulls: 20
-        )
-        XCTAssertGreaterThan(fresh, used)
-        XCTAssertGreaterThan(used, 0)
-    }
-
-    func testAnUnheardArtistIsLiftedAboveAHeavilyPlayedOne() {
-        let exposure = SelenaExposure(
-            pullsByArtist: [MixFeedbackPolicy.normalized("Heard"): 30],
-            totalPulls: 30
-        )
-        let queue = [
-            track(1, artist: "Heard"),
-            track(2, artist: "Unheard")
-        ]
-
-        let result = SelenaBanditPolicy.rerank(
-            queue,
-            exposure: exposure,
-            bannedArtists: []
-        )
-
-        XCTAssertEqual(artists(result).first, "Unheard")
-    }
-
-    /// The incoming order already reflects the listener's taste, so a
-    /// queue where nobody has been heard yet must come back untouched
-    /// rather than shuffled — and the same input must always give the
-    /// same output.
-    func testEqualExposureKeepsTheIncomingOrder() {
-        let queue = [
-            track(1, artist: "A"),
-            track(2, artist: "B"),
-            track(3, artist: "C"),
-            track(4, artist: "D")
-        ]
-
-        let result = SelenaBanditPolicy.rerank(
-            queue,
-            exposure: SelenaExposure(),
-            bannedArtists: []
-        )
-
-        XCTAssertEqual(artists(result), ["A", "B", "C", "D"])
         XCTAssertEqual(
-            result.map(\.id),
-            SelenaBanditPolicy.rerank(
-                queue,
-                exposure: SelenaExposure(),
-                bannedArtists: []
-            ).map(\.id)
+            rerank(queue(["", "Kept"]), banned: ["anything"]).count,
+            2
         )
     }
 
-    // MARK: - Runs
+    // MARK: - Familiarity
 
-    func testThreeTracksByOneArtistDoNotStayInARow() {
-        let queue = [
-            track(1, artist: "Same"),
-            track(2, artist: "Same"),
-            track(3, artist: "Same"),
-            track(4, artist: "Other"),
-            track(5, artist: "Third")
-        ]
-
-        let result = SelenaBanditPolicy.breakingUpRuns(queue)
-        let names = artists(result)
-        let runs = zip(names, names.dropFirst()).filter { $0 == $1 }.count
-
-        XCTAssertLessThan(runs, 2)
-        XCTAssertEqual(Set(result.map(\.id)), Set(queue.map(\.id)))
+    /// Affinity grows with every confirmed play, so it is squashed rather
+    /// than scaled against the queue: a queue of unknown artists must not
+    /// promote one of them to "favourite" just by being the best of a bad
+    /// lot.
+    func testFamiliaritySaturatesInsteadOfGrowingWithoutBound() {
+        XCTAssertEqual(SelenaBanditPolicy.familiarity(affinity: 0), 0)
+        XCTAssertEqual(
+            SelenaBanditPolicy.familiarity(
+                affinity: SelenaBanditPolicy.affinityMidpoint
+            ),
+            0.5,
+            accuracy: 0.0001
+        )
+        XCTAssertLessThan(
+            SelenaBanditPolicy.familiarity(affinity: 1_000),
+            1
+        )
+        XCTAssertGreaterThan(
+            SelenaBanditPolicy.familiarity(affinity: 8),
+            SelenaBanditPolicy.familiarity(affinity: 4)
+        )
     }
 
-    /// The pass thins runs, it does not invent variety: a queue that only
-    /// holds one artist keeps its run. Losing tracks to look diverse
-    /// would be the worse trade.
-    func testAQueueWithNothingToSwapInKeepsItsRun() {
-        let queue = [
-            track(1, artist: "Same"),
-            track(2, artist: "Same"),
-            track(3, artist: "Same")
-        ]
+    /// The mix and Home's "What's Next" must not disagree about who counts
+    /// as a favourite.
+    func testTheHalfwayPointIsTheBarHomeAlreadyUses() {
+        XCTAssertEqual(
+            SelenaBanditPolicy.affinityMidpoint,
+            ArtistAffinityPolicy.qualifyingScore
+        )
+    }
+
+    func testAFavouriteIsLiftedAboveAnUnknownArtist() {
+        let result = rerank(
+            queue(["Unknown", "Favourite"]),
+            affinity: [key("Favourite"): 4]
+        )
+
+        XCTAssertEqual(artists(result).first, "Favourite")
+    }
+
+    // MARK: - Novelty
+
+    func testNoveltyFallsAsAnArtistFillsTheQueue() {
+        XCTAssertEqual(SelenaBanditPolicy.novelty(impressions: 0), 1)
+        XCTAssertGreaterThan(
+            SelenaBanditPolicy.novelty(impressions: 1),
+            SelenaBanditPolicy.novelty(impressions: 9)
+        )
+        XCTAssertGreaterThan(SelenaBanditPolicy.novelty(impressions: 99), 0)
+    }
+
+    /// Two artists the listener likes equally: the one this session has
+    /// already leaned on goes second.
+    func testExposureSeparatesTwoEquallyLikedArtists() {
+        let result = rerank(
+            queue(["Heard", "Fresh"]),
+            affinity: [key("Heard"): 2, key("Fresh"): 2],
+            exposure: SelenaExposure(
+                impressionsByArtist: [key("Heard"): 9],
+                totalImpressions: 9
+            )
+        )
+
+        XCTAssertEqual(artists(result).first, "Fresh")
+    }
+
+    /// Familiarity is weighted to win, or a personal mix stops being
+    /// personal — an artist with real evidence behind them outranks an
+    /// unknown one even when the unknown has never been shown.
+    func testFamiliarityOutweighsNoveltyForAClearFavourite() {
+        let result = rerank(
+            queue(["NeverShown", "Favourite"]),
+            affinity: [key("Favourite"): 6],
+            exposure: SelenaExposure(
+                impressionsByArtist: [key("Favourite"): 3],
+                totalImpressions: 3
+            )
+        )
+
+        XCTAssertEqual(artists(result).first, "Favourite")
+        XCTAssertEqual(
+            SelenaBanditPolicy.familiarityWeight
+                + SelenaBanditPolicy.noveltyWeight,
+            1,
+            accuracy: 0.0001
+        )
+        XCTAssertGreaterThan(
+            SelenaBanditPolicy.familiarityWeight,
+            SelenaBanditPolicy.noveltyWeight
+        )
+    }
+
+    // MARK: - Spacing
+
+    /// The point of the whole thing: favourites recur, but never back to
+    /// back.
+    func testTheSameArtistIsKeptApartAcrossTheQueue() {
+        let source = queue(
+            Array(repeating: "Ann", count: 6)
+                + Array(repeating: "Bob", count: 5)
+                + Array(repeating: "Cid", count: 4)
+                + Array(repeating: "Dee", count: 3)
+                + Array(repeating: "Eve", count: 2)
+                + ["Fox"]
+        )
+
+        let result = rerank(
+            source,
+            affinity: [key("Ann"): 6, key("Bob"): 3, key("Cid"): 1]
+        )
+
+        XCTAssertGreaterThanOrEqual(
+            minimumGap(result),
+            SelenaBanditPolicy.artistSpacing
+        )
+    }
+
+    /// Once the minority artists run out, a naive greedy dumps everything
+    /// left by the top-scoring artist in one block at the end. Falling back
+    /// to whoever has been away longest keeps the tail alternating instead.
+    func testTheTailDoesNotCollapseIntoOneArtist() {
+        let source = queue(
+            Array(repeating: "Ann", count: 6)
+                + Array(repeating: "Bob", count: 5)
+                + ["Cid", "Dee", "Eve"]
+        )
+
+        let result = rerank(source, affinity: [key("Ann"): 6])
+
+        XCTAssertEqual(adjacentRepeats(result), 0)
+    }
+
+    func testNoTrackIsLostOrDuplicated() {
+        let source = queue(
+            Array(repeating: "Ann", count: 6)
+                + Array(repeating: "Bob", count: 5)
+                + ["Cid", "Dee", "Eve"]
+        )
+
+        let result = rerank(source, affinity: [key("Ann"): 6])
+
+        XCTAssertEqual(result.count, source.count)
+        XCTAssertEqual(Set(result.map(\.id)), Set(source.map(\.id)))
+    }
+
+    /// Spacing is a constraint on the order, not a filter. A queue with
+    /// only one artist left comes back whole and clumped rather than
+    /// short — dropping music to look varied is the worse trade.
+    func testAQueueOfOneArtistComesBackWhole() {
+        let source = queue(["Same", "Same", "Same"])
 
         XCTAssertEqual(
-            SelenaBanditPolicy.breakingUpRuns(queue).map(\.id),
-            queue.map(\.id)
+            rerank(source).map(\.id),
+            source.map(\.id)
         )
     }
 
-    /// Tracks with no artist must not be treated as one big run of
-    /// "nobody" and shuffled against each other.
-    func testBlankArtistsAreNotTreatedAsARun() {
-        let queue = [
-            track(1, artist: ""),
-            track(2, artist: ""),
-            track(3, artist: "Other")
-        ]
+    /// Tracks with no artist are not one big act called "nobody" and must
+    /// not be spaced apart from each other.
+    func testBlankArtistsAreNotSpacedAgainstEachOther() {
+        let source = queue(["", "", "", ""])
+
+        XCTAssertEqual(rerank(source).map(\.id), source.map(\.id))
+    }
+
+    // MARK: - Determinism and cold start
+
+    /// A listener with no history yet gets the queue the source built,
+    /// not a reshuffle — there is no evidence to reorder it by.
+    func testColdStartKeepsTheIncomingOrder() {
+        XCTAssertEqual(
+            artists(rerank(queue(["A", "B", "C", "D"]))),
+            ["A", "B", "C", "D"]
+        )
+    }
+
+    func testTheSameQueueAndEvidenceAlwaysGiveTheSameOrder() {
+        let source = queue(["Ann", "Bob", "Ann", "Cid", "Ann", "Bob"])
+        let affinity = [key("Ann"): 5.0, key("Bob"): 2.0]
 
         XCTAssertEqual(
-            SelenaBanditPolicy.breakingUpRuns(queue).map(\.id),
-            queue.map(\.id)
+            rerank(source, affinity: affinity).map(\.id),
+            rerank(source, affinity: affinity).map(\.id)
         )
+    }
+
+    func testShortQueuesComeBackUnchanged() {
+        XCTAssertTrue(rerank([]).isEmpty)
+
+        let single = queue(["A"])
+        XCTAssertEqual(rerank(single).map(\.id), single.map(\.id))
     }
 
     // MARK: - Exposure bookkeeping
 
     func testRecordingCountsEveryTrackAndIgnoresBlankArtists() {
         var exposure = SelenaExposure()
-        exposure.record([
-            track(1, artist: "A"),
-            track(2, artist: "A"),
-            track(3, artist: "B"),
-            track(4, artist: "  ")
-        ])
+        exposure.record(queue(["A", "A", "B", "  "]))
 
-        XCTAssertEqual(
-            exposure.pulls(forArtistKey: MixFeedbackPolicy.normalized("A")),
-            2
-        )
-        XCTAssertEqual(
-            exposure.pulls(forArtistKey: MixFeedbackPolicy.normalized("B")),
-            1
-        )
+        XCTAssertEqual(exposure.impressions(forArtistKey: key("A")), 2)
+        XCTAssertEqual(exposure.impressions(forArtistKey: key("B")), 1)
         // Blank artists are skipped on both sides, so the total stays the
-        // sum of the per-artist counts — which is what the bonus divides.
-        XCTAssertEqual(exposure.totalPulls, 3)
+        // sum of the per-artist counts.
+        XCTAssertEqual(exposure.totalImpressions, 3)
     }
 
     func testResetClearsTheSession() {
         var exposure = SelenaExposure()
-        exposure.record([track(1, artist: "A")])
+        exposure.record(queue(["A"]))
         exposure.reset()
 
-        XCTAssertEqual(exposure.totalPulls, 0)
-        XCTAssertEqual(
-            exposure.pulls(forArtistKey: MixFeedbackPolicy.normalized("A")),
-            0
-        )
-    }
-
-    // MARK: - Degenerate input
-
-    func testShortQueuesComeBackUnchanged() {
-        XCTAssertTrue(
-            SelenaBanditPolicy.rerank(
-                [],
-                exposure: SelenaExposure(),
-                bannedArtists: []
-            ).isEmpty
-        )
-
-        let single = [track(1, artist: "A")]
-        XCTAssertEqual(
-            SelenaBanditPolicy.rerank(
-                single,
-                exposure: SelenaExposure(),
-                bannedArtists: []
-            ).map(\.id),
-            single.map(\.id)
-        )
+        XCTAssertEqual(exposure.totalImpressions, 0)
+        XCTAssertEqual(exposure.impressions(forArtistKey: key("A")), 0)
     }
 }
