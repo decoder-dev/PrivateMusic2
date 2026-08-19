@@ -568,6 +568,22 @@ final class MixMoodLaunchPolicyTests: XCTestCase {
         )
     }
 
+    func testMostSpecificNamedMoodWinsWhenMultipleShelvesMatch() {
+        let lessSpecific = makeMix("m1", title: "Спокойный")
+        let moreSpecific = makeMix(
+            "m2",
+            title: "Спокойный вечер и тишина"
+        )
+
+        // Both shelves contain a calm marker ("спокой"), but the second
+        // one also contains "вечер" and "тиш", so it must win even if it
+        // is later in catalog order.
+        XCTAssertEqual(
+            MixMoodLaunchPolicy.resolve(mood: .calm, in: [lessSpecific, moreSpecific]),
+            .mix(moreSpecific)
+        )
+    }
+
     /// A shelf that merely looks like a mood shelf must never outrank one
     /// that actually names the mood asked for.
     func testANamedMoodOutranksAGenericVibeShelf() {

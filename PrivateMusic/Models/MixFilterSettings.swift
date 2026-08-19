@@ -69,6 +69,35 @@ enum MixFamiliarityPreference: String, CaseIterable, Identifiable, Sendable {
 }
 
 enum MixQueueFilter {
+    private static func normalizeMoodText(_ value: String) -> String {
+        // Canonicalize decomposed sequences (e.g. "и" + combining breve → "й")
+        // so we can do stable substring matching for Cyrillic markers.
+        let canonical = value.precomposedStringWithCanonicalMapping
+        let ruLocale = Locale(identifier: "ru_RU")
+
+        // `ё` should match `е` (we don't use `diacriticInsensitive` because
+        // it can treat `й`'s breve as a diacritic and turn it into `и`).
+        return canonical
+            .replacingOccurrences(
+                of: "ё",
+                with: "е",
+                options: [.caseInsensitive]
+            )
+            .lowercased(with: ruLocale)
+    }
+
+    static func shelfMoodMatchScore(
+        _ title: String,
+        mood: MixMoodPreference
+    ) -> Int {
+        guard mood != .any else { return 0 }
+        let blob = normalizeMoodText(title)
+        return mood.vibeMarkers.reduce(into: 0) { score, marker in
+            let normalizedMarker = normalizeMoodText(marker)
+            if blob.contains(normalizedMarker) { score += 1 }
+        }
+    }
+
     static func apply(
         _ tracks: [Track],
         language: MixLanguagePreference,
@@ -121,13 +150,7 @@ enum MixQueueFilter {
         mood: MixMoodPreference
     ) -> Bool {
         guard mood != .any else { return true }
-        let blob = title
-            .folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: Locale(identifier: "ru_RU")
-            )
-            .lowercased()
-        return mood.vibeMarkers.contains { blob.contains($0) }
+        return shelfMoodMatchScore(title, mood: mood) > 0
     }
 
     private static func containsCyrillic(_ value: String) -> Bool {

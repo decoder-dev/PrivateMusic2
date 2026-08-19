@@ -18,12 +18,27 @@ enum MixMoodLaunchPolicy {
         in mixes: [MusicMix]
     ) -> MixMoodLaunch {
         guard mood != .any else { return fallback(in: mixes) }
-        // Named match first. Folding "looks like a vibe shelf" into the
-        // same condition made every vibe shelf answer every mood, so
-        // «Спокойно» picked «Энергичный драйв» purely because it came
-        // first in the catalog — the bug this whole policy exists to kill.
-        if let named = mixes.first(where: { matchesMarkers($0, mood: mood) }) {
-            return .mix(named)
+        // Named match first. When multiple shelves match (e.g. because
+        // titles share overlapping substrings), pick the *most specific*
+        // one by counting how many mood markers it contains.
+        var bestMix: MusicMix?
+        var bestScore = 0
+
+        for (index, mix) in mixes.enumerated() {
+            guard matchesMarkers(mix, mood: mood) else { continue }
+            let sectionTitle = mix.sectionTitle ?? mix.title
+            let score = max(
+                MixQueueFilter.shelfMoodMatchScore(sectionTitle, mood: mood),
+                MixQueueFilter.shelfMoodMatchScore(mix.subtitle, mood: mood),
+                MixQueueFilter.shelfMoodMatchScore(mix.title, mood: mood)
+            )
+            guard score > bestScore else { continue }
+            bestMix = mix
+            bestScore = score
+        }
+
+        if let bestMix {
+            return .mix(bestMix)
         }
         // A generic vibe shelf still beats the ordinary station when
         // nothing names this mood, but it can never outrank a real match.
