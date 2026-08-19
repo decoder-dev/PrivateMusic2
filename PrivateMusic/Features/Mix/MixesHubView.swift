@@ -47,10 +47,10 @@ struct MixesHubView: View {
     @State private var seedRadioTask: Task<Void, Never>?
 
     @State private var selenaTracks: [Track] = []
-    /// Lightweight bandit-style exploration (UCB-ish) for Selena only:
-    /// how often each artist already appeared in the suggested queue.
-    @State private var selenaArtistPullCounts: [String: Int] = [:]
-    @State private var selenaTotalPulls: Int = 0
+    /// How often each artist already appeared in the suggested queue.
+    /// See `SelenaBanditPolicy` for what it is used for and why it is not
+    /// carried across launches.
+    @State private var selenaExposure = SelenaExposure()
     /// Unfiltered baseline for current Selena queue.
     /// Filters (language/familiarity/mood) may change without having to
     /// ask the server again.
@@ -2407,8 +2407,7 @@ struct MixesHubView: View {
             // Selena is a personal recommendation session: reset
             // exploration counters so the UCB decision matches the
             // *current* queue, not some older one.
-            selenaArtistPullCounts = [:]
-            selenaTotalPulls = 0
+            selenaExposure.reset()
         }
         // If the mix was already bootstrapped under different filter
         // settings, refresh the cached queue from the unfiltered baseline.
@@ -2418,10 +2417,9 @@ struct MixesHubView: View {
         }
         let loaded = tracks(for: mix)
         let queueToPlay: [Track] = if mix.id == MusicMix.common.id {
-            selenaBanditRerank(
+            SelenaBanditPolicy.rerank(
                 loaded,
-                pulls: selenaArtistPullCounts,
-                totalPulls: selenaTotalPulls,
+                exposure: selenaExposure,
                 bannedArtists: mixFeedbackStore.bannedArtists
             )
         } else {
@@ -2430,7 +2428,7 @@ struct MixesHubView: View {
         if let first = queueToPlay.first {
             if mix.id == MusicMix.common.id {
                 Task { @MainActor in
-                    selenaRecordExposure(queueToPlay)
+                    selenaExposure.record(queueToPlay)
                 }
             }
             playTrack(first, queue: queueToPlay, mix: mix, applying: mode)
@@ -2448,13 +2446,12 @@ struct MixesHubView: View {
 
                 let queue: [Track] = if mix.id == MusicMix.common.id {
                     await MainActor.run {
-                        let reranked = selenaBanditRerank(
+                        let reranked = SelenaBanditPolicy.rerank(
                             initialQueue,
-                            pulls: selenaArtistPullCounts,
-                            totalPulls: selenaTotalPulls,
+                            exposure: selenaExposure,
                             bannedArtists: mixFeedbackStore.bannedArtists
                         )
-                        selenaRecordExposure(reranked)
+                        selenaExposure.record(reranked)
                         return reranked
                     }
                 } else {
@@ -2526,13 +2523,12 @@ struct MixesHubView: View {
                 }
                 let filtered = environment.filteredMixTracks(more)
                 return await MainActor.run {
-                    let reranked = selenaBanditRerank(
+                    let reranked = SelenaBanditPolicy.rerank(
                         filtered,
-                        pulls: selenaArtistPullCounts,
-                        totalPulls: selenaTotalPulls,
+                        exposure: selenaExposure,
                         bannedArtists: mixFeedbackStore.bannedArtists
                     )
-                    selenaRecordExposure(reranked)
+                    selenaExposure.record(reranked)
                     return reranked
                 }
             }
@@ -2691,71 +2687,6 @@ struct MixesHubView: View {
             result.append(track)
         }
         return Array(result.prefix(MixTrackRequestPolicy.queueLimit))
-    }
-
-    /// UCB-ish rerank: exploitation via dislike/ban, exploration via
-    /// under-explored artists in the current Selena session.
-    ///
-    /// Pure function: no state mutation, so it is safe to call from
-    /// continuation callbacks.
-    private func selenaBanditRerank(
-        _ tracks: [Track],
-        pulls: [String: Int],
-        totalPulls: Int,
-        bannedArtists: Set<String>
-    ) -> [Track] {
-        guard tracks.count > 1 else { return tracks }
-
-        let total = Double(max(1, totalPulls))
-        let alpha: Double = 0.45
-
-        let scored: [(track: Track, score: Double, index: Int)] =
-            tracks.enumerated().map { index, track in
-                let artistKey = MixFeedbackPolicy.normalized(track.artist)
-                let count = Double(pulls[artistKey] ?? 0)
-                let dislike = bannedArtists.contains(artistKey) ? 1.0 : 0.0
-
-                // Exploitation: keep good (not banned) artists.
-                let exploitation = 1.0 - dislike
-
-                // Exploration: sqrt(log(N)/n).
-                let bonus = sqrt(log(total + 1.0) / (count + 1.0))
-
-                let score = exploitation + alpha * bonus
-                return (track, score, index)
-            }
-
-        var result = scored
-            .sorted {
-                if $0.score != $1.score { return $0.score > $1.score }
-                return $0.index < $1.index
-            }
-            .map(\.track)
-
-        // Small post-repair so we don't end up with runs of the same
-        // artist; this keeps the queue from feeling “stuck”.
-        for index in 1..<result.count {
-            let prevKey = MixFeedbackPolicy.normalized(result[index - 1].artist)
-            let key = MixFeedbackPolicy.normalized(result[index].artist)
-            guard !prevKey.isEmpty, prevKey == key else { continue }
-            if let swapIndex = (index + 1..<result.count).first(where: {
-                MixFeedbackPolicy.normalized(result[$0].artist) != prevKey
-            }) {
-                result.swapAt(index, swapIndex)
-            }
-        }
-
-        return result
-    }
-
-    @MainActor
-    private func selenaRecordExposure(_ tracks: [Track]) {
-        for track in tracks {
-            let key = MixFeedbackPolicy.normalized(track.artist)
-            guard !key.isEmpty else { continue }
-            selenaArtistPullCounts[key, default: 0] += 1
-            selenaTotalPulls += 1
-        }
     }
 }
 
