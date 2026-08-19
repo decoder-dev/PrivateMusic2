@@ -74,6 +74,24 @@ final class HIGConformanceTests: XCTestCase {
         XCTAssertEqual(PlayerAccessibilityPolicy.step(for: .accessibility5), 5)
     }
 
+    func testDockRowGrowsForAccessibilityButIsAFloor() {
+        XCTAssertEqual(
+            PlaybackDockMetrics.tabRowMinHeight(isAccessibilitySize: false),
+            48
+        )
+        XCTAssertEqual(
+            PlaybackDockMetrics.tabRowMinHeight(isAccessibilitySize: true),
+            68
+        )
+        XCTAssertGreaterThan(
+            PlaybackDockMetrics.searchControlSize(isAccessibilitySize: true),
+            PlaybackDockMetrics.searchControlSize(isAccessibilitySize: false)
+        )
+        let tabs = Self.source("PrivateMusic/Features/Root/MainTabView.swift")
+        XCTAssertTrue(tabs.contains("frame(minHeight: tabRowHeight)"))
+        XCTAssertFalse(tabs.contains(".frame(height: tabRowHeight)"))
+    }
+
     func testSystemTextScaleDoesNotOverrideTheReader() {
         XCTAssertNil(AppTextScalePolicy.range(for: .system))
     }

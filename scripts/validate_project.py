@@ -981,6 +981,12 @@ if ".dynamicTypeSize(...DynamicTypeSize.large)" in main_tab_source:
     fail("the tab dock must not freeze Dynamic Type at the default size")
 if ".dynamicTypeSize(...DynamicTypeSize.accessibility1)" in player_view_source:
     fail("the full player must not cap Dynamic Type at accessibility1")
+if "playerStackGap(" not in player_view_source:
+    fail("the scrolling player must stack with fixed gaps, not unbound Spacers")
+if "flexible: false" not in player_view_source:
+    fail("the scrolling player must turn off flexible spacers")
+if "frame(minHeight: tabRowHeight)" not in main_tab_source:
+    fail("the legacy dock must grow with Dynamic Type instead of clipping captions")
 adaptive_glass_source = (
     SOURCE / "Features" / "Shared" / "AdaptiveGlass.swift"
 ).read_text(encoding="utf-8")

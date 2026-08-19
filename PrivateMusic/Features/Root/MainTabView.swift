@@ -454,15 +454,18 @@ private struct PlaybackTabDock: View {
     }
 
     /// Accessibility sizes have to grow the row; freezing it at 48pt is
-    /// what made the dock cap Dynamic Type in the first place.
+    /// what made the dock cap Dynamic Type in the first place. This is a
+    /// floor, not a ceiling — two-line captions may need more.
     private var tabRowHeight: CGFloat {
-        dynamicTypeSize.isAccessibilitySize
-            ? 68
-            : BubbleMetrics.minimumTapTarget + 4
+        PlaybackDockMetrics.tabRowMinHeight(
+            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
+        )
     }
 
     private var searchControlSize: CGFloat {
-        dynamicTypeSize.isAccessibilitySize ? 64 : 58
+        PlaybackDockMetrics.searchControlSize(
+            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
+        )
     }
 
     private var searchTabButton: some View {
@@ -529,7 +532,7 @@ private struct PlaybackTabDock: View {
                     : Color.primary.opacity(0.72)
             )
             .frame(maxWidth: .infinity)
-            .frame(height: tabRowHeight)
+            .frame(minHeight: tabRowHeight)
             .contentShape(Capsule())
         }
         .buttonStyle(BubblePressStyle())

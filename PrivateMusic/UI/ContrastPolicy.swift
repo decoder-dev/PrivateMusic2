@@ -34,6 +34,16 @@ enum ContrastPolicy {
     }
 }
 
+enum PlaybackDockMetrics {
+    static func tabRowMinHeight(isAccessibilitySize: Bool) -> CGFloat {
+        isAccessibilitySize ? 68 : BubbleMetrics.minimumTapTarget + 4
+    }
+
+    static func searchControlSize(isAccessibilitySize: Bool) -> CGFloat {
+        isAccessibilitySize ? 64 : 58
+    }
+}
+
 enum PlayerAccessibilityPolicy {
     /// 0 at standard sizes, 1...5 across the accessibility Dynamic Type
     /// steps. Layout uses this to grow metadata/progress, not just a bool.

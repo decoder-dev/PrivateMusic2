@@ -137,6 +137,13 @@ final class PlayerLayoutMetricsTests: XCTestCase {
         )
     }
 
+    func testScrollingPlayerStackDoesNotUseUnboundSpacers() {
+        let source = Self.playerViewSource()
+        XCTAssertTrue(source.contains("playerStackGap("))
+        XCTAssertTrue(source.contains("flexible: false"))
+        XCTAssertTrue(source.contains("Spacers inside a ScrollView"))
+    }
+
     func testAccessibilityQuickActionsKeepPreviousCompactDock() {
         let metrics = PlayerLayoutMetrics.resolve(
             containerSize: CGSize(width: 320, height: 568),
@@ -301,6 +308,16 @@ final class PlayerLayoutMetricsTests: XCTestCase {
             throw LocalizationFixtureError.missingKey(key, locale)
         }
         return value
+    }
+
+    private static func playerViewSource(
+        filePath: String = #filePath
+    ) -> String {
+        let url = URL(fileURLWithPath: filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("PrivateMusic/Features/Player/PlayerView.swift")
+        return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
     }
 }
 
