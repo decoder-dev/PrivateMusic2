@@ -235,6 +235,24 @@ final class LibraryPlaylistShelfTests: XCTestCase {
         )
     }
 
+    func testShelfRowGrowsWithCaptionBudget() {
+        let scaled = LibraryShelfMetrics.shelfHeight(
+            for: 390,
+            captionHeight: 90
+        )
+        XCTAssertGreaterThan(
+            scaled,
+            LibraryShelfMetrics.shelfHeight(for: 390)
+        )
+        XCTAssertEqual(
+            scaled,
+            LibraryShelfMetrics.artworkSize(for: 390)
+                + LibraryShelfMetrics.captionSpacing
+                + 90
+                + LibraryShelfMetrics.shelfPadding * 2
+        )
+    }
+
     func testShelfHidesPlaylistsThatAlreadyLiveOnTheAlbumsShelf() throws {
         let albumAsPlaylist = try makePlaylist(
             id: 42,

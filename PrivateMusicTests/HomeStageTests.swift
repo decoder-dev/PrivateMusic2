@@ -625,7 +625,8 @@ final class HomeStageMetricsTests: XCTestCase {
     /// The point of the whole refactor: the stage is a hero block on a
     /// page, so the next shelf has to be visible without a full-screen
     /// scroll. An SE leaves roughly 518 pt between the status bar and the
-    /// floating dock.
+    /// floating dock. `stageHeight` models the default text size; large
+    /// Dynamic Type grows the chip and title past these floors.
     func testNextShelfIsVisibleOnTheShortestScreen() {
         let height = HomeStageMetrics.stageHeight(for: 375)
 

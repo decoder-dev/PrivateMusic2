@@ -60,7 +60,7 @@ struct HomeStageView: View {
     var body: some View {
         VStack(spacing: 0) {
             contextChip
-                .frame(height: HomeStageMetrics.chipHeight)
+                .frame(minHeight: HomeStageMetrics.chipHeight)
                 .padding(.bottom, HomeStageMetrics.belowChip)
                 .animation(stageMotion, value: presentation)
 
@@ -251,6 +251,11 @@ struct HomeStageView: View {
                         isEnabled: !isMutatingCurrentTrack,
                         accessibilityLabel: L10n.text(
                             isInLibrary
+                                ? "remove_from_library"
+                                : "add_to_library_2"
+                        ),
+                        accessibilityValue: L10n.text(
+                            isInLibrary
                                 ? "track_is_in_your_library"
                                 : "track_is_not_in_your_library"
                         )
@@ -276,7 +281,7 @@ struct HomeStageView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity)
-                .frame(height: height)
+                .frame(minHeight: height)
                 .contentShape(Rectangle())
         }
         .buttonStyle(BubblePressStyle())

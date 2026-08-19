@@ -137,11 +137,33 @@ final class PlayerLayoutMetricsTests: XCTestCase {
         )
     }
 
-    func testScrollingPlayerStackDoesNotUseUnboundSpacers() {
-        let source = Self.playerViewSource()
+    func testFittedPlayerUsesFlexibleGapsAndScrollingPlayerDoesNot() {
+        let fitted = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 320, height: 568),
+            safeBottom: 34
+        )
+        XCTAssertFalse(
+            fitted.requiresAccessibilityScrolling(containerHeight: 568)
+        )
+        XCTAssertTrue(fitted.usesFlexibleGaps(containerHeight: 568))
+
+        let overflowing = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 320, height: 400),
+            safeBottom: 34,
+            usesAccessibilityText: true,
+            accessibilityStep: 5
+        )
+        XCTAssertTrue(
+            overflowing.requiresAccessibilityScrolling(containerHeight: 400)
+        )
+        XCTAssertFalse(overflowing.usesFlexibleGaps(containerHeight: 400))
+    }
+
+    func testScrollingPlayerStackUsesFixedGaps() {
+        let source = SourceInspection.code(
+            "PrivateMusic/Features/Player/PlayerView.swift"
+        )
         XCTAssertTrue(source.contains("playerStackGap("))
-        XCTAssertTrue(source.contains("flexible: false"))
-        XCTAssertTrue(source.contains("Spacers inside a ScrollView"))
     }
 
     func testAccessibilityQuickActionsKeepPreviousCompactDock() {
@@ -308,16 +330,6 @@ final class PlayerLayoutMetricsTests: XCTestCase {
             throw LocalizationFixtureError.missingKey(key, locale)
         }
         return value
-    }
-
-    private static func playerViewSource(
-        filePath: String = #filePath
-    ) -> String {
-        let url = URL(fileURLWithPath: filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("PrivateMusic/Features/Player/PlayerView.swift")
-        return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
     }
 }
 

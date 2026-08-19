@@ -84,8 +84,9 @@ enum AppTextScale: String, CaseIterable, Identifiable {
     /// How this in-app preference maps onto Dynamic Type.
     ///
     /// `nil` means follow the system size (including accessibility sizes).
-    /// A range never caps below an accessibility size the reader already
-    /// chose — the in-app steps only raise the floor.
+    /// Compact lowers the ceiling for standard sizes only. Accessibility
+    /// sizes the reader already chose are never clamped — see
+    /// `AppTextScalePolicy.resolvedRange(for:inherited:)`.
     var dynamicTypeRange: ClosedRange<DynamicTypeSize>? {
         AppTextScalePolicy.range(for: self)
     }
@@ -105,6 +106,18 @@ enum AppTextScalePolicy {
         case .extraLarge:
             DynamicTypeSize.xxLarge ... DynamicTypeSize.accessibility5
         }
+    }
+
+    /// Compact may shrink default sizes. It must not pull an accessibility
+    /// size the reader already chose back down to `.medium`.
+    static func resolvedRange(
+        for scale: AppTextScale,
+        inherited: DynamicTypeSize
+    ) -> ClosedRange<DynamicTypeSize>? {
+        if inherited.isAccessibilitySize {
+            return nil
+        }
+        return range(for: scale)
     }
 }
 
@@ -500,13 +513,24 @@ final class AppSettings {
     }
 }
 
-extension View {
-    @ViewBuilder
-    func appTextScale(_ scale: AppTextScale) -> some View {
-        if let range = scale.dynamicTypeRange {
-            self.dynamicTypeSize(range)
+private struct AppTextScaleModifier: ViewModifier {
+    let scale: AppTextScale
+    @Environment(\.dynamicTypeSize) private var inheritedSize
+
+    func body(content: Content) -> some View {
+        if let range = AppTextScalePolicy.resolvedRange(
+            for: scale,
+            inherited: inheritedSize
+        ) {
+            content.dynamicTypeSize(range)
         } else {
-            self
+            content
         }
+    }
+}
+
+extension View {
+    func appTextScale(_ scale: AppTextScale) -> some View {
+        modifier(AppTextScaleModifier(scale: scale))
     }
 }

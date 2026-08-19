@@ -3,14 +3,16 @@ import XCTest
 
 final class HIGConformanceTests: XCTestCase {
     func testSystemTabViewMarksSearchWithTheSystemRole() {
-        let source = Self.source("PrivateMusic/Features/Root/MainTabView.swift")
+        let source = SourceInspection.code(
+            "PrivateMusic/Features/Root/MainTabView.swift"
+        )
         XCTAssertTrue(source.contains("role: .search"))
         XCTAssertTrue(source.contains("value: MainTab.search"))
         XCTAssertFalse(source.contains("tabViewSearchActivation"))
     }
 
     func testPremiumCardsStayOnStandardMaterials() {
-        let source = Self.source(
+        let source = SourceInspection.code(
             "PrivateMusic/Features/Shared/PremiumDesign.swift"
         )
         XCTAssertTrue(source.contains("regularMaterial"))
@@ -19,12 +21,18 @@ final class HIGConformanceTests: XCTestCase {
     }
 
     func testHomeAndLibraryFollowDynamicType() {
-        let home = Self.source("PrivateMusic/Features/Catalog/CatalogView.swift")
-        let library = Self.source(
+        let home = SourceInspection.code(
+            "PrivateMusic/Features/Catalog/CatalogView.swift"
+        )
+        let library = SourceInspection.code(
             "PrivateMusic/Features/Library/LibraryView.swift"
         )
-        let tabs = Self.source("PrivateMusic/Features/Root/MainTabView.swift")
-        let player = Self.source("PrivateMusic/Features/Player/PlayerView.swift")
+        let tabs = SourceInspection.code(
+            "PrivateMusic/Features/Root/MainTabView.swift"
+        )
+        let player = SourceInspection.code(
+            "PrivateMusic/Features/Player/PlayerView.swift"
+        )
         XCTAssertFalse(home.contains(".dynamicTypeSize(...DynamicTypeSize.large)"))
         XCTAssertFalse(
             library.contains(".dynamicTypeSize(...DynamicTypeSize.large)")
@@ -67,6 +75,15 @@ final class HIGConformanceTests: XCTestCase {
         )
     }
 
+    func testPlayerGlassFollowsContrastPolicy() {
+        let player = SourceInspection.code(
+            "PrivateMusic/Features/Player/PlayerView.swift"
+        )
+        XCTAssertTrue(player.contains("ContrastPolicy.flattensCustomGlass"))
+        XCTAssertTrue(player.contains("colorSchemeContrast"))
+        XCTAssertTrue(player.contains("guard !usesScrollingLayout"))
+    }
+
     func testAccessibilityStepsCoverTheFiveDynamicTypeSizes() {
         XCTAssertEqual(PlayerAccessibilityPolicy.step(for: .large), 0)
         XCTAssertEqual(PlayerAccessibilityPolicy.step(for: .xxxLarge), 0)
@@ -87,19 +104,50 @@ final class HIGConformanceTests: XCTestCase {
             PlaybackDockMetrics.searchControlSize(isAccessibilitySize: true),
             PlaybackDockMetrics.searchControlSize(isAccessibilitySize: false)
         )
-        let tabs = Self.source("PrivateMusic/Features/Root/MainTabView.swift")
+        let tabs = SourceInspection.code(
+            "PrivateMusic/Features/Root/MainTabView.swift"
+        )
         XCTAssertTrue(tabs.contains("frame(minHeight: tabRowHeight)"))
         XCTAssertFalse(tabs.contains(".frame(height: tabRowHeight)"))
     }
 
     func testSystemTextScaleDoesNotOverrideTheReader() {
         XCTAssertNil(AppTextScalePolicy.range(for: .system))
+        XCTAssertNil(
+            AppTextScalePolicy.resolvedRange(for: .system, inherited: .large)
+        )
     }
 
     func testCompactTextScaleOnlyLowersTheCeiling() {
         let range = AppTextScalePolicy.range(for: .compact)
         XCTAssertEqual(range?.lowerBound, .xSmall)
         XCTAssertEqual(range?.upperBound, .medium)
+        XCTAssertEqual(
+            AppTextScalePolicy.resolvedRange(for: .compact, inherited: .large),
+            range
+        )
+    }
+
+    func testCompactTextScaleDoesNotClampAccessibilitySizes() {
+        XCTAssertNil(
+            AppTextScalePolicy.resolvedRange(
+                for: .compact,
+                inherited: .accessibility1
+            )
+        )
+        XCTAssertNil(
+            AppTextScalePolicy.resolvedRange(
+                for: .compact,
+                inherited: .accessibility5
+            )
+        )
+        XCTAssertEqual(
+            AppTextScalePolicy.resolvedRange(
+                for: .large,
+                inherited: .accessibility3
+            ),
+            nil
+        )
     }
 
     func testLargerTextScalesRaiseTheFloorNotTheCeiling() {
@@ -112,14 +160,14 @@ final class HIGConformanceTests: XCTestCase {
         XCTAssertEqual(extra?.upperBound, .accessibility5)
     }
 
-    private static func source(
-        _ relativePath: String,
-        filePath: String = #filePath
-    ) -> String {
-        let root = URL(fileURLWithPath: filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let url = root.appendingPathComponent(relativePath)
-        return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+    func testCommentStrippingIgnoresLineComments() {
+        let source = """
+        // role: .search
+        Tab(role: .search)
+        """
+        let code = SourceInspection.stripComments(from: source)
+        XCTAssertTrue(code.contains("Tab(role: .search)"))
+        XCTAssertFalse(code.contains("//"))
+        XCTAssertEqual(code.components(separatedBy: "role: .search").count, 2)
     }
 }
