@@ -119,9 +119,9 @@ final class PlayerLayoutMetricsTests: XCTestCase {
         )
         XCTAssertGreaterThan(step5.metadataTopSpacing, 0)
         XCTAssertGreaterThan(step5.quickActionsHeight, step1.quickActionsHeight)
+        XCTAssertGreaterThanOrEqual(step5.artworkSize, 112)
         XCTAssertTrue(
             step5.requiresAccessibilityScrolling(containerHeight: 568)
-                || step5.minimumContentHeight > step1.minimumContentHeight
         )
     }
 
