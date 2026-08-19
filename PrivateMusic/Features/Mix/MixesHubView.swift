@@ -282,18 +282,8 @@ struct MixesHubView: View {
 
     private func launchMood(_ mood: MixMoodPreference) {
         Haptics.selection()
+        // The actual mood start is owned by `.onChange(of: settings.mixMoodPreference)`.
         settings.mixMoodPreference = mood
-        switch MixMoodLaunchPolicy.resolve(mood: mood, in: mixes) {
-        case let .mix(mix):
-            // The resolver falls back to the personal station itself when
-            // nothing in the catalog names the mood — that still shows on
-            // the Selena tab, not VK's.
-            hubTab = mix.id == MusicMix.common.id ? .selena : .vk
-            start(mix)
-        case .myMusic:
-            hubTab = .selena
-            Task { await environment.startMixFromMyMusic() }
-        }
     }
 
     /// A quiet entry point, not another shelf: the album art already gets
@@ -2114,6 +2104,7 @@ struct MixesHubView: View {
         let mix = pin.mix
         if mix.id == MusicMix.common.id {
             hubTab = .selena
+            selenaTrackBase = pin.tracks
             selenaTracks = pin.tracks
             selenaRationale = MixRationaleBuilder.build(
                 mixTracks: pin.tracks,
@@ -2249,13 +2240,8 @@ struct MixesHubView: View {
                     musicService: environment.musicService
                 )
             }
-            selenaTracks = bootstrap
+            storeTracks(bootstrap, for: personalMix)
             MixBootstrapPrefetch.artwork(for: bootstrap)
-            selenaRationale = MixRationaleBuilder.build(
-                mixTracks: bootstrap,
-                history: history.entries,
-                recommendations: homeCatalog.recommendations
-            )
             trackLoadTask?.cancel()
             trackLoadTask = Task {
                 do {
@@ -2268,7 +2254,9 @@ struct MixesHubView: View {
                     }
                     guard !Task.isCancelled else { return }
                     await MainActor.run {
-                        selenaTracks = mergeTracks(selenaTracks, more)
+                        let base = baseTracks(for: personalMix)
+                        let merged = mergeUnfiltered(base, more)
+                        storeTracks(merged, for: personalMix)
                     }
                 } catch {}
             }
@@ -2344,6 +2332,7 @@ struct MixesHubView: View {
                     recommendations: homeCatalog.recommendations
                 )
             vkRationale = rationale
+            vkTrackBaseCache[mix.id] = tracks
             vkTrackCache[mix.id] = tracks
             vkRationaleCache[mix.id] = rationale
         } else {
@@ -2384,8 +2373,10 @@ struct MixesHubView: View {
                 }
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
+                    let base = baseTracks(for: mix)
+                    let seed = base.isEmpty ? tracks(for: mix) : base
                     storeTracks(
-                        mergeTracks(tracks(for: mix), more),
+                        mergeUnfiltered(seed, more),
                         for: mix
                     )
                 }
@@ -2517,7 +2508,11 @@ struct MixesHubView: View {
         )
     }
 
-    private func storeTracks(_ tracks: [Track], for mix: MusicMix) {
+    private func storeTracks(
+        _ tracks: [Track],
+        for mix: MusicMix,
+        updatingBaseline: Bool = true
+    ) {
         let cleaned = environment.filteredMixTracks(tracks)
         let rationale = MixRationaleBuilder.build(
             mixTracks: cleaned,
@@ -2525,12 +2520,16 @@ struct MixesHubView: View {
             recommendations: homeCatalog.recommendations
         )
         if mix.id == MusicMix.common.id {
-            selenaTrackBase = tracks
+            if updatingBaseline {
+                selenaTrackBase = tracks
+            }
             selenaTracks = cleaned
             selenaRationale = rationale
             return
         }
-        vkTrackBaseCache[mix.id] = tracks
+        if updatingBaseline {
+            vkTrackBaseCache[mix.id] = tracks
+        }
         vkTrackCache[mix.id] = cleaned
         vkRationaleCache[mix.id] = rationale
         if selectedVKMix?.id == mix.id {
@@ -2600,7 +2599,8 @@ struct MixesHubView: View {
                 mode: mode,
                 historyArtists: artists
             ),
-            for: mix
+            for: mix,
+            updatingBaseline: false
         )
         // Server refill for closerToSeed / moreNovel is owned by AudioPlayer.
     }
@@ -2623,6 +2623,18 @@ struct MixesHubView: View {
         return environment.filteredMixTracks(
             Array(result.prefix(MixTrackRequestPolicy.queueLimit))
         )
+    }
+
+    /// Merge for baseline caching: do **not** run language/familiarity
+    /// filters here — otherwise switching filters back and forth will
+    /// permanently shrink the pool.
+    private func mergeUnfiltered(_ lhs: [Track], _ rhs: [Track]) -> [Track] {
+        var known = Set(lhs.map(\.id))
+        var result = lhs
+        for track in rhs where known.insert(track.id).inserted {
+            result.append(track)
+        }
+        return Array(result.prefix(MixTrackRequestPolicy.queueLimit))
     }
 }
 
