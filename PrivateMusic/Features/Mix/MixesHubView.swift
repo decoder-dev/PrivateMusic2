@@ -158,6 +158,31 @@ struct MixesHubView: View {
             actionError = error
             environment.mixActionError = nil
         }
+        .onChange(of: settings.mixMoodPreference) { _, mood in
+            // Mood is a switch between "vibe shelves" (which mix we start),
+            // not a pure track filter.
+            guard sessionStore.accessToken != nil else { return }
+            if mood == .any {
+                if let current = currentMixForFilters() {
+                    refilterLoadedTracks(for: current)
+                }
+                return
+            }
+
+            startResolvedMood(mood)
+        }
+        .onChange(of: settings.mixLanguagePreference) { _, _ in
+            guard sessionStore.accessToken != nil else { return }
+            if let current = currentMixForFilters() {
+                refilterLoadedTracks(for: current)
+            }
+        }
+        .onChange(of: settings.mixFamiliarityPreference) { _, _ in
+            guard sessionStore.accessToken != nil else { return }
+            if let current = currentMixForFilters() {
+                refilterLoadedTracks(for: current)
+            }
+        }
         .onDisappear {
             trackLoadTask?.cancel()
             seedRadioTask?.cancel()
@@ -1150,16 +1175,7 @@ struct MixesHubView: View {
         Menu {
             ForEach(MixMoodPreference.allCases) { mood in
                 Button {
-                    if mood == .any {
-                        // Keep current mix selection: mood cleared still only
-                        // affects which mix we start, not which queue we keep.
-                        settings.mixMoodPreference = mood
-                        refilterLoadedTracks(for: mix)
-                    } else {
-                        // Mood is a switch between "vibe shelves" (which mix
-                        // actually starts), not a pure track filter.
-                        launchMood(mood)
-                    }
+                    settings.mixMoodPreference = mood
                 } label: {
                     selectedMenuRow(
                         mood.title,
@@ -1181,7 +1197,6 @@ struct MixesHubView: View {
             ForEach(MixLanguagePreference.allCases) { language in
                 Button {
                     settings.mixLanguagePreference = language
-                    refilterLoadedTracks(for: mix)
                 } label: {
                     selectedMenuRow(
                         language.title,
@@ -1203,7 +1218,6 @@ struct MixesHubView: View {
             ForEach(MixFamiliarityPreference.allCases) { familiarity in
                 Button {
                     settings.mixFamiliarityPreference = familiarity
-                    refilterLoadedTracks(for: mix)
                 } label: {
                     selectedMenuRow(
                         familiarity.title,
@@ -2530,6 +2544,26 @@ struct MixesHubView: View {
             return selenaTrackBase
         }
         return vkTrackBaseCache[mix.id] ?? []
+    }
+
+    private func currentMixForFilters() -> MusicMix? {
+        switch hubTab {
+        case .selena:
+            return personalMix
+        case .vk:
+            return selectedVKMix ?? orderedVKMixes.first ?? personalMix
+        }
+    }
+
+    private func startResolvedMood(_ mood: MixMoodPreference) {
+        switch MixMoodLaunchPolicy.resolve(mood: mood, in: mixes) {
+        case let .mix(mix):
+            hubTab = mix.id == MusicMix.common.id ? .selena : .vk
+            start(mix)
+        case .myMusic:
+            hubTab = .selena
+            Task { await environment.startMixFromMyMusic() }
+        }
     }
 
     private func pin(mix: MusicMix, tracks: [Track]) {
