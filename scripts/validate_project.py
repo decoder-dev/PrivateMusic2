@@ -18,6 +18,57 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def strip_swift_comments(source: str) -> str:
+    """Drop // and /* */ comments so `in` checks cannot match a comment.
+
+    String literals are preserved so URLs like https://... are not sliced
+    at `//`.
+    """
+    output: list[str] = []
+    length = len(source)
+    index = 0
+    in_string = False
+    escaped = False
+    while index < length:
+        character = source[index]
+        nxt = source[index + 1] if index + 1 < length else ""
+        if in_string:
+            output.append(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            index += 1
+            continue
+        if character == '"':
+            in_string = True
+            output.append(character)
+            index += 1
+            continue
+        if character == "/" and nxt == "/":
+            index += 2
+            while index < length and source[index] != "\n":
+                index += 1
+            continue
+        if character == "/" and nxt == "*":
+            index += 2
+            while index < length - 1 and not (
+                source[index] == "*" and source[index + 1] == "/"
+            ):
+                index += 1
+            index = min(index + 2, length)
+            continue
+        output.append(character)
+        index += 1
+    return "".join(output)
+
+
+def swift_code(source: str) -> str:
+    return strip_swift_comments(source)
+
+
 swift_files = sorted(SOURCE.rglob("*.swift"))
 if len(swift_files) < 20:
     fail(f"expected at least 20 Swift files, found {len(swift_files)}")
@@ -188,10 +239,10 @@ for required_system_tab_symbol in (
             "iOS 26+ must use system Liquid Glass TabView like Apple Music: "
             f"{required_system_tab_symbol}"
         )
-if "tabViewSearchActivation" in main_tab_source:
+if "tabViewSearchActivation" in swift_code(main_tab_source):
     fail(
-        "Search must stay a tab that opens a screen, not a search field "
-        "in the tab bar (tabViewSearchActivation)"
+        "Search must not use tabViewSearchActivation; Tab(role: .search) "
+        "already drives the system search field"
     )
 if "tab.switch_hint" not in main_tab_source:
     fail("iPad sidebar tabs must expose a VoiceOver switch hint")
@@ -212,8 +263,11 @@ if ".searchable(" not in search_view_source:
     fail("SearchView must bind system .searchable for the Search tab")
 if "SystemSearchTabModifier" not in search_view_source:
     fail("SearchView must apply SystemSearchTabModifier outside ScrollViewReader")
-if "isSystemSearchPresented = true" not in search_view_source:
-    fail("Search tab activation must present the system search field")
+if "isSystemSearchPresented = true" in swift_code(search_view_source):
+    fail(
+        "Search must not force isSystemSearchPresented; Tab(role: .search) "
+        "already presents the system field"
+    )
 if "func presentQueue()" not in audio_player_source:
     fail("AudioPlayer must expose presentQueue for Mix hub queue button")
 if "cancelMixRadioRefill()" not in audio_player_source:
@@ -528,7 +582,8 @@ for required_shelf_symbol in (
     "static let artworkSize",
     "static var shelfHeight",
     "func artworkSize(for width: CGFloat)",
-    "func shelfHeight(for width: CGFloat)",
+    "func shelfHeight(",
+    "captionHeight: CGFloat = captionHeight",
     "func librarySectionSpacing()",
 ):
     if required_shelf_symbol not in shelf_metrics_source:
@@ -541,7 +596,8 @@ for required_shelf_card_symbol in (
     "func albumCard(",
     "PlaylistArtworkView(",
     "size: LibraryShelfMetrics.artworkSize(for:",
-    ".frame(height: LibraryShelfMetrics.shelfHeight(for:",
+    "LibraryShelfMetrics.shelfHeight(",
+    "captionHeight: shelfCaptionHeight",
 ):
     if required_shelf_card_symbol not in library_view_source:
         fail(
@@ -939,7 +995,7 @@ for required_dock_glass_symbol in (
             "pre-iOS 26 fallback dock must retain Liquid Glass + safe inset: "
             f"{required_dock_glass_symbol}"
         )
-if "AdaptiveGlassContainer(spacing: 10)" in main_tab_source:
+if "AdaptiveGlassContainer(spacing: 10)" in swift_code(main_tab_source):
     fail(
         "PlaybackTabDock must not wrap chrome in GlassEffectContainer "
         "(morphs into floating orbs)"
@@ -981,10 +1037,16 @@ if ".dynamicTypeSize(...DynamicTypeSize.large)" in main_tab_source:
     fail("the tab dock must not freeze Dynamic Type at the default size")
 if ".dynamicTypeSize(...DynamicTypeSize.accessibility1)" in player_view_source:
     fail("the full player must not cap Dynamic Type at accessibility1")
-if "playerStackGap(" not in player_view_source:
+if "playerStackGap(" not in swift_code(player_view_source):
     fail("the scrolling player must stack with fixed gaps, not unbound Spacers")
-if "flexible: false" not in player_view_source:
+if "flexible: false" not in swift_code(player_view_source):
     fail("the scrolling player must turn off flexible spacers")
+if "usesFlexibleGaps" not in swift_code(player_view_source):
+    fail("player gap flexibility must be a layout policy, not a source comment")
+if "guard !usesScrollingLayout" not in swift_code(player_view_source):
+    fail("the accessibility player must not dismiss while scrolling")
+if "ContrastPolicy.flattensCustomGlass" not in swift_code(player_view_source):
+    fail("player Liquid Glass must flatten under Increase Contrast")
 if "frame(minHeight: tabRowHeight)" not in main_tab_source:
     fail("the legacy dock must grow with Dynamic Type instead of clipping captions")
 adaptive_glass_source = (
@@ -997,7 +1059,7 @@ if "colorSchemeContrast" not in adaptive_glass_source:
 premium_design_source = (
     SOURCE / "Features" / "Shared" / "PremiumDesign.swift"
 ).read_text(encoding="utf-8")
-if "glassEffect" in premium_design_source:
+if "glassEffect" in swift_code(premium_design_source):
     fail(
         "premium cards are content, not chrome — they must not use Liquid Glass"
     )
@@ -1180,12 +1242,12 @@ for required_player_symbol in (
 ):
     if required_player_symbol not in player_view_source:
         fail(f"player is missing full-bleed/glass symbol: {required_player_symbol}")
-if "AdaptiveGlassContainer(spacing: 18)" in player_view_source:
+if "AdaptiveGlassContainer(spacing: 18)" in swift_code(player_view_source):
     fail(
         "player transport controls must not use GlassEffectContainer "
         "(morphs into one gooey blob)"
     )
-if "AdaptiveGlassContainer(spacing: 14)" in player_view_source:
+if "AdaptiveGlassContainer(spacing: 14)" in swift_code(player_view_source):
     fail(
         "player quick actions must not use GlassEffectContainer "
         "(morphs into one gooey blob)"
@@ -1194,7 +1256,7 @@ if "PlayerProgressControls" not in player_view_source:
     fail("player progress must use isolated PlayerProgressControls")
 if "enum PlayerProgressPolicy" not in all_source:
     fail("PlayerProgressPolicy must exist for unit-tested scrubber math")
-if ".title3.monospacedDigit()" in player_view_source:
+if ".title3.monospacedDigit()" in swift_code(player_view_source):
     fail(
         "player scrub labels must not jump to title3 — fixed metrics only"
     )
@@ -1841,7 +1903,7 @@ def require_minimum_hit_targets() -> None:
     for path in swift_files:
         lines = path.read_text(encoding="utf-8").split("\n")
         for index, line in enumerate(lines):
-            if not re.search(r"\bButton\s*[({]", line):
+            if not re.search(r"\b(Button|Menu)\s*[({]", line):
                 continue
             depth = 0
             opened = False
@@ -1910,10 +1972,10 @@ def require_text_scales_with_dynamic_type() -> None:
 
     The exceptions are text set inside a canvas of a fixed size — a badge
     pill, a generated cover — where larger type has nowhere to go and would
-    simply overrun the artwork rather than push anything aside.
+    simply overrun the artwork rather than push anything aside. Annotate
+    those lines with `// dynamic-type-exempt:` on the preceding line.
     """
     allowed = {
-        "PrivateMusic/Features/Library/LibraryView.swift",
         "PrivateMusic/Features/Shared/PlaylistArtworkView.swift",
     }
     offenders = []
@@ -1924,6 +1986,8 @@ def require_text_scales_with_dynamic_type() -> None:
         lines = path.read_text(encoding="utf-8").split("\n")
         for index, line in enumerate(lines):
             if ".font(.system(size:" not in line:
+                continue
+            if index > 0 and "dynamic-type-exempt:" in lines[index - 1]:
                 continue
             for back in range(index - 1, max(-1, index - 12), -1):
                 previous = lines[back].strip()

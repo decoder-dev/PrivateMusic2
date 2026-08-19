@@ -357,6 +357,10 @@ struct CatalogView: View {
                                     .foregroundStyle(.secondary)
                                     .frame(width: 32, height: 32)
                                     .contentShape(Rectangle())
+                                    .minimumHitTarget(
+                                        visualSize: 32,
+                                        in: Rectangle()
+                                    )
                             }
                             .accessibilityLabel(L10n.text("more"))
                         }
@@ -451,10 +455,9 @@ struct CatalogView: View {
                         .controlSize(.small)
                 }
             }
-            .frame(minWidth: 92)
+            .frame(minWidth: 92, minHeight: 44)
         }
         .buttonStyle(.borderedProminent)
-        .controlSize(.small)
         .disabled(isNextStepLaunching)
     }
 
