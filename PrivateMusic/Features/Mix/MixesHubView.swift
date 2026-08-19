@@ -47,11 +47,17 @@ struct MixesHubView: View {
     @State private var seedRadioTask: Task<Void, Never>?
 
     @State private var selenaTracks: [Track] = []
+    /// Unfiltered baseline for current Selena queue.
+    /// Filters (language/familiarity/mood) may change without having to
+    /// ask the server again.
+    @State private var selenaTrackBase: [Track] = []
     @State private var selenaRationale: MixRationale = .empty
     @State private var selectedVKMix: MusicMix?
     @State private var vkTracks: [Track] = []
     @State private var vkRationale: MixRationale = .empty
     @State private var vkTrackCache: [String: [Track]] = [:]
+    /// Unfiltered baseline for each VK mix.
+    @State private var vkTrackBaseCache: [String: [Track]] = [:]
     @State private var vkRationaleCache: [String: MixRationale] = [:]
     @State private var sharingTrack: Track?
     @State private var selectedCurator: MixCurator?
@@ -1144,8 +1150,16 @@ struct MixesHubView: View {
         Menu {
             ForEach(MixMoodPreference.allCases) { mood in
                 Button {
-                    settings.mixMoodPreference = mood
-                    refilterLoadedTracks(for: mix)
+                    if mood == .any {
+                        // Keep current mix selection: mood cleared still only
+                        // affects which mix we start, not which queue we keep.
+                        settings.mixMoodPreference = mood
+                        refilterLoadedTracks(for: mix)
+                    } else {
+                        // Mood is a switch between "vibe shelves" (which mix
+                        // actually starts), not a pure track filter.
+                        launchMood(mood)
+                    }
                 } label: {
                     selectedMenuRow(
                         mood.title,
@@ -2152,9 +2166,9 @@ struct MixesHubView: View {
     }
 
     private func refilterLoadedTracks(for mix: MusicMix) {
-        let loaded = tracks(for: mix)
-        guard !loaded.isEmpty else { return }
-        storeTracks(loaded, for: mix)
+        let base = baseTracks(for: mix)
+        guard !base.isEmpty else { return }
+        storeTracks(base, for: mix)
         Haptics.selection()
     }
 
@@ -2165,7 +2179,10 @@ struct MixesHubView: View {
     ) {
         guard let first = tracks.first else { return }
         environment.dislike(first, includeArtist: includeArtist)
-        let cleaned = mixFeedbackStore.filtering(self.tracks(for: mix))
+        // Feedback (hide/dislike) should apply on top of the unfiltered
+        // baseline, not on top of language/familiarity filtered caches.
+        let base = baseTracks(for: mix)
+        let cleaned = mixFeedbackStore.filtering(base)
         storeTracks(cleaned, for: mix)
     }
 
@@ -2376,6 +2393,12 @@ struct MixesHubView: View {
         if mix.id != MusicMix.common.id, selectedVKMix?.id != mix.id {
             selectVKMix(mix)
         }
+        // If the mix was already bootstrapped under different filter
+        // settings, refresh the cached queue from the unfiltered baseline.
+        let base = baseTracks(for: mix)
+        if !base.isEmpty {
+            storeTracks(base, for: mix)
+        }
         let loaded = tracks(for: mix)
         if let first = loaded.first {
             playTrack(first, queue: loaded, mix: mix, applying: mode)
@@ -2488,16 +2511,25 @@ struct MixesHubView: View {
             recommendations: homeCatalog.recommendations
         )
         if mix.id == MusicMix.common.id {
+            selenaTrackBase = tracks
             selenaTracks = cleaned
             selenaRationale = rationale
             return
         }
+        vkTrackBaseCache[mix.id] = tracks
         vkTrackCache[mix.id] = cleaned
         vkRationaleCache[mix.id] = rationale
         if selectedVKMix?.id == mix.id {
             vkTracks = cleaned
             vkRationale = rationale
         }
+    }
+
+    private func baseTracks(for mix: MusicMix) -> [Track] {
+        if mix.id == MusicMix.common.id {
+            return selenaTrackBase
+        }
+        return vkTrackBaseCache[mix.id] ?? []
     }
 
     private func pin(mix: MusicMix, tracks: [Track]) {
