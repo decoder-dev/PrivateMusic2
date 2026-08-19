@@ -14,6 +14,9 @@ struct LibraryView: View {
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(PinnedMixStore.self) private var pinnedMixStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Default 40pt is two caption lines at the standard text size.
+    /// Accessibility sizes grow the shelf instead of clipping the titles.
+    @ScaledMetric(relativeTo: .subheadline) private var shelfCaptionHeight: CGFloat = 40
     private let offlinePlaylists =
         OfflinePlaylistStore.shared
     @State private var tracks = TrackCollectionViewModel(source: .library)
@@ -175,6 +178,7 @@ struct LibraryView: View {
                                         Text(
                                             "\(min(validDownloadCount, 99))"
                                         )
+                                        // dynamic-type-exempt: 9pt badge on a 24pt icon
                                         .font(.system(size: 9, weight: .bold))
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, 3)
@@ -714,7 +718,12 @@ struct LibraryView: View {
             }
             // A lazy row has no intrinsic height: pin it so the cards keep
             // their artwork instead of collapsing to caption-only chips.
-            .frame(height: LibraryShelfMetrics.shelfHeight(for: width))
+            .frame(
+                height: LibraryShelfMetrics.shelfHeight(
+                    for: width,
+                    captionHeight: shelfCaptionHeight
+                )
+            )
         }
     }
 
@@ -756,8 +765,7 @@ struct LibraryView: View {
                 }
                 .frame(
                     maxWidth: .infinity,
-                    minHeight: LibraryShelfMetrics.captionHeight,
-                    maxHeight: LibraryShelfMetrics.captionHeight,
+                    minHeight: shelfCaptionHeight,
                     alignment: .topLeading
                 )
             }
@@ -765,7 +773,10 @@ struct LibraryView: View {
         }
         .frame(
             width: LibraryShelfMetrics.cardWidth(for: width),
-            height: LibraryShelfMetrics.cardHeight(for: width),
+            height: LibraryShelfMetrics.cardHeight(
+                for: width,
+                captionHeight: shelfCaptionHeight
+            ),
             alignment: .topLeading
         )
         .premiumAppear(delay: min(Double(index) * 0.025, 0.2))
@@ -846,7 +857,12 @@ struct LibraryView: View {
                 }
                 .padding(.vertical, LibraryShelfMetrics.shelfPadding)
             }
-            .frame(height: LibraryShelfMetrics.shelfHeight(for: width))
+            .frame(
+                height: LibraryShelfMetrics.shelfHeight(
+                    for: width,
+                    captionHeight: shelfCaptionHeight
+                )
+            )
         }
     }
 
@@ -887,8 +903,7 @@ struct LibraryView: View {
                 }
                 .frame(
                     maxWidth: .infinity,
-                    minHeight: LibraryShelfMetrics.captionHeight,
-                    maxHeight: LibraryShelfMetrics.captionHeight,
+                    minHeight: shelfCaptionHeight,
                     alignment: .topLeading
                 )
             }
@@ -896,7 +911,10 @@ struct LibraryView: View {
         }
         .frame(
             width: LibraryShelfMetrics.cardWidth(for: width),
-            height: LibraryShelfMetrics.cardHeight(for: width),
+            height: LibraryShelfMetrics.cardHeight(
+                for: width,
+                captionHeight: shelfCaptionHeight
+            ),
             alignment: .topLeading
         )
     }
@@ -1197,13 +1215,21 @@ struct LibraryView: View {
                             .fill(.primary.opacity(0.08))
                             .frame(
                                 width: LibraryShelfMetrics.cardWidth(for: width),
-                                height: LibraryShelfMetrics.cardHeight(for: width)
+                                height: LibraryShelfMetrics.cardHeight(
+                                    for: width,
+                                    captionHeight: shelfCaptionHeight
+                                )
                             )
                     }
                 }
                 .padding(.vertical, LibraryShelfMetrics.shelfPadding)
             }
-            .frame(height: LibraryShelfMetrics.shelfHeight(for: width))
+            .frame(
+                height: LibraryShelfMetrics.shelfHeight(
+                    for: width,
+                    captionHeight: shelfCaptionHeight
+                )
+            )
         }
         .redacted(reason: .placeholder)
     }

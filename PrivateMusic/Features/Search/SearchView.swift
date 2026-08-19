@@ -63,11 +63,11 @@ struct SearchView: View {
             }
             .onChange(of: isActive) { active in
                 if active {
-                    if usesSystemSearchChrome {
-                        if #available(iOS 26.0, *) {
-                            isSystemSearchPresented = true
-                        }
-                    } else {
+                    // iOS 26 `Tab(role: .search)` already presents the
+                    // system field. Forcing `isPresented` here races the
+                    // role and misses the first activation because tab
+                    // content is built lazily.
+                    if !usesSystemSearchChrome {
                         isSearchFocused = true
                     }
                     return

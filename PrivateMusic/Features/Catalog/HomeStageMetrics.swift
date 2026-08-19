@@ -60,6 +60,8 @@ enum HomeStageMetrics {
     /// headline and before the rail used to sit under their target bands —
     /// tight enough that the stage read as one dense block rather than
     /// status, artist, artwork and controls as distinct beats.
+    /// Default-size floor for the status chip. Large Dynamic Type grows
+    /// the chip past this; the stage layout uses `minHeight`, not a pin.
     static let chipHeight: CGFloat = 34
     static let belowChip = BubbleSpacing.xl
     static let belowHeadline = BubbleSpacing.xxl
@@ -71,8 +73,11 @@ enum HomeStageMetrics {
             + belowTransport
     }
 
-    /// Total height of the stage, so "does it leave room for the next
-    /// shelf" is arithmetic instead of a screenshot.
+    /// Total height of the stage at the default text size, so "does it
+    /// leave room for the next shelf" is arithmetic instead of a
+    /// screenshot. Large Dynamic Type grows the chip and now-playing
+    /// title past the floors below; tests that use this value are
+    /// asserting the default-size composition, not the accessibility one.
     static func stageHeight(
         for width: CGFloat,
         headlineLines: Int = 1
