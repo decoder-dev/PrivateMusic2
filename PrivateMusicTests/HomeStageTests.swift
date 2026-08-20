@@ -71,7 +71,7 @@ final class HomeStageContextTests: XCTestCase {
         XCTAssertTrue(
             HomeStageContextBuilder.shouldOmitStation(
                 hasCurrentTrack: true,
-                queueSource: .mix(title: personal.title),
+                queueSource: .mix(id: personal.id, title: personal.title),
                 mixes: [personal]
             )
         )
@@ -82,7 +82,7 @@ final class HomeStageContextTests: XCTestCase {
             stationTitle: "Селена",
             omitStation: HomeStageContextBuilder.shouldOmitStation(
                 hasCurrentTrack: true,
-                queueSource: .mix(title: personal.title),
+                queueSource: .mix(id: personal.id, title: personal.title),
                 mixes: [personal]
             )
         )

@@ -35,7 +35,11 @@ enum SleepTimerMode: Equatable, Sendable {
 /// is left `nil` and treated as an implicit automix seeded by the tapped
 /// track — see `AudioPlayer.queueContextTitle`.
 enum QueueSource: Equatable {
-    case mix(title: String)
+    /// A mix session. `id` is the stable identity (catalog mix id, or a
+    /// synthetic id for artist radio / my-music / seed mixes); `title` is
+    /// display-only. Comparing queues by title alone used to rerank the
+    /// wrong mix when VK shipped duplicate shelf names.
+    case mix(id: String, title: String)
     case playlist(title: String)
     case album(title: String)
     case history
@@ -43,6 +47,45 @@ enum QueueSource: Equatable {
     /// case for it the player captioned a library queue as a mix seeded by
     /// the tapped track — which is not what is playing.
     case library
+
+    static func catalogMix(_ mix: MusicMix) -> QueueSource {
+        .mix(id: mix.id, title: mix.title)
+    }
+
+    static func myMusicMix(title: String) -> QueueSource {
+        .mix(id: MixQueueIdentity.myMusic, title: title)
+    }
+
+    static func artistMix(named name: String, title: String) -> QueueSource {
+        .mix(id: MixQueueIdentity.artist(name), title: title)
+    }
+
+    static func seedMix(trackID: String, title: String) -> QueueSource {
+        .mix(id: MixQueueIdentity.seed(trackID), title: title)
+    }
+
+    var mixID: String? {
+        if case let .mix(id, _) = self { return id }
+        return nil
+    }
+
+    var mixTitle: String? {
+        if case let .mix(_, title) = self { return title }
+        return nil
+    }
+}
+
+/// Stable ids for mix queues that are not catalog shelves.
+enum MixQueueIdentity {
+    static let myMusic = "my-music"
+
+    static func artist(_ name: String) -> String {
+        "artist:" + MixFeedbackPolicy.normalized(name)
+    }
+
+    static func seed(_ trackID: String) -> String {
+        "seed:" + trackID
+    }
 }
 
 enum PendingPlayerSheet: Equatable, Sendable {
@@ -1223,6 +1266,16 @@ final class AudioPlayer {
     /// sheet) reads one value instead of keeping its own `@State`, which
     /// let two pickers disagree about the current ordering.
     private(set) var mixRadioMode: MixRadioMode = .balanced
+
+    /// Identity for mix-aware UI (filters, radio mode, open-queue). Prefer
+    /// this over comparing display titles.
+    func isPlayingMix(id: String) -> Bool {
+        queueSource?.mixID == id
+    }
+
+    func isPlaying(_ mix: MusicMix) -> Bool {
+        isPlayingMix(id: mix.id)
+    }
     private(set) var isPlaying = false {
         didSet { syncHighlight() }
     }
@@ -2208,6 +2261,7 @@ final class AudioPlayer {
         lastNowPlayingSecond = -1
         lastPersistedQueueSignature = ""
         defaults.removeObject(forKey: PlaybackSnapshot.key)
+        defaults.removeObject(forKey: PlaybackSnapshot.legacyKey)
         defaults.removeObject(forKey: PlaybackSnapshot.elapsedKey)
         try? AVAudioSession.sharedInstance().setActive(
             false,
@@ -4679,7 +4733,7 @@ final class AudioPlayer {
             track,
             in: snapshot.tracks,
             continuation: continuation,
-            source: .mix(title: snapshot.mixTitle)
+            source: .mix(id: snapshot.mixID, title: snapshot.mixTitle)
         )
         if snapshot.elapsed > 1 {
             seek(to: snapshot.elapsed)
@@ -4784,10 +4838,16 @@ final class AudioPlayer {
         let snapshot = PlaybackSnapshot(
             queue: queue,
             currentIndex: currentIndex,
-            elapsedTime: elapsedTime
+            elapsedTime: elapsedTime,
+            mixID: queueSource?.mixID,
+            mixTitle: queueSource?.mixTitle,
+            mixRadioMode: mixRadioMode.rawValue
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         defaults.set(data, forKey: PlaybackSnapshot.key)
+        // Drop the legacy key once we have a v2 write so restore does not
+        // prefer a stale title-less snapshot after an upgrade.
+        defaults.removeObject(forKey: PlaybackSnapshot.legacyKey)
         lastPersistedQueueSignature = signature
     }
 
@@ -4868,7 +4928,9 @@ final class AudioPlayer {
     }
 
     private func restorePlayback() {
-        guard let data = defaults.data(forKey: PlaybackSnapshot.key),
+        let data = defaults.data(forKey: PlaybackSnapshot.key)
+            ?? defaults.data(forKey: PlaybackSnapshot.legacyKey)
+        guard let data,
               let snapshot = try? JSONDecoder().decode(
                 PlaybackSnapshot.self,
                 from: data
@@ -4880,6 +4942,17 @@ final class AudioPlayer {
         sourceOrderedQueue = snapshot.queue
         restoredTrackIDs = Set(snapshot.queue.map(\.id))
         currentIndex = snapshot.currentIndex
+        if let mixID = snapshot.mixID, let mixTitle = snapshot.mixTitle {
+            queueSource = .mix(id: mixID, title: mixTitle)
+        } else if let mixTitle = snapshot.mixTitle {
+            // v1 snapshots only had a title — keep mix behaviour alive
+            // under a synthetic id so bans/filters still apply.
+            queueSource = .mix(id: "restored:" + mixTitle, title: mixTitle)
+        }
+        if let raw = snapshot.mixRadioMode,
+           let mode = MixRadioMode(rawValue: raw) {
+            mixRadioMode = mode
+        }
         loadedTrackID = nil
         duration = currentTrack?.duration ?? 0
         let storedElapsed = defaults.object(
@@ -4906,10 +4979,14 @@ final class AudioPlayer {
 }
 
 private struct PlaybackSnapshot: Codable {
-    static let key = "player.playback.snapshot.v1"
+    static let key = "player.playback.snapshot.v2"
+    static let legacyKey = "player.playback.snapshot.v1"
     static let elapsedKey = "player.playback.elapsed.v1"
 
     let queue: [Track]
     let currentIndex: Int
     let elapsedTime: TimeInterval
+    var mixID: String? = nil
+    var mixTitle: String? = nil
+    var mixRadioMode: String? = nil
 }

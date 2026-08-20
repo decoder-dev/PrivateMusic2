@@ -50,10 +50,6 @@ struct MixesHubView: View {
     @State private var seedRadioTask: Task<Void, Never>?
 
     @State private var selenaTracks: [Track] = []
-    /// How often each artist already appeared in the suggested queue.
-    /// See `SelenaBanditPolicy` for what it is used for and why it is not
-    /// carried across launches.
-    @State private var selenaExposure = SelenaExposure()
     /// Unfiltered baseline for current Selena queue.
     /// Filters (language/familiarity/mood) may change without having to
     /// ask the server again.
@@ -1333,7 +1329,7 @@ struct MixesHubView: View {
                                     TrackRow(
                                         track: track,
                                         queue: tracks,
-                                        source: .mix(title: mix.title)
+                                        source: .catalogMix(mix)
                                     )
                                     .padding(.vertical, 7)
                                     if index < expandedList.count - 1 {
@@ -2144,15 +2140,13 @@ struct MixesHubView: View {
                 for: mix,
                 knownTracks: loaded
             ),
-            source: .mix(title: mix.title)
+            source: .catalogMix(mix)
         )
         Haptics.selection()
     }
 
     private func openQueue(_ mix: MusicMix) {
-        if case .mix(let title) = player.queueSource,
-           title == mix.title,
-           !player.queue.isEmpty {
+        if player.isPlaying(mix), !player.queue.isEmpty {
             player.presentQueue()
         } else {
             start(mix)
@@ -2174,8 +2168,7 @@ struct MixesHubView: View {
 
     /// Filters must change what you hear, not only the list on screen.
     private func syncPlayingQueue(with mix: MusicMix) {
-        guard case .mix(let title) = player.queueSource,
-              title == mix.title,
+        guard player.isPlaying(mix),
               let current = player.currentTrack else { return }
         let cleaned = tracks(for: mix)
         if let index = cleaned.firstIndex(where: { $0.id == current.id }) {
@@ -2405,7 +2398,7 @@ struct MixesHubView: View {
             // Selena is a personal recommendation session: reset
             // exploration counters so the UCB decision matches the
             // *current* queue, not some older one.
-            selenaExposure.reset()
+            environment.resetSelenaExposure()
         }
         // If the mix was already bootstrapped under different filter
         // settings, refresh the cached queue from the unfiltered baseline.
@@ -2417,8 +2410,8 @@ struct MixesHubView: View {
         let queueToPlay: [Track] = if mix.id == MusicMix.common.id {
             SelenaBanditPolicy.rerank(
                 loaded,
-                affinityByArtistKey: selenaArtistAffinity(),
-                exposure: selenaExposure,
+                affinityByArtistKey: environment.selenaArtistAffinity(),
+                exposure: environment.selenaExposure,
                 bannedArtists: mixFeedbackStore.bannedArtists
             )
         } else {
@@ -2426,7 +2419,7 @@ struct MixesHubView: View {
         }
         if let first = queueToPlay.first {
             if mix.id == MusicMix.common.id {
-                selenaExposure.record(queueToPlay)
+                environment.recordSelenaExposure(queueToPlay)
             }
             playTrack(first, queue: queueToPlay, mix: mix, applying: mode)
             return
@@ -2447,11 +2440,11 @@ struct MixesHubView: View {
                     await MainActor.run {
                         let reranked = SelenaBanditPolicy.rerank(
                             initialQueue,
-                            affinityByArtistKey: selenaArtistAffinity(),
-                            exposure: selenaExposure,
+                            affinityByArtistKey: environment.selenaArtistAffinity(),
+                            exposure: environment.selenaExposure,
                             bannedArtists: mixFeedbackStore.bannedArtists
                         )
-                        selenaExposure.record(reranked)
+                        environment.recordSelenaExposure(reranked)
                         return reranked
                     }
                 } else {
@@ -2500,7 +2493,7 @@ struct MixesHubView: View {
                 for: mix,
                 knownTracks: queue
             ),
-            source: .mix(title: mix.title)
+            source: .catalogMix(mix)
         )
         // `play` resets the ordering for the fresh queue; re-apply when the
         // user got here by choosing a mode rather than pressing play.
@@ -2526,11 +2519,11 @@ struct MixesHubView: View {
                 return await MainActor.run {
                     let reranked = SelenaBanditPolicy.rerank(
                         filtered,
-                        affinityByArtistKey: selenaArtistAffinity(),
-                        exposure: selenaExposure,
+                        affinityByArtistKey: environment.selenaArtistAffinity(),
+                        exposure: environment.selenaExposure,
                         bannedArtists: mixFeedbackStore.bannedArtists
                     )
-                    selenaExposure.record(reranked)
+                    environment.recordSelenaExposure(reranked)
                     return reranked
                 }
             }
@@ -2591,24 +2584,6 @@ struct MixesHubView: View {
         }
     }
 
-    /// What the listener has shown they like, keyed the way bans and the
-    /// affinity engine both key artists. Reused from `ArtistAffinityPolicy`
-    /// so the mix and Home's "What's Next" cannot disagree about who a
-    /// favourite is.
-    @MainActor
-    private func selenaArtistAffinity() -> [String: Double] {
-        var affinity: [String: Double] = [:]
-        for candidate in ArtistAffinityPolicy.candidates(
-            history: history.entries,
-            isLiked: { environment.libraryStore.contains($0) },
-            bannedArtistKeys: mixFeedbackStore.bannedArtists,
-            bannedTrackIDs: mixFeedbackStore.bannedTrackIDs
-        ) {
-            affinity[candidate.artistKey] = candidate.score
-        }
-        return affinity
-    }
-
     private func baseTracks(for mix: MusicMix) -> [Track] {
         if mix.id == MusicMix.common.id {
             return selenaTrackBase
@@ -2619,12 +2594,12 @@ struct MixesHubView: View {
     private func currentMixForFilters() -> MusicMix? {
         // Prefer the mix that is actually playing — filters exist to shape
         // what you hear, not which tab happens to be visible.
-        if case .mix(let title) = player.queueSource {
-            if personalMix.title == title { return personalMix }
-            if let selected = selectedVKMix, selected.title == title {
+        if let mixID = player.queueSource?.mixID {
+            if personalMix.id == mixID { return personalMix }
+            if let selected = selectedVKMix, selected.id == mixID {
                 return selected
             }
-            if let match = mixes.first(where: { $0.title == title }) {
+            if let match = mixes.first(where: { $0.id == mixID }) {
                 return match
             }
         }
@@ -2681,8 +2656,7 @@ struct MixesHubView: View {
     private func applyRadio(_ mode: MixRadioMode, mix: MusicMix) {
         // Radio describes the live queue for THIS mix only. A mode change on
         // another card must not reshuffle a different mix that is playing.
-        guard case .mix(let playingTitle) = player.queueSource,
-              playingTitle == mix.title,
+        guard player.isPlaying(mix),
               !player.queue.isEmpty else {
             start(mix, applying: mode)
             return

@@ -20,6 +20,19 @@ final class AppEnvironment {
     let watchRemoteCoordinator: WatchRemoteCoordinator
     let musicService: any MusicService
     let webAuthService: VKWebAuthService
+    /// Session-scoped Selena spacing counters. Owned here so Home and
+    /// Explore share one bandit history for the personal station — a
+    /// view `@State` reset every time Explore was recreated.
+    private(set) var selenaExposure = SelenaExposure()
+
+    func resetSelenaExposure() {
+        selenaExposure.reset()
+    }
+
+    func recordSelenaExposure(_ tracks: [Track]) {
+        selenaExposure.record(tracks)
+    }
+
     private(set) var isRecoveringSession = false
     /// While a share export is active, offline downloads and automatic
     /// caching are paused and hidden so the share transfer gets bandwidth.
@@ -818,7 +831,7 @@ final class AppEnvironment {
                     }
                     return self.filteredMixTracks(more)
                 },
-                source: .mix(title: title)
+                source: .seedMix(trackID: track.id, title: title)
             )
             player.rerankUpcomingMix(
                 mode: .closerToSeed,
@@ -881,7 +894,7 @@ final class AppEnvironment {
                     }
                     return self.filteredMixTracks(more)
                 },
-                source: .mix(title: L10n.text("mix_from_my_music"))
+                source: .myMusicMix(title: L10n.text("mix_from_my_music"))
             )
             Haptics.success()
         } catch is CancellationError {
@@ -894,7 +907,12 @@ final class AppEnvironment {
     /// The personal station, or the listener's own library when the
     /// catalog has not produced one yet.
     func startPersonalStation(in mixes: [MusicMix]) async {
-        if let personal = mixes.first(where: { $0.id == MusicMix.common.id }) {
+        var catalog = mixes
+        if catalog.isEmpty {
+            await refreshHomeCatalog()
+            catalog = homeCatalogStore.mixes
+        }
+        if let personal = catalog.first(where: { $0.id == MusicMix.common.id }) {
             await startCatalogMix(personal)
         } else {
             await startMixFromMyMusic()
@@ -910,7 +928,15 @@ final class AppEnvironment {
         _ mood: MixMoodPreference,
         in mixes: [MusicMix]
     ) async {
-        switch MixMoodLaunchPolicy.resolve(mood: mood, in: mixes) {
+        var catalog = mixes
+        // Home can fire a vibe bubble before `refreshHomeCatalog` finishes.
+        // Waiting here keeps «Спокойно» from collapsing into My Music —
+        // the same guarantee Explore's `startResolvedMood` already had.
+        if catalog.isEmpty {
+            await refreshHomeCatalog()
+            catalog = homeCatalogStore.mixes
+        }
+        switch MixMoodLaunchPolicy.resolve(mood: mood, in: catalog) {
         case let .mix(mix):
             await startCatalogMix(mix)
         case .myMusic:
@@ -965,7 +991,10 @@ final class AppEnvironment {
                     }
                     return self.filteredMixTracks(more)
                 },
-                source: .mix(title: L10n.format("artist_radio_0", query))
+                source: .artistMix(
+                    named: query,
+                    title: L10n.format("artist_radio_0", query)
+                )
             )
             // Keeps the upcoming queue leaning towards the artist that was
             // tapped instead of drifting into general recommendations.
@@ -1029,7 +1058,25 @@ final class AppEnvironment {
                 )
             }
             let cleaned = filteredMixTracks(bootstrap)
-            guard let first = cleaned.first else {
+            guard !cleaned.isEmpty else {
+                mixActionError = L10n.text("the_mix_is_empty_for_now")
+                return
+            }
+            // Personal station: one bandit path for Home and Explore.
+            let queue: [Track]
+            if mix.id == MusicMix.common.id {
+                resetSelenaExposure()
+                queue = SelenaBanditPolicy.rerank(
+                    cleaned,
+                    affinityByArtistKey: selenaArtistAffinity(),
+                    exposure: selenaExposure,
+                    bannedArtists: mixFeedbackStore.bannedArtists
+                )
+                recordSelenaExposure(queue)
+            } else {
+                queue = cleaned
+            }
+            guard let first = queue.first else {
                 mixActionError = L10n.text("the_mix_is_empty_for_now")
                 return
             }
@@ -1040,7 +1087,7 @@ final class AppEnvironment {
             guard !Task.isCancelled else { return }
             player.play(
                 first,
-                in: cleaned,
+                in: queue,
                 continuation: { [weak self] in
                     guard let self else { return [] }
                     let more = try await self.withAuthorizedToken { token in
@@ -1049,9 +1096,18 @@ final class AppEnvironment {
                             musicService: self.musicService
                         )
                     }
-                    return self.filteredMixTracks(more)
+                    let filtered = self.filteredMixTracks(more)
+                    guard mix.id == MusicMix.common.id else { return filtered }
+                    let reranked = SelenaBanditPolicy.rerank(
+                        filtered,
+                        affinityByArtistKey: self.selenaArtistAffinity(),
+                        exposure: self.selenaExposure,
+                        bannedArtists: self.mixFeedbackStore.bannedArtists
+                    )
+                    self.recordSelenaExposure(reranked)
+                    return reranked
                 },
-                source: .mix(title: mix.title)
+                source: .catalogMix(mix)
             )
             Haptics.success()
         } catch is CancellationError {
@@ -1059,6 +1115,20 @@ final class AppEnvironment {
         } catch {
             mixActionError = error.localizedDescription
         }
+    }
+
+    /// Affinity keyed the way bans and Selena bandit both key artists.
+    func selenaArtistAffinity() -> [String: Double] {
+        var affinity: [String: Double] = [:]
+        for candidate in ArtistAffinityPolicy.candidates(
+            history: historyStore.entries,
+            isLiked: { libraryStore.contains($0) },
+            bannedArtistKeys: mixFeedbackStore.bannedArtists,
+            bannedTrackIDs: mixFeedbackStore.bannedTrackIDs
+        ) {
+            affinity[candidate.artistKey] = candidate.score
+        }
+        return affinity
     }
 
     /// Hold-to-preview style snippet: jump into the track and stop ~32s later.

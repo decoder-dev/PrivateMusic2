@@ -157,6 +157,28 @@ final class MixFilterQueueWiringTests: XCTestCase {
         )
         XCTAssertTrue(source.contains("syncPlayingQueue(with:"))
         XCTAssertTrue(source.contains("currentMixForFilters"))
-        XCTAssertTrue(source.contains("player.queueSource"))
+        XCTAssertTrue(source.contains("player.isPlaying(mix)"))
+        XCTAssertTrue(source.contains("mixID"))
+    }
+
+    func testQueueSourceMixCarriesStableID() {
+        let mix = MusicMix.common
+        let source = QueueSource.catalogMix(mix)
+        XCTAssertEqual(source.mixID, mix.id)
+        XCTAssertEqual(source.mixTitle, mix.title)
+        XCTAssertEqual(
+            QueueSource.myMusicMix(title: "x").mixID,
+            MixQueueIdentity.myMusic
+        )
+    }
+
+    func testEnvironmentOwnsSharedSelenaExposure() {
+        let source = SourceInspection.code(
+            "PrivateMusic/App/AppEnvironment.swift"
+        )
+        XCTAssertTrue(source.contains("recordSelenaExposure"))
+        XCTAssertTrue(source.contains("resetSelenaExposure"))
+        XCTAssertTrue(source.contains("SelenaBanditPolicy.rerank"))
+        XCTAssertTrue(source.contains("refreshHomeCatalog()"))
     }
 }

@@ -299,7 +299,7 @@ final class HomeNextStepPolicyTests: XCTestCase {
     func testPlayingTheCurrentArtistOccupiesThatArtistCandidate() {
         let occupancy = HomeNextStepPolicy.occupancy(
             hasCurrentTrack: true,
-            queueSource: .mix(title: "Поколено radio"),
+            queueSource: .mix(id: "pokoleno", title: "Поколено radio"),
             currentArtist: "Поколено",
             mixes: [makeMix("vk1", title: "Микс")]
         )
@@ -329,7 +329,7 @@ final class HomeNextStepPolicyTests: XCTestCase {
         let mix = makeMix("vk1", title: "Вечерний микс")
         let occupancy = HomeNextStepPolicy.occupancy(
             hasCurrentTrack: true,
-            queueSource: .mix(title: "Вечерний микс"),
+            queueSource: .mix(id: "evening", title: "Вечерний микс"),
             currentArtist: "Someone",
             mixes: [mix]
         )
