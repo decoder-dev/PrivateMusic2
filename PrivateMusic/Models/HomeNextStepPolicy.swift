@@ -125,12 +125,16 @@ enum HomeNextStepPolicy {
             if !key.isEmpty { artistKeys.insert(key) }
         }
 
-        if case let .mix(title) = queueSource {
+        if case let .mix(id, title) = queueSource {
+            mixIDs.insert(id)
+            if id == MusicMix.common.id {
+                kinds.insert(.personalStation)
+            }
             let trimmed = title.trimmingCharacters(
                 in: .whitespacesAndNewlines
             )
             if let match = mixes.first(where: {
-                $0.title.compare(
+                $0.id == id || $0.title.compare(
                     trimmed,
                     options: [.caseInsensitive, .diacriticInsensitive]
                 ) == .orderedSame
