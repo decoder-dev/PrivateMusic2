@@ -88,7 +88,7 @@ enum MixRationaleBuilder {
         if lines.count < limit {
             let albums = Set(
                 mixTracks.compactMap { track -> String? in
-                    guard let album = track.albumTitle.map(normalized),
+                    guard let album = track.albumTitle.map(MixFeedbackPolicy.normalized),
                           !album.isEmpty else {
                         return nil
                     }
@@ -97,7 +97,7 @@ enum MixRationaleBuilder {
             )
             let historyAlbums = Set(
                 history.prefix(40).compactMap { entry -> String? in
-                    guard let album = entry.track.albumTitle.map(normalized),
+                    guard let album = entry.track.albumTitle.map(MixFeedbackPolicy.normalized),
                           !album.isEmpty else {
                         return nil
                     }
