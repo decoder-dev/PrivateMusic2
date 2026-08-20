@@ -9,7 +9,7 @@ enum QueueContextTitlePolicy {
         queueSeedTrackTitle: String?
     ) -> String {
         switch queueSource {
-        case let .mix(title) where QueueSourceTitle.isUsable(title):
+        case let .mix(_, title) where QueueSourceTitle.isUsable(title):
             return title
         case let .playlist(title) where QueueSourceTitle.isUsable(title):
             return title
