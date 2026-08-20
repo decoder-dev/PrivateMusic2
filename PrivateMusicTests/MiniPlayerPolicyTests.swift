@@ -369,9 +369,10 @@ final class MiniPlayerAccessoryPolicyTests: XCTestCase {
             MiniPlayerLayoutMetrics.minHeight,
             MiniPlayerLayoutMetrics.accessoryMaxHeight
         )
-        XCTAssertLessThanOrEqual(
+        // 44pt transport + 4+4 accessory padding must fit without clip.
+        XCTAssertEqual(
             MiniPlayerLayoutMetrics.accessoryMaxHeight,
-            48
+            52
         )
     }
 }

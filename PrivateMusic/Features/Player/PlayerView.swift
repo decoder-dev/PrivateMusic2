@@ -330,58 +330,55 @@ struct PlayerView: View {
     }
 
     private func playerHeader(_ track: Track) -> some View {
-        AdaptiveGlassContainer(spacing: 8) {
-            // Keep the title visually centered while reserving the trailing
-            // AirPlay + menu cluster so long mix names truncate in the
-            // middle instead of drawing under those controls. Dismiss is
-            // swipe-down / accessibility escape — no leading chevron.
-            ZStack {
-                VStack(spacing: 2) {
-                    Text(L10n.text("player.now_playing_kicker"))
-                        .font(.caption2.weight(.bold))
-                        .tracking(1.1)
-                        .foregroundStyle(playerSecondary)
-                    Text(player.queueContextTitle.uppercased())
-                        .font(.caption2.weight(.medium))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .truncationMode(.middle)
-                        .foregroundStyle(playerSecondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.horizontal, PlayerHeaderMetrics.titleHorizontalInset)
-                .frame(maxWidth: .infinity)
-                .accessibilityElement(children: .combine)
-                .accessibilitySortPriority(1)
+        // Plain ZStack — not AdaptiveGlassContainer. Sibling interactive
+        // glass circles inside GlassEffectContainer morph into one blob
+        // on iOS 26 (same failure mode primaryControls documents).
+        ZStack {
+            VStack(spacing: 2) {
+                Text(L10n.text("player.now_playing_kicker"))
+                    .font(.caption2.weight(.bold))
+                    .tracking(1.1)
+                    .foregroundStyle(playerSecondary)
+                Text(player.queueContextTitle.uppercased())
+                    .font(.caption2.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .truncationMode(.middle)
+                    .foregroundStyle(playerSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, PlayerHeaderMetrics.titleHorizontalInset)
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .combine)
+            .accessibilitySortPriority(1)
 
-                HStack {
-                    Color.clear
-                        .frame(width: PlayerHeaderMetrics.sideClusterWidth)
-                        .accessibilityHidden(true)
-
-                    Spacer(minLength: 0)
-
-                    HStack(spacing: 8) {
-                        AirPlayRoutePicker(
-                            tintColor: UIColor(playerForeground),
-                            onWillPresent: handleAirPlayRoutePickerOpened
-                        )
-                            .frame(width: 44, height: 44)
-                            .adaptiveGlass(
-                                in: Circle(),
-                                interactive: true
-                            )
-                            .accessibilityLabel(
-                                L10n.text(
-                                    "choose_playback_device"
-                                )
-                            )
-                            .accessibilitySortPriority(3)
-                        actionMenuButton(track)
-                            .accessibilitySortPriority(2)
-                    }
+            HStack {
+                Color.clear
                     .frame(width: PlayerHeaderMetrics.sideClusterWidth)
+                    .accessibilityHidden(true)
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: 8) {
+                    AirPlayRoutePicker(
+                        tintColor: UIColor(playerForeground),
+                        onWillPresent: handleAirPlayRoutePickerOpened
+                    )
+                        .frame(width: 44, height: 44)
+                        .adaptiveGlass(
+                            in: Circle(),
+                            interactive: true
+                        )
+                        .accessibilityLabel(
+                            L10n.text(
+                                "choose_playback_device"
+                            )
+                        )
+                        .accessibilitySortPriority(3)
+                    actionMenuButton(track)
+                        .accessibilitySortPriority(2)
                 }
+                .frame(width: PlayerHeaderMetrics.sideClusterWidth)
             }
         }
     }
@@ -1040,7 +1037,10 @@ struct PlayerView: View {
                     }
                 } else if vertical < -60 {
                     present(.queue)
-                } else if vertical > 72 {
+                } else if PlayerDismissGesturePolicy.shouldDismiss(
+                    translation: value.translation,
+                    predictedEndTranslation: value.predictedEndTranslation
+                ) {
                     closePlayer()
                 }
             }

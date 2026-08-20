@@ -762,108 +762,115 @@ struct MixesHubView: View {
             ? homeCatalog.recommendations
             : tracks
         let trimmedSubtitle = trimmedText(subtitle)
-        return Button { start(mix) } label: {
-            ZStack(alignment: .bottomLeading) {
-                MixArtworkView(
-                    mix: mix,
-                    tracks: artSource,
-                    size: metrics.contentWidth,
-                    height: metrics.heroHeight,
-                    cornerRadius: 0
+        // One composition, one primary verb: the play circle is the
+        // control. The hero itself is not a Button — nesting a curator
+        // link inside another button's label made that link unreachable
+        // to both touch and VoiceOver.
+        return ZStack(alignment: .bottomLeading) {
+            MixArtworkView(
+                mix: mix,
+                tracks: artSource,
+                size: metrics.contentWidth,
+                height: metrics.heroHeight,
+                cornerRadius: 0
+            )
+            .overlay {
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.05),
+                        Color.black.opacity(0.55),
+                        Color.black.opacity(0.82)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
                 )
-                .overlay {
-                    LinearGradient(
-                        colors: [
-                            settings.theme.accent.opacity(0.35),
-                            Color.black.opacity(0.28),
-                            Color.black.opacity(0.78)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                }
+            }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Spacer(minLength: 0)
-                    if let curator = mix.curator, curator.isUsable {
-                        Button {
-                            selectedCurator = curator
-                        } label: {
-                            Text(curator.displayName)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.78))
-                                .textCase(.uppercase)
-                                .tracking(0.55)
-                                .lineLimit(1)
-                        }
-                        .buttonStyle(.plain)
-                    } else if mix.id == MusicMix.common.id {
-                        Text(L10n.text("personal_mix"))
+            VStack(alignment: .leading, spacing: 6) {
+                Spacer(minLength: 0)
+                if let curator = mix.curator, curator.isUsable {
+                    Button {
+                        selectedCurator = curator
+                    } label: {
+                        Text(curator.displayName)
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.78))
                             .textCase(.uppercase)
                             .tracking(0.55)
-                    } else if mix.isSocial {
-                        Text(L10n.text("social_mix"))
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.78))
-                            .textCase(.uppercase)
-                            .tracking(0.55)
+                            .lineLimit(1)
                     }
-                    Text(mix.title)
-                        .font(.title.weight(.bold))
+                    .buttonStyle(.plain)
+                    .accessibilityHint(L10n.text("open_here"))
+                } else if mix.id == MusicMix.common.id {
+                    Text(L10n.text("personal_mix"))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .textCase(.uppercase)
+                        .tracking(0.55)
+                } else if mix.isSocial {
+                    Text(L10n.text("social_mix"))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .textCase(.uppercase)
+                        .tracking(0.55)
+                }
+                Text(mix.title)
+                    .font(.title.weight(.bold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let trimmedSubtitle {
+                    Text(trimmedSubtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.86))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let trimmedSubtitle {
-                        Text(trimmedSubtitle)
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.86))
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                 }
-                .padding(22)
-                .padding(.trailing, 72)
+            }
+            .padding(22)
+            .padding(.trailing, 72)
 
+            Button {
+                start(mix)
+            } label: {
                 Image(systemName: "play.fill")
                     .font(.title3.weight(.bold))
                     .foregroundStyle(settings.theme.accent)
                     .frame(width: 52, height: 52)
                     .background(.white, in: Circle())
-                    .frame(
-                        maxWidth: .infinity,
-                        maxHeight: .infinity,
-                        alignment: .topTrailing
-                    )
-                    .padding(18)
             }
-            .foregroundStyle(.white)
-            .frame(height: metrics.heroHeight)
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: PremiumLayout.cardRadius,
-                    style: .continuous
-                )
+            .buttonStyle(PremiumPressStyle())
+            .disabled(loadingMixID != nil)
+            .accessibilityLabel(L10n.text("play_mix"))
+            .accessibilityValue(mix.title)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .topTrailing
             )
-            .overlay {
-                if loadingMixID == mix.id {
-                    ProgressView()
-                        .tint(.white)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(.black.opacity(0.28))
-                        .clipShape(
-                            RoundedRectangle(
-                                cornerRadius: PremiumLayout.cardRadius,
-                                style: .continuous
-                            )
+            .padding(18)
+        }
+        .foregroundStyle(.white)
+        .frame(minHeight: metrics.heroHeight)
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: PremiumLayout.cardRadius,
+                style: .continuous
+            )
+        )
+        .overlay {
+            if loadingMixID == mix.id {
+                ProgressView()
+                    .tint(.white)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.black.opacity(0.28))
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: PremiumLayout.cardRadius,
+                            style: .continuous
                         )
-                }
+                    )
             }
         }
-        .buttonStyle(PremiumPressStyle())
-        .disabled(loadingMixID != nil)
-        .accessibilityLabel(L10n.text("play_mix"))
-        .accessibilityValue(mix.title)
         .contextMenu {
             Button { start(mix) } label: {
                 Label(L10n.text("play_mix"), systemImage: "play.fill")
@@ -1010,19 +1017,10 @@ struct MixesHubView: View {
 
             mixFilterChips(mix: mix)
 
+            // Hero owns Play. This row is shuffle + keep/hide only —
+            // a second "Play all" next to the play circle was the same
+            // verb twice on one card.
             HStack(spacing: 10) {
-                Button { start(mix) } label: {
-                    Label(
-                        L10n.text("play_all"),
-                        systemImage: "play.fill"
-                    )
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(loadingMixID != nil)
-
                 Button {
                     shuffle(mix)
                 } label: {
@@ -1036,9 +1034,7 @@ struct MixesHubView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(loadingMixID != nil || tracks.isEmpty)
-            }
 
-            HStack(spacing: 10) {
                 Button {
                     pin(mix: mix, tracks: tracks)
                 } label: {
@@ -1116,6 +1112,8 @@ struct MixesHubView: View {
                     )
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
+                    .frame(minHeight: PremiumLayout.minimumTapTarget)
+                    .contentShape(Rectangle())
                 }
 
                 NavigationLink {
@@ -1127,6 +1125,8 @@ struct MixesHubView: View {
                     )
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
+                    .frame(minHeight: PremiumLayout.minimumTapTarget)
+                    .contentShape(Rectangle())
                 }
 
                 Button {
@@ -1138,6 +1138,8 @@ struct MixesHubView: View {
                     )
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
+                    .frame(minHeight: PremiumLayout.minimumTapTarget)
+                    .contentShape(Rectangle())
                 }
                 .disabled(tracks.isEmpty)
             }
@@ -1157,32 +1159,14 @@ struct MixesHubView: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    moodFilterMenu(mix: mix)
+                    // Mood launches a station — it lives in `moodQuickLaunch`,
+                    // not under "quick filters". Putting it here made three
+                    // identical chips mean two different things (filter vs
+                    // start playback + switch tab).
                     languageFilterMenu(mix: mix)
                     familiarityFilterMenu(mix: mix)
                 }
             }
-        }
-    }
-
-    private func moodFilterMenu(mix: MusicMix) -> some View {
-        Menu {
-            ForEach(MixMoodPreference.allCases) { mood in
-                Button {
-                    settings.mixMoodPreference = mood
-                } label: {
-                    selectedMenuRow(
-                        mood.title,
-                        isSelected: settings.mixMoodPreference == mood
-                    )
-                }
-            }
-        } label: {
-            filterChip(
-                title: settings.mixMoodPreference.title,
-                prefix: L10n.text("vibe"),
-                isActive: settings.mixMoodPreference != .any
-            )
         }
     }
 
@@ -1385,6 +1369,7 @@ struct MixesHubView: View {
                     : "list.bullet"
             )
             .font(.caption.weight(.semibold))
+            .minimumHitTarget(visualSize: 28, in: Rectangle())
         }
         .buttonStyle(.bordered)
         .accessibilityLabel(L10n.text("toggle_list_layout"))
@@ -1710,12 +1695,7 @@ struct MixesHubView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    quickStartChip(
-                        title: L10n.text("selena.name"),
-                        systemImage: "sparkles"
-                    ) {
-                        start(personalMix)
-                    }
+                    // Hero already starts Selena — no second identical chip.
                     quickStartChip(
                         title: L10n.text("from_my_music"),
                         systemImage: "music.note.list"
@@ -2043,7 +2023,10 @@ struct MixesHubView: View {
             Label(message, systemImage: "exclamationmark.triangle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget, alignment: .leading)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Actions

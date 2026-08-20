@@ -36,8 +36,9 @@ enum MiniPlayerLayoutMetrics {
     /// not a second, shorter player.
     static let minHeight: CGFloat = 58
     /// iOS 26 `tabViewBottomAccessory` expanded slot is shorter than the
-    /// floating dock card. Taller content paints over the tab bar.
-    static let accessoryMaxHeight: CGFloat = 48
+    /// floating dock card. Must fit 44pt transport + accessory paddings
+    /// without clipping (4 + 44 + 4 = 52).
+    static let accessoryMaxHeight: CGFloat = 52
     static let cornerRadius: CGFloat = 16
     static let containerShadowRadius: CGFloat = 8
     static let containerShadowY: CGFloat = 3
