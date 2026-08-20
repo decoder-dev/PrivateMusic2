@@ -44,6 +44,9 @@ struct MixesHubView: View {
     @State private var loadingMixID: String?
     @State private var actionError: String?
     @State private var trackLoadTask: Task<Void, Never>?
+    /// Mix launches (play / mood / my-music) — never share a handle with
+    /// list pagination, or a VK page load cancels the launch mid-flight.
+    @State private var launchTask: Task<Void, Never>?
     @State private var seedRadioTask: Task<Void, Never>?
 
     @State private var selenaTracks: [Track] = []
@@ -163,17 +166,13 @@ struct MixesHubView: View {
             environment.mixActionError = nil
         }
         .onChange(of: settings.mixMoodPreference) { _, mood in
-            // Mood is a switch between "vibe shelves" (which mix we start),
-            // not a pure track filter.
-            guard sessionStore.accessToken != nil else { return }
-            if mood == .any {
-                if let current = currentMixForFilters() {
-                    refilterLoadedTracks(for: current)
-                }
-                return
+            // Mood launches are explicit (`launchMood` / Home's
+            // `startMoodStation`). This only reacts to clearing the mood
+            // back to `.any`, which refilters the current mix in place.
+            guard sessionStore.accessToken != nil, mood == .any else { return }
+            if let current = currentMixForFilters() {
+                refilterLoadedTracks(for: current)
             }
-
-            startResolvedMood(mood)
         }
         .onChange(of: settings.mixLanguagePreference) { _, _ in
             guard sessionStore.accessToken != nil else { return }
@@ -189,6 +188,7 @@ struct MixesHubView: View {
         }
         .onDisappear {
             trackLoadTask?.cancel()
+            launchTask?.cancel()
             seedRadioTask?.cancel()
         }
     }
@@ -286,8 +286,12 @@ struct MixesHubView: View {
 
     private func launchMood(_ mood: MixMoodPreference) {
         Haptics.selection()
-        // The actual mood start is owned by `.onChange(of: settings.mixMoodPreference)`.
+        // Call the launcher directly so re-tapping the selected mood still
+        // starts it. Writing the preference alone is a no-op when the value
+        // did not change, and Settings must not piggy-back on onChange to
+        // start playback.
         settings.mixMoodPreference = mood
+        startResolvedMood(mood)
     }
 
     /// A quiet entry point, not another shelf: the album art already gets
@@ -2091,13 +2095,10 @@ struct MixesHubView: View {
         let mix = pin.mix
         if mix.id == MusicMix.common.id {
             hubTab = .selena
-            selenaTrackBase = pin.tracks
-            selenaTracks = pin.tracks
-            selenaRationale = MixRationaleBuilder.build(
-                mixTracks: pin.tracks,
-                history: history.entries,
-                recommendations: homeCatalog.recommendations
-            )
+            // Pin holds the played (already filtered) queue — never treat
+            // it as an unfiltered baseline or loosening filters cannot
+            // recover dropped tracks.
+            storeTracks(pin.tracks, for: mix, updatingBaseline: false)
         } else {
             hubTab = .vk
             applyVKSelection(
@@ -2149,7 +2150,9 @@ struct MixesHubView: View {
     }
 
     private func openQueue(_ mix: MusicMix) {
-        if case .mix = player.queueSource, !player.queue.isEmpty {
+        if case .mix(let title) = player.queueSource,
+           title == mix.title,
+           !player.queue.isEmpty {
             player.presentQueue()
         } else {
             start(mix)
@@ -2331,17 +2334,9 @@ struct MixesHubView: View {
     ) {
         selectedVKMix = mix
         if let tracks, !tracks.isEmpty {
-            vkTracks = tracks
-            let rationale = vkRationaleCache[mix.id]
-                ?? MixRationaleBuilder.build(
-                    mixTracks: tracks,
-                    history: history.entries,
-                    recommendations: homeCatalog.recommendations
-                )
-            vkRationale = rationale
-            vkTrackBaseCache[mix.id] = tracks
-            vkTrackCache[mix.id] = tracks
-            vkRationaleCache[mix.id] = rationale
+            // One writer for display + baseline caches — never assign the
+            // filtered/played list into the unfiltered baseline.
+            storeTracks(tracks, for: mix, updatingBaseline: false)
         } else {
             vkTracks = []
             vkRationale = .empty
@@ -2431,16 +2426,14 @@ struct MixesHubView: View {
         }
         if let first = queueToPlay.first {
             if mix.id == MusicMix.common.id {
-                Task { @MainActor in
-                    selenaExposure.record(queueToPlay)
-                }
+                selenaExposure.record(queueToPlay)
             }
             playTrack(first, queue: queueToPlay, mix: mix, applying: mode)
             return
         }
         loadingMixID = mix.id
-        trackLoadTask?.cancel()
-        trackLoadTask = Task {
+        launchTask?.cancel()
+        launchTask = Task {
             defer { loadingMixID = nil }
             do {
                 let bootstrap = try await bootstrapTracks(for: mix)
@@ -2649,8 +2642,8 @@ struct MixesHubView: View {
         // `load()` keeps "Спокойно" from collapsing into My Music just
         // because the shelf list was still empty.
         if mixes.isEmpty, sessionStore.accessToken != nil {
-            trackLoadTask?.cancel()
-            trackLoadTask = Task {
+            launchTask?.cancel()
+            launchTask = Task {
                 await load()
                 guard !Task.isCancelled else { return }
                 await MainActor.run { finishResolvedMood(mood) }
@@ -2668,8 +2661,8 @@ struct MixesHubView: View {
             start(mix)
         case .myMusic:
             hubTab = .selena
-            trackLoadTask?.cancel()
-            trackLoadTask = Task { await environment.startMixFromMyMusic() }
+            launchTask?.cancel()
+            launchTask = Task { await environment.startMixFromMyMusic() }
         }
     }
 

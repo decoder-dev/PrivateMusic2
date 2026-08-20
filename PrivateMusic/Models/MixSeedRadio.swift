@@ -77,12 +77,19 @@ enum MixSeedRadio {
     }
 
     private static func containsAny(_ title: String, _ markers: [String]) -> Bool {
-        let blob = title
-            .folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: Locale(identifier: "ru_RU")
-            )
-            .lowercased()
-        return markers.contains { blob.contains($0) }
+        // Fold haystack *and* needles the same way. Diacritic-insensitive
+        // folding turns й→и, so raw markers like "вайб" / "спокойн" would
+        // never match a folded shelf title.
+        let locale = Locale(identifier: "ru_RU")
+        func fold(_ value: String) -> String {
+            value
+                .folding(
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    locale: locale
+                )
+                .lowercased()
+        }
+        let blob = fold(title)
+        return markers.contains { blob.contains(fold($0)) }
     }
 }

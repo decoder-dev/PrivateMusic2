@@ -87,12 +87,6 @@ final class AppEnvironment {
             historyStore: historyStore,
             userAgent: sessionStore.userAgent
         )
-        // One answer for "what belongs in a mix queue": bans + language +
-        // familiarity. Continuation fills, radio refills and replaceUpcoming
-        // all go through this — not a second hand-rolled ban-only path.
-        player.configureMixTrackFilter { [weak self] tracks in
-            self?.filteredMixTracks(tracks) ?? tracks
-        }
         self.player = player
         let watchRemoteCoordinator = WatchRemoteCoordinator(player: player)
         self.watchRemoteCoordinator = watchRemoteCoordinator
@@ -111,6 +105,12 @@ final class AppEnvironment {
             initialUserID: sessionStore.resolvedOfflineAccountID
         )
         self.musicService = service
+        // One answer for "what belongs in a mix queue": bans + language +
+        // familiarity. Must sit after every stored property is set — a
+        // `[weak self]` capture before that fails definite initialization.
+        player.configureMixTrackFilter { [weak self] tracks in
+            self?.filteredMixTracks(tracks) ?? tracks
+        }
         player.configureMixRadioRefill { [weak self, service] seed, mode in
             guard let self else { return [] }
             return try await self.withAuthorizedToken { token in
@@ -123,9 +123,10 @@ final class AppEnvironment {
         }
         player.configureContinuation { [weak self, service] in
             guard let self else { return [] }
-            return try await self.withAuthorizedToken { token in
+            let remote = try await self.withAuthorizedToken { token in
                 try await service.recommendations(accessToken: token)
             }
+            return self.filteredMixTracks(remote)
         }
         player.configureStreamRefresh { [weak self, service] track in
             guard let self else { throw CancellationError() }
