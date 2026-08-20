@@ -1235,7 +1235,6 @@ if ".buttonStyle(.glassProminent)" not in player_view_source:
 for required_player_symbol in (
     ".background(playerBackground.ignoresSafeArea())",
     ".buttonStyle(.glass)",
-    "AdaptiveGlassContainer(spacing: 8)",
     "Do NOT wrap transport buttons in GlassEffectContainer",
     ".simultaneousGesture(fullScreenDismissGesture)",
     "PlayerDismissGesturePolicy.shouldDismiss",
@@ -1243,6 +1242,13 @@ for required_player_symbol in (
 ):
     if required_player_symbol not in player_view_source:
         fail(f"player is missing full-bleed/glass symbol: {required_player_symbol}")
+# Sibling interactive glass in a GlassEffectContainer morphs into one blob —
+# transport, quick actions, and the header AirPlay+menu cluster all forbid it.
+if "AdaptiveGlassContainer(spacing: 8)" in swift_code(player_view_source):
+    fail(
+        "player header must not use GlassEffectContainer "
+        "(AirPlay + menu morph into one blob)"
+    )
 if "AdaptiveGlassContainer(spacing: 18)" in swift_code(player_view_source):
     fail(
         "player transport controls must not use GlassEffectContainer "
@@ -1252,6 +1258,13 @@ if "AdaptiveGlassContainer(spacing: 14)" in swift_code(player_view_source):
     fail(
         "player quick actions must not use GlassEffectContainer "
         "(morphs into one gooey blob)"
+    )
+# Artwork vertical dismiss must use the same policy as the root gesture —
+# a looser inline threshold over the cover made two dismiss policies fight.
+if "vertical > 72" in swift_code(player_view_source):
+    fail(
+        "player artwork dismiss must use PlayerDismissGesturePolicy, "
+        "not an inline vertical > 72 threshold"
     )
 if "PlayerProgressControls" not in player_view_source:
     fail("player progress must use isolated PlayerProgressControls")
@@ -1949,8 +1962,16 @@ def require_minimum_hit_targets() -> None:
                 ]
                 if spans and max(spans) >= 44:
                     continue
-            # System button styles bring their own padding and hit metrics.
-            if re.search(r"\.buttonStyle\(\.(bordered|borderedProminent|glass)", body):
+            # System button styles bring their own padding and hit metrics —
+            # except `.controlSize(.small|.mini)`, which shrinks the target
+            # back under 44pt. Those still need an explicit hit expansion.
+            if re.search(
+                r"\.buttonStyle\(\.(bordered|borderedProminent|glass)",
+                body,
+            ) and not re.search(
+                r"\.controlSize\(\.(small|mini)\)",
+                body,
+            ):
                 continue
             relative = path.relative_to(ROOT)
             offenders.append(f"{relative}:{index + 1} ({min(sizes)}pt)")

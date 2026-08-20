@@ -557,6 +557,8 @@ struct CatalogView: View {
             }
             .foregroundStyle(.secondary)
             .padding(.vertical, 4)
+            .frame(minHeight: PremiumLayout.minimumTapTarget)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PremiumPressStyle())
         .accessibilityHint(L10n.text("explore_music"))
