@@ -443,7 +443,6 @@ struct LibraryView: View {
                 .minimumScaleFactor(0.8)
         }
         .buttonStyle(.bordered)
-        .controlSize(.small)
         .tint(settings.theme.accent)
         .disabled(filteredTracks.isEmpty)
         .accessibilityLabel(L10n.text("shuffle"))
