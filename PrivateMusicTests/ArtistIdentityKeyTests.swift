@@ -21,11 +21,15 @@ final class ArtistIdentityKeyTests: XCTestCase {
     /// those produced different keys, banning an artist would only ban one
     /// of their spellings.
     func testTheTwoWaysToSpellShortIAgree() {
-        let decomposed = "Валери\u{0306}"
+        // "Валерий" is В-а-л-е-р-и-й. NFD turns the final й into и +
+        // combining breve, so the decomposed form has *two* и scalars
+        // before the mark — not "Валери" + breve (that would be "Валерй").
         let precomposed = "Валерий"
+        let decomposed = precomposed.decomposedStringWithCanonicalMapping
 
         XCTAssertNotEqual(decomposed, precomposed, "the inputs must differ")
         XCTAssertEqual(key(decomposed), key(precomposed))
+        XCTAssertEqual(key(decomposed), "валерии")
     }
 
     func testYoAndYeAreTheSameArtist() {
