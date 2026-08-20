@@ -21,13 +21,19 @@ final class ArtistIdentityKeyTests: XCTestCase {
     /// those produced different keys, banning an artist would only ban one
     /// of their spellings.
     func testTheTwoWaysToSpellShortIAgree() {
-        // "Валерий" is В-а-л-е-р-и-й. NFD turns the final й into и +
-        // combining breve, so the decomposed form has *two* и scalars
-        // before the mark — not "Валери" + breve (that would be "Валерй").
-        let precomposed = "Валерий"
-        let decomposed = precomposed.decomposedStringWithCanonicalMapping
+        // "Валерий" is В-а-л-е-р-и-й. NFD spells the final й as и +
+        // combining breve, so the scalar stream has two и's before the
+        // mark. Swift String == is canonical, so the two forms compare
+        // equal as values — prove the encodings differ in UTF-8 instead.
+        let precomposed = "\u{0412}\u{0430}\u{043B}\u{0435}\u{0440}\u{0438}\u{0439}"
+        let decomposed =
+            "\u{0412}\u{0430}\u{043B}\u{0435}\u{0440}\u{0438}\u{0438}\u{0306}"
 
-        XCTAssertNotEqual(decomposed, precomposed, "the inputs must differ")
+        XCTAssertNotEqual(
+            Array(decomposed.utf8),
+            Array(precomposed.utf8),
+            "the UTF-8 encodings must differ"
+        )
         XCTAssertEqual(key(decomposed), key(precomposed))
         XCTAssertEqual(key(decomposed), "валерии")
     }
