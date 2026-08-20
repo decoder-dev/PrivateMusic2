@@ -137,3 +137,26 @@ final class MixFeedbackStoreUnbanTests: XCTestCase {
         XCTAssertTrue(store.bannedArtistRecords.isEmpty)
     }
 }
+
+final class MixFilterQueueWiringTests: XCTestCase {
+    /// Language/familiarity must ride the same pipe as bans into the
+    /// live mix queue — not a ban-only filter that leaves chip changes
+    /// looking like they "do nothing".
+    func testPlayerMixFilterUsesFullFilteredMixTracks() {
+        let source = SourceInspection.code(
+            "PrivateMusic/App/AppEnvironment.swift"
+        )
+        XCTAssertTrue(source.contains("configureMixTrackFilter"))
+        XCTAssertTrue(source.contains("filteredMixTracks(tracks)"))
+        XCTAssertTrue(source.contains("reapplyMixFiltersToPlayingQueue"))
+    }
+
+    func testHubRefilterSyncsPlayingQueue() {
+        let source = SourceInspection.code(
+            "PrivateMusic/Features/Mix/MixesHubView.swift"
+        )
+        XCTAssertTrue(source.contains("syncPlayingQueue(with:"))
+        XCTAssertTrue(source.contains("currentMixForFilters"))
+        XCTAssertTrue(source.contains("player.queueSource"))
+    }
+}

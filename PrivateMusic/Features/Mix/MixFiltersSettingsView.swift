@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MixFiltersSettingsView: View {
+    @Environment(AppEnvironment.self) private var environment
     @Environment(AppSettings.self) private var settings
 
     var body: some View {
@@ -40,5 +41,14 @@ struct MixFiltersSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("mix_filters"))
+        // Hub onChange owns full baseline refilter when that screen is
+        // alive; this catches language/familiarity changes from Settings
+        // while a mix is already playing elsewhere.
+        .onChange(of: settings.mixLanguagePreference) { _, _ in
+            environment.reapplyMixFiltersToPlayingQueue()
+        }
+        .onChange(of: settings.mixFamiliarityPreference) { _, _ in
+            environment.reapplyMixFiltersToPlayingQueue()
+        }
     }
 }
