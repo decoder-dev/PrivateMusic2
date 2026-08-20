@@ -770,9 +770,9 @@ enum ArtistTrackFilter {
     }
 
     static func matches(_ candidate: String, artist: String) -> Bool {
-        let target = normalized(artist)
+        let target = MixFeedbackPolicy.normalized(artist)
         guard !target.isEmpty else { return false }
-        let value = normalized(candidate)
+        let value = MixFeedbackPolicy.normalized(candidate)
         if value == target {
             return true
         }
@@ -800,15 +800,6 @@ enum ArtistTrackFilter {
         }
     }
 
-    private static func normalized(_ value: String) -> String {
-        value
-            .folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: Locale(identifier: "en_US_POSIX")
-            )
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }
 
 private struct ArtistLoadingView: View {

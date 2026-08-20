@@ -2086,6 +2086,38 @@ def require_ranking_lives_in_a_tested_policy() -> None:
 require_ranking_lives_in_a_tested_policy()
 
 
+def require_one_artist_identity_key() -> None:
+    """"Is this the same artist" must have exactly one answer.
+
+    Bans, artist affinity, the mix rationale, album matching, the artist
+    screen's track filter and the queue ranker all decide artist identity,
+    and each had grown its own hand-copied folding. They agreed only by
+    luck: fixing one — the way Cyrillic `й` folds, say — would have left
+    the others quietly disagreeing, and an artist can then be banned on one
+    screen and playing on another.
+
+    `MixFeedbackPolicy.normalized` is that one answer, and the en_US_POSIX
+    locale it folds against is the fingerprint of a copy.
+    """
+    home = "PrivateMusic/Models/MixFeedbackStore.swift"
+    offenders = [
+        str(path.relative_to(ROOT))
+        for path in swift_files
+        if str(path.relative_to(ROOT)) != home
+        and 'Locale(identifier: "en_US_POSIX")'
+        in swift_code(path.read_text(encoding="utf-8"))
+    ]
+    if offenders:
+        fail(
+            "artist identity folding must come from "
+            "MixFeedbackPolicy.normalized, not a copy in: "
+            + ", ".join(offenders)
+        )
+
+
+require_one_artist_identity_key()
+
+
 require_home_is_not_a_recommendation_feed()
 
 print(f"OK: {len(swift_files)} Swift files")
@@ -2100,3 +2132,4 @@ print("OK: every control accepts the 44pt minimum touch area")
 print("OK: body text scales with Dynamic Type")
 print("OK: motion respects Reduce Motion")
 print("OK: mix ranking lives in a tested policy")
+print("OK: one artist identity key")

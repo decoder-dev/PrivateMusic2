@@ -99,20 +99,20 @@ enum AlbumAccessPolicy {
             return exact
         }
 
-        let title = normalized(album.title)
+        let title = MixFeedbackPolicy.normalized(album.title)
         guard !title.isEmpty else {
             return candidates.first(where: hasUsableAccessKey)
         }
         let artistHints = Set(album.artists.map(normalized).filter { !$0.isEmpty })
 
         let titled = candidates.filter {
-            titlesMatch(normalized($0.title), title)
+            titlesMatch(MixFeedbackPolicy.normalized($0.title), title)
         }
         if !artistHints.isEmpty {
             let artistMatched = titled.filter { candidate in
                 !candidate.artists.isEmpty
                     && candidate.artists.contains { artist in
-                        let value = normalized(artist)
+                        let value = MixFeedbackPolicy.normalized(artist)
                         return artistHints.contains {
                             value.contains($0) || $0.contains(value)
                         }
@@ -157,7 +157,7 @@ enum AlbumAccessPolicy {
            reference.ownerID == album.ownerID {
             return true
         }
-        let albumTitle = normalized(album.title)
+        let albumTitle = MixFeedbackPolicy.normalized(album.title)
         guard !albumTitle.isEmpty,
               let trackAlbum = track.albumTitle.map(normalized),
               !trackAlbum.isEmpty,
@@ -173,7 +173,7 @@ enum AlbumAccessPolicy {
             album.artists.map(normalized).filter { !$0.isEmpty }
         )
         guard !artistHints.isEmpty else { return true }
-        let trackArtist = normalized(track.artist)
+        let trackArtist = MixFeedbackPolicy.normalized(track.artist)
         return artistHints.contains {
             trackArtist.contains($0) || $0.contains(trackArtist)
         }
@@ -183,15 +183,6 @@ enum AlbumAccessPolicy {
         lhs == rhs || lhs.contains(rhs) || rhs.contains(lhs)
     }
 
-    private static func normalized(_ value: String) -> String {
-        value
-            .folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: Locale(identifier: "en_US_POSIX")
-            )
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }
 
 enum MixTrackRequestPolicy {
@@ -281,8 +272,8 @@ enum VKArtistMatch {
     }
 
     static func score(query: String, candidate: String) -> Int {
-        let target = normalized(query)
-        let value = normalized(candidate)
+        let target = MixFeedbackPolicy.normalized(query)
+        let value = MixFeedbackPolicy.normalized(candidate)
         guard !target.isEmpty, !value.isEmpty else { return 0 }
         if value == target { return 100 }
         if collaborationParts(in: value).contains(target) { return 80 }
@@ -309,13 +300,4 @@ enum VKArtistMatch {
         .filter { !$0.isEmpty }
     }
 
-    private static func normalized(_ value: String) -> String {
-        value
-            .folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: Locale(identifier: "en_US_POSIX")
-            )
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }
