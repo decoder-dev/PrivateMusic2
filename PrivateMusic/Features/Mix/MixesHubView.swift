@@ -663,18 +663,18 @@ struct MixesHubView: View {
                 } label: {
                     Label(L10n.text("listen"), systemImage: "play.fill")
                         .labelStyle(.iconOnly)
+                        .minimumHitTarget(visualSize: 28)
                 }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.small)
 
                 Button {
                     selectVKMix(mix)
                 } label: {
                     Label(L10n.text("open"), systemImage: "list.bullet")
                         .labelStyle(.iconOnly)
+                        .minimumHitTarget(visualSize: 28)
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
             }
         }
         .frame(width: metrics.cardWidth, alignment: .leading)
@@ -2176,9 +2176,29 @@ struct MixesHubView: View {
 
     private func refilterLoadedTracks(for mix: MusicMix) {
         let base = baseTracks(for: mix)
-        guard !base.isEmpty else { return }
+        guard !base.isEmpty else {
+            // No baseline yet — still tighten/loosen whatever is playing.
+            environment.reapplyMixFiltersToPlayingQueue()
+            return
+        }
         storeTracks(base, for: mix)
+        syncPlayingQueue(with: mix)
         Haptics.selection()
+    }
+
+    /// Filters must change what you hear, not only the list on screen.
+    private func syncPlayingQueue(with mix: MusicMix) {
+        guard case .mix(let title) = player.queueSource,
+              title == mix.title,
+              let current = player.currentTrack else { return }
+        let cleaned = tracks(for: mix)
+        if let index = cleaned.firstIndex(where: { $0.id == current.id }) {
+            player.replaceUpcoming(
+                with: Array(cleaned.suffix(from: index + 1))
+            )
+        } else {
+            player.replaceUpcoming(with: cleaned)
+        }
     }
 
     private func hideFirstLoadedTrack(
@@ -2436,10 +2456,12 @@ struct MixesHubView: View {
             return
         }
         loadingMixID = mix.id
-        Task {
+        trackLoadTask?.cancel()
+        trackLoadTask = Task {
             defer { loadingMixID = nil }
             do {
                 let bootstrap = try await bootstrapTracks(for: mix)
+                guard !Task.isCancelled else { return }
                 MixBootstrapPrefetch.artwork(for: bootstrap)
                 storeTracks(bootstrap, for: mix)
                 let initialQueue = environment.filteredMixTracks(bootstrap)
@@ -2460,6 +2482,7 @@ struct MixesHubView: View {
                     initialQueue
                 }
 
+                guard !Task.isCancelled else { return }
                 guard let started = queue.first else { return }
                 playTrack(started, queue: queue, mix: mix, applying: mode)
             } catch is CancellationError {
@@ -2618,6 +2641,17 @@ struct MixesHubView: View {
     }
 
     private func currentMixForFilters() -> MusicMix? {
+        // Prefer the mix that is actually playing — filters exist to shape
+        // what you hear, not which tab happens to be visible.
+        if case .mix(let title) = player.queueSource {
+            if personalMix.title == title { return personalMix }
+            if let selected = selectedVKMix, selected.title == title {
+                return selected
+            }
+            if let match = mixes.first(where: { $0.title == title }) {
+                return match
+            }
+        }
         switch hubTab {
         case .selena:
             return personalMix
@@ -2628,13 +2662,31 @@ struct MixesHubView: View {
 
     @MainActor
     private func startResolvedMood(_ mood: MixMoodPreference) {
+        // Mood chips can fire before the VK catalog arrives. Waiting for
+        // `load()` keeps "Спокойно" from collapsing into My Music just
+        // because the shelf list was still empty.
+        if mixes.isEmpty, sessionStore.accessToken != nil {
+            trackLoadTask?.cancel()
+            trackLoadTask = Task {
+                await load()
+                guard !Task.isCancelled else { return }
+                await MainActor.run { finishResolvedMood(mood) }
+            }
+            return
+        }
+        finishResolvedMood(mood)
+    }
+
+    @MainActor
+    private func finishResolvedMood(_ mood: MixMoodPreference) {
         switch MixMoodLaunchPolicy.resolve(mood: mood, in: mixes) {
         case let .mix(mix):
             hubTab = mix.id == MusicMix.common.id ? .selena : .vk
             start(mix)
         case .myMusic:
             hubTab = .selena
-            Task { await environment.startMixFromMyMusic() }
+            trackLoadTask?.cancel()
+            trackLoadTask = Task { await environment.startMixFromMyMusic() }
         }
     }
 
