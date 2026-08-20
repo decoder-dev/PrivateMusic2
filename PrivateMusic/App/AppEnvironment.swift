@@ -87,8 +87,11 @@ final class AppEnvironment {
             historyStore: historyStore,
             userAgent: sessionStore.userAgent
         )
-        player.configureMixTrackFilter { [weak mixFeedbackStore] tracks in
-            mixFeedbackStore?.filtering(tracks) ?? tracks
+        // One answer for "what belongs in a mix queue": bans + language +
+        // familiarity. Continuation fills, radio refills and replaceUpcoming
+        // all go through this — not a second hand-rolled ban-only path.
+        player.configureMixTrackFilter { [weak self] tracks in
+            self?.filteredMixTracks(tracks) ?? tracks
         }
         self.player = player
         let watchRemoteCoordinator = WatchRemoteCoordinator(player: player)
@@ -747,6 +750,19 @@ final class AppEnvironment {
         )
         // Never empty a seed queue because filters were too strict.
         return filtered.isEmpty ? afterFeedback : filtered
+    }
+
+    /// Re-run mix filters on the unplayed suffix of the live mix queue.
+    /// Tightening a filter drops tracks immediately; loosening only
+    /// recovers what is still in the current suffix — full recovery from
+    /// an unfiltered baseline is owned by the mix hub's `refilterLoadedTracks`.
+    func reapplyMixFiltersToPlayingQueue() {
+        guard case .mix = player.queueSource,
+              let index = player.currentIndex,
+              player.queue.indices.contains(index) else { return }
+        let upcoming = Array(player.queue.suffix(from: index + 1))
+        guard !upcoming.isEmpty else { return }
+        player.replaceUpcoming(with: upcoming)
     }
 
     func dislike(_ track: Track, includeArtist: Bool) {
