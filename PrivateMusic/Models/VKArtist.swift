@@ -103,7 +103,11 @@ enum AlbumAccessPolicy {
         guard !title.isEmpty else {
             return candidates.first(where: hasUsableAccessKey)
         }
-        let artistHints = Set(album.artists.map(normalized).filter { !$0.isEmpty })
+        let artistHints = Set(
+            album.artists
+                .map(MixFeedbackPolicy.normalized)
+                .filter { !$0.isEmpty }
+        )
 
         let titled = candidates.filter {
             titlesMatch(MixFeedbackPolicy.normalized($0.title), title)
@@ -159,7 +163,7 @@ enum AlbumAccessPolicy {
         }
         let albumTitle = MixFeedbackPolicy.normalized(album.title)
         guard !albumTitle.isEmpty,
-              let trackAlbum = track.albumTitle.map(normalized),
+              let trackAlbum = track.albumTitle.map(MixFeedbackPolicy.normalized),
               !trackAlbum.isEmpty,
               titlesMatch(trackAlbum, albumTitle) else {
             return false
@@ -170,7 +174,7 @@ enum AlbumAccessPolicy {
 
     static func artistMatches(_ track: Track, album: Album) -> Bool {
         let artistHints = Set(
-            album.artists.map(normalized).filter { !$0.isEmpty }
+            album.artists.map(MixFeedbackPolicy.normalized).filter { !$0.isEmpty }
         )
         guard !artistHints.isEmpty else { return true }
         let trackArtist = MixFeedbackPolicy.normalized(track.artist)
@@ -296,7 +300,7 @@ enum VKArtistMatch {
             parts.flatMap { $0.components(separatedBy: separator) }
         }
         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        .map(normalized)
+        .map(MixFeedbackPolicy.normalized)
         .filter { !$0.isEmpty }
     }
 
