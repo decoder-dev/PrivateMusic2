@@ -290,6 +290,12 @@ enum MixQueueRanker {
         }
     }
 
+    /// The native fast path for the same identity key
+    /// `MixFeedbackPolicy.normalized` produces. The two must agree: this
+    /// declines for the Cyrillic letters it does not cover, and the
+    /// Foundation version is what answers instead — an artist that folded
+    /// differently depending on which path ran would be two people to the
+    /// ranker and one to the ban list.
     private static func normalized(_ value: String) -> String {
         let fallback = value
         var mutable = value
@@ -300,7 +306,7 @@ enum MixQueueRanker {
                 capacity: input.count
             ) { scratch -> String in
                 guard let output = scratch.baseAddress else {
-                    return foundationNormalized(fallback)
+                    return MixFeedbackPolicy.normalized(fallback)
                 }
                 let written = pm_text_normalize_identity(
                     base,
@@ -309,7 +315,7 @@ enum MixQueueRanker {
                     Int32(input.count)
                 )
                 guard written >= 0 else {
-                    return foundationNormalized(fallback)
+                    return MixFeedbackPolicy.normalized(fallback)
                 }
                 return String(
                     decoding: UnsafeBufferPointer(
@@ -322,15 +328,6 @@ enum MixQueueRanker {
         }
     }
 
-    private static func foundationNormalized(_ value: String) -> String {
-        value
-            .folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: Locale(identifier: "en_US_POSIX")
-            )
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }
 
 /// Deterministic RNG so mix ranking is stable for the same queue snapshot.
