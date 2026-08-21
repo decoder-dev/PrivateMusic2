@@ -190,15 +190,6 @@ struct MixesHubView: View {
             actionError = error
             environment.mixActionError = nil
         }
-        .onChange(of: settings.mixMoodPreference) { _, mood in
-            // Mood launches are explicit (`startConfiguredMix` / Home's
-            // `startMoodStation`). This only reacts to clearing the mood
-            // back to `.any`, which refilters the current mix in place.
-            guard sessionStore.accessToken != nil, mood == .any else { return }
-            if let current = currentMixForFilters() {
-                refilterLoadedTracks(for: current)
-            }
-        }
         .onChange(of: settings.mixLanguagePreference) { _, _ in
             guard sessionStore.accessToken != nil else { return }
             if let current = currentMixForFilters() {
@@ -291,6 +282,7 @@ struct MixesHubView: View {
             .buttonStyle(.borderedProminent)
             .tint(settings.theme.accent)
             .disabled(loadingMixID != nil)
+            .accessibilityHint(L10n.text("configure_mix_accessibility_hint"))
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -312,16 +304,6 @@ struct MixesHubView: View {
             return L10n.text("a_quick_start_based_on_your_mood")
         }
         return parts.joined(separator: " · ")
-    }
-
-    private func launchMood(_ mood: MixMoodPreference) {
-        Haptics.selection()
-        // Call the launcher directly so re-tapping the selected mood still
-        // starts it. Writing the preference alone is a no-op when the value
-        // did not change, and Settings must not piggy-back on onChange to
-        // start playback.
-        settings.mixMoodPreference = mood
-        startResolvedMood(mood)
     }
 
     private func startConfiguredMix() {
@@ -1058,7 +1040,11 @@ struct MixesHubView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            mixFilterChips(mix: mix)
+            // Selena already has the configure card in `moodQuickLaunch` —
+            // a second identical door on the same screen is noise.
+            if mix.id != MusicMix.common.id {
+                mixConfigureEntry
+            }
 
             // Hero owns Play. This row is shuffle + keep/hide only —
             // a second "Play all" next to the play circle was the same
@@ -1146,19 +1132,6 @@ struct MixesHubView: View {
     private func mixUtilityLinks(mix: MusicMix, tracks: [Track]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                Button {
-                    showingMixConfigure = true
-                } label: {
-                    Label(
-                        L10n.text("mix_filters"),
-                        systemImage: "line.3.horizontal.decrease.circle"
-                    )
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .frame(minHeight: PremiumLayout.minimumTapTarget)
-                    .contentShape(Rectangle())
-                }
-
                 NavigationLink {
                     MixFeedbackManagerView()
                 } label: {
@@ -1190,7 +1163,7 @@ struct MixesHubView: View {
         }
     }
 
-    private func mixFilterChips(mix: MusicMix) -> some View {
+    private var mixConfigureEntry: some View {
         Button {
             showingMixConfigure = true
         } label: {
@@ -1221,7 +1194,8 @@ struct MixesHubView: View {
             .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(PremiumPressStyle())
-        .accessibilityHint(L10n.text("mix_filters"))
+        .accessibilityLabel(L10n.text("configure_mix"))
+        .accessibilityHint(L10n.text("configure_mix_accessibility_hint"))
     }
 
     private var hasActiveMixFilters: Bool {
