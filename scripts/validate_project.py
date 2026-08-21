@@ -2162,7 +2162,7 @@ def require_ranking_lives_in_a_tested_policy() -> None:
     )
     if "usesSelenaWaveFilters" not in audio:
         fail("QueueSource must flag Selena-flavored queues")
-    if "usesSelenaWaveFilters" not in audio or "!source.usesSelenaWaveFilters" not in audio:
+    if "usesSelenaWaveFilters" not in audio or "usesSelenaWaveFilters != true" not in audio:
         fail("play() must not MixQueueRanker-reshuffle Selena bandit order")
 
 
