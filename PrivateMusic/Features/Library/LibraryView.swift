@@ -415,7 +415,8 @@ struct LibraryView: View {
                 let more = try await environment.withAuthorizedToken { token in
                     try await stream.next(
                         accessToken: token,
-                        musicService: environment.musicService
+                        musicService: environment.musicService,
+                        diversity: environment.settings.selenaDiversityPreference
                     )
                 }
                 return await MainActor.run {

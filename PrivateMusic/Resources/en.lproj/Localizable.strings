@@ -714,7 +714,7 @@
 "manage" = "Manage";
 "settings.level" = "Level";
 "the_file_is_ready_tap_the_button_below" = "The file is ready. Tap the button below.";
-"mix_filters" = "Mix Filters";
+"mix_filters" = "Wave & Mixes";
 "mix_filters_relaxed_to_keep_queue" = "Filters would empty the queue — kept the remaining tracks.";
 "configure_mix" = "Configure Mix";
 "configure_mix_accessibility_hint" = "Opens language and familiarity for catalog mixes";
