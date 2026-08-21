@@ -5,6 +5,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Prefer the latest push/PR head — a backlog of superseded Selena
+# polish commits was starving macOS runners for 50+ minutes.
+concurrency:
+  group: ios-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
