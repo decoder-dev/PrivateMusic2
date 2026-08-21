@@ -1,5 +1,23 @@
 import Foundation
 
+/// How far back listening history is consulted for mix taste signals.
+/// Named once so familiarity and ranking cannot silently diverge to
+/// unrelated magic numbers again.
+enum MixListeningHistoryWindow {
+    /// Artists treated as "known" for hits / discoveries.
+    static let familiarity = 80
+    /// Artists fed into radio reranking and rationale copy.
+    static let ranking = 40
+}
+
+/// Result of applying language / familiarity filters to a candidate pool.
+struct MixFilterOutcome: Equatable, Sendable {
+    let tracks: [Track]
+    /// True when every candidate was rejected and the caller kept the
+    /// pre-filter pool so the queue would not go empty.
+    let didRelax: Bool
+}
+
 /// Client-side VK-mix style filters. Official mood/language/familiarity
 /// knobs are not documented on `getStreamMixAudios`, so we apply them to
 /// the already-fetched candidate pool (and map mood chips to vibe shelves).
@@ -24,6 +42,17 @@ enum MixMoodPreference: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    var chipSymbol: String {
+        switch self {
+        case .any: "circle"
+        case .energetic: "bolt.fill"
+        case .calm: "moon.fill"
+        case .sad: "cloud.rain.fill"
+        case .joyful: "face.smiling"
+        case .love: "heart.fill"
+        }
+    }
+
     var vibeMarkers: [String] {
         switch self {
         case .any: return []
@@ -40,6 +69,9 @@ enum MixLanguagePreference: String, CaseIterable, Identifiable, Sendable {
     case any
     case russian
     case foreign
+    /// Yandex wave `without_words` — instrumental / no lyrics signal.
+    /// Selena-only in the configure dial; catalog mixes stay bilingual.
+    case instrumental
 
     var id: String { rawValue }
 
@@ -48,7 +80,32 @@ enum MixLanguagePreference: String, CaseIterable, Identifiable, Sendable {
         case .any: L10n.text("any_language")
         case .russian: L10n.text("russian")
         case .foreign: L10n.text("foreign")
+        case .instrumental: L10n.text("selena.language.instrumental")
         }
+    }
+
+    var chipSymbol: String {
+        switch self {
+        case .any: "circle"
+        case .russian: "character.textbox"
+        case .foreign: "globe"
+        case .instrumental: "music.quarternote.3"
+        }
+    }
+
+    /// Options shown on the catalog-mix dial (basic).
+    static var mixCases: [MixLanguagePreference] {
+        [.russian, .foreign]
+    }
+
+    /// Options shown on Selena's wave dial (rich).
+    static var selenaCases: [MixLanguagePreference] {
+        [.russian, .foreign, .instrumental]
+    }
+
+    /// Catalog mixes must never see `.instrumental` — coerce at one gate.
+    static func catalogValue(_ preference: MixLanguagePreference) -> MixLanguagePreference {
+        preference == .instrumental ? .any : preference
     }
 }
 
@@ -66,10 +123,109 @@ enum MixFamiliarityPreference: String, CaseIterable, Identifiable, Sendable {
         case .obscure: L10n.text("more_discoveries")
         }
     }
+
+    /// Shorter labels for the configure sheet chips.
+    var chipTitle: String {
+        switch self {
+        case .any: L10n.text("any_familiarity")
+        case .hits: L10n.text("familiar_hits_chip")
+        case .obscure: L10n.text("unfamiliar_chip")
+        }
+    }
+
+    var chipSymbol: String {
+        switch self {
+        case .any: "circle"
+        case .hits: "star.fill"
+        case .obscure: "sparkles"
+        }
+    }
 }
 
 enum MixQueueFilter {
+    /// The app folds Russian text two different ways on purpose, and this
+    /// is the strict one:
+    ///
+    /// - Forgiving (`й` → `и`, `ё` → `е`): `pm_text_fold_utf8` behind
+    ///   `NativeTextSearch`, `pm_text_normalize_identity` behind
+    ///   `MixQueueRanker`, and `MixFeedbackPolicy.normalized` for ban keys.
+    ///   Someone typing "мои" should find "мой", and an artist should match
+    ///   however VK spelled them.
+    /// - Strict (`й` kept, only `ё` → `е`): here. Mood markers are a curated
+    ///   word list, and collapsing `й` makes them match text that has
+    ///   nothing to do with the mood.
+    private static func normalizeMoodText(_ value: String) -> String {
+        // Canonicalize decomposed sequences (e.g. "и" + combining breve → "й")
+        // so we can do stable substring matching for Cyrillic markers.
+        let canonical = value.precomposedStringWithCanonicalMapping
+        let ruLocale = Locale(identifier: "ru_RU")
+
+        // `ё` should match `е` (we don't use `diacriticInsensitive` because
+        // it can treat `й`'s breve as a diacritic and turn it into `и`).
+        return canonical
+            .replacingOccurrences(
+                of: "ё",
+                with: "е",
+                options: [.caseInsensitive]
+            )
+            .lowercased(with: ruLocale)
+    }
+
+    static func shelfMoodMatchScore(
+        _ title: String,
+        mood: MixMoodPreference
+    ) -> Int {
+        guard mood != .any else { return 0 }
+        let blob = normalizeMoodText(title)
+        return mood.vibeMarkers.reduce(into: 0) { score, marker in
+            let normalizedMarker = normalizeMoodText(marker)
+            if textContainsMarker(blob, marker: normalizedMarker) {
+                score += 1
+            }
+        }
+    }
+
+    /// Stem-style substring for Cyrillic; Latin anchors at a word start so
+    /// "top" does not light up inside "desktop" / "stop", while stems like
+    /// "hit" / "melanch" still reach "hits" / "melancholy".
+    static func textContainsMarker(_ haystack: String, marker: String) -> Bool {
+        guard !marker.isEmpty else { return false }
+        let trimmed = marker.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if isLatinToken(trimmed) {
+            return matchesLatinMarker(haystack, token: trimmed)
+        }
+        return haystack.contains(trimmed)
+    }
+
+    private static func isLatinToken(_ value: String) -> Bool {
+        value.unicodeScalars.allSatisfy { scalar in
+            CharacterSet.letters.contains(scalar) && scalar.isASCII
+        }
+    }
+
+    private static func matchesLatinMarker(_ haystack: String, token: String) -> Bool {
+        let escaped = NSRegularExpression.escapedPattern(for: token)
+        let pattern = "\\b\(escaped)"
+        return haystack.range(of: pattern, options: .regularExpression) != nil
+    }
+
     static func apply(
+        _ tracks: [Track],
+        language: MixLanguagePreference,
+        familiarity: MixFamiliarityPreference,
+        historyArtists: Set<String>
+    ) -> [Track] {
+        applyStrict(
+            tracks,
+            language: language,
+            familiarity: familiarity,
+            historyArtists: historyArtists
+        )
+    }
+
+    /// Language / familiarity only — never silently widens the pool.
+    static func applyStrict(
         _ tracks: [Track],
         language: MixLanguagePreference,
         familiarity: MixFamiliarityPreference,
@@ -88,6 +244,26 @@ enum MixQueueFilter {
         }
     }
 
+    /// Seed / bootstrap path: keep something to play when filters empty
+    /// the pool. Callers that care about the silent widen get `didRelax`.
+    static func applyAllowingFallback(
+        _ tracks: [Track],
+        language: MixLanguagePreference,
+        familiarity: MixFamiliarityPreference,
+        historyArtists: Set<String>
+    ) -> MixFilterOutcome {
+        let filtered = applyStrict(
+            tracks,
+            language: language,
+            familiarity: familiarity,
+            historyArtists: historyArtists
+        )
+        if filtered.isEmpty, !tracks.isEmpty {
+            return MixFilterOutcome(tracks: tracks, didRelax: true)
+        }
+        return MixFilterOutcome(tracks: filtered, didRelax: false)
+    }
+
     static func matchesLanguage(
         _ track: Track,
         preference: MixLanguagePreference
@@ -99,7 +275,21 @@ enum MixQueueFilter {
             return containsCyrillic(track.title) || containsCyrillic(track.artist)
         case .foreign:
             return !containsCyrillic(track.title) && !containsCyrillic(track.artist)
+        case .instrumental:
+            return looksInstrumental(track)
         }
+    }
+
+    /// Heuristic stand-in for Yandex `without_words` — title markers only;
+    /// VK does not expose an instrumental flag on audio objects.
+    static func looksInstrumental(_ track: Track) -> Bool {
+        let blob = normalizeMoodText("\(track.title) \(track.artist)")
+        let markers = [
+            "instrumental", "инструментал", "karaoke", "караоке",
+            "minus", "минус", "acoustic version", "piano version",
+            "orchestral", "soundtrack", "ost", "theme"
+        ]
+        return markers.contains { textContainsMarker(blob, marker: normalizeMoodText($0)) }
     }
 
     static func matchesFamiliarity(
@@ -121,13 +311,7 @@ enum MixQueueFilter {
         mood: MixMoodPreference
     ) -> Bool {
         guard mood != .any else { return true }
-        let blob = title
-            .folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: Locale(identifier: "ru_RU")
-            )
-            .lowercased()
-        return mood.vibeMarkers.contains { blob.contains($0) }
+        return shelfMoodMatchScore(title, mood: mood) > 0
     }
 
     private static func containsCyrillic(_ value: String) -> Bool {

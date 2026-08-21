@@ -124,7 +124,7 @@ struct RootView: View {
             ConnectionBanner(
                 icon: "wifi.slash",
                 message: "offline_session_saved",
-                tint: .orange
+                tint: BubbleGamut.warning.color
             )
         } else if environment.isRecoveringSession {
             ConnectionBanner(
@@ -137,7 +137,7 @@ struct RootView: View {
             ConnectionBanner(
                 icon: "exclamationmark.circle.fill",
                 message: refreshError,
-                tint: .orange,
+                tint: BubbleGamut.warning.color,
                 retry: refreshNeedsLogin
                     ? nil
                     : { Task { await refreshWebSession() } }

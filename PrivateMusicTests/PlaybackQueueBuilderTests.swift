@@ -610,6 +610,26 @@ final class AudioPlayerTransitionTests: XCTestCase {
         XCTAssertEqual(context.player.currentTrack?.id, second.id)
     }
 
+    func testPlayLastAppendsAfterUpcomingTracks() {
+        let context = makePlayer()
+        defer {
+            context.defaults.removePersistentDomain(forName: context.suite)
+        }
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
+        let second = track(id: 2, duration: 200, streamURL: silentWAVURL)
+        let third = track(id: 3, duration: 220, streamURL: silentWAVURL)
+        context.player.play(second, in: [first, second, third])
+
+        context.player.playLast(first)
+
+        XCTAssertEqual(
+            context.player.queue.map(\.id),
+            [second.id, third.id, first.id]
+        )
+        XCTAssertEqual(context.player.currentIndex, 0)
+        XCTAssertEqual(context.player.currentTrack?.id, second.id)
+    }
+
     func testRemovingTrackAfterCurrentPreservesCurrentIndex() {
         let context = makePlayer()
         defer {
@@ -707,7 +727,7 @@ final class AudioPlayerTransitionTests: XCTestCase {
         defer {
             context.defaults.removePersistentDomain(forName: context.suite)
         }
-        let first = track(id: 1, duration: 180)
+        let first = track(id: 1, duration: 180, streamURL: silentWAVURL)
         var requestCount = 0
         context.player.configureContinuation {
             requestCount += 1

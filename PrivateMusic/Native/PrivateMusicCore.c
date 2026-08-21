@@ -159,6 +159,97 @@ int32_t pm_text_find(
     return -1;
 }
 
+static bool pm_is_ascii_whitespace(uint8_t byte) {
+    return byte == ' '
+        || byte == '\t'
+        || byte == '\n'
+        || byte == '\r'
+        || byte == '\v'
+        || byte == '\f';
+}
+
+int32_t pm_text_normalize_identity(
+    const uint8_t *input,
+    int32_t length,
+    uint8_t *out,
+    int32_t out_capacity
+) {
+    const int32_t folded = pm_text_fold_utf8(
+        input,
+        length,
+        out,
+        out_capacity
+    );
+    if (folded < 0) {
+        return folded;
+    }
+    int32_t start = 0;
+    int32_t end = folded;
+    while (start < end && pm_is_ascii_whitespace(out[start])) {
+        start += 1;
+    }
+    while (end > start && pm_is_ascii_whitespace(out[end - 1])) {
+        end -= 1;
+    }
+    if (start > 0) {
+        memmove(out, out + start, (size_t)(end - start));
+    }
+    return end - start;
+}
+
+static float pm_saturation(float red, float green, float blue) {
+    const float high = red > green
+        ? (red > blue ? red : blue)
+        : (green > blue ? green : blue);
+    const float low = red < green
+        ? (red < blue ? red : blue)
+        : (green < blue ? green : blue);
+    if (high <= 0.0f) {
+        return 0.0f;
+    }
+    return (high - low) / high;
+}
+
+bool pm_artwork_extract_tint_rgba(
+    const uint8_t *rgba,
+    int32_t length,
+    PMArtworkTint *out
+) {
+    if (out == NULL || rgba == NULL || length < 4 || (length % 4) != 0) {
+        return false;
+    }
+
+    double weighted_red = 0.0;
+    double weighted_green = 0.0;
+    double weighted_blue = 0.0;
+    double total_weight = 0.0;
+
+    for (int32_t pixel = 0; pixel < length; pixel += 4) {
+        const double alpha = (double)rgba[pixel + 3] / 255.0;
+        if (alpha <= 0.4) {
+            continue;
+        }
+        const float red = (float)((double)rgba[pixel] / 255.0);
+        const float green = (float)((double)rgba[pixel + 1] / 255.0);
+        const float blue = (float)((double)rgba[pixel + 2] / 255.0);
+        const float saturation = pm_saturation(red, green, blue);
+        const double weight = alpha * (0.08 + (double)saturation);
+        weighted_red += (double)red * weight;
+        weighted_green += (double)green * weight;
+        weighted_blue += (double)blue * weight;
+        total_weight += weight;
+    }
+
+    if (total_weight <= 0.0) {
+        return false;
+    }
+
+    out->red = (float)(weighted_red / total_weight);
+    out->green = (float)(weighted_green / total_weight);
+    out->blue = (float)(weighted_blue / total_weight);
+    return true;
+}
+
 #pragma mark - Mix queue ranking
 
 static bool pm_mix_history_contains(

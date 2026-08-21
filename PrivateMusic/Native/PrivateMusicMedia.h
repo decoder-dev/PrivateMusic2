@@ -116,6 +116,11 @@ bool pm_iso_contains_types(
 #define PM_CMAF_MISSING_MDAT 6
 #define PM_CMAF_TRUNCATED 7
 #define PM_CMAF_OVERFLOW 8
+#define PM_CMAF_MISSING_FTYP 9
+#define PM_CMAF_MISSING_MOOV 10
+#define PM_CMAF_NO_AUDIO_TRACK 11
+#define PM_CMAF_UNSUPPORTED_CODEC 12
+#define PM_CMAF_INVALID_INIT 13
 #define PM_CMAF_SAMPLE_LIMIT 65536
 
 typedef struct PMCMAFSample {
@@ -152,6 +157,34 @@ int32_t pm_cmaf_extract_fragment(
     pm_cmaf_status *status
 );
 
+typedef struct PMCMAFInitialization {
+    uint32_t track_id;
+    uint32_t timescale;
+    uint32_t sample_rate;
+    uint32_t channel_count;
+    uint32_t codec_fourcc;
+    uint32_t default_sample_duration;
+    uint32_t default_sample_size;
+    uint32_t default_sample_flags;
+    bool has_default_duration;
+    bool has_default_size;
+    bool has_default_flags;
+    /// Byte offsets into the original buffer. Negative when absent.
+    int32_t esds_offset;
+    int32_t esds_length;
+    int32_t asc_offset;
+    int32_t asc_length;
+} pm_cmaf_init;
+
+/// Parse `ftyp` + `moov` (audio `trak`, `stsd`/`esds`, `trex`). Never allocates.
+/// Offsets in `out` are relative to `data`. Returns 1 on success, 0 on failure.
+int32_t pm_cmaf_parse_initialization(
+    const uint8_t *data,
+    int32_t length,
+    pm_cmaf_init *out,
+    pm_cmaf_status *status
+);
+
 #pragma mark - VK stream unmask
 
 #define PM_VK_UNMASK_NOT_MASKED 0
@@ -177,6 +210,30 @@ double pm_buffer_max_loaded_ahead(
     double position_seconds,
     const double *end_seconds,
     int32_t count
+);
+
+#pragma mark - HLS AES-128 CBC
+
+#define PM_AES128_KEY_BYTES 16
+#define PM_AES128_IV_BYTES 16
+#define PM_AES128_BLOCK_BYTES 16
+
+#define PM_AES128_OK 0
+#define PM_AES128_INVALID_ARGUMENT (-1)
+#define PM_AES128_DECRYPT_FAILED (-2)
+#define PM_AES128_OUTPUT_TOO_SMALL (-3)
+
+/// Decrypt AES-128-CBC with PKCS#7 padding (RFC 8216 HLS segments).
+/// `out_capacity` must be at least `ciphertext_length + PM_AES128_BLOCK_BYTES`.
+/// On success writes the plaintext length to `out_length`.
+int32_t pm_aes128_cbc_decrypt(
+    const uint8_t *ciphertext,
+    int32_t ciphertext_length,
+    const uint8_t *key,
+    const uint8_t *iv,
+    uint8_t *out,
+    int32_t out_capacity,
+    int32_t *out_length
 );
 
 #ifdef __cplusplus

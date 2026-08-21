@@ -6,29 +6,39 @@ struct PlayerView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SessionStore.self) private var sessionStore
     @Environment(AudioPlayer.self) private var player
-    @Environment(PlaybackProgressModel.self) private var progress
     @Environment(AppSettings.self) private var settings
     @Environment(MusicLibraryStore.self) private var libraryStore
     @Environment(OfflineTrackStore.self) private var offlineStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @GestureState private var artworkDrag: CGSize = .zero
     @State private var presentedSheet: PlayerSheet?
     @State private var deferredPlayerAction: DeferredPlayerAction?
     @State private var isInLibrary = false
     @State private var isUpdatingLibrary = false
-    @State private var scrubPosition: TimeInterval?
     @State private var showCopiedToast = false
     @State private var showRouteHint = false
     @State private var routeHintToken = UUID()
     @State private var sharingTrack: Track?
+    /// Set from the layout so a vertical scroll on the accessibility
+    /// player is not also read as a full-screen dismiss.
+    @State private var usesScrollingLayout = false
 
     /// The tester feedback that started this: on iOS 26 the player picks up
     /// Liquid Glass, and people coming from iOS 18 read the translucent
     /// pills as visual noise. Every glass branch here already carries a
     /// complete pre-26 fallback, so the switch just routes to it.
+    /// Increase Contrast and Reduce Transparency flatten custom glass
+    /// the same way `adaptiveGlass` does — a lone glass pill on an
+    /// otherwise opaque player reads as a rendering bug.
     private var usesGlassChrome: Bool {
-        !settings.classicChrome
+        !ContrastPolicy.flattensCustomGlass(
+            reduceTransparency: reduceTransparency,
+            increaseContrast: colorSchemeContrast == .increased,
+            prefersClassicChrome: settings.classicChrome
+        )
     }
 
     var body: some View {
@@ -50,6 +60,7 @@ struct PlayerView: View {
                     )
                     .foregroundStyle(playerForeground)
                     .padding()
+                    .onAppear { usesScrollingLayout = false }
                 }
             }
             .frame(
@@ -66,7 +77,6 @@ struct PlayerView: View {
         // own sheets (queue, actions) hang off this view, not off Root.
         .environment(\.prefersClassicChrome, !usesGlassChrome)
         .preferredColorScheme(settings.theme.colorScheme)
-        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .sheet(
             item: $presentedSheet,
             onDismiss: handleSheetDismissal
@@ -83,7 +93,6 @@ struct PlayerView: View {
         }
         .onChange(of: player.currentTrack?.id) { _ in
             deferredPlayerAction = nil
-            scrubPosition = nil
             updateLibraryState()
             isUpdatingLibrary = false
             if isActionSheetPresented {
@@ -159,22 +168,50 @@ struct PlayerView: View {
             safeLeading: safeInsets.leading,
             safeTrailing: safeInsets.trailing,
             usesAccessibilityText: dynamicTypeSize.isAccessibilitySize,
+            accessibilityStep: PlayerAccessibilityPolicy.step(
+                for: dynamicTypeSize
+            ),
             hasAlbum: track.albumTitle?.isEmpty == false
+        )
+        let scrolling = metrics.requiresAccessibilityScrolling(
+            containerHeight: size.height
         )
 
         Group {
             if metrics.requiresAccessibilityScrolling(
                 containerHeight: size.height
             ) {
+                // Spacers inside a ScrollView grow without a ceiling and
+                // the player becomes infinitely tall. Stack with fixed
+                // gaps so the scroll view's content size is the layout.
                 ScrollView(.vertical) {
-                    landscapePlayerContent(track, metrics: metrics)
-                        .frame(minHeight: metrics.minimumContentHeight)
+                    if metrics.mode == .landscape {
+                        landscapePlayerContent(
+                            track,
+                            metrics: metrics,
+                            flexible: false
+                        )
+                    } else {
+                        portraitPlayerContent(
+                            track,
+                            metrics: metrics,
+                            flexible: false
+                        )
+                    }
                 }
                 .scrollIndicators(.hidden)
             } else if metrics.mode == .landscape {
-                landscapePlayerContent(track, metrics: metrics)
+                landscapePlayerContent(
+                    track,
+                    metrics: metrics,
+                    flexible: true
+                )
             } else {
-                portraitPlayerContent(track, metrics: metrics)
+                portraitPlayerContent(
+                    track,
+                    metrics: metrics,
+                    flexible: true
+                )
             }
         }
         .frame(
@@ -184,38 +221,43 @@ struct PlayerView: View {
         .padding(.leading, metrics.leadingPadding)
         .padding(.trailing, metrics.trailingPadding)
         .foregroundStyle(playerForeground)
+        .onAppear { usesScrollingLayout = scrolling }
+        .onChange(of: scrolling) { _, value in
+            usesScrollingLayout = value
+        }
     }
 
     private func portraitPlayerContent(
         _ track: Track,
-        metrics: PlayerLayoutMetrics
+        metrics: PlayerLayoutMetrics,
+        flexible: Bool
     ) -> some View {
         VStack(spacing: 0) {
             playerHeader(track)
                 .frame(height: metrics.headerHeight)
                 .padding(.top, metrics.headerTopPadding)
 
-            Spacer(minLength: metrics.artworkTopSpacing)
+            playerStackGap(metrics.artworkTopSpacing, flexible: flexible)
 
             playerArtwork(track, size: metrics.artworkSize)
 
-            Spacer(minLength: metrics.metadataTopSpacing)
+            playerStackGap(metrics.metadataTopSpacing, flexible: flexible)
 
             trackMetadata(track)
 
-            Spacer(minLength: metrics.progressTopSpacing)
+            playerStackGap(metrics.progressTopSpacing, flexible: flexible)
 
             progressControls
 
-            Spacer(minLength: metrics.controlsTopSpacing)
+            playerStackGap(metrics.controlsTopSpacing, flexible: flexible)
 
             primaryControls
                 .frame(height: metrics.primaryControlsHeight)
 
-            Spacer(minLength: metrics.quickActionsTopSpacing)
+            playerStackGap(metrics.quickActionsTopSpacing, flexible: flexible)
 
             quickActions(track)
-                .frame(height: metrics.quickActionsHeight)
+                .frame(minHeight: metrics.quickActionsHeight)
 
             Color.clear
                 .frame(height: metrics.bottomPadding)
@@ -225,14 +267,15 @@ struct PlayerView: View {
 
     private func landscapePlayerContent(
         _ track: Track,
-        metrics: PlayerLayoutMetrics
+        metrics: PlayerLayoutMetrics,
+        flexible: Bool
     ) -> some View {
         VStack(spacing: 0) {
             playerHeader(track)
                 .frame(height: metrics.headerHeight)
                 .padding(.top, metrics.headerTopPadding)
 
-            Spacer(minLength: metrics.artworkTopSpacing)
+            playerStackGap(metrics.artworkTopSpacing, flexible: flexible)
 
             HStack(spacing: metrics.landscapeColumnSpacing) {
                 playerArtwork(track, size: metrics.artworkSize)
@@ -240,23 +283,29 @@ struct PlayerView: View {
                 VStack(spacing: 0) {
                     trackMetadata(track)
 
-                    Spacer(minLength: metrics.progressTopSpacing)
+                    playerStackGap(
+                        metrics.progressTopSpacing,
+                        flexible: flexible
+                    )
 
                     progressControls
 
-                    Spacer(minLength: metrics.controlsTopSpacing)
+                    playerStackGap(
+                        metrics.controlsTopSpacing,
+                        flexible: flexible
+                    )
 
                     primaryControls
                         .frame(height: metrics.primaryControlsHeight)
                 }
-                .frame(maxHeight: .infinity)
+                .frame(maxHeight: flexible ? .infinity : nil)
             }
-            .frame(maxHeight: .infinity)
+            .frame(maxHeight: flexible ? .infinity : nil)
 
-            Spacer(minLength: metrics.quickActionsTopSpacing)
+            playerStackGap(metrics.quickActionsTopSpacing, flexible: flexible)
 
             quickActions(track)
-                .frame(height: metrics.quickActionsHeight)
+                .frame(minHeight: metrics.quickActionsHeight)
 
             Color.clear
                 .frame(height: metrics.bottomPadding)
@@ -264,59 +313,72 @@ struct PlayerView: View {
         }
     }
 
+    /// `Spacer` is for the fitted player. Inside a ScrollView it expands
+    /// without bound, so the accessibility layout uses a fixed gap.
+    @ViewBuilder
+    private func playerStackGap(
+        _ length: CGFloat,
+        flexible: Bool
+    ) -> some View {
+        if flexible {
+            Spacer(minLength: length)
+        } else {
+            Color.clear
+                .frame(height: length)
+                .accessibilityHidden(true)
+        }
+    }
+
     private func playerHeader(_ track: Track) -> some View {
-        AdaptiveGlassContainer(spacing: 8) {
-            // Keep the title visually centered while reserving the trailing
-            // AirPlay + menu cluster so long mix names truncate in the
-            // middle instead of drawing under those controls. Dismiss is
-            // swipe-down / accessibility escape — no leading chevron.
-            ZStack {
-                VStack(spacing: 2) {
-                    Text(L10n.text("player.now_playing_kicker"))
-                        .font(.caption2.weight(.bold))
-                        .tracking(1.1)
-                        .foregroundStyle(playerSecondary)
-                    Text(player.queueContextTitle.uppercased())
-                        .font(.system(size: 10, weight: .medium))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .truncationMode(.middle)
-                        .foregroundStyle(playerSecondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.horizontal, PlayerHeaderMetrics.titleHorizontalInset)
-                .frame(maxWidth: .infinity)
-                .accessibilityElement(children: .combine)
-                .accessibilitySortPriority(1)
+        // Plain ZStack — not AdaptiveGlassContainer. Sibling interactive
+        // glass circles inside GlassEffectContainer morph into one blob
+        // on iOS 26 (same failure mode primaryControls documents).
+        ZStack {
+            VStack(spacing: 2) {
+                Text(L10n.text("player.now_playing_kicker"))
+                    .font(.caption2.weight(.bold))
+                    .tracking(1.1)
+                    .foregroundStyle(playerSecondary)
+                Text(player.queueContextTitle.uppercased())
+                    .font(.caption2.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .truncationMode(.middle)
+                    .foregroundStyle(playerSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, PlayerHeaderMetrics.titleHorizontalInset)
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .combine)
+            .accessibilitySortPriority(1)
 
-                HStack {
-                    Color.clear
-                        .frame(width: PlayerHeaderMetrics.sideClusterWidth)
-                        .accessibilityHidden(true)
-
-                    Spacer(minLength: 0)
-
-                    HStack(spacing: 8) {
-                        AirPlayRoutePicker(
-                            tintColor: UIColor(playerForeground),
-                            onWillPresent: handleAirPlayRoutePickerOpened
-                        )
-                            .frame(width: 44, height: 44)
-                            .adaptiveGlass(
-                                in: Circle(),
-                                interactive: true
-                            )
-                            .accessibilityLabel(
-                                L10n.text(
-                                    "choose_playback_device"
-                                )
-                            )
-                            .accessibilitySortPriority(3)
-                        actionMenuButton(track)
-                            .accessibilitySortPriority(2)
-                    }
+            HStack {
+                Color.clear
                     .frame(width: PlayerHeaderMetrics.sideClusterWidth)
+                    .accessibilityHidden(true)
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: 8) {
+                    AirPlayRoutePicker(
+                        tintColor: UIColor(playerForeground),
+                        onWillPresent: handleAirPlayRoutePickerOpened
+                    )
+                        .frame(width: 44, height: 44)
+                        .adaptiveGlass(
+                            in: Circle(),
+                            interactive: true
+                        )
+                        .accessibilityLabel(
+                            L10n.text(
+                                "choose_playback_device"
+                            )
+                        )
+                        .accessibilitySortPriority(3)
+                    actionMenuButton(track)
+                        .accessibilitySortPriority(2)
                 }
+                .frame(width: PlayerHeaderMetrics.sideClusterWidth)
             }
         }
     }
@@ -450,23 +512,37 @@ struct PlayerView: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(track.title)
-                    .font(.title3.weight(.bold))
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(playerForeground)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 1)
+                    .minimumScaleFactor(
+                        dynamicTypeSize.isAccessibilitySize ? 1 : 0.88
+                    )
                 Button {
                     present(.artist(track.artist))
                 } label: {
-                    Text(track.artist)
-                        .font(.subheadline)
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(track.artist)
+                            .font(.subheadline)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(playerSecondary)
+                .disabled(
+                    track.artist.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty
+                )
+                .accessibilityHint(L10n.text("player.open_artist"))
                 if let album = track.albumTitle, !album.isEmpty {
                     Text(album)
                         .font(.caption2)
                         .foregroundStyle(playerSecondary)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                 }
             }
 
@@ -492,36 +568,13 @@ struct PlayerView: View {
     }
 
     private var progressControls: some View {
-        VStack(spacing: 3) {
-            CompactPlayerSlider(
-                value: Binding(
-                    get: { displayedElapsedTime },
-                    set: { scrubPosition = $0 }
-                ),
-                range: 0...max(player.duration, 1),
-                tintColor: UIColor(playerForeground),
-                onEditingBegan: {
-                    scrubPosition = progress.elapsedTime
-                },
-                onCommit: commitScrubbing
-            )
-            .frame(height: 20)
-            .accessibilityLabel(
-                L10n.text("playback_position")
-            )
-            .accessibilityValue(
-                "\(displayedElapsedTime.formattedDuration) / "
-                    + player.duration.formattedDuration
-            )
-
-            HStack {
-                Text(displayedElapsedTime.formattedDuration)
-                Spacer()
-                Text("-\(remainingTime.formattedDuration)")
-            }
-            .font(.system(size: 11, weight: .medium).monospacedDigit())
-            .foregroundStyle(playerSecondary)
-        }
+        PlayerProgressControls(
+            duration: player.duration,
+            foreground: playerForeground,
+            secondary: playerSecondary,
+            onSeek: { player.seek(to: $0) }
+        )
+        .id(player.currentTrack?.id)
     }
 
     private func actionMenuButton(_ track: Track) -> some View {
@@ -535,47 +588,48 @@ struct PlayerView: View {
     }
 
     private var primaryControls: some View {
-        AdaptiveGlassContainer(spacing: 18) {
-            HStack(spacing: 0) {
-                secondaryButton(
-                    "shuffle",
-                    active: player.shuffleEnabled,
-                    label: "shuffle",
-                    accessibilityValue: player.shuffleEnabled
-                        ? "shuffle_on"
-                        : "shuffle_off"
-                ) {
-                    Haptics.selection()
-                    player.toggleShuffle()
-                }
-                Spacer()
-                transportSkipButton(
-                    systemImage: "backward.fill",
-                    accessibilityLabel: "previous_track"
-                ) {
-                    Haptics.trackChange()
-                    player.previous()
-                }
-                Spacer()
-                playPauseButton
-                Spacer()
-                transportSkipButton(
-                    systemImage: "forward.fill",
-                    accessibilityLabel: "next_track"
-                ) {
-                    Haptics.trackChange()
-                    player.next()
-                }
-                Spacer()
-                secondaryButton(
-                    player.repeatMode.systemImage,
-                    active: player.repeatMode != .off,
-                    label: "repeat",
-                    accessibilityValue: repeatAccessibilityValue
-                ) {
-                    Haptics.selection()
-                    player.cycleRepeatMode()
-                }
+        // Do NOT wrap transport buttons in GlassEffectContainer: iOS 26
+        // morphs sibling .glass controls into one merged blob with a
+        // liquid neck animation that reads broken and costs frames.
+        HStack(spacing: 0) {
+            secondaryButton(
+                "shuffle",
+                active: player.shuffleEnabled,
+                label: "shuffle",
+                accessibilityValue: player.shuffleEnabled
+                    ? "shuffle_on"
+                    : "shuffle_off"
+            ) {
+                Haptics.selection()
+                player.toggleShuffle()
+            }
+            Spacer()
+            transportSkipButton(
+                systemImage: "backward.fill",
+                accessibilityLabel: "previous_track"
+            ) {
+                Haptics.trackChange()
+                player.previous()
+            }
+            Spacer()
+            playPauseButton
+            Spacer()
+            transportSkipButton(
+                systemImage: "forward.fill",
+                accessibilityLabel: "next_track"
+            ) {
+                Haptics.trackChange()
+                player.next()
+            }
+            Spacer()
+            secondaryButton(
+                player.repeatMode.systemImage,
+                active: player.repeatMode != .off,
+                label: "repeat",
+                accessibilityValue: repeatAccessibilityValue
+            ) {
+                Haptics.selection()
+                player.cycleRepeatMode()
             }
         }
     }
@@ -627,16 +681,14 @@ struct PlayerView: View {
     }
 
     private func quickActions(_ track: Track) -> some View {
-        AdaptiveGlassContainer(spacing: 14) {
-            HStack(spacing: 0) {
-                ForEach(PlayerQuickAction.allCases) { item in
-                    quickAction(item) {
-                        switch item {
-                        case .lyrics: present(.lyrics(track))
-                        case .queue: present(.queue)
-                        case .playlist: present(.playlists(track))
-                        case .share: startShare(track)
-                        }
+        HStack(spacing: 0) {
+            ForEach(PlayerQuickAction.allCases) { item in
+                quickAction(item) {
+                    switch item {
+                    case .lyrics: present(.lyrics(track))
+                    case .queue: present(.queue)
+                    case .playlist: present(.playlists(track))
+                    case .share: startShare(track)
                     }
                 }
             }
@@ -806,10 +858,6 @@ struct PlayerView: View {
         }
     }
 
-    private var remainingTime: TimeInterval {
-        max(player.duration - displayedElapsedTime, 0)
-    }
-
     private var playerForeground: Color {
         settings.theme == .light ? .black : .white
     }
@@ -835,15 +883,6 @@ struct PlayerView: View {
             .black.opacity(0.42),
             .black.opacity(0.92),
         ]
-    }
-
-    private var displayedElapsedTime: TimeInterval {
-        scrubPosition ?? progress.elapsedTime
-    }
-
-    private func commitScrubbing(_ position: TimeInterval) {
-        player.seek(to: position)
-        scrubPosition = nil
     }
 
     @ViewBuilder
@@ -998,7 +1037,10 @@ struct PlayerView: View {
                     }
                 } else if vertical < -60 {
                     present(.queue)
-                } else if vertical > 72 {
+                } else if PlayerDismissGesturePolicy.shouldDismiss(
+                    translation: value.translation,
+                    predictedEndTranslation: value.predictedEndTranslation
+                ) {
                     closePlayer()
                 }
             }
@@ -1007,7 +1049,8 @@ struct PlayerView: View {
     private var fullScreenDismissGesture: some Gesture {
         DragGesture(minimumDistance: 20)
             .onEnded { value in
-                guard presentedSheet == nil,
+                guard !usesScrollingLayout,
+                      presentedSheet == nil,
                       sharingTrack == nil,
                       PlayerDismissGesturePolicy.shouldDismiss(
                         translation: value.translation,
@@ -1190,6 +1233,7 @@ struct PlayerLayoutMetrics: Equatable {
         safeLeading: CGFloat = 0,
         safeTrailing: CGFloat = 0,
         usesAccessibilityText: Bool = false,
+        accessibilityStep: Int = 1,
         hasAlbum: Bool = true
     ) -> PlayerLayoutMetrics {
         let isLandscape =
@@ -1259,19 +1303,23 @@ struct PlayerLayoutMetrics: Equatable {
         }
 
         let primaryControlsHeight: CGFloat = 60
+        let axExtra = usesAccessibilityText
+            ? CGFloat(max(accessibilityStep, 1) - 1) * 14
+            : 0
         let quickActionsHeight: CGFloat =
-            usesAccessibilityText ? 72 : 64
+            (usesAccessibilityText ? 72 : 64) + axExtra * 0.35
         let bottomPadding = max(
             safeBottom,
             mode == .landscape ? 6 : 10
         )
         let metadataHeight: CGFloat
         if usesAccessibilityText {
-            metadataHeight = hasAlbum ? 100 : 78
+            metadataHeight = (hasAlbum ? 100 : 78) + axExtra
         } else {
             metadataHeight = hasAlbum ? 68 : 54
         }
-        let progressHeight: CGFloat = usesAccessibilityText ? 45 : 39
+        let progressHeight: CGFloat =
+            (usesAccessibilityText ? 45 : 39) + axExtra * 0.2
 
         let artworkSize: CGFloat
         let minimumContentHeight: CGFloat
@@ -1328,15 +1376,21 @@ struct PlayerLayoutMetrics: Equatable {
                 containerSize.height - fixedWithoutArtwork,
                 0
             )
+            // Accessibility 3+ must not crush the cover to make the
+            // column fit: keep a 112pt floor and let the screen scroll.
+            let artworkFloor: CGFloat =
+                usesAccessibilityText && accessibilityStep >= 3
+                    ? 112
+                    : min(112, availableArtworkHeight)
             artworkSize = max(
                 min(
                     min(
                         contentWidth,
                         containerSize.height * artworkRatio
                     ),
-                    availableArtworkHeight
+                    max(availableArtworkHeight, artworkFloor)
                 ),
-                min(112, availableArtworkHeight)
+                artworkFloor
             )
             minimumContentHeight = fixedWithoutArtwork + artworkSize
         }
@@ -1368,9 +1422,14 @@ struct PlayerLayoutMetrics: Equatable {
     }
 
     func requiresAccessibilityScrolling(containerHeight: CGFloat) -> Bool {
-        mode == .landscape
-            && usesAccessibilityText
-            && minimumContentHeight > containerHeight + 0.5
+        minimumContentHeight > containerHeight + 0.5
+    }
+
+    /// Fitted player: gaps are `Spacer`s that share leftover height.
+    /// Scrolling player: gaps are fixed, so a `ScrollView` has a finite
+    /// content size instead of growing without a ceiling.
+    func usesFlexibleGaps(containerHeight: CGFloat) -> Bool {
+        !requiresAccessibilityScrolling(containerHeight: containerHeight)
     }
 }
 
@@ -1551,6 +1610,7 @@ private struct PlayerActionsSheet: View {
     @Binding var spatialAudioEnabled: Bool
     @Binding var preferHighQuality: Bool
     @Environment(AudioPlayer.self) private var player
+    @Environment(AppSettings.self) private var settings
     @State private var systemVolume = SystemVolumeObserver()
     @State private var showsSleepTimerOptions = false
     let onDismiss: () -> Void
@@ -1719,13 +1779,13 @@ private struct PlayerActionsSheet: View {
                         : "speaker.wave.2.fill"
                 )
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(settings.theme.accent)
                 .frame(width: 30, height: 30)
-                .background(Color.accentColor.opacity(0.12), in: Circle())
+                .background(settings.theme.accent.opacity(0.12), in: Circle())
                 .accessibilityHidden(true)
 
                 SystemVolumeSlider(
-                    tintColor: UIColor(named: "AccentColor") ?? .systemBlue
+                    tintColor: BubbleGamut.accent(for: settings.theme).uiColor
                 )
                 .frame(height: 28)
                 .accessibilityLabel(L10n.text("volume"))
@@ -1784,7 +1844,7 @@ private struct PlayerActionsSheet: View {
                     systemImage: "dot.radiowaves.left.and.right"
                 )
             }
-            .tint(.accentColor)
+            .tint(settings.theme.accent)
             .padding(.horizontal, 16)
             .frame(minHeight: PlayerActionSheetMetrics.minimumTapTarget)
 
@@ -1804,11 +1864,11 @@ private struct PlayerActionsSheet: View {
                     if let endDate = player.sleepTimerEndDate {
                         Text(endDate, style: .timer)
                             .font(.subheadline.monospacedDigit().weight(.medium))
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(settings.theme.accent)
                     } else if let mode = player.sleepTimerMode {
                         Text(mode.statusLabel)
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(settings.theme.accent)
                             .lineLimit(1)
                     }
                     Image(systemName: "chevron.right")
@@ -1852,9 +1912,9 @@ private struct PlayerActionsSheet: View {
         } icon: {
             Image(systemName: systemImage)
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(settings.theme.accent)
                 .frame(width: 30, height: 30)
-                .background(Color.accentColor.opacity(0.12), in: Circle())
+                .background(settings.theme.accent.opacity(0.12), in: Circle())
         }
     }
 
@@ -1924,11 +1984,11 @@ private struct PlayerActionsSheet: View {
                 )
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(
-                    isInLibrary ? Color.red : Color.accentColor
+                    BubbleGamut.liked(for: settings.theme)
                 )
                 .frame(width: 34, height: 34)
                 .background(
-                    (isInLibrary ? Color.red : Color.accentColor)
+                    BubbleGamut.liked(for: settings.theme)
                         .opacity(0.12),
                     in: Circle()
                 )
@@ -1962,7 +2022,7 @@ private struct PlayerActionsSheet: View {
                 style: .continuous
             ),
             interactive: true,
-            tint: (isInLibrary ? Color.red : Color.accentColor).opacity(0.08)
+            tint: BubbleGamut.liked(for: settings.theme).opacity(0.08)
         )
         .disabled(!availability.canModifyLibrary)
         .padding(.top, 14)
@@ -1989,10 +2049,10 @@ private struct PlayerActionsSheet: View {
             VStack(alignment: .leading, spacing: 9) {
                 Image(systemName: systemImage)
                     .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(settings.theme.accent)
                     .frame(width: 36, height: 36)
                     .background(
-                        Color.accentColor.opacity(0.12),
+                        settings.theme.accent.opacity(0.12),
                         in: Circle()
                     )
                 Text(L10n.text(title))
@@ -2059,129 +2119,6 @@ private struct AirPlayRoutePicker: UIViewRepresentable {
             _ routePickerView: AVRoutePickerView
         ) {
             onWillPresent()
-        }
-    }
-}
-
-private struct CompactPlayerSlider: UIViewRepresentable {
-    @Binding var value: TimeInterval
-    let range: ClosedRange<TimeInterval>
-    let tintColor: UIColor
-    let onEditingBegan: () -> Void
-    let onCommit: (TimeInterval) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeUIView(context: Context) -> UISlider {
-        let slider = UISlider(frame: .zero)
-        slider.isContinuous = true
-        configureColors(slider, coordinator: context.coordinator)
-        slider.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.valueChanged(_:)),
-            for: .valueChanged
-        )
-        slider.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.editingBegan(_:)),
-            for: .touchDown
-        )
-        slider.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.editingEnded(_:)),
-            for: [.touchUpInside, .touchUpOutside, .touchCancel]
-        )
-        return slider
-    }
-
-    func updateUIView(_ slider: UISlider, context: Context) {
-        context.coordinator.parent = self
-        if context.coordinator.cachedTintColor != tintColor {
-            configureColors(slider, coordinator: context.coordinator)
-        }
-        slider.minimumValue = Float(range.lowerBound)
-        slider.maximumValue = Float(max(range.upperBound, range.lowerBound + 1))
-        guard !slider.isTracking else { return }
-        let safeValue = value.isFinite ? value : range.lowerBound
-        let next = Float(min(max(safeValue, range.lowerBound), range.upperBound))
-        if abs(slider.value - next) >= 0.05 {
-            slider.setValue(next, animated: false)
-        }
-    }
-
-    private func configureColors(
-        _ slider: UISlider,
-        coordinator: Coordinator
-    ) {
-        slider.minimumTrackTintColor = tintColor
-        slider.maximumTrackTintColor = tintColor.withAlphaComponent(0.18)
-        slider.setThumbImage(
-            coordinator.thumb(diameter: 12, tint: tintColor),
-            for: .normal
-        )
-        slider.setThumbImage(
-            coordinator.thumb(diameter: 15, tint: tintColor),
-            for: .highlighted
-        )
-        coordinator.cachedTintColor = tintColor
-    }
-
-    final class Coordinator: NSObject {
-        var parent: CompactPlayerSlider
-        var cachedTintColor: UIColor?
-        private var thumbCache: [String: UIImage] = [:]
-
-        init(parent: CompactPlayerSlider) {
-            self.parent = parent
-        }
-
-        func thumb(diameter: CGFloat, tint: UIColor) -> UIImage {
-            let key = "\(diameter)-\(tint.hash)"
-            if let cached = thumbCache[key] {
-                return cached
-            }
-            let size = CGSize(width: diameter, height: diameter)
-            let image = UIGraphicsImageRenderer(size: size).image { context in
-                context.cgContext.setShadow(
-                    offset: CGSize(width: 0, height: 1),
-                    blur: 3,
-                    color: UIColor.black.withAlphaComponent(0.28).cgColor
-                )
-                tint.setFill()
-                UIBezierPath(
-                    ovalIn: CGRect(origin: .zero, size: size).insetBy(
-                        dx: 0.5,
-                        dy: 0.5
-                    )
-                )
-                .fill()
-            }
-            thumbCache[key] = image
-            return image
-        }
-
-        @objc
-        func valueChanged(_ slider: UISlider) {
-            if !slider.isTracking {
-                parent.onEditingBegan()
-            }
-            parent.value = TimeInterval(slider.value)
-            if !slider.isTracking {
-                parent.onCommit(TimeInterval(slider.value))
-            }
-        }
-
-        @objc
-        func editingBegan(_ slider: UISlider) {
-            parent.onEditingBegan()
-        }
-
-        @objc
-        func editingEnded(_ slider: UISlider) {
-            parent.value = TimeInterval(slider.value)
-            parent.onCommit(TimeInterval(slider.value))
         }
     }
 }

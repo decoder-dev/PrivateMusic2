@@ -100,6 +100,72 @@ final class PlayerLayoutMetricsTests: XCTestCase {
         )
     }
 
+    func testLargestAccessibilityTextScrollsOnCompactPortrait() {
+        let step1 = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 320, height: 568),
+            safeBottom: 34,
+            usesAccessibilityText: true,
+            accessibilityStep: 1
+        )
+        let step5 = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 320, height: 568),
+            safeBottom: 34,
+            usesAccessibilityText: true,
+            accessibilityStep: 5
+        )
+
+        XCTAssertFalse(
+            step1.requiresAccessibilityScrolling(containerHeight: 568)
+        )
+        XCTAssertGreaterThan(step5.metadataTopSpacing, 0)
+        XCTAssertGreaterThan(step5.quickActionsHeight, step1.quickActionsHeight)
+        XCTAssertGreaterThanOrEqual(step5.artworkSize, 112)
+        XCTAssertTrue(
+            step5.requiresAccessibilityScrolling(containerHeight: 568)
+        )
+    }
+
+    func testOverflowingPortraitContentUsesTheScrollPath() {
+        let overflowing = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 320, height: 400),
+            safeBottom: 34,
+            usesAccessibilityText: true,
+            accessibilityStep: 5
+        )
+        XCTAssertTrue(
+            overflowing.requiresAccessibilityScrolling(containerHeight: 400)
+        )
+    }
+
+    func testFittedPlayerUsesFlexibleGapsAndScrollingPlayerDoesNot() {
+        let fitted = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 320, height: 568),
+            safeBottom: 34
+        )
+        XCTAssertFalse(
+            fitted.requiresAccessibilityScrolling(containerHeight: 568)
+        )
+        XCTAssertTrue(fitted.usesFlexibleGaps(containerHeight: 568))
+
+        let overflowing = PlayerLayoutMetrics.resolve(
+            containerSize: CGSize(width: 320, height: 400),
+            safeBottom: 34,
+            usesAccessibilityText: true,
+            accessibilityStep: 5
+        )
+        XCTAssertTrue(
+            overflowing.requiresAccessibilityScrolling(containerHeight: 400)
+        )
+        XCTAssertFalse(overflowing.usesFlexibleGaps(containerHeight: 400))
+    }
+
+    func testScrollingPlayerStackUsesFixedGaps() {
+        let source = SourceInspection.code(
+            "PrivateMusic/Features/Player/PlayerView.swift"
+        )
+        XCTAssertTrue(source.contains("playerStackGap("))
+    }
+
     func testAccessibilityQuickActionsKeepPreviousCompactDock() {
         let metrics = PlayerLayoutMetrics.resolve(
             containerSize: CGSize(width: 320, height: 568),

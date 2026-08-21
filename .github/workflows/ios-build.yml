@@ -5,6 +5,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Prefer the latest push/PR head — a backlog of superseded Selena
+# polish commits was starving macOS runners for 50+ minutes.
+concurrency:
+  group: ios-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -152,13 +158,76 @@ jobs:
       # assets refreshed — the tag keeps pointing at the commit that first
       # shipped it, and existing download links stay valid. Bump
       # MARKETING_VERSION to cut a new one.
+      # The home-stage branch publishes too, under its own fixed tag. An
+      # Actions artifact is a zip that only a signed-in browser can fetch,
+      # which makes installing a test build on a phone needlessly painful;
+      # a pre-release hands over the .ipa directly. It never carries a
+      # `v*` tag, is never marked latest, and is replaced wholesale on
+      # every push so the tag tracks the branch head instead of freezing
+      # on the first build.
       - name: Publish GitHub release
         if: >-
           github.event_name == 'push' && (github.ref == 'refs/heads/main' ||
+          github.ref == 'refs/heads/claude/home-stage' ||
           startsWith(github.ref, 'refs/tags/v'))
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The releases API answers 503 often enough that a single blip
+          # otherwise throws away a green archive and costs a full rebuild.
+          retry() {
+            attempt=1
+            until "$@"; do
+              if [ "$attempt" -ge 4 ]; then
+                echo "::error::$* failed after $attempt attempts"
+                return 1
+              fi
+              echo "Attempt $attempt failed, retrying in $((attempt * 10))s"
+              sleep "$((attempt * 10))"
+              attempt=$((attempt + 1))
+            done
+          }
+          ASSETS=(
+            "$PWD/artifacts/PrivateMusic-$VERSION-iphone-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-$VERSION-unsigned.ipa"
+          )
+          if [ "$GITHUB_REF" = "refs/heads/claude/home-stage" ]; then
+            PREVIEW_TAG="home-stage-preview"
+            PREVIEW_NOTES="$(mktemp)"
+            cat > "$PREVIEW_NOTES" <<'EOF'
+          Превью ветки `claude/home-stage`. Собирается заново на каждый
+          push, тег всегда указывает на последний коммит ветки.
+
+          ## Сцена на Главной
+          Главная открывается тем, что играет: контекст очереди чипом,
+          исполнитель крупно, обложка, «пауза · название · лайк» и лента
+          подборок-пузырей. Полки — «Новые релизы», «Недавно слушали»,
+          «Миксы», «Плейлисты» — остаются ниже без изменений.
+
+          Пузыри строятся из того, что приложение уже знает: станция
+          Селены, выбранный вайб, исполнители из недавнего и миксы VK с
+          фото кураторов в аватарах.
+
+          Выключается в Настройках → Оформление → «Сцена на Главной».
+
+          ## Установка
+          IPA не подписан.
+          - **`…-iphone-unsigned.ipa`** — без Watch
+          - `…-unsigned.ipa` — полная сборка с Watch
+          EOF
+            gh release delete "$PREVIEW_TAG" --yes --cleanup-tag \
+              >/dev/null 2>&1 || true
+            gh api -X DELETE \
+              "repos/$GITHUB_REPOSITORY/git/refs/tags/$PREVIEW_TAG" \
+              >/dev/null 2>&1 || true
+            retry gh release create "$PREVIEW_TAG" "${ASSETS[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "Сцена на Главной · превью ($VERSION)" \
+              --notes-file "$PREVIEW_NOTES" \
+              --prerelease \
+              --latest=false
+            exit 0
+          fi
           TAG="v$VERSION"
           if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$TAG" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not match MARKETING_VERSION $VERSION"
@@ -191,21 +260,17 @@ jobs:
           # Heredoc is quoted so backticks in the notes stay literal;
           # patch the version into the title afterwards.
           sed -i '' "1s|.*|# Private Music $VERSION (pre-release)|" "$NOTES"
-          ASSETS=(
-            "$PWD/artifacts/PrivateMusic-$VERSION-iphone-unsigned.ipa"
-            "$PWD/artifacts/PrivateMusic-$VERSION-unsigned.ipa"
-          )
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists — refreshing assets and notes"
-            gh release upload "$TAG" "${ASSETS[@]}" --clobber
-            gh release edit "$TAG" \
+            retry gh release upload "$TAG" "${ASSETS[@]}" --clobber
+            retry gh release edit "$TAG" \
               --title "Private Music $VERSION" \
               --notes-file "$NOTES" \
               --draft=false \
               --prerelease
           else
             echo "Creating release $TAG on $GITHUB_SHA"
-            gh release create "$TAG" "${ASSETS[@]}" \
+            retry gh release create "$TAG" "${ASSETS[@]}" \
               --target "$GITHUB_SHA" \
               --title "Private Music $VERSION" \
               --notes-file "$NOTES" \

@@ -442,9 +442,10 @@ final class OfflineTrackStore {
         throw lastError ?? APIError.invalidResponse
     }
 
-    /// Single unified pipeline: `TrackShareService` resolves the payload
-    /// (direct stream in its original format, HLS converted to M4A), and the
-    /// resulting audio file is stored as a direct file.
+    /// Single unified pipeline: `TrackShareService` prefers a rewritten
+    /// progressive MP3 when the live URL is still HLS, otherwise downloads
+    /// the direct stream or converts HLS to M4A. The result is stored as a
+    /// direct file.
     private func downloadPreparedAudioFile(
         _ track: Track,
         accountID: Int,
@@ -994,15 +995,6 @@ final class OfflineTrackStore {
 
     private var homeDirectory: URL {
         URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
-    }
-
-    private func relativePathFromHome(for url: URL) -> String {
-        let homePath = homeDirectory.standardizedFileURL.path
-        let path = url.standardizedFileURL.path
-        guard path.hasPrefix(homePath + "/") else {
-            return url.lastPathComponent
-        }
-        return String(path.dropFirst(homePath.count + 1))
     }
 
     private func isInsideAppContainer(_ url: URL) -> Bool {

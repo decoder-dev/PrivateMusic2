@@ -62,7 +62,7 @@ struct ConnectView: View {
 
             VStack(spacing: 5) {
                 Text(L10n.text("private_music"))
-                    .font(.system(size: 34, weight: .bold))
+                    .font(.largeTitle.weight(.bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 Text(L10n.text("music_from_your_vk_library_in_a_single_player"))

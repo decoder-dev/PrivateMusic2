@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Single Mix tab: Selena and VK share the same listening window.
-/// VK mix switching happens inline — no browse/detail push.
+/// Discovery destination pushed from Home. Selena and VK share the same
+/// listening window. VK mix switching happens inline — no browse/detail
+/// push. This is not a root tab.
 struct MixesHubView: View {
     private enum HubTab: String, CaseIterable, Identifiable {
         case selena
@@ -42,59 +43,101 @@ struct MixesHubView: View {
     @State private var loadErrorMessage: String?
     @State private var loadingMixID: String?
     @State private var actionError: String?
-    @State private var queueFillTask: Task<Void, Never>?
     @State private var trackLoadTask: Task<Void, Never>?
+    /// Mix launches (play / mood / my-music) — never share a handle with
+    /// list pagination, or a VK page load cancels the launch mid-flight.
+    @State private var launchTask: Task<Void, Never>?
     @State private var seedRadioTask: Task<Void, Never>?
 
     @State private var selenaTracks: [Track] = []
+    /// Unfiltered baseline for current Selena queue.
+    /// Filters (language/familiarity/mood) may change without having to
+    /// ask the server again.
+    @State private var selenaTrackBase: [Track] = []
     @State private var selenaRationale: MixRationale = .empty
     @State private var selectedVKMix: MusicMix?
     @State private var vkTracks: [Track] = []
     @State private var vkRationale: MixRationale = .empty
     @State private var vkTrackCache: [String: [Track]] = [:]
+    /// Unfiltered baseline for each VK mix.
+    @State private var vkTrackBaseCache: [String: [Track]] = [:]
     @State private var vkRationaleCache: [String: MixRationale] = [:]
     @State private var sharingTrack: Track?
     @State private var selectedCurator: MixCurator?
     @State private var expandedTrackMixIDs: Set<String> = []
     @State private var trackListLayout: TrackListLayout = .list
+    /// Viewport width from a background GeometryReader — wrapping the
+    /// ScrollView itself re-laid the whole hub on every scroll frame
+    /// (same sticky-scroll bug Home already fixed).
+    @State private var containerWidth: CGFloat = 390
+    /// Mix currently recommended on Home — keep it out of Explore's first
+    /// visible VK slot so the two screens do not open on the same hero.
+    var deprioritizedMixID: String? = nil
+    /// Open this mix on the VK tab (from What's Next "Открыть микс").
+    var focusedMixID: String? = nil
+    /// When Home's What's Next is already the Selena station, open Explore
+    /// on VK so the first screen is not the same hero again.
+    var startsOnVK: Bool = false
+    @State private var showingSelenaConfigure = false
+    @State private var showingMixConfigure = false
 
     private let defaultPreviewTrackLimit = 15
     private let expandedPreviewTrackLimit = 60
 
     var body: some View {
         ScrollViewReader { proxy in
-            GeometryReader { geometry in
-                let metrics = MixHubMetrics(width: geometry.size.width)
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 20) {
-                        titleHeader
-                            .id(MainTabScrollDestination.mix)
+            let metrics = MixHubMetrics(width: containerWidth)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 20) {
+                    Color.clear
+                        .frame(height: 0)
+                        .id(MainTabScrollDestination.mix)
 
-                        Picker(L10n.text("tab.mix"), selection: $hubTab) {
-                            ForEach(HubTab.allCases) { tab in
-                                Text(tab.title).tag(tab)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .accessibilityLabel(L10n.text("mix_sections"))
+                    listenLaterBanner
 
-                        listenLaterBanner
-
-                        switch hubTab {
-                        case .selena:
-                            selenaContent(metrics: metrics)
-                        case .vk:
-                            vkContent(metrics: metrics)
-                        }
-
-                        if let actionError {
-                            actionErrorRow(actionError)
-                        }
+                    switch hubTab {
+                    case .selena:
+                        selenaContent(metrics: metrics)
+                    case .vk:
+                        vkContent(metrics: metrics)
                     }
-                    .padding(.horizontal, metrics.horizontalPadding)
-                    .padding(.top, 8)
-                    .padding(.bottom, 120)
+
+                    if let actionError {
+                        actionErrorRow(actionError)
+                    }
                 }
+                .padding(.horizontal, metrics.horizontalPadding)
+                .padding(.top, 8)
+            }
+            .clearsMiniPlayer(includingWhenDockReservesSpace: true)
+            .background {
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: MixHubWidthKey.self,
+                        value: geometry.size.width
+                    )
+                }
+            }
+            .onPreferenceChange(MixHubWidthKey.self) { width in
+                let rounded = width.rounded()
+                if rounded > 0, abs(rounded - containerWidth) >= 1 {
+                    containerWidth = rounded
+                }
+            }
+            // Mode switch stays put — burying Selena/VK inside the scroll
+            // made the screen's only primary navigation disappear after
+            // one flick.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Picker(L10n.text("tab.mix"), selection: $hubTab) {
+                    ForEach(HubTab.allCases) { tab in
+                        Text(tab.title).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel(L10n.text("mix_sections"))
+                .padding(.horizontal, metrics.horizontalPadding)
+                .padding(.vertical, 8)
+                .background(.bar)
             }
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .mix else { return }
@@ -102,8 +145,8 @@ struct MixesHubView: View {
             }
         }
         .background(ThemeBackground())
+        .navigationTitle(L10n.text("explore_music"))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .navigationBar)
         .trackShareSheet(track: $sharingTrack)
         .navigationDestination(
             isPresented: Binding(
@@ -128,7 +171,24 @@ struct MixesHubView: View {
         }
         .refreshable { await load(force: true) }
         .task(id: sessionStore.accessToken) { await load() }
-        .onChange(of: hubTab) { tab in
+        .sheet(isPresented: $showingSelenaConfigure) {
+            MixConfigureSheet(scope: .selena) {
+                startConfiguredSelena()
+            }
+        }
+        .sheet(isPresented: $showingMixConfigure) {
+            MixConfigureSheet(scope: .mix) {
+                if let mix = selectedVKMix ?? orderedVKMixes.first {
+                    start(mix)
+                }
+            }
+        }
+        .onAppear {
+            if focusedMixID != nil || startsOnVK {
+                hubTab = .vk
+            }
+        }
+        .onChange(of: hubTab) { _, tab in
             if tab == .vk {
                 ensureVKSelection()
             }
@@ -138,9 +198,29 @@ struct MixesHubView: View {
             actionError = error
             environment.mixActionError = nil
         }
+        .onChange(of: settings.mixLanguagePreference) { _, _ in
+            guard sessionStore.accessToken != nil else { return }
+            if let current = currentMixForFilters() {
+                refilterLoadedTracks(for: current)
+            }
+        }
+        .onChange(of: settings.mixFamiliarityPreference) { _, _ in
+            guard sessionStore.accessToken != nil else { return }
+            if let current = currentMixForFilters() {
+                refilterLoadedTracks(for: current)
+            }
+        }
+        .onChange(of: settings.mixMoodPreference) { _, _ in
+            guard sessionStore.accessToken != nil else { return }
+            refilterLoadedTracks(for: personalMix)
+        }
+        .onChange(of: settings.selenaDiversityPreference) { _, _ in
+            guard sessionStore.accessToken != nil else { return }
+            refilterLoadedTracks(for: personalMix)
+        }
         .onDisappear {
-            queueFillTask?.cancel()
             trackLoadTask?.cancel()
+            launchTask?.cancel()
             seedRadioTask?.cancel()
         }
     }
@@ -177,10 +257,115 @@ struct MixesHubView: View {
             .premiumAppear(delay: 0.06)
         selenaQuickStarts
             .premiumAppear(delay: 0.08)
-        if !vibeShelves.isEmpty {
-            vibeShelfBlock(metrics: metrics)
-                .premiumAppear(delay: 0.12)
+        // Selena owns the rich wave dial. Catalog vibe shelves live on the
+        // VK tab so the personal station is not crowded with mix discovery.
+        selenaWaveCard
+            .premiumAppear(delay: 0.10)
+        if !homeCatalog.newReleases.isEmpty {
+            newReleasesLink
+                .premiumAppear(delay: 0.14)
         }
+    }
+
+    /// Selena's wave tuner — moodEnergy / diversity / language (Yandex-like).
+    private var selenaWaveCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L10n.text("selena.wave_card_title"))
+                .font(.headline)
+            Text(configuredSelenaSummary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button {
+                showingSelenaConfigure = true
+            } label: {
+                Label(
+                    L10n.text("configure_selena"),
+                    systemImage: "slider.horizontal.3"
+                )
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(settings.theme.accent)
+            .disabled(loadingMixID != nil)
+            .accessibilityHint(L10n.text("configure_selena_accessibility_hint"))
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .premiumCard()
+    }
+
+    private var configuredSelenaSummary: String {
+        var parts: [String] = []
+        if settings.mixMoodPreference != .any {
+            parts.append(settings.mixMoodPreference.title)
+        }
+        if settings.selenaDiversityPreference != .default {
+            parts.append(settings.selenaDiversityPreference.chipTitle)
+        }
+        if settings.mixLanguagePreference != .any {
+            parts.append(settings.mixLanguagePreference.title)
+        }
+        if parts.isEmpty {
+            return L10n.text("selena.wave_card_empty")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private var configuredMixSummary: String {
+        var parts: [String] = []
+        if settings.mixFamiliarityPreference != .any {
+            parts.append(settings.mixFamiliarityPreference.chipTitle)
+        }
+        if settings.mixLanguagePreference != .any,
+           MixLanguagePreference.catalogValue(settings.mixLanguagePreference)
+            != .any {
+            parts.append(settings.mixLanguagePreference.title)
+        }
+        if parts.isEmpty {
+            return L10n.text("mix.basic_card_empty")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Always stays on Selena — mood is a live wave dial, not a jump to a
+    /// VK vibe shelf.
+    private func startConfiguredSelena() {
+        start(personalMix)
+    }
+
+    /// A quiet entry point, not another shelf: the album art already gets
+    /// its own carousel inside `NewReleasesView`, so this only needs to
+    /// say the section exists and hand off to it.
+    private var newReleasesLink: some View {
+        NavigationLink {
+            NewReleasesView(albums: homeCatalog.newReleases)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "sparkles.tv")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(settings.theme.accent)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L10n.text("new_releases"))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(L10n.text("fresh_albums"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+        .premiumCard(interactive: true)
     }
 
     // MARK: - VK
@@ -205,6 +390,9 @@ struct MixesHubView: View {
                 picker: {
                     if orderedVKMixes.count > 1 {
                         vkMixPicker(selected: mix, metrics: metrics)
+                    }
+                    if !vibeShelves.isEmpty {
+                        vibeShelfBlock(metrics: metrics)
                     }
                     vkMagazineShelves(metrics: metrics)
                 }
@@ -251,6 +439,9 @@ struct MixesHubView: View {
 
             controlsPanel(mix: mix, tracks: tracks)
                 .premiumAppear(delay: 0.12)
+
+            mixUtilityLinks(mix: mix, tracks: tracks)
+                .premiumAppear(delay: 0.13)
 
             picker()
 
@@ -352,6 +543,7 @@ struct MixesHubView: View {
                         .frame(width: 30, height: 30)
                         .foregroundStyle(.black)
                         .background(.white, in: Circle())
+                        .minimumHitTarget(visualSize: 30)
                 }
                 .buttonStyle(PremiumPressStyle())
                 .padding(8)
@@ -520,18 +712,18 @@ struct MixesHubView: View {
                 } label: {
                     Label(L10n.text("listen"), systemImage: "play.fill")
                         .labelStyle(.iconOnly)
+                        .minimumHitTarget(visualSize: 28)
                 }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.small)
 
                 Button {
                     selectVKMix(mix)
                 } label: {
                     Label(L10n.text("open"), systemImage: "list.bullet")
                         .labelStyle(.iconOnly)
+                        .minimumHitTarget(visualSize: 28)
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
             }
         }
         .frame(width: metrics.cardWidth, alignment: .leading)
@@ -550,14 +742,6 @@ struct MixesHubView: View {
     }
 
     // MARK: - Chrome
-
-    private var titleHeader: some View {
-        Text(L10n.text("tab.mix"))
-            .font(.largeTitle.weight(.bold))
-            .foregroundStyle(.primary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityAddTraits(.isHeader)
-    }
 
     @ViewBuilder
     private var listenLaterBanner: some View {
@@ -627,108 +811,115 @@ struct MixesHubView: View {
             ? homeCatalog.recommendations
             : tracks
         let trimmedSubtitle = trimmedText(subtitle)
-        return Button { start(mix) } label: {
-            ZStack(alignment: .bottomLeading) {
-                MixArtworkView(
-                    mix: mix,
-                    tracks: artSource,
-                    size: metrics.contentWidth,
-                    height: metrics.heroHeight,
-                    cornerRadius: 0
+        // One composition, one primary verb: the play circle is the
+        // control. The hero itself is not a Button — nesting a curator
+        // link inside another button's label made that link unreachable
+        // to both touch and VoiceOver.
+        return ZStack(alignment: .bottomLeading) {
+            MixArtworkView(
+                mix: mix,
+                tracks: artSource,
+                size: metrics.contentWidth,
+                height: metrics.heroHeight,
+                cornerRadius: 0
+            )
+            .overlay {
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.05),
+                        Color.black.opacity(0.55),
+                        Color.black.opacity(0.82)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
                 )
-                .overlay {
-                    LinearGradient(
-                        colors: [
-                            settings.theme.accent.opacity(0.35),
-                            Color.black.opacity(0.28),
-                            Color.black.opacity(0.78)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                }
+            }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Spacer(minLength: 0)
-                    if let curator = mix.curator, curator.isUsable {
-                        Button {
-                            selectedCurator = curator
-                        } label: {
-                            Text(curator.displayName)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.78))
-                                .textCase(.uppercase)
-                                .tracking(0.55)
-                                .lineLimit(1)
-                        }
-                        .buttonStyle(.plain)
-                    } else if mix.id == MusicMix.common.id {
-                        Text(L10n.text("personal_mix"))
+            VStack(alignment: .leading, spacing: 6) {
+                Spacer(minLength: 0)
+                if let curator = mix.curator, curator.isUsable {
+                    Button {
+                        selectedCurator = curator
+                    } label: {
+                        Text(curator.displayName)
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.78))
                             .textCase(.uppercase)
                             .tracking(0.55)
-                    } else if mix.isSocial {
-                        Text(L10n.text("social_mix"))
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.78))
-                            .textCase(.uppercase)
-                            .tracking(0.55)
+                            .lineLimit(1)
                     }
-                    Text(mix.title)
-                        .font(.title2.weight(.bold))
+                    .buttonStyle(.plain)
+                    .accessibilityHint(L10n.text("open_here"))
+                } else if mix.id == MusicMix.common.id {
+                    Text(L10n.text("personal_mix"))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .textCase(.uppercase)
+                        .tracking(0.55)
+                } else if mix.isSocial {
+                    Text(L10n.text("social_mix"))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .textCase(.uppercase)
+                        .tracking(0.55)
+                }
+                Text(mix.title)
+                    .font(.title.weight(.bold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let trimmedSubtitle {
+                    Text(trimmedSubtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.86))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let trimmedSubtitle {
-                        Text(trimmedSubtitle)
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.86))
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                 }
-                .padding(22)
-                .padding(.trailing, 72)
+            }
+            .padding(22)
+            .padding(.trailing, 72)
 
+            Button {
+                start(mix)
+            } label: {
                 Image(systemName: "play.fill")
                     .font(.title3.weight(.bold))
                     .foregroundStyle(settings.theme.accent)
                     .frame(width: 52, height: 52)
                     .background(.white, in: Circle())
-                    .frame(
-                        maxWidth: .infinity,
-                        maxHeight: .infinity,
-                        alignment: .topTrailing
-                    )
-                    .padding(18)
             }
-            .foregroundStyle(.white)
-            .frame(height: metrics.heroHeight)
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: PremiumLayout.cardRadius,
-                    style: .continuous
-                )
+            .buttonStyle(PremiumPressStyle())
+            .disabled(loadingMixID != nil)
+            .accessibilityLabel(L10n.text("play_mix"))
+            .accessibilityValue(mix.title)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .topTrailing
             )
-            .overlay {
-                if loadingMixID == mix.id {
-                    ProgressView()
-                        .tint(.white)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(.black.opacity(0.28))
-                        .clipShape(
-                            RoundedRectangle(
-                                cornerRadius: PremiumLayout.cardRadius,
-                                style: .continuous
-                            )
+            .padding(18)
+        }
+        .foregroundStyle(.white)
+        .frame(minHeight: metrics.heroHeight)
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: PremiumLayout.cardRadius,
+                style: .continuous
+            )
+        )
+        .overlay {
+            if loadingMixID == mix.id {
+                ProgressView()
+                    .tint(.white)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.black.opacity(0.28))
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: PremiumLayout.cardRadius,
+                            style: .continuous
                         )
-                }
+                    )
             }
         }
-        .buttonStyle(PremiumPressStyle())
-        .disabled(loadingMixID != nil)
-        .accessibilityLabel(L10n.text("play_mix"))
-        .accessibilityValue(mix.title)
         .contextMenu {
             Button { start(mix) } label: {
                 Label(L10n.text("play_mix"), systemImage: "play.fill")
@@ -744,7 +935,7 @@ struct MixesHubView: View {
             } label: {
                 Label(L10n.text("listen_later"), systemImage: "bookmark")
             }
-            .disabled(tracks.isEmpty)
+            .disabled(tracks.isEmpty || !player.isPlaying(mix))
             if let seed = tracks.first {
                 TrackMixActions.menuButtons(
                     for: seed,
@@ -846,49 +1037,38 @@ struct MixesHubView: View {
         mix: MusicMix,
         tracks: [Track]
     ) -> some View {
+        let isSelena = mix.id == MusicMix.common.id
         let selectedMode = player.mixRadioMode
         return VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.text("mix_radio"))
-                .font(.headline)
-            Text(
-                L10n.text("diversifies_the_queue_and_on_closer_to_track_more_novelty_pulls_vk_recom")
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            if !isSelena {
+                Text(L10n.text("mix_radio"))
+                    .font(.headline)
 
-            Picker(
-                L10n.text("mode"),
-                selection: Binding(
-                    get: { player.mixRadioMode },
-                    set: { applyRadio($0, mix: mix) }
-                )
-            ) {
-                ForEach(MixRadioMode.allCases) { mode in
-                    Text(mode.compactTitle).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            Label(selectedMode.caption, systemImage: "info.circle")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            mixFilterChips(mix: mix)
-
-            HStack(spacing: 10) {
-                Button { start(mix) } label: {
-                    Label(
-                        L10n.text("play_all"),
-                        systemImage: "play.fill"
+                Picker(
+                    L10n.text("mode"),
+                    selection: Binding(
+                        get: { player.mixRadioMode },
+                        set: { applyRadio($0, mix: mix) }
                     )
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                ) {
+                    ForEach(MixRadioMode.allCases) { mode in
+                        Text(mode.compactTitle).tag(mode)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(loadingMixID != nil)
+                .pickerStyle(.segmented)
 
+                Label(selectedMode.caption, systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                mixConfigureEntry
+            }
+
+            // Hero owns Play. This row is shuffle + keep/hide only —
+            // a second "Play all" next to the play circle was the same
+            // verb twice on one card.
+            HStack(spacing: 10) {
                 Button {
                     shuffle(mix)
                 } label: {
@@ -902,9 +1082,7 @@ struct MixesHubView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(loadingMixID != nil || tracks.isEmpty)
-            }
 
-            HStack(spacing: 10) {
                 Button {
                     pin(mix: mix, tracks: tracks)
                 } label: {
@@ -921,7 +1099,7 @@ struct MixesHubView: View {
                     .minimumScaleFactor(0.8)
                 }
                 .buttonStyle(.bordered)
-                .disabled(tracks.isEmpty)
+                .disabled(tracks.isEmpty || !player.isPlaying(mix))
 
                 Menu {
                     Button(role: .destructive) {
@@ -960,174 +1138,90 @@ struct MixesHubView: View {
                 .buttonStyle(.bordered)
                 .disabled(tracks.isEmpty)
             }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    NavigationLink {
-                        MixFiltersSettingsView()
-                    } label: {
-                        Label(
-                            L10n.text("mix_filters"),
-                            systemImage: "line.3.horizontal.decrease.circle"
-                        )
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    }
-
-                    NavigationLink {
-                        MixFeedbackManagerView()
-                    } label: {
-                        Label(
-                            L10n.text("hidden"),
-                            systemImage: "eye.slash"
-                        )
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    }
-
-                    Button {
-                        openQueue(mix)
-                    } label: {
-                        Label(
-                            L10n.text("player.queue"),
-                            systemImage: "list.bullet"
-                        )
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    }
-                    .disabled(tracks.isEmpty)
-                }
-            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .premiumCard()
     }
 
-    private func mixFilterChips(mix: MusicMix) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
+    /// Filters, hidden tracks and the queue are utility links, not radio
+    /// tuning — folding them into the Radio Mix card was exactly the kind
+    /// of unrelated content that made it read as half the screen. Flat
+    /// row, no card: they don't need their own surface to be reachable.
+    private func mixUtilityLinks(mix: MusicMix, tracks: [Track]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                NavigationLink {
+                    MixFeedbackManagerView()
+                } label: {
+                    Label(
+                        L10n.text("hidden"),
+                        systemImage: "eye.slash"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .frame(minHeight: PremiumLayout.minimumTapTarget)
+                    .contentShape(Rectangle())
+                }
+
+                Button {
+                    openQueue(mix)
+                } label: {
+                    Label(
+                        L10n.text("player.queue"),
+                        systemImage: "list.bullet"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .frame(minHeight: PremiumLayout.minimumTapTarget)
+                    .contentShape(Rectangle())
+                }
+                .disabled(tracks.isEmpty)
+            }
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private var mixConfigureEntry: some View {
+        Button {
+            showingMixConfigure = true
+        } label: {
+            HStack(spacing: 8) {
                 Image(systemName: "slider.horizontal.3")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(L10n.text("quick_filters"))
+                Text(L10n.text("configure_mix"))
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if hasActiveMixFilters {
+                    Text(configuredMixSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    moodFilterMenu(mix: mix)
-                    languageFilterMenu(mix: mix)
-                    familiarityFilterMenu(mix: mix)
-                }
-            }
-        }
-    }
-
-    private func moodFilterMenu(mix: MusicMix) -> some View {
-        Menu {
-            ForEach(MixMoodPreference.allCases) { mood in
-                Button {
-                    settings.mixMoodPreference = mood
-                    refilterLoadedTracks(for: mix)
-                } label: {
-                    selectedMenuRow(
-                        mood.title,
-                        isSelected: settings.mixMoodPreference == mood
-                    )
-                }
-            }
-        } label: {
-            filterChip(
-                title: settings.mixMoodPreference.title,
-                prefix: L10n.text("vibe"),
-                isActive: settings.mixMoodPreference != .any
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.primary.opacity(0.06))
             )
+            .contentShape(Capsule(style: .continuous))
         }
+        .buttonStyle(PremiumPressStyle())
+        .accessibilityLabel(L10n.text("configure_mix"))
+        .accessibilityHint(L10n.text("configure_mix_accessibility_hint"))
     }
 
-    private func languageFilterMenu(mix: MusicMix) -> some View {
-        Menu {
-            ForEach(MixLanguagePreference.allCases) { language in
-                Button {
-                    settings.mixLanguagePreference = language
-                    refilterLoadedTracks(for: mix)
-                } label: {
-                    selectedMenuRow(
-                        language.title,
-                        isSelected: settings.mixLanguagePreference == language
-                    )
-                }
-            }
-        } label: {
-            filterChip(
-                title: settings.mixLanguagePreference.title,
-                prefix: L10n.text("language"),
-                isActive: settings.mixLanguagePreference != .any
-            )
-        }
-    }
-
-    private func familiarityFilterMenu(mix: MusicMix) -> some View {
-        Menu {
-            ForEach(MixFamiliarityPreference.allCases) { familiarity in
-                Button {
-                    settings.mixFamiliarityPreference = familiarity
-                    refilterLoadedTracks(for: mix)
-                } label: {
-                    selectedMenuRow(
-                        familiarity.title,
-                        isSelected: settings.mixFamiliarityPreference == familiarity
-                    )
-                }
-            }
-        } label: {
-            filterChip(
-                title: settings.mixFamiliarityPreference.title,
-                prefix: L10n.text("familiarity"),
-                isActive: settings.mixFamiliarityPreference != .any
-            )
-        }
-    }
-
-    private func filterChip(
-        title: String,
-        prefix: String,
-        isActive: Bool
-    ) -> some View {
-        HStack(spacing: 5) {
-            Text(prefix)
-                .foregroundStyle(.secondary)
-            Text(title)
-                .foregroundStyle(isActive ? settings.theme.accent : .primary)
-            Image(systemName: "chevron.down")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.secondary)
-        }
-        .font(.caption.weight(.semibold))
-        .lineLimit(1)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            Capsule(style: .continuous)
-                .fill(
-                    isActive
-                        ? settings.theme.accent.opacity(0.14)
-                        : Color.primary.opacity(0.06)
-                )
-        )
-    }
-
-    private func selectedMenuRow(
-        _ title: String,
-        isSelected: Bool
-    ) -> some View {
-        HStack {
-            Text(title)
-            if isSelected {
-                Image(systemName: "checkmark")
-            }
-        }
+    private var hasActiveMixFilters: Bool {
+        let languageActive =
+            MixLanguagePreference.catalogValue(settings.mixLanguagePreference)
+            != .any
+        return languageActive || settings.mixFamiliarityPreference != .any
     }
 
     private func tracksBlock(
@@ -1194,6 +1288,11 @@ struct MixesHubView: View {
                     if isExpanded {
                         switch trackListLayout {
                         case .list:
+                            // Flat, like every other long track list in the
+                            // app (Library's own list has no enclosing
+                            // card either) — up to 45 rows inside one
+                            // rounded rectangle read as a modal card
+                            // stapled onto the page, not as a list.
                             VStack(spacing: 0) {
                                 ForEach(
                                     Array(expandedList.enumerated()),
@@ -1202,7 +1301,7 @@ struct MixesHubView: View {
                                     TrackRow(
                                         track: track,
                                         queue: tracks,
-                                        source: .mix(title: mix.title)
+                                        source: .catalogMix(mix)
                                     )
                                     .padding(.vertical, 7)
                                     if index < expandedList.count - 1 {
@@ -1210,9 +1309,6 @@ struct MixesHubView: View {
                                     }
                                 }
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 4)
-                            .premiumCard()
                         case .grid:
                             LazyVGrid(
                                 columns: metrics.gridColumns,
@@ -1245,6 +1341,7 @@ struct MixesHubView: View {
                     : "list.bullet"
             )
             .font(.caption.weight(.semibold))
+            .minimumHitTarget(visualSize: 28, in: Rectangle())
         }
         .buttonStyle(.bordered)
         .accessibilityLabel(L10n.text("toggle_list_layout"))
@@ -1307,6 +1404,11 @@ struct MixesHubView: View {
         .contextMenu {
             Button { player.playNext(track) } label: {
                 Label(L10n.text("play_next"), systemImage: "text.badge.plus")
+            }
+            Button { player.playLast(track) } label: {
+                Label(L10n.text("play_last"),
+                    systemImage: "text.line.last.and.arrowtriangle.forward"
+                )
             }
             TrackMixActions.menuButtons(
                 for: track,
@@ -1374,6 +1476,11 @@ struct MixesHubView: View {
         .contextMenu {
             Button { player.playNext(track) } label: {
                 Label(L10n.text("play_next"), systemImage: "text.badge.plus")
+            }
+            Button { player.playLast(track) } label: {
+                Label(L10n.text("play_last"),
+                    systemImage: "text.line.last.and.arrowtriangle.forward"
+                )
             }
             Button {
                 playTrack(track, queue: queue, mix: mix)
@@ -1560,12 +1667,7 @@ struct MixesHubView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    quickStartChip(
-                        title: L10n.text("selena.name"),
-                        systemImage: "sparkles"
-                    ) {
-                        start(personalMix)
-                    }
+                    // Hero already starts Selena — no second identical chip.
                     quickStartChip(
                         title: L10n.text("from_my_music"),
                         systemImage: "music.note.list"
@@ -1587,11 +1689,18 @@ struct MixesHubView: View {
                             )
                         }
                     }
-                    quickStartChip(
-                        title: L10n.text("more_novelty"),
-                        systemImage: "shuffle"
-                    ) {
-                        start(personalMix, applying: .moreNovel)
+                    ForEach(
+                        SelenaDiversityPreference.allCases.filter {
+                            $0 != .default
+                        }
+                    ) { diversity in
+                        quickStartChip(
+                            title: diversity.chipTitle,
+                            systemImage: diversity.chipSymbol
+                        ) {
+                            settings.selenaDiversityPreference = diversity
+                            start(personalMix)
+                        }
                     }
                 }
             }
@@ -1688,6 +1797,12 @@ struct MixesHubView: View {
         }
         for mix in vkMixes where seen.insert(mix.id).inserted {
             result.append(mix)
+        }
+        if let skip = deprioritizedMixID,
+           skip != focusedMixID,
+           let index = result.firstIndex(where: { $0.id == skip }) {
+            let moved = result.remove(at: index)
+            result.append(moved)
         }
         return result
     }
@@ -1883,11 +1998,22 @@ struct MixesHubView: View {
     }
 
     private func actionErrorRow(_ message: String) -> some View {
-        Button { actionError = nil } label: {
-            Label(message, systemImage: "exclamationmark.triangle")
+        let isFilterNotice = message == L10n.text(
+            "mix_filters_relaxed_to_keep_queue"
+        )
+        return Button { actionError = nil } label: {
+            Label(
+                message,
+                systemImage: isFilterNotice
+                    ? "info.circle"
+                    : "exclamationmark.triangle"
+            )
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget, alignment: .leading)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Actions
@@ -1952,12 +2078,10 @@ struct MixesHubView: View {
         let mix = pin.mix
         if mix.id == MusicMix.common.id {
             hubTab = .selena
-            selenaTracks = pin.tracks
-            selenaRationale = MixRationaleBuilder.build(
-                mixTracks: pin.tracks,
-                history: history.entries,
-                recommendations: homeCatalog.recommendations
-            )
+            // Pin holds the played (already filtered) queue — never treat
+            // it as an unfiltered baseline or loosening filters cannot
+            // recover dropped tracks.
+            storeTracks(pin.tracks, for: mix, updatingBaseline: false)
         } else {
             hubTab = .vk
             applyVKSelection(
@@ -1978,7 +2102,7 @@ struct MixesHubView: View {
             player.rerankUpcomingMix(
                 mode: saved,
                 historyArtists: Set(
-                    history.entries.prefix(40).map(\.track.artist)
+                    history.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist)
                 )
             )
         }
@@ -2003,13 +2127,13 @@ struct MixesHubView: View {
                 for: mix,
                 knownTracks: loaded
             ),
-            source: .mix(title: mix.title)
+            source: .catalogMix(mix)
         )
         Haptics.selection()
     }
 
     private func openQueue(_ mix: MusicMix) {
-        if case .mix = player.queueSource, !player.queue.isEmpty {
+        if player.isPlaying(mix), !player.queue.isEmpty {
             player.presentQueue()
         } else {
             start(mix)
@@ -2018,10 +2142,29 @@ struct MixesHubView: View {
     }
 
     private func refilterLoadedTracks(for mix: MusicMix) {
-        let loaded = tracks(for: mix)
-        guard !loaded.isEmpty else { return }
-        storeTracks(loaded, for: mix)
+        let base = baseTracks(for: mix)
+        guard !base.isEmpty else {
+            // No baseline yet — still tighten/loosen whatever is playing.
+            environment.reapplyMixFiltersToPlayingQueue()
+            return
+        }
+        storeTracks(base, for: mix)
+        syncPlayingQueue(with: mix)
         Haptics.selection()
+    }
+
+    /// Filters must change what you hear, not only the list on screen.
+    private func syncPlayingQueue(with mix: MusicMix) {
+        guard player.isPlaying(mix),
+              let current = player.currentTrack else { return }
+        let cleaned = tracks(for: mix)
+        if let index = cleaned.firstIndex(where: { $0.id == current.id }) {
+            player.replaceUpcoming(
+                with: Array(cleaned.suffix(from: index + 1))
+            )
+        } else {
+            player.replaceUpcoming(with: cleaned)
+        }
     }
 
     private func hideFirstLoadedTrack(
@@ -2031,7 +2174,10 @@ struct MixesHubView: View {
     ) {
         guard let first = tracks.first else { return }
         environment.dislike(first, includeArtist: includeArtist)
-        let cleaned = mixFeedbackStore.filtering(self.tracks(for: mix))
+        // Feedback (hide/dislike) should apply on top of the unfiltered
+        // baseline, not on top of language/familiarity filtered caches.
+        let base = baseTracks(for: mix)
+        let cleaned = mixFeedbackStore.filtering(base)
         storeTracks(cleaned, for: mix)
     }
 
@@ -2045,6 +2191,12 @@ struct MixesHubView: View {
         guard needsMixes || needsSelena else { return }
         isLoading = true
         defer { isLoading = false }
+        // Pull-to-refresh must also refresh Home's personal recommendations —
+        // otherwise Selena keeps composing from a stale cache while the
+        // catalog shelves update.
+        if force {
+            await environment.refreshHomeCatalog(force: true)
+        }
         // Selena is the tab everyone lands on, and its tracks come from the
         // recommendation stream — they do not read `mixes` at all. Fetching
         // them after the VK catalog meant the default tab sat on a skeleton
@@ -2055,12 +2207,30 @@ struct MixesHubView: View {
             : nil
         do {
             if needsMixes {
-                mixes = try await environment.withAuthorizedToken { token in
-                    try await environment.musicService
-                        .mixes(accessToken: token)
+                // Home already hydrated the same catalog — reuse it on a
+                // cold Explore open instead of paying for catalogSnapshot
+                // again before Selena can even paint.
+                if !force, !homeCatalog.mixes.isEmpty {
+                    mixes = homeCatalog.mixes
+                    loadErrorMessage = nil
+                } else {
+                    mixes = try await environment.withAuthorizedToken {
+                        token in
+                        try await environment.musicService
+                            .mixes(accessToken: token)
+                    }
+                    loadErrorMessage = nil
                 }
-                loadErrorMessage = nil
-                ensureVKSelection(forceReload: force)
+                // VK track hydrate is for the VK tab. Doing it on Selena
+                // land steals bandwidth from the recommendation stream.
+                let shouldLoadVKTracks =
+                    hubTab == .vk
+                    || focusedMixID != nil
+                    || startsOnVK
+                ensureVKSelection(
+                    forceReload: force,
+                    loadTracks: shouldLoadVKTracks
+                )
             }
         } catch is CancellationError {
             // The view went away or the token changed — drop the sibling
@@ -2075,35 +2245,47 @@ struct MixesHubView: View {
     }
 
     private func loadSelenaTracks() async {
+        // Instant first paint when Home already has personal
+        // recommendations — Explore used to sit on a skeleton until four
+        // recommendation round-trips finished even though the same tracks
+        // were already in memory.
+        if selenaTracks.isEmpty, !homeCatalog.recommendations.isEmpty {
+            let seeds = SelenaRecommendationComposer.seedTracks(
+                history: history.entries,
+                recommendations: homeCatalog.recommendations,
+                loaded: []
+            )
+            let quick = SelenaRecommendationComposer.compose(
+                seedTracks: seeds,
+                personalRecommendations: homeCatalog.recommendations,
+                similarRecommendations: [],
+                diversity: settings.selenaDiversityPreference
+            ).tracks
+            if !quick.isEmpty {
+                storeTracks(quick, for: personalMix)
+            }
+        }
+
+        let cachedPersonal = homeCatalog.recommendations
         let stream = selenaRecommendationStream(knownTracks: [])
         do {
-            let bootstrap = try await environment.withAuthorizedToken {
-                token in
-                try await stream.next(
-                    accessToken: token,
-                    musicService: environment.musicService
-                )
-            }
-            selenaTracks = bootstrap
-            MixBootstrapPrefetch.artwork(for: bootstrap)
-            selenaRationale = MixRationaleBuilder.build(
-                mixTracks: bootstrap,
-                history: history.entries,
-                recommendations: homeCatalog.recommendations
+            let bootstrap = try await environment.nextSelenaBatch(
+                from: stream,
+                cachedPersonalRecommendations: cachedPersonal
             )
+            storeTracks(bootstrap, for: personalMix)
+            MixBootstrapPrefetch.artwork(for: bootstrap)
             trackLoadTask?.cancel()
             trackLoadTask = Task {
                 do {
-                    let more = try await environment.withAuthorizedToken {
-                        token in
-                        try await stream.next(
-                            accessToken: token,
-                            musicService: environment.musicService
-                        )
-                    }
+                    let more = try await environment.nextSelenaBatch(
+                        from: stream
+                    )
                     guard !Task.isCancelled else { return }
                     await MainActor.run {
-                        selenaTracks = mergeTracks(selenaTracks, more)
+                        let base = baseTracks(for: personalMix)
+                        let merged = mergeUnfiltered(base, more)
+                        storeTracks(merged, for: personalMix)
                     }
                 } catch {}
             }
@@ -2114,7 +2296,10 @@ struct MixesHubView: View {
         }
     }
 
-    private func ensureVKSelection(forceReload: Bool = false) {
+    private func ensureVKSelection(
+        forceReload: Bool = false,
+        loadTracks: Bool = true
+    ) {
         guard !orderedVKMixes.isEmpty else {
             selectedVKMix = nil
             vkTracks = []
@@ -2122,7 +2307,10 @@ struct MixesHubView: View {
             return
         }
         let preferred =
-            selectedVKMix.flatMap { current in
+            focusedMixID.flatMap { id in
+                orderedVKMixes.first { $0.id == id }
+            }
+            ?? selectedVKMix.flatMap { current in
                 orderedVKMixes.first { $0.id == current.id }
             }
             ?? pinnedMixStore.pin.flatMap { pin in
@@ -2131,8 +2319,12 @@ struct MixesHubView: View {
             ?? orderedVKMixes.first
         guard let mix = preferred else { return }
         if selectedVKMix?.id != mix.id {
-            applyVKSelection(mix, tracks: vkTrackCache[mix.id])
-        } else if forceReload || vkTracks.isEmpty {
+            applyVKSelection(
+                mix,
+                tracks: vkTrackCache[mix.id],
+                loadIfMissing: loadTracks
+            )
+        } else if forceReload || (loadTracks && vkTracks.isEmpty) {
             loadVKTracks(mix)
         }
     }
@@ -2164,24 +2356,20 @@ struct MixesHubView: View {
 
     private func applyVKSelection(
         _ mix: MusicMix,
-        tracks: [Track]?
+        tracks: [Track]?,
+        loadIfMissing: Bool = true
     ) {
         selectedVKMix = mix
         if let tracks, !tracks.isEmpty {
-            vkTracks = tracks
-            let rationale = vkRationaleCache[mix.id]
-                ?? MixRationaleBuilder.build(
-                    mixTracks: tracks,
-                    history: history.entries,
-                    recommendations: homeCatalog.recommendations
-                )
-            vkRationale = rationale
-            vkTrackCache[mix.id] = tracks
-            vkRationaleCache[mix.id] = rationale
+            // One writer for display + baseline caches — never assign the
+            // filtered/played list into the unfiltered baseline.
+            storeTracks(tracks, for: mix, updatingBaseline: false)
         } else {
             vkTracks = []
             vkRationale = .empty
-            loadVKTracks(mix)
+            if loadIfMissing {
+                loadVKTracks(mix)
+            }
         }
     }
 
@@ -2216,8 +2404,10 @@ struct MixesHubView: View {
                 }
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
+                    let base = baseTracks(for: mix)
+                    let seed = base.isEmpty ? tracks(for: mix) : base
                     storeTracks(
-                        mergeTracks(tracks(for: mix), more),
+                        mergeUnfiltered(seed, more),
                         for: mix
                     )
                 }
@@ -2231,6 +2421,7 @@ struct MixesHubView: View {
         }
     }
 
+    @MainActor
     private func start(
         _ mix: MusicMix,
         applying mode: MixRadioMode? = nil
@@ -2239,21 +2430,57 @@ struct MixesHubView: View {
         if mix.id != MusicMix.common.id, selectedVKMix?.id != mix.id {
             selectVKMix(mix)
         }
+        if mix.id == MusicMix.common.id {
+            // Fresh Selena sit-down: clear session spacing so the bandit
+            // decision matches this queue, not an older Home/Explore run.
+            environment.resetSelenaExposure()
+        }
+        // If the mix was already bootstrapped under different filter
+        // settings, refresh the cached queue from the unfiltered baseline.
+        let base = baseTracks(for: mix)
+        if !base.isEmpty {
+            storeTracks(base, for: mix)
+        }
         let loaded = tracks(for: mix)
-        if let first = loaded.first {
-            playTrack(first, queue: loaded, mix: mix, applying: mode)
+        let queueToPlay: [Track]
+        if mix.id == MusicMix.common.id {
+            // Re-rank under the reset exposure so the list on screen and
+            // the queue that starts are the same order.
+            let ranked = environment.rankSelenaQueue(loaded)
+            selenaTracks = ranked
+            queueToPlay = ranked
+        } else {
+            queueToPlay = loaded
+        }
+        if let first = queueToPlay.first {
+            playTrack(first, queue: queueToPlay, mix: mix, applying: mode)
             return
         }
         loadingMixID = mix.id
-        queueFillTask?.cancel()
-        Task {
+        launchTask?.cancel()
+        launchTask = Task {
             defer { loadingMixID = nil }
             do {
                 let bootstrap = try await bootstrapTracks(for: mix)
-                guard let first = bootstrap.first else { return }
+                guard !Task.isCancelled else { return }
                 MixBootstrapPrefetch.artwork(for: bootstrap)
                 storeTracks(bootstrap, for: mix)
-                playTrack(first, queue: bootstrap, mix: mix, applying: mode)
+                let initialQueue = mix.id == MusicMix.common.id
+                    ? environment.filteredSelenaTracks(bootstrap)
+                    : environment.filteredMixTracks(bootstrap)
+                guard !initialQueue.isEmpty else { return }
+
+                let queue: [Track] = if mix.id == MusicMix.common.id {
+                    await MainActor.run {
+                        environment.rankSelenaQueue(initialQueue)
+                    }
+                } else {
+                    initialQueue
+                }
+
+                guard !Task.isCancelled else { return }
+                guard let started = queue.first else { return }
+                playTrack(started, queue: queue, mix: mix, applying: mode)
             } catch is CancellationError {
                 return
             } catch {
@@ -2265,12 +2492,10 @@ struct MixesHubView: View {
     private func bootstrapTracks(for mix: MusicMix) async throws -> [Track] {
         if mix.id == MusicMix.common.id {
             let stream = selenaRecommendationStream(knownTracks: [])
-            return try await environment.withAuthorizedToken { token in
-                try await stream.next(
-                    accessToken: token,
-                    musicService: environment.musicService
-                )
-            }
+            return try await environment.nextSelenaBatch(
+                from: stream,
+                cachedPersonalRecommendations: homeCatalog.recommendations
+            )
         }
         return try await environment.withAuthorizedToken { token in
             try await environment.musicService.mixTracksBootstrap(
@@ -2293,33 +2518,12 @@ struct MixesHubView: View {
                 for: mix,
                 knownTracks: queue
             ),
-            source: .mix(title: mix.title)
+            source: .catalogMix(mix)
         )
         // `play` resets the ordering for the fresh queue; re-apply when the
         // user got here by choosing a mode rather than pressing play.
         if let mode, mode != .balanced {
             applyRadio(mode, mix: mix)
-        }
-    }
-
-    private func fillQueueInBackground(_ mix: MusicMix) {
-        queueFillTask?.cancel()
-        let continuation = mixContinuationProvider(
-            for: mix,
-            knownTracks: tracks(for: mix)
-        )
-        queueFillTask = Task {
-            do {
-                let more = try await continuation()
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    player.appendToQueue(more)
-                    storeTracks(
-                        mergeTracks(tracks(for: mix), more),
-                        for: mix
-                    )
-                }
-            } catch {}
         }
     }
 
@@ -2330,13 +2534,10 @@ struct MixesHubView: View {
         if mix.id == MusicMix.common.id {
             let stream = selenaRecommendationStream(knownTracks: knownTracks)
             return {
-                let more = try await environment.withAuthorizedToken { token in
-                    try await stream.next(
-                        accessToken: token,
-                        musicService: environment.musicService
-                    )
+                let more = try await environment.nextSelenaBatch(from: stream)
+                return await MainActor.run {
+                    environment.selenaContinuationTracks(more)
                 }
-                return environment.filteredMixTracks(more)
             }
         }
 
@@ -2348,34 +2549,66 @@ struct MixesHubView: View {
                     musicService: environment.musicService
                 )
             }
-            return environment.filteredMixTracks(more)
+            return await MainActor.run {
+                environment.continuationTracks(more)
+            }
         }
     }
 
     private func selenaRecommendationStream(
         knownTracks: [Track]
     ) -> SelenaRecommendationCursor {
-        SelenaRecommendationCursor(
+        let recent = history.entries
+            .prefix(MixListeningHistoryWindow.ranking)
+            .map(\.track)
+        return SelenaRecommendationCursor(
             seedTracks: SelenaRecommendationComposer.seedTracks(
                 history: history.entries,
                 recommendations: homeCatalog.recommendations,
                 loaded: knownTracks.isEmpty ? selenaTracks : knownTracks
             ),
-            knownTracks: knownTracks
+            knownTracks: knownTracks + recent
         )
     }
 
-    private func storeTracks(_ tracks: [Track], for mix: MusicMix) {
-        let cleaned = environment.filteredMixTracks(tracks)
+    private func storeTracks(
+        _ tracks: [Track],
+        for mix: MusicMix,
+        updatingBaseline: Bool = true,
+        applyBanditPreview: Bool = true
+    ) {
+        let cleaned: [Track]
+        if mix.id == MusicMix.common.id {
+            cleaned = environment.filteredSelenaTracks(tracks)
+        } else {
+            cleaned = environment.filteredMixTracks(tracks)
+        }
+        let display: [Track]
+        if mix.id == MusicMix.common.id, applyBanditPreview {
+            // Preview must match play order — bandit without burning
+            // exposure until the listener actually starts the station.
+            display = environment.rankSelenaQueue(
+                cleaned,
+                recordExposure: false
+            )
+        } else {
+            display = cleaned
+        }
         let rationale = MixRationaleBuilder.build(
-            mixTracks: cleaned,
+            mixTracks: display,
             history: history.entries,
             recommendations: homeCatalog.recommendations
         )
         if mix.id == MusicMix.common.id {
-            selenaTracks = cleaned
+            if updatingBaseline {
+                selenaTrackBase = tracks
+            }
+            selenaTracks = display
             selenaRationale = rationale
             return
+        }
+        if updatingBaseline {
+            vkTrackBaseCache[mix.id] = tracks
         }
         vkTrackCache[mix.id] = cleaned
         vkRationaleCache[mix.id] = rationale
@@ -2385,8 +2618,38 @@ struct MixesHubView: View {
         }
     }
 
+    private func baseTracks(for mix: MusicMix) -> [Track] {
+        if mix.id == MusicMix.common.id {
+            return selenaTrackBase
+        }
+        return vkTrackBaseCache[mix.id] ?? []
+    }
+
+    private func currentMixForFilters() -> MusicMix? {
+        // Prefer the mix that is actually playing — filters exist to shape
+        // what you hear, not which tab happens to be visible.
+        if let mixID = player.queueSource?.mixID {
+            if personalMix.id == mixID { return personalMix }
+            if let selected = selectedVKMix, selected.id == mixID {
+                return selected
+            }
+            if let match = mixes.first(where: { $0.id == mixID }) {
+                return match
+            }
+        }
+        switch hubTab {
+        case .selena:
+            return personalMix
+        case .vk:
+            return selectedVKMix ?? orderedVKMixes.first ?? personalMix
+        }
+    }
+
     private func pin(mix: MusicMix, tracks: [Track]) {
-        guard !tracks.isEmpty else { return }
+        // Pin stores the live playhead — saving a card that is not the
+        // current queue would write another mix's index/elapsed into this
+        // bookmark.
+        guard player.isPlaying(mix), !tracks.isEmpty else { return }
         pinnedMixStore.pin(
             mix: mix,
             tracks: tracks,
@@ -2400,17 +2663,17 @@ struct MixesHubView: View {
     private func applyRadio(_ mode: MixRadioMode, mix: MusicMix) {
         // Radio describes the live queue for THIS mix only. A mode change on
         // another card must not reshuffle a different mix that is playing.
-        guard case .mix(let playingTitle) = player.queueSource,
-              playingTitle == mix.title,
+        guard player.isPlaying(mix),
               !player.queue.isEmpty else {
             start(mix, applying: mode)
             return
         }
-        let artists = Set(history.entries.prefix(40).map(\.track.artist))
-        player.rerankUpcomingMix(mode: mode, historyArtists: artists)
+        let artists = Set(history.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist))
         let current = tracks(for: mix)
         let queue = current.isEmpty ? player.queue : current
         guard let seed = player.currentTrack ?? queue.first else { return }
+
+        player.rerankUpcomingMix(mode: mode, historyArtists: artists)
         storeTracks(
             MixQueueRanker.rerank(
                 queue: queue,
@@ -2419,7 +2682,10 @@ struct MixesHubView: View {
                 mode: mode,
                 historyArtists: artists
             ),
-            for: mix
+            for: mix,
+            updatingBaseline: false,
+            // Mode already shaped the list; don't let bandit reshuffle it.
+            applyBanditPreview: false
         )
         // Server refill for closerToSeed / moreNovel is owned by AudioPlayer.
     }
@@ -2442,6 +2708,26 @@ struct MixesHubView: View {
         return environment.filteredMixTracks(
             Array(result.prefix(MixTrackRequestPolicy.queueLimit))
         )
+    }
+
+    /// Merge for baseline caching: do **not** run language/familiarity
+    /// filters here — otherwise switching filters back and forth will
+    /// permanently shrink the pool.
+    private func mergeUnfiltered(_ lhs: [Track], _ rhs: [Track]) -> [Track] {
+        var known = Set(lhs.map(\.id))
+        var result = lhs
+        for track in rhs where known.insert(track.id).inserted {
+            result.append(track)
+        }
+        return Array(result.prefix(MixTrackRequestPolicy.queueLimit))
+    }
+}
+
+private struct MixHubWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -2519,7 +2805,7 @@ private struct MixListeningStats {
         artistCount = counts.count
 
         let recentArtists = Set(
-            history.prefix(80).map { entry in
+            history.prefix(MixListeningHistoryWindow.familiarity).map { entry in
                 MixFeedbackPolicy.normalized(entry.track.artist)
             }
             .filter { !$0.isEmpty }

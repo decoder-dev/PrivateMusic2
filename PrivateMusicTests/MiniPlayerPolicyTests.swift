@@ -29,6 +29,30 @@ final class MiniPlayerProgressPolicyTests: XCTestCase {
             accuracy: 0.0001
         )
     }
+
+    func testSeekTimeMapsTapAcrossTheTrack() {
+        XCTAssertEqual(
+            MiniPlayerProgressPolicy.seekTime(x: 50, width: 100, duration: 200) ?? -1,
+            100,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            MiniPlayerProgressPolicy.seekTime(x: -10, width: 100, duration: 200) ?? -1,
+            0,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            MiniPlayerProgressPolicy.seekTime(x: 150, width: 100, duration: 200) ?? -1,
+            200,
+            accuracy: 0.0001
+        )
+        XCTAssertNil(
+            MiniPlayerProgressPolicy.seekTime(x: 50, width: 0, duration: 200)
+        )
+        XCTAssertNil(
+            MiniPlayerProgressPolicy.seekTime(x: 50, width: 100, duration: 0)
+        )
+    }
 }
 
 final class MiniPlayerGesturePolicyTests: XCTestCase {
@@ -333,10 +357,67 @@ final class MiniPlayerAccessoryPolicyTests: XCTestCase {
             + MiniPlayerLayoutMetrics.progressHeight
             + MiniPlayerLayoutMetrics.progressBottomInset
 
-        XCTAssertEqual(contentHeight, 63)
+        XCTAssertEqual(contentHeight, 58)
         XCTAssertGreaterThanOrEqual(
             contentHeight,
             MiniPlayerLayoutMetrics.minHeight
+        )
+    }
+
+    func testAccessorySlotIsShorterThanTheDockCard() {
+        XCTAssertGreaterThan(
+            MiniPlayerLayoutMetrics.minHeight,
+            MiniPlayerLayoutMetrics.accessoryMaxHeight
+        )
+        // 44pt transport + 4+4 accessory padding must fit without clip.
+        XCTAssertEqual(
+            MiniPlayerLayoutMetrics.accessoryMaxHeight,
+            52
+        )
+    }
+}
+
+final class QueuePresentationPolicyTests: XCTestCase {
+    func testUpcomingStartsAfterTheCurrentIndex() {
+        XCTAssertEqual(
+            QueuePresentationPolicy.upcomingOffsets(
+                queueCount: 4,
+                currentIndex: 1
+            ),
+            [2, 3]
+        )
+    }
+
+    func testLastTrackHasNoUpcoming() {
+        XCTAssertEqual(
+            QueuePresentationPolicy.upcomingOffsets(
+                queueCount: 3,
+                currentIndex: 2
+            ),
+            []
+        )
+    }
+
+    func testMissingCurrentIndexListsTheWholeQueue() {
+        XCTAssertEqual(
+            QueuePresentationPolicy.upcomingOffsets(
+                queueCount: 2,
+                currentIndex: nil
+            ),
+            [0, 1]
+        )
+    }
+}
+
+final class QueueRowMetricsTests: XCTestCase {
+    func testRowsReserveVerticalBreathingRoom() {
+        XCTAssertGreaterThan(
+            QueueRowMetrics.listRowInsets.top,
+            0
+        )
+        XCTAssertGreaterThanOrEqual(
+            QueueRowMetrics.minRowHeight,
+            48 + QueueRowMetrics.verticalInset * 2
         )
     }
 }

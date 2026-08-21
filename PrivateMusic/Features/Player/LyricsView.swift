@@ -41,7 +41,8 @@ struct LyricsView: View {
                             title: "lyrics_unavailable",
                             systemImage: "quote.bubble",
                             description: errorMessage
-                                ?? "no_lyrics_were_found_for_this_track"
+                                ?? "no_lyrics_were_found_for_this_track",
+                            descriptionIsLocalizedKey: errorMessage == nil
                         )
                         geniusLink(title: "find_lyrics_on_genius")
                     }

@@ -208,7 +208,7 @@ final class SelenaRecommendationComposerTests: XCTestCase {
             personalRecommendations: personal,
             similarRecommendations: similar,
             limit: 6
-        )
+        ).tracks
 
         XCTAssertEqual(
             result.map(\.id),
@@ -284,11 +284,11 @@ final class SelenaRecommendationComposerTests: XCTestCase {
         let firstPage = try await cursor.next(
             accessToken: "token",
             musicService: service
-        )
+        ).tracks
         let secondPage = try await cursor.next(
             accessToken: "token",
             musicService: service
-        )
+        ).tracks
 
         let recommendationTargets = await service.recommendationTargets
         let seededTargets = recommendationTargets.compactMap {
@@ -296,12 +296,96 @@ final class SelenaRecommendationComposerTests: XCTestCase {
         }
         XCTAssertFalse(firstPage.isEmpty)
         XCTAssertFalse(secondPage.isEmpty)
-        XCTAssertEqual(Array(seededTargets.prefix(3)), seeds.prefix(3).map(\.id))
+        // Parallel seed fan-out does not preserve call order — only that
+        // the first page asked for the first three seeds.
+        XCTAssertEqual(
+            Set(seededTargets.prefix(3)),
+            Set(seeds.prefix(3).map(\.id))
+        )
         XCTAssertGreaterThanOrEqual(seededTargets.count, 6)
         XCTAssertEqual(
             Set((firstPage + secondPage).map(\.id)).count,
             firstPage.count + secondPage.count
         )
+    }
+
+    func testSelenaCursorReusesCachedPersonalRecommendations() async throws {
+        let service = CursorMusicService()
+        let seeds = (1...3).map { makeTrack(id: $0, artist: "Seed \($0)") }
+        let cached = [
+            makeTrack(id: 50, artist: "Cached"),
+            makeTrack(id: 51, artist: "Cached")
+        ]
+        let cursor = SelenaRecommendationCursor(
+            seedTracks: seeds,
+            knownTracks: []
+        )
+
+        let page = try await cursor.next(
+            accessToken: "token",
+            musicService: service,
+            cachedPersonalRecommendations: cached
+        ).tracks
+
+        let recommendationTargets = await service.recommendationTargets
+        // Cached personal skips the unseeded recommendations() call
+        // (recorded as a nil target).
+        XCTAssertFalse(recommendationTargets.contains { $0 == nil })
+        XCTAssertTrue(page.contains { $0.artist == "Cached" })
+    }
+
+    func testRotatingSeedsPreferFreshlyComposedTracks() {
+        let previous = (1...32).map { makeTrack(id: $0, artist: "Old \($0)") }
+        let composed = [
+            makeTrack(id: 100, artist: "New A"),
+            makeTrack(id: 101, artist: "New B"),
+            makeTrack(id: 102, artist: "New C")
+        ]
+
+        let rotated = SelenaRecommendationComposer.rotatingSeeds(
+            previous: previous,
+            composed: composed,
+            limit: 32
+        )
+
+        XCTAssertEqual(
+            Array(rotated.prefix(3).map(\.id)),
+            ["1_100", "1_101", "1_102"]
+        )
+        XCTAssertEqual(rotated.count, 32)
+        // Tail of the previous window falls off first — not the head.
+        XCTAssertFalse(rotated.contains { $0.id == "1_32" })
+        XCTAssertTrue(rotated.contains { $0.id == "1_1" })
+    }
+
+    func testSelenaCursorReusesSessionPersonalOnLaterPages() async throws {
+        let service = CursorMusicService()
+        let seeds = (1...3).map { makeTrack(id: $0, artist: "Seed \($0)") }
+        let cached = [
+            makeTrack(id: 70, artist: "Session"),
+            makeTrack(id: 71, artist: "Session")
+        ]
+        let cursor = SelenaRecommendationCursor(
+            seedTracks: seeds,
+            knownTracks: []
+        )
+
+        _ = try await cursor.next(
+            accessToken: "token",
+            musicService: service,
+            cachedPersonalRecommendations: cached
+        )
+        let beforeSecond = await service.recommendationTargets.count
+        let second = try await cursor.next(
+            accessToken: "token",
+            musicService: service
+        ).tracks
+        let targets = await service.recommendationTargets
+
+        // Second page must not pay for another unseeded personal fetch.
+        XCTAssertFalse(targets.contains { $0 == nil })
+        XCTAssertEqual(targets.count - beforeSecond, 3)
+        XCTAssertFalse(second.isEmpty)
     }
 
     private func makeTrack(id: Int, artist: String) -> Track {

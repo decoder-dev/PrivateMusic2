@@ -1,3 +1,4 @@
+import CommonCrypto
 import XCTest
 @testable import PrivateMusic
 
@@ -63,6 +64,64 @@ final class PrivateMusicMediaTests: XCTestCase {
             pm_buffer_max_loaded_ahead(.nan, buffer.baseAddress, 4)
         }
         XCTAssertEqual(nonFinitePosition, 0)
+    }
+
+    func testAES128CBCDecryptRoundTrip() {
+        let key = Data(repeating: 0x2A, count: Int(PM_AES128_KEY_BYTES))
+        let iv = Data(repeating: 0x19, count: Int(PM_AES128_IV_BYTES))
+        let plaintext = Data("PrivateMusic HLS segment payload".utf8)
+        let ciphertext = encryptAES128CBC(plaintext, key: key, iv: iv)
+
+        var output = Data(
+            count: ciphertext.count + Int(PM_AES128_BLOCK_BYTES)
+        )
+        var outputLength: Int32 = 0
+        let status = output.withUnsafeMutableBytes { outBytes in
+            ciphertext.withUnsafeBytes { cipherBytes in
+                key.withUnsafeBytes { keyBytes in
+                    iv.withUnsafeBytes { ivBytes in
+                        pm_aes128_cbc_decrypt(
+                            cipherBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            Int32(ciphertext.count),
+                            keyBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            ivBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            outBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            Int32(outBytes.count),
+                            &outputLength
+                        )
+                    }
+                }
+            }
+        }
+        XCTAssertEqual(status, PM_AES128_OK)
+        let decrypted = output
+        XCTAssertEqual(decrypted.prefix(Int(outputLength)), plaintext)
+    }
+
+    func testAES128CBCDecryptRejectsNonBlockAlignedCiphertext() {
+        var outputLength: Int32 = 0
+        var output = [UInt8](repeating: 0, count: 32)
+        let key = [UInt8](repeating: 1, count: Int(PM_AES128_KEY_BYTES))
+        let iv = [UInt8](repeating: 2, count: Int(PM_AES128_IV_BYTES))
+        let ciphertext = [UInt8](repeating: 0, count: 15)
+        let status = pm_aes128_cbc_decrypt(
+            ciphertext,
+            15,
+            key,
+            iv,
+            &output,
+            32,
+            &outputLength
+        )
+        XCTAssertEqual(status, PM_AES128_OUTPUT_TOO_SMALL)
     }
 
     func testVKUnmaskRestoresAMaskedStreamURL() {
@@ -172,6 +231,77 @@ final class PrivateMusicMediaTests: XCTestCase {
         }
     }
 
+    func testCMAFInitializationParseReadsTrackAndESDS() throws {
+        let initSegment = Self.cmafInitialization(
+            trackID: 7,
+            timescale: 44_100,
+            sampleRate: 44_100,
+            channels: 2,
+            defaultDuration: 1024
+        )
+        let info = try CMAFAudioDemuxer().parseInitialization(initSegment)
+        XCTAssertEqual(info.trackID, 7)
+        XCTAssertEqual(info.timescale, 44_100)
+        XCTAssertEqual(info.sampleRate, 44_100, accuracy: 0.1)
+        XCTAssertEqual(info.channelCount, 2)
+        XCTAssertEqual(info.codec, .aac)
+        XCTAssertEqual(info.defaultSampleDuration, 1024)
+        XCTAssertEqual(info.audioSpecificConfig, Data([0x12, 0x10]))
+        XCTAssertEqual(info.elementaryStreamDescriptor?.first, 0x03)
+        XCTAssertFalse(info.elementaryStreamDescriptor?.isEmpty ?? true)
+    }
+
+    func testCMAFInitializationParseRejectsMissingFtyp() {
+        let moov = Self.isoBox("moov", payload: Data("x".utf8))
+        XCTAssertThrowsError(
+            try CMAFAudioDemuxer().parseInitialization(moov)
+        )
+    }
+
+    func testCMAFInitializationNativeOffsetsMatchSwiftSlice() throws {
+        let initSegment = Self.cmafInitialization(trackID: 1)
+        var info = pm_cmaf_init(
+            track_id: 0,
+            timescale: 0,
+            sample_rate: 0,
+            channel_count: 0,
+            codec_fourcc: 0,
+            default_sample_duration: 0,
+            default_sample_size: 0,
+            default_sample_flags: 0,
+            has_default_duration: false,
+            has_default_size: false,
+            has_default_flags: false,
+            esds_offset: -1,
+            esds_length: 0,
+            asc_offset: -1,
+            asc_length: 0
+        )
+        var status = pm_cmaf_status(code: 0, found_track_id: 0)
+        let ok = initSegment.withUnsafeBytes { raw -> Int32 in
+            guard let base = raw.bindMemory(to: UInt8.self).baseAddress else {
+                return 0
+            }
+            return pm_cmaf_parse_initialization(
+                base,
+                Int32(initSegment.count),
+                &info,
+                &status
+            )
+        }
+        XCTAssertEqual(ok, 1)
+        XCTAssertEqual(status.code, PM_CMAF_OK)
+        XCTAssertEqual(info.track_id, 1)
+        XCTAssertEqual(info.codec_fourcc, pm_iso_fourcc("mp4a"))
+        XCTAssertGreaterThan(info.asc_length, 0)
+        let start = Int(info.asc_offset)
+        let end = start + Int(info.asc_length)
+        XCTAssertEqual(
+            initSegment.subdata(in: start..<end),
+            Data([0x12, 0x10])
+        )
+    }
+
     private static func audioInit(trackID: UInt32 = 1) -> CMAFAudioDemuxer.InitializationInfo {
         CMAFAudioDemuxer.InitializationInfo(
             trackID: trackID,
@@ -185,6 +315,60 @@ final class PrivateMusicMediaTests: XCTestCase {
             defaultSampleSize: nil,
             defaultSampleFlags: nil
         )
+    }
+
+    private static func cmafInitialization(
+        trackID: UInt32 = 1,
+        timescale: UInt32 = 44_100,
+        sampleRate: UInt32 = 44_100,
+        channels: UInt16 = 2,
+        defaultDuration: UInt32 = 1024
+    ) -> Data {
+        var tkhd = Data(count: 24)
+        tkhd.replaceSubrange(12..<16, with: u32(trackID))
+        var mdhd = Data(count: 24)
+        mdhd.replaceSubrange(16..<20, with: u32(timescale))
+        var hdlr = Data(count: 12)
+        hdlr.replaceSubrange(8..<12, with: Data("soun".utf8))
+
+        var mp4aPayload = Data(count: 28)
+        var channelBE = channels.bigEndian
+        mp4aPayload.replaceSubrange(16..<18, with: Data(bytes: &channelBE, count: 2))
+        mp4aPayload.replaceSubrange(24..<28, with: u32(sampleRate << 16))
+        let esdsDescriptor = Data([
+            0x03, 0x19,
+            0x00, 0x01, 0x00,
+            0x04, 0x11,
+            0x40, 0x15,
+            0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x05, 0x02, 0x12, 0x10,
+            0x06, 0x01, 0x02
+        ])
+        mp4aPayload.append(isoBox("esds", payload: u32(0) + esdsDescriptor))
+        let stsd = isoBox("stsd", payload: u32(0) + u32(1) + isoBox("mp4a", payload: mp4aPayload))
+        let stbl = isoBox("stbl", payload: stsd)
+        let minf = isoBox("minf", payload: stbl)
+        let mdia = isoBox(
+            "mdia",
+            payload: isoBox("mdhd", payload: mdhd)
+                + isoBox("hdlr", payload: hdlr)
+                + minf
+        )
+        let trak = isoBox(
+            "trak",
+            payload: isoBox("tkhd", payload: tkhd) + mdia
+        )
+        let trex = isoBox(
+            "trex",
+            payload: u32(0) + u32(trackID) + u32(1) + u32(defaultDuration) + u32(0) + u32(0)
+        )
+        let moov = isoBox(
+            "moov",
+            payload: trak + isoBox("mvex", payload: trex)
+        )
+        return isoBox("ftyp", payload: Data("isom".utf8)) + moov
     }
 
     private static func u32(_ value: UInt32) -> Data {
@@ -249,5 +433,40 @@ final class PrivateMusicMediaTests: XCTestCase {
         data.append(contentsOf: type.utf8)
         data.append(payload)
         return data
+    }
+
+    private func encryptAES128CBC(
+        _ plaintext: Data,
+        key: Data,
+        iv: Data
+    ) -> Data {
+        let capacity = plaintext.count + Int(PM_AES128_BLOCK_BYTES)
+        var output = Data(count: capacity)
+        var outputLength = 0
+        var cryptStatus: CCCryptorStatus = CCCryptorStatus(kCCSuccess)
+        output.withUnsafeMutableBytes { outputBytes in
+            plaintext.withUnsafeBytes { plaintextBytes in
+                key.withUnsafeBytes { keyBytes in
+                    iv.withUnsafeBytes { ivBytes in
+                        cryptStatus = CCCrypt(
+                            CCOperation(kCCEncrypt),
+                            CCAlgorithm(kCCAlgorithmAES),
+                            CCOptions(kCCOptionPKCS7Padding),
+                            keyBytes.baseAddress,
+                            key.count,
+                            ivBytes.baseAddress,
+                            plaintextBytes.baseAddress,
+                            plaintext.count,
+                            outputBytes.baseAddress,
+                            capacity,
+                            &outputLength
+                        )
+                    }
+                }
+            }
+        }
+        XCTAssertEqual(Int32(cryptStatus), Int32(kCCSuccess))
+        let encrypted = output
+        return Data(encrypted.prefix(outputLength))
     }
 }

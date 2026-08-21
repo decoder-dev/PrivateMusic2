@@ -14,11 +14,137 @@ final class AppEnvironment {
     let offlineStore: OfflineTrackStore
     let pinnedMixStore: PinnedMixStore
     let mixFeedbackStore: MixFeedbackStore
+    let homePersonalizationStore: HomePersonalizationStore
     let trackShareService: TrackShareService
     let player: AudioPlayer
     let watchRemoteCoordinator: WatchRemoteCoordinator
     let musicService: any MusicService
     let webAuthService: VKWebAuthService
+    /// Session-scoped Selena spacing counters. Owned here so Home and
+    /// Explore share one bandit history for the personal station — a
+    /// view `@State` reset every time Explore was recreated.
+    private(set) var selenaExposure = SelenaExposure()
+    /// Which compose arms produced which track ids this session — shared
+    /// across Explore preview and live continuation cursors.
+    private(set) var selenaSourceBandit = SelenaSourceBandit()
+    private var selenaTrackSources: [String: SelenaComposeSource] = [:]
+
+    func resetSelenaExposure() {
+        selenaExposure.reset()
+        selenaSourceBandit = SelenaSourceBandit()
+        // Keep selenaTrackSources so an Explore-composed opening queue
+        // can still reward arms after play() resets exposure/spacing.
+    }
+
+    func recordSelenaExposure(_ tracks: [Track]) {
+        selenaExposure.record(tracks)
+    }
+
+    func selenaComposeBias() -> (personal: Int, similar: Int, seedEvery: Int) {
+        selenaSourceBandit.composeBias(
+            diversity: settings.selenaDiversityPreference
+        )
+    }
+
+    func ingestSelenaCompose(
+        sources: [String: SelenaComposeSource],
+        keptIDs: Set<String>
+    ) {
+        for id in keptIDs {
+            if let source = sources[id] {
+                selenaTrackSources[id] = source
+            }
+        }
+        if selenaTrackSources.count > 500 {
+            let overflow = selenaTrackSources.count - 400
+            let doomed = Array(selenaTrackSources.keys.prefix(overflow))
+            for key in doomed {
+                selenaTrackSources.removeValue(forKey: key)
+            }
+        }
+    }
+
+    func rewardSelenaSource(trackID: String, success: Bool) {
+        guard let source = selenaTrackSources[trackID] else { return }
+        selenaSourceBandit.reward(source.arm, success: success)
+    }
+
+    /// Fetch the next Selena batch with shared session bias + source tags.
+    func nextSelenaBatch(
+        from stream: SelenaRecommendationCursor,
+        cachedPersonalRecommendations: [Track] = []
+    ) async throws -> [Track] {
+        let diversity = settings.selenaDiversityPreference
+        let bias = selenaComposeBias()
+        let batch = try await withAuthorizedToken { token in
+            try await stream.next(
+                accessToken: token,
+                musicService: musicService,
+                cachedPersonalRecommendations: cachedPersonalRecommendations,
+                diversity: diversity,
+                bias: bias
+            )
+        }
+        ingestSelenaCompose(
+            sources: batch.sources,
+            keptIDs: Set(batch.tracks.map(\.id))
+        )
+        return batch.tracks
+    }
+
+    /// Bandit order shared by Home play, Explore preview, and refill.
+    func rankSelenaQueue(_ tracks: [Track], recordExposure: Bool = true) -> [Track] {
+        let diversity = settings.selenaDiversityPreference
+        let weights = SelenaWavePolicy.banditWeights(diversity: diversity)
+        let mood = settings.mixMoodPreference
+        let moodScores: [String: Int] = {
+            guard mood != .any else { return [:] }
+            var scores: [String: Int] = [:]
+            for track in tracks {
+                let score = SelenaWavePolicy.moodScore(track, mood: mood)
+                if score > 0 { scores[track.id] = score }
+            }
+            return scores
+        }()
+        let deduped = SelenaWavePolicy.dedupeRepeats(
+            tracks,
+            recentTrackIDs: []
+        )
+        let ranked = SelenaBanditPolicy.rerank(
+            deduped,
+            affinityByArtistKey: selenaArtistAffinity(),
+            exposure: selenaExposure,
+            bannedArtists: mixFeedbackStore.bannedArtists,
+            familiarityWeight: weights.familiarity,
+            noveltyWeight: weights.novelty,
+            artistSpacing: SelenaWavePolicy.artistSpacing(diversity: diversity),
+            moodScoresByTrackID: moodScores,
+            moodWeight: moodScores.isEmpty ? 0 : SelenaBanditPolicy.moodWeight
+        )
+        if recordExposure {
+            recordSelenaExposure(ranked)
+        }
+        return ranked
+    }
+
+    /// Continuations for Selena / My Music — filter with relax notice, then bandit.
+    func selenaContinuationTracks(_ tracks: [Track]) -> [Track] {
+        let outcome = filterSelenaTracks(tracks, relaxIfEmpty: true)
+        if outcome.didRelax {
+            mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
+        }
+        return rankSelenaQueue(outcome.tracks)
+    }
+
+    /// Non-Selena mix refill — surface silent filter widen the same way.
+    func continuationTracks(_ tracks: [Track]) -> [Track] {
+        let outcome = filterMixTracks(tracks, relaxIfEmpty: true)
+        if outcome.didRelax {
+            mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
+        }
+        return outcome.tracks
+    }
+
     private(set) var isRecoveringSession = false
     /// While a share export is active, offline downloads and automatic
     /// caching are paused and hidden so the share transfer gets bandwidth.
@@ -76,14 +202,16 @@ final class AppEnvironment {
             accountID: sessionStore.resolvedOfflineAccountID
         )
         self.mixFeedbackStore = mixFeedbackStore
+        let homePersonalizationStore = HomePersonalizationStore()
+        homePersonalizationStore.configure(
+            accountID: sessionStore.resolvedOfflineAccountID
+        )
+        self.homePersonalizationStore = homePersonalizationStore
         let player = AudioPlayer(
             settings: settings,
             historyStore: historyStore,
             userAgent: sessionStore.userAgent
         )
-        player.configureMixTrackFilter { [weak mixFeedbackStore] tracks in
-            mixFeedbackStore?.filtering(tracks) ?? tracks
-        }
         self.player = player
         let watchRemoteCoordinator = WatchRemoteCoordinator(player: player)
         self.watchRemoteCoordinator = watchRemoteCoordinator
@@ -102,6 +230,19 @@ final class AppEnvironment {
             initialUserID: sessionStore.resolvedOfflineAccountID
         )
         self.musicService = service
+        // One answer for "what belongs in a mix queue": bans + language +
+        // familiarity. Must sit after every stored property is set — a
+        // `[weak self]` capture before that fails definite initialization.
+        player.configureMixTrackFilter { [weak self] tracks in
+            guard let self else { return tracks }
+            if self.player.queueSource?.usesSelenaWaveFilters == true {
+                return self.filteredSelenaTracks(tracks)
+            }
+            return self.filteredMixTracks(tracks)
+        }
+        player.configureSelenaSourceFeedback { [weak self] trackID, success in
+            self?.rewardSelenaSource(trackID: trackID, success: success)
+        }
         player.configureMixRadioRefill { [weak self, service] seed, mode in
             guard let self else { return [] }
             return try await self.withAuthorizedToken { token in
@@ -114,9 +255,10 @@ final class AppEnvironment {
         }
         player.configureContinuation { [weak self, service] in
             guard let self else { return [] }
-            return try await self.withAuthorizedToken { token in
+            let remote = try await self.withAuthorizedToken { token in
                 try await service.recommendations(accessToken: token)
             }
+            return self.filteredMixTracks(remote)
         }
         player.configureStreamRefresh { [weak self, service] track in
             guard let self else { throw CancellationError() }
@@ -253,6 +395,7 @@ final class AppEnvironment {
         OfflinePlaylistStore.shared.configure(accountID: accountID)
         pinnedMixStore.configure(accountID: accountID)
         mixFeedbackStore.configure(accountID: accountID)
+        homePersonalizationStore.configure(accountID: accountID)
     }
 
     /// Walks the whole personal library and rebuilds the liked-track index.
@@ -353,7 +496,6 @@ final class AppEnvironment {
         let refreshID = homeCatalogStore.beginRefreshing()
         var recommendations: [Track]?
         var mixes: [MusicMix]?
-        var playlists: [Playlist]?
         var newReleases: [Album]?
         var failures: [String] = []
 
@@ -379,31 +521,6 @@ final class AppEnvironment {
                 return .failure(error)
             }
         }()
-        // «Ваши плейлисты» on the home screen is the same list as the
-        // library shelf, so it asks for a full page and applies the same
-        // duplicate collapse policy.
-        let playlistOwnerID = sessionStore.resolvedOfflineAccountID
-        async let playlistsResult: Result<[Playlist], Error> = {
-            do {
-                let value = try await withAuthorizedToken { token in
-                    let page = try await musicService.playlists(
-                        accessToken: token,
-                        offset: 0,
-                        count: LibraryPlaylistPagePolicy.pageSize
-                    )
-                    return page.items
-                }
-                return .success(
-                    LibraryPlaylistShelfPolicy.normalized(
-                        value,
-                        ownerID: playlistOwnerID
-                    )
-                )
-            } catch {
-                return .failure(error)
-            }
-        }()
-
         switch await recommendationsResult {
         case let .success(value):
             recommendations = value
@@ -428,21 +545,9 @@ final class AppEnvironment {
             newReleases = []
         }
 
-        switch await playlistsResult {
-        case let .success(value):
-            playlists = value
-        case let .failure(error):
-            if error is CancellationError {
-                homeCatalogStore.cancelRefreshing(refreshID: refreshID)
-                return
-            }
-            failures.append(error.localizedDescription)
-        }
-
         homeCatalogStore.finish(
             recommendations: recommendations,
             mixes: mixes,
-            playlists: playlists,
             newReleases: newReleases,
             errorMessage: failures.first,
             refreshID: refreshID
@@ -765,19 +870,126 @@ final class AppEnvironment {
 
     // MARK: - Mix experience (global)
 
+    /// Language / familiarity / bans for seed and bootstrap queues.
+    /// Falls back to the ban-only pool when filters would empty it so a
+    /// cold start always has something to play.
     func filteredMixTracks(_ tracks: [Track]) -> [Track] {
+        let outcome = filterMixTracks(tracks, relaxIfEmpty: true)
+        if outcome.didRelax {
+            mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
+        }
+        return outcome.tracks
+    }
+
+    /// Selena wave filters — language (incl. instrumental), diversity-implied
+    /// familiarity, then soft moodEnergy order and fingerprint dedupe.
+    func filteredSelenaTracks(_ tracks: [Track]) -> [Track] {
+        let outcome = filterSelenaTracks(tracks, relaxIfEmpty: true)
+        if outcome.didRelax {
+            mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
+        }
+        return outcome.tracks
+    }
+
+    /// Same filters without the silent widen — used when the listener
+    /// just tightened a chip and expects the queue to shrink.
+    func filterMixTracks(
+        _ tracks: [Track],
+        relaxIfEmpty: Bool
+    ) -> MixFilterOutcome {
         let historyArtists = Set(
-            historyStore.entries.prefix(80).map(\.track.artist)
+            historyStore.entries
+                .prefix(MixListeningHistoryWindow.familiarity)
+                .map(\.track.artist)
         )
         let afterFeedback = mixFeedbackStore.filtering(tracks)
-        let filtered = MixQueueFilter.apply(
-            afterFeedback,
-            language: settings.mixLanguagePreference,
-            familiarity: settings.mixFamiliarityPreference,
-            historyArtists: historyArtists
+        // Instrumental is a Selena-only dial; catalog mixes ignore it.
+        let language = MixLanguagePreference.catalogValue(
+            settings.mixLanguagePreference
         )
-        // Never empty a seed queue because filters were too strict.
-        return filtered.isEmpty ? afterFeedback : filtered
+        if relaxIfEmpty {
+            return MixQueueFilter.applyAllowingFallback(
+                afterFeedback,
+                language: language,
+                familiarity: settings.mixFamiliarityPreference,
+                historyArtists: historyArtists
+            )
+        }
+        return MixFilterOutcome(
+            tracks: MixQueueFilter.applyStrict(
+                afterFeedback,
+                language: language,
+                familiarity: settings.mixFamiliarityPreference,
+                historyArtists: historyArtists
+            ),
+            didRelax: false
+        )
+    }
+
+    func filterSelenaTracks(
+        _ tracks: [Track],
+        relaxIfEmpty: Bool
+    ) -> MixFilterOutcome {
+        let historyArtists = Set(
+            historyStore.entries
+                .prefix(MixListeningHistoryWindow.familiarity)
+                .map(\.track.artist)
+        )
+        let afterFeedback = mixFeedbackStore.filtering(tracks)
+        let familiarity = SelenaWavePolicy.impliedFamiliarity(
+            diversity: settings.selenaDiversityPreference
+        )
+        let base: MixFilterOutcome
+        if relaxIfEmpty {
+            base = MixQueueFilter.applyAllowingFallback(
+                afterFeedback,
+                language: settings.mixLanguagePreference,
+                familiarity: familiarity,
+                historyArtists: historyArtists
+            )
+        } else {
+            base = MixFilterOutcome(
+                tracks: MixQueueFilter.applyStrict(
+                    afterFeedback,
+                    language: settings.mixLanguagePreference,
+                    familiarity: familiarity,
+                    historyArtists: historyArtists
+                ),
+                didRelax: false
+            )
+        }
+        let deduped = SelenaWavePolicy.dedupeRepeats(
+            base.tracks,
+            recentTrackIDs: []
+        )
+        if deduped.isEmpty, !base.tracks.isEmpty {
+            return MixFilterOutcome(tracks: base.tracks, didRelax: true)
+        }
+        return MixFilterOutcome(tracks: deduped, didRelax: base.didRelax)
+    }
+
+    /// Re-run mix filters on the unplayed suffix of the live mix queue.
+    /// Tightening drops non-matching tracks immediately; if that would
+    /// empty the suffix we keep it and surface that the filters relaxed.
+    /// Full recovery from an unfiltered baseline is owned by the mix
+    /// hub's `refilterLoadedTracks`.
+    func reapplyMixFiltersToPlayingQueue() {
+        guard case .mix = player.queueSource,
+              let index = player.currentIndex,
+              player.queue.indices.contains(index) else { return }
+        let upcoming = Array(player.queue.suffix(from: index + 1))
+        guard !upcoming.isEmpty else { return }
+        let isSelena = player.queueSource?.usesSelenaWaveFilters == true
+        let outcome = isSelena
+            ? filterSelenaTracks(upcoming, relaxIfEmpty: true)
+            : filterMixTracks(upcoming, relaxIfEmpty: true)
+        let next = isSelena
+            ? rankSelenaQueue(outcome.tracks, recordExposure: false)
+            : outcome.tracks
+        player.replaceUpcoming(with: next)
+        if outcome.didRelax {
+            mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
+        }
     }
 
     func dislike(_ track: Track, includeArtist: Bool) {
@@ -789,7 +1001,17 @@ final class AppEnvironment {
            let index = player.currentIndex,
            player.queue.indices.contains(index) {
             let upcoming = Array(player.queue.suffix(from: index + 1))
-            player.replaceUpcoming(with: filteredMixTracks(upcoming))
+            let isSelena = player.queueSource?.usesSelenaWaveFilters == true
+            if isSelena {
+                player.replaceUpcoming(
+                    with: rankSelenaQueue(
+                        filterSelenaTracks(upcoming, relaxIfEmpty: true).tracks,
+                        recordExposure: false
+                    )
+                )
+            } else {
+                player.replaceUpcoming(with: filteredMixTracks(upcoming))
+            }
         }
         Haptics.selection()
     }
@@ -815,6 +1037,10 @@ final class AppEnvironment {
                 knownTracks: queue
             )
             let title = L10n.format("mix_based_on_0", track.title)
+            // The launch that started this may have been cancelled while
+            // the request was in flight — a later reply must not seize a
+            // queue the listener has already replaced.
+            guard !Task.isCancelled else { return }
             player.play(
                 track,
                 in: queue,
@@ -826,15 +1052,15 @@ final class AppEnvironment {
                             musicService: self.musicService
                         )
                     }
-                    return self.filteredMixTracks(more)
+                    return self.continuationTracks(more.tracks)
                 },
-                source: .mix(title: title)
+                source: .seedMix(trackID: track.id, title: title)
             )
             player.rerankUpcomingMix(
                 mode: .closerToSeed,
                 seed: track,
                 historyArtists: Set(
-                    historyStore.entries.prefix(40).map(\.track.artist)
+                    historyStore.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist)
                 )
             )
             Haptics.success()
@@ -858,13 +1084,23 @@ final class AppEnvironment {
             let recs = try await withAuthorizedToken { token in
                 try await musicService.recommendations(accessToken: token)
             }
-            let blended = filteredMixTracks(
+            let blended = filteredSelenaTracks(
                 MixSeedRadio.blend(
                     seeds: page.items,
                     recommendations: recs
                 )
             )
-            guard let first = blended.first else {
+            guard !blended.isEmpty else {
+                mixActionError = L10n.text(
+                    "could_not_build_a_mix_from_your_library"
+                )
+                return
+            }
+            // Same bandit + spacing as Selena so "mix from my music" does
+            // not open on artist clumps the personal station already avoids.
+            resetSelenaExposure()
+            let queue = rankSelenaQueue(blended)
+            guard let first = queue.first else {
                 mixActionError = L10n.text(
                     "could_not_build_a_mix_from_your_library"
                 )
@@ -872,22 +1108,21 @@ final class AppEnvironment {
             }
             let stream = SelenaRecommendationCursor(
                 seedTracks: page.items + recs,
-                knownTracks: blended
+                knownTracks: queue
             )
+            // The launch that started this may have been cancelled while
+            // the request was in flight — a later reply must not seize a
+            // queue the listener has already replaced.
+            guard !Task.isCancelled else { return }
             player.play(
                 first,
-                in: blended,
+                in: queue,
                 continuation: { [weak self] in
                     guard let self else { return [] }
-                    let more = try await self.withAuthorizedToken { token in
-                        try await stream.next(
-                            accessToken: token,
-                            musicService: self.musicService
-                        )
-                    }
-                    return self.filteredMixTracks(more)
+                    let more = try await self.nextSelenaBatch(from: stream)
+                    return self.selenaContinuationTracks(more)
                 },
-                source: .mix(title: L10n.text("mix_from_my_music"))
+                source: .myMusicMix(title: L10n.text("mix_from_my_music"))
             )
             Haptics.success()
         } catch is CancellationError {
@@ -897,7 +1132,145 @@ final class AppEnvironment {
         }
     }
 
+    /// The personal station, or the listener's own library when the
+    /// catalog has not produced one yet.
+    func startPersonalStation(in mixes: [MusicMix]) async {
+        var catalog = mixes
+        if catalog.isEmpty {
+            await refreshHomeCatalog()
+            catalog = homeCatalogStore.mixes
+        }
+        if let personal = catalog.first(where: { $0.id == MusicMix.common.id }) {
+            await startCatalogMix(personal)
+        } else {
+            await startMixFromMyMusic()
+        }
+    }
+
+    /// Starting a mood used to mean writing `settings.mixMoodPreference`
+    /// and then launching a matching VK vibe shelf, so «Активно» left
+    /// Selena entirely. Yandex My Wave keeps moodEnergy on the personal
+    /// station — we do the same: set the dial and start Selena.
+    func startMoodStation(
+        _ mood: MixMoodPreference,
+        in mixes: [MusicMix]
+    ) async {
+        settings.mixMoodPreference = mood
+        if mixes.isEmpty {
+            await refreshHomeCatalog()
+        }
+        await startSelenaStation()
+    }
+
+    /// Radio for one artist. Tapping an artist bubble used to call
+    /// `startMixFromMyMusic()`, which played everything and honoured
+    /// nothing about who was tapped.
+    ///
+    /// Resolution order: VK's artist id when `audio.searchArtists` can
+    /// match the name, then the most recent track we hold by them as a
+    /// recommendation seed, then a plain search. Every branch stays about
+    /// this artist — none of them fall back to the generic library mix.
+    func startMixFromArtist(named name: String, seed: Track?) async {
+        mixActionError = nil
+        let query = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        do {
+            let tracks = try await artistTracks(for: query)
+            let cleaned = filteredMixTracks(tracks)
+            guard let first = cleaned.first else {
+                if let seed {
+                    await startMixFromTrack(seed)
+                } else {
+                    mixActionError = L10n.format(
+                        "could_not_start_artist_0",
+                        query
+                    )
+                }
+                return
+            }
+            let stream = SelenaRecommendationCursor(
+                seedTracks: cleaned,
+                knownTracks: cleaned
+            )
+            // The launch that started this may have been cancelled while
+            // the request was in flight — a later reply must not seize a
+            // queue the listener has already replaced.
+            guard !Task.isCancelled else { return }
+            player.play(
+                first,
+                in: cleaned,
+                continuation: { [weak self] in
+                    guard let self else { return [] }
+                    let more = try await self.withAuthorizedToken { token in
+                        try await stream.next(
+                            accessToken: token,
+                            musicService: self.musicService
+                        )
+                    }
+                    return self.continuationTracks(more.tracks)
+                },
+                source: .artistMix(
+                    named: query,
+                    title: L10n.format("artist_radio_0", query)
+                )
+            )
+            // Keeps the upcoming queue leaning towards the artist that was
+            // tapped instead of drifting into general recommendations.
+            player.rerankUpcomingMix(
+                mode: .closerToSeed,
+                seed: first,
+                historyArtists: Set(
+                    historyStore.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist)
+                )
+            )
+            Haptics.success()
+        } catch is CancellationError {
+            return
+        } catch {
+            if let seed {
+                await startMixFromTrack(seed)
+            } else {
+                mixActionError = error.localizedDescription
+            }
+        }
+    }
+
+    private func artistTracks(for query: String) async throws -> [Track] {
+        let candidates = try await withAuthorizedToken { token in
+            try await musicService.searchArtists(
+                query: query,
+                accessToken: token,
+                offset: 0,
+                count: 8
+            )
+        }
+        if let artist = VKArtistMatch.best(in: candidates, named: query) {
+            let page = try await withAuthorizedToken { token in
+                try await musicService.artistTracks(
+                    artistID: artist.id,
+                    accessToken: token,
+                    offset: 0,
+                    count: 50
+                )
+            }
+            if !page.items.isEmpty { return page.items }
+        }
+        let search = try await withAuthorizedToken { token in
+            try await musicService.search(
+                query: query,
+                accessToken: token,
+                offset: 0,
+                count: 50
+            )
+        }
+        return search.items
+    }
+
     func startCatalogMix(_ mix: MusicMix) async {
+        if mix.id == MusicMix.common.id {
+            await startSelenaStation(mix: mix)
+            return
+        }
         mixActionError = nil
         do {
             let bootstrap = try await withAuthorizedToken { token in
@@ -912,6 +1285,10 @@ final class AppEnvironment {
                 return
             }
             let cursor = MixTrackContinuationCursor(mix: mix)
+            // The launch that started this may have been cancelled while
+            // the request was in flight — a later reply must not seize a
+            // queue the listener has already replaced.
+            guard !Task.isCancelled else { return }
             player.play(
                 first,
                 in: cleaned,
@@ -923,9 +1300,9 @@ final class AppEnvironment {
                             musicService: self.musicService
                         )
                     }
-                    return self.filteredMixTracks(more)
+                    return self.continuationTracks(more)
                 },
-                source: .mix(title: mix.title)
+                source: .catalogMix(mix)
             )
             Haptics.success()
         } catch is CancellationError {
@@ -933,6 +1310,81 @@ final class AppEnvironment {
         } catch {
             mixActionError = error.localizedDescription
         }
+    }
+
+    /// Home and Explore share one Selena path: cursor compose → filters →
+    /// bandit. Home used to bootstrap the VK common mix instead, so the
+    /// same "personal station" tile produced a different queue than Explore.
+    func startSelenaStation(mix: MusicMix = .common) async {
+        mixActionError = nil
+        do {
+            var personal = homeCatalogStore.recommendations
+            if personal.isEmpty {
+                personal = try await withAuthorizedToken { token in
+                    try await musicService.recommendations(accessToken: token)
+                }
+            }
+            let recent = Array(
+                historyStore.entries.prefix(MixListeningHistoryWindow.ranking)
+            )
+            let seeds = SelenaRecommendationComposer.seedTracks(
+                history: historyStore.entries,
+                recommendations: personal,
+                loaded: []
+            )
+            let stream = SelenaRecommendationCursor(
+                seedTracks: seeds,
+                knownTracks: recent.map(\.track)
+            )
+            resetSelenaExposure()
+            let bootstrap = try await nextSelenaBatch(
+                from: stream,
+                cachedPersonalRecommendations: personal
+            )
+            let cleaned = filteredSelenaTracks(bootstrap)
+            guard !cleaned.isEmpty else {
+                mixActionError = L10n.text("the_mix_is_empty_for_now")
+                return
+            }
+            let queue = rankSelenaQueue(cleaned)
+            guard let first = queue.first else {
+                mixActionError = L10n.text("the_mix_is_empty_for_now")
+                return
+            }
+            // The launch that started this may have been cancelled while
+            // the request was in flight — a later reply must not seize a
+            // queue the listener has already replaced.
+            guard !Task.isCancelled else { return }
+            player.play(
+                first,
+                in: queue,
+                continuation: { [weak self] in
+                    guard let self else { return [] }
+                    let more = try await self.nextSelenaBatch(from: stream)
+                    return self.selenaContinuationTracks(more)
+                },
+                source: .catalogMix(mix)
+            )
+            Haptics.success()
+        } catch is CancellationError {
+            return
+        } catch {
+            mixActionError = error.localizedDescription
+        }
+    }
+
+    /// Affinity keyed the way bans and Selena bandit both key artists.
+    func selenaArtistAffinity() -> [String: Double] {
+        var affinity: [String: Double] = [:]
+        for candidate in ArtistAffinityPolicy.candidates(
+            history: historyStore.entries,
+            isLiked: { libraryStore.contains($0) },
+            bannedArtistKeys: mixFeedbackStore.bannedArtists,
+            bannedTrackIDs: mixFeedbackStore.bannedTrackIDs
+        ) {
+            affinity[candidate.artistKey] = candidate.score
+        }
+        return affinity
     }
 
     /// Hold-to-preview style snippet: jump into the track and stop ~32s later.
