@@ -66,6 +66,10 @@ struct MixesHubView: View {
     @State private var selectedCurator: MixCurator?
     @State private var expandedTrackMixIDs: Set<String> = []
     @State private var trackListLayout: TrackListLayout = .list
+    /// Viewport width from a background GeometryReader — wrapping the
+    /// ScrollView itself re-laid the whole hub on every scroll frame
+    /// (same sticky-scroll bug Home already fixed).
+    @State private var containerWidth: CGFloat = 390
     /// Mix currently recommended on Home — keep it out of Explore's first
     /// visible VK slot so the two screens do not open on the same hero.
     var deprioritizedMixID: String? = nil
@@ -80,39 +84,58 @@ struct MixesHubView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            GeometryReader { geometry in
-                let metrics = MixHubMetrics(width: geometry.size.width)
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 20) {
-                        Color.clear
-                            .frame(height: 0)
-                            .id(MainTabScrollDestination.mix)
+            let metrics = MixHubMetrics(width: containerWidth)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 20) {
+                    Color.clear
+                        .frame(height: 0)
+                        .id(MainTabScrollDestination.mix)
 
-                        Picker(L10n.text("tab.mix"), selection: $hubTab) {
-                            ForEach(HubTab.allCases) { tab in
-                                Text(tab.title).tag(tab)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .accessibilityLabel(L10n.text("mix_sections"))
+                    listenLaterBanner
 
-                        listenLaterBanner
-
-                        switch hubTab {
-                        case .selena:
-                            selenaContent(metrics: metrics)
-                        case .vk:
-                            vkContent(metrics: metrics)
-                        }
-
-                        if let actionError {
-                            actionErrorRow(actionError)
-                        }
+                    switch hubTab {
+                    case .selena:
+                        selenaContent(metrics: metrics)
+                    case .vk:
+                        vkContent(metrics: metrics)
                     }
-                    .padding(.horizontal, metrics.horizontalPadding)
-                    .padding(.top, 8)
+
+                    if let actionError {
+                        actionErrorRow(actionError)
+                    }
                 }
-                .clearsMiniPlayer(includingWhenDockReservesSpace: true)
+                .padding(.horizontal, metrics.horizontalPadding)
+                .padding(.top, 8)
+            }
+            .clearsMiniPlayer(includingWhenDockReservesSpace: true)
+            .background {
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: MixHubWidthKey.self,
+                        value: geometry.size.width
+                    )
+                }
+            }
+            .onPreferenceChange(MixHubWidthKey.self) { width in
+                let rounded = width.rounded()
+                if rounded > 0, abs(rounded - containerWidth) >= 1 {
+                    containerWidth = rounded
+                }
+            }
+            // Mode switch stays put — burying Selena/VK inside the scroll
+            // made the screen's only primary navigation disappear after
+            // one flick.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Picker(L10n.text("tab.mix"), selection: $hubTab) {
+                    ForEach(HubTab.allCases) { tab in
+                        Text(tab.title).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel(L10n.text("mix_sections"))
+                .padding(.horizontal, metrics.horizontalPadding)
+                .padding(.vertical, 8)
+                .background(.bar)
             }
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .mix else { return }
@@ -886,7 +909,7 @@ struct MixesHubView: View {
             } label: {
                 Label(L10n.text("listen_later"), systemImage: "bookmark")
             }
-            .disabled(tracks.isEmpty)
+            .disabled(tracks.isEmpty || !player.isPlaying(mix))
             if let seed = tracks.first {
                 TrackMixActions.menuButtons(
                     for: seed,
@@ -1051,7 +1074,7 @@ struct MixesHubView: View {
                     .minimumScaleFactor(0.8)
                 }
                 .buttonStyle(.bordered)
-                .disabled(tracks.isEmpty)
+                .disabled(tracks.isEmpty || !player.isPlaying(mix))
 
                 Menu {
                     Button(role: .destructive) {
@@ -2115,7 +2138,7 @@ struct MixesHubView: View {
             player.rerankUpcomingMix(
                 mode: saved,
                 historyArtists: Set(
-                    history.entries.prefix(40).map(\.track.artist)
+                    history.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist)
                 )
             )
         }
@@ -2642,7 +2665,10 @@ struct MixesHubView: View {
     }
 
     private func pin(mix: MusicMix, tracks: [Track]) {
-        guard !tracks.isEmpty else { return }
+        // Pin stores the live playhead — saving a card that is not the
+        // current queue would write another mix's index/elapsed into this
+        // bookmark.
+        guard player.isPlaying(mix), !tracks.isEmpty else { return }
         pinnedMixStore.pin(
             mix: mix,
             tracks: tracks,
@@ -2661,7 +2687,7 @@ struct MixesHubView: View {
             start(mix, applying: mode)
             return
         }
-        let artists = Set(history.entries.prefix(40).map(\.track.artist))
+        let artists = Set(history.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist))
         player.rerankUpcomingMix(mode: mode, historyArtists: artists)
         let current = tracks(for: mix)
         let queue = current.isEmpty ? player.queue : current
@@ -2710,6 +2736,14 @@ struct MixesHubView: View {
             result.append(track)
         }
         return Array(result.prefix(MixTrackRequestPolicy.queueLimit))
+    }
+}
+
+private struct MixHubWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -2787,7 +2821,7 @@ private struct MixListeningStats {
         artistCount = counts.count
 
         let recentArtists = Set(
-            history.prefix(80).map { entry in
+            history.prefix(MixListeningHistoryWindow.familiarity).map { entry in
                 MixFeedbackPolicy.normalized(entry.track.artist)
             }
             .filter { !$0.isEmpty }

@@ -94,7 +94,8 @@ struct HomeStageView: View {
             HomeStageAtmosphereLayer(
                 width: width,
                 horizontalPadding: horizontalPadding,
-                foregroundTopOrigin: foregroundTopOrigin
+                foregroundTopOrigin: foregroundTopOrigin,
+                hasRail: showsContextRail
             )
         }
         .task(id: highlight.currentTrackID) { syncLibraryState() }

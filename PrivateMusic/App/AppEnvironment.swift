@@ -751,32 +751,64 @@ final class AppEnvironment {
 
     // MARK: - Mix experience (global)
 
+    /// Language / familiarity / bans for seed and bootstrap queues.
+    /// Falls back to the ban-only pool when filters would empty it so a
+    /// cold start always has something to play.
     func filteredMixTracks(_ tracks: [Track]) -> [Track] {
+        filterMixTracks(tracks, relaxIfEmpty: true).tracks
+    }
+
+    /// Same filters without the silent widen — used when the listener
+    /// just tightened a chip and expects the queue to shrink.
+    func strictlyFilteredMixTracks(_ tracks: [Track]) -> [Track] {
+        filterMixTracks(tracks, relaxIfEmpty: false).tracks
+    }
+
+    func filterMixTracks(
+        _ tracks: [Track],
+        relaxIfEmpty: Bool
+    ) -> MixFilterOutcome {
         let historyArtists = Set(
-            historyStore.entries.prefix(80).map(\.track.artist)
+            historyStore.entries
+                .prefix(MixListeningHistoryWindow.familiarity)
+                .map(\.track.artist)
         )
         let afterFeedback = mixFeedbackStore.filtering(tracks)
-        let filtered = MixQueueFilter.apply(
-            afterFeedback,
-            language: settings.mixLanguagePreference,
-            familiarity: settings.mixFamiliarityPreference,
-            historyArtists: historyArtists
+        if relaxIfEmpty {
+            return MixQueueFilter.applyAllowingFallback(
+                afterFeedback,
+                language: settings.mixLanguagePreference,
+                familiarity: settings.mixFamiliarityPreference,
+                historyArtists: historyArtists
+            )
+        }
+        return MixFilterOutcome(
+            tracks: MixQueueFilter.applyStrict(
+                afterFeedback,
+                language: settings.mixLanguagePreference,
+                familiarity: settings.mixFamiliarityPreference,
+                historyArtists: historyArtists
+            ),
+            didRelax: false
         )
-        // Never empty a seed queue because filters were too strict.
-        return filtered.isEmpty ? afterFeedback : filtered
     }
 
     /// Re-run mix filters on the unplayed suffix of the live mix queue.
-    /// Tightening a filter drops tracks immediately; loosening only
-    /// recovers what is still in the current suffix — full recovery from
-    /// an unfiltered baseline is owned by the mix hub's `refilterLoadedTracks`.
+    /// Tightening drops non-matching tracks immediately; if that would
+    /// empty the suffix we keep it and surface that the filters relaxed.
+    /// Full recovery from an unfiltered baseline is owned by the mix
+    /// hub's `refilterLoadedTracks`.
     func reapplyMixFiltersToPlayingQueue() {
         guard case .mix = player.queueSource,
               let index = player.currentIndex,
               player.queue.indices.contains(index) else { return }
         let upcoming = Array(player.queue.suffix(from: index + 1))
         guard !upcoming.isEmpty else { return }
-        player.replaceUpcoming(with: upcoming)
+        let outcome = filterMixTracks(upcoming, relaxIfEmpty: true)
+        player.replaceUpcoming(with: outcome.tracks)
+        if outcome.didRelax {
+            mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
+        }
     }
 
     func dislike(_ track: Track, includeArtist: Bool) {
@@ -837,7 +869,7 @@ final class AppEnvironment {
                 mode: .closerToSeed,
                 seed: track,
                 historyArtists: Set(
-                    historyStore.entries.prefix(40).map(\.track.artist)
+                    historyStore.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist)
                 )
             )
             Haptics.success()
@@ -1002,7 +1034,7 @@ final class AppEnvironment {
                 mode: .closerToSeed,
                 seed: first,
                 historyArtists: Set(
-                    historyStore.entries.prefix(40).map(\.track.artist)
+                    historyStore.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist)
                 )
             )
             Haptics.success()
