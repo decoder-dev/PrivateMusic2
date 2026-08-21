@@ -6,8 +6,10 @@ struct QueueView: View {
     @Environment(ListeningHistoryStore.self) private var history
     @Environment(\.dismiss) private var dismiss
 
-    private var isMixQueue: Bool {
-        if case .mix = player.queueSource { return true }
+    private var showsCatalogMixRadio: Bool {
+        if case .mix = player.queueSource {
+            return player.queueSource?.usesSelenaWaveFilters != true
+        }
         return false
     }
 
@@ -44,7 +46,7 @@ struct QueueView: View {
 
     private var queueList: some View {
         List {
-            if isMixQueue {
+            if showsCatalogMixRadio {
                 Section {
                     Picker(
                         L10n.text("mix_radio"),

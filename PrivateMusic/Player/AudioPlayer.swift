@@ -1393,6 +1393,8 @@ final class AudioPlayer {
     private var incomingPreparedTrackID: String?
     /// Optional filter applied to mix queue fills (local dislike memory).
     private var mixTrackFilter: (([Track]) -> [Track])?
+    /// Selena source-arm feedback: track id + whether the listen succeeded.
+    private var selenaSourceFeedback: ((String, Bool) -> Void)?
     /// Optional server-backed refill for closerToSeed / moreNovel modes.
     private var mixRadioRefillProvider:
         ((Track, MixRadioMode) async throws -> [Track])?
@@ -1583,6 +1585,12 @@ final class AudioPlayer {
         _ filter: @escaping ([Track]) -> [Track]
     ) {
         mixTrackFilter = filter
+    }
+
+    func configureSelenaSourceFeedback(
+        _ handler: @escaping (String, Bool) -> Void
+    ) {
+        selenaSourceFeedback = handler
     }
 
     func configureMixRadioRefill(
@@ -2143,6 +2151,12 @@ final class AudioPlayer {
     func next() {
         cancelCrossfade()
         guard let currentIndex, !queue.isEmpty else { return }
+        if queueSource?.usesSelenaWaveFilters == true,
+           let track = currentTrack,
+           listenedTrackID != track.id {
+            // Skipped before the listen threshold — punish that source arm.
+            selenaSourceFeedback?(track.id, false)
+        }
         let nextIndex = queue.index(after: currentIndex)
         if nextIndex >= queue.endIndex, repeatMode == .off {
             if sleepTimerMode == .endOfQueue {
@@ -4612,6 +4626,9 @@ final class AudioPlayer {
             return
         }
         let droppedID = queue[currentIndex].id
+        if queueSource?.usesSelenaWaveFilters == true {
+            selenaSourceFeedback?(droppedID, false)
+        }
         var nextQueue = queue
         nextQueue.remove(at: currentIndex)
         nextQueue.removeAll { $0.id == droppedID }
@@ -4651,6 +4668,9 @@ final class AudioPlayer {
         historyArtists: Set<String> = [],
         refillFromServer: Bool = true
     ) {
+        // Selena / My Music own novelty via diversity + bandit — never
+        // let MixQueueRanker or seed refill undo that order.
+        guard queueSource?.usesSelenaWaveFilters != true else { return }
         mixRadioMode = mode
         guard let currentIndex,
               queue.indices.contains(currentIndex) else {
@@ -4683,6 +4703,7 @@ final class AudioPlayer {
     }
 
     private func startMixRadioRefill(seed: Track, mode: MixRadioMode) {
+        guard queueSource?.usesSelenaWaveFilters != true else { return }
         guard let provider = mixRadioRefillProvider else { return }
         cancelMixRadioRefill()
         let generation = mixRadioRefillGeneration
@@ -4931,6 +4952,9 @@ final class AudioPlayer {
         }
         listenedTrackID = track.id
         historyStore.record(track)
+        if queueSource?.usesSelenaWaveFilters == true {
+            selenaSourceFeedback?(track.id, true)
+        }
         if loadedOfflineTrackID == track.id {
             offlinePlayedHandler?(track)
         }

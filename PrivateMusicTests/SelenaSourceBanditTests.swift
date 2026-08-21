@@ -16,18 +16,14 @@ final class SelenaSourceBanditTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(nudged.similar, nudged.personal)
     }
 
-    func testObserveComposeRewardsKeptArms() {
+    func testRewardFromListenUpdatesBias() {
         var bandit = SelenaSourceBandit()
-        let sources: [String: SelenaComposeSource] = [
-            "a": .personal,
-            "b": .personal,
-            "c": .similar
-        ]
-        bandit.observeCompose(sources: sources, keptIDs: ["a", "b"])
-
+        for _ in 0..<8 {
+            bandit.reward(.similar, success: true)
+            bandit.reward(.personal, success: false)
+        }
         let bias = bandit.composeBias(diversity: .default)
-        // Personal kept; similar only dropped → lean personal.
-        XCTAssertGreaterThanOrEqual(bias.personal, bias.similar)
+        XCTAssertGreaterThanOrEqual(bias.similar, bias.personal)
     }
 
     func testComposeTagsSources() {
