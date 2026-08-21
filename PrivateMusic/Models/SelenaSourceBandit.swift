@@ -1,8 +1,8 @@
 import Foundation
 
 /// Per-session explore/exploit over Selena content sources (personal /
-/// similar / seed / fallback). Thompson sampling on Beta posteriors —
-/// Deezer carousel-bandit style, few arms, rewards from local play/skip.
+/// similar / seed / fallback). Thompson-style Beta posteriors with
+/// rewards from real listens and skips (not compose dedup alone).
 struct SelenaSourceBandit: Equatable, Sendable {
     enum Arm: String, CaseIterable, Sendable {
         case personal

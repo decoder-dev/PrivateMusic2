@@ -24,13 +24,72 @@ final class AppEnvironment {
     /// Explore share one bandit history for the personal station — a
     /// view `@State` reset every time Explore was recreated.
     private(set) var selenaExposure = SelenaExposure()
+    /// Which compose arms produced which track ids this session — shared
+    /// across Explore preview and live continuation cursors.
+    private(set) var selenaSourceBandit = SelenaSourceBandit()
+    private var selenaTrackSources: [String: SelenaComposeSource] = [:]
 
     func resetSelenaExposure() {
         selenaExposure.reset()
+        selenaSourceBandit = SelenaSourceBandit()
+        // Keep selenaTrackSources so an Explore-composed opening queue
+        // can still reward arms after play() resets exposure/spacing.
     }
 
     func recordSelenaExposure(_ tracks: [Track]) {
         selenaExposure.record(tracks)
+    }
+
+    func selenaComposeBias() -> (personal: Int, similar: Int, seedEvery: Int) {
+        selenaSourceBandit.composeBias(
+            diversity: settings.selenaDiversityPreference
+        )
+    }
+
+    func ingestSelenaCompose(
+        sources: [String: SelenaComposeSource],
+        keptIDs: Set<String>
+    ) {
+        for id in keptIDs {
+            if let source = sources[id] {
+                selenaTrackSources[id] = source
+            }
+        }
+        if selenaTrackSources.count > 500 {
+            let overflow = selenaTrackSources.count - 400
+            let doomed = Array(selenaTrackSources.keys.prefix(overflow))
+            for key in doomed {
+                selenaTrackSources.removeValue(forKey: key)
+            }
+        }
+    }
+
+    func rewardSelenaSource(trackID: String, success: Bool) {
+        guard let source = selenaTrackSources[trackID] else { return }
+        selenaSourceBandit.reward(source.arm, success: success)
+    }
+
+    /// Fetch the next Selena batch with shared session bias + source tags.
+    func nextSelenaBatch(
+        from stream: SelenaRecommendationCursor,
+        cachedPersonalRecommendations: [Track] = []
+    ) async throws -> [Track] {
+        let diversity = settings.selenaDiversityPreference
+        let bias = selenaComposeBias()
+        let batch = try await withAuthorizedToken { token in
+            try await stream.next(
+                accessToken: token,
+                musicService: musicService,
+                cachedPersonalRecommendations: cachedPersonalRecommendations,
+                diversity: diversity,
+                bias: bias
+            )
+        }
+        ingestSelenaCompose(
+            sources: batch.sources,
+            keptIDs: Set(batch.tracks.map(\.id))
+        )
+        return batch.tracks
     }
 
     /// Bandit order shared by Home play, Explore preview, and refill.
@@ -180,6 +239,9 @@ final class AppEnvironment {
                 return self.filteredSelenaTracks(tracks)
             }
             return self.filteredMixTracks(tracks)
+        }
+        player.configureSelenaSourceFeedback { [weak self] trackID, success in
+            self?.rewardSelenaSource(trackID: trackID, success: success)
         }
         player.configureMixRadioRefill { [weak self, service] seed, mode in
             guard let self else { return [] }
@@ -896,18 +958,12 @@ final class AppEnvironment {
                 didRelax: false
             )
         }
-        let moodOrdered = SelenaWavePolicy.preferMood(
-            base.tracks,
-            mood: settings.mixMoodPreference
-        )
-        // Fingerprint dedupe only here — recent-play exclusion lives on the
-        // cursor's knownIDs so the opening page is not half-empty.
         let deduped = SelenaWavePolicy.dedupeRepeats(
-            moodOrdered,
+            base.tracks,
             recentTrackIDs: []
         )
-        if deduped.isEmpty, !moodOrdered.isEmpty {
-            return MixFilterOutcome(tracks: moodOrdered, didRelax: true)
+        if deduped.isEmpty, !base.tracks.isEmpty {
+            return MixFilterOutcome(tracks: base.tracks, didRelax: true)
         }
         return MixFilterOutcome(tracks: deduped, didRelax: base.didRelax)
     }
@@ -996,7 +1052,7 @@ final class AppEnvironment {
                             musicService: self.musicService
                         )
                     }
-                    return self.continuationTracks(more)
+                    return self.continuationTracks(more.tracks)
                 },
                 source: .seedMix(trackID: track.id, title: title)
             )
@@ -1063,13 +1119,7 @@ final class AppEnvironment {
                 in: queue,
                 continuation: { [weak self] in
                     guard let self else { return [] }
-                    let more = try await self.withAuthorizedToken { token in
-                        try await stream.next(
-                            accessToken: token,
-                            musicService: self.musicService,
-                            diversity: self.settings.selenaDiversityPreference
-                        )
-                    }
+                    let more = try await self.nextSelenaBatch(from: stream)
                     return self.selenaContinuationTracks(more)
                 },
                 source: .myMusicMix(title: L10n.text("mix_from_my_music"))
@@ -1157,7 +1207,7 @@ final class AppEnvironment {
                             musicService: self.musicService
                         )
                     }
-                    return self.continuationTracks(more)
+                    return self.continuationTracks(more.tracks)
                 },
                 source: .artistMix(
                     named: query,
@@ -1286,21 +1336,16 @@ final class AppEnvironment {
                 seedTracks: seeds,
                 knownTracks: recent.map(\.track)
             )
-            let diversity = settings.selenaDiversityPreference
-            let bootstrap = try await withAuthorizedToken { token in
-                try await stream.next(
-                    accessToken: token,
-                    musicService: musicService,
-                    cachedPersonalRecommendations: personal,
-                    diversity: diversity
-                )
-            }
+            resetSelenaExposure()
+            let bootstrap = try await nextSelenaBatch(
+                from: stream,
+                cachedPersonalRecommendations: personal
+            )
             let cleaned = filteredSelenaTracks(bootstrap)
             guard !cleaned.isEmpty else {
                 mixActionError = L10n.text("the_mix_is_empty_for_now")
                 return
             }
-            resetSelenaExposure()
             let queue = rankSelenaQueue(cleaned)
             guard let first = queue.first else {
                 mixActionError = L10n.text("the_mix_is_empty_for_now")
@@ -1315,13 +1360,7 @@ final class AppEnvironment {
                 in: queue,
                 continuation: { [weak self] in
                     guard let self else { return [] }
-                    let more = try await self.withAuthorizedToken { token in
-                        try await stream.next(
-                            accessToken: token,
-                            musicService: self.musicService,
-                            diversity: self.settings.selenaDiversityPreference
-                        )
-                    }
+                    let more = try await self.nextSelenaBatch(from: stream)
                     return self.selenaContinuationTracks(more)
                 },
                 source: .catalogMix(mix)

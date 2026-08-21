@@ -412,13 +412,7 @@ struct LibraryView: View {
                 knownTracks: pin.tracks
             )
             environment.player.resumePinned(pin) {
-                let more = try await environment.withAuthorizedToken { token in
-                    try await stream.next(
-                        accessToken: token,
-                        musicService: environment.musicService,
-                        diversity: environment.settings.selenaDiversityPreference
-                    )
-                }
+                let more = try await environment.nextSelenaBatch(from: stream)
                 return await MainActor.run {
                     environment.selenaContinuationTracks(more)
                 }

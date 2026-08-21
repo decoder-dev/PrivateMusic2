@@ -696,7 +696,6 @@
 "diversifies_the_queue_closer_to_track_and_more_novelty_pull_vk_recommend" = "Diversifies the queue; Closer to Track and More Novelty pull VK recommendations";
 "russian" = "Russian";
 "smooths_volume_jumps_between_tracks_works_on_progressive_streams_on_devi" = "Smooths volume jumps between tracks. Works on progressive streams; on-device processing is unavailable for HLS.";
-"selena.catalog_subtitle" = "Selena ranks VK mixes, social picks, and catalog selections";
 "tales_lullabies_and_family_mixes" = "Tales, lullabies and family mixes";
 "download_2" = "Download";
 "hidden_in_mixes" = "Hidden in Mixes";
@@ -806,4 +805,3 @@
 "selena.wave_card_title" = "Tune your wave";
 "selena.wave_card_empty" = "Mood, diversity, and language — like Yandex Music";
 "mix.basic_card_empty" = "Language and familiarity for catalog mixes";
-"selena.wave_controls_title" = "Wave now";

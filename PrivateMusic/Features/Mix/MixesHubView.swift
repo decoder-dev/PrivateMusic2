@@ -1040,19 +1040,7 @@ struct MixesHubView: View {
         let isSelena = mix.id == MusicMix.common.id
         let selectedMode = player.mixRadioMode
         return VStack(alignment: .leading, spacing: 12) {
-            if isSelena {
-                // Diversity / moodEnergy live on the wave card — a second
-                // MixRadioMode dial here duplicated «favorite / discover».
-                Text(L10n.text("selena.wave_controls_title"))
-                    .font(.headline)
-                Label(
-                    configuredSelenaSummary,
-                    systemImage: "waveform"
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            } else {
+            if !isSelena {
                 Text(L10n.text("mix_radio"))
                     .font(.headline)
 
@@ -1230,8 +1218,9 @@ struct MixesHubView: View {
     }
 
     private var hasActiveMixFilters: Bool {
-        let languageActive = settings.mixLanguagePreference != .any
-            && settings.mixLanguagePreference != .instrumental
+        let languageActive =
+            MixLanguagePreference.catalogValue(settings.mixLanguagePreference)
+            != .any
         return languageActive || settings.mixFamiliarityPreference != .any
     }
 
@@ -2280,28 +2269,18 @@ struct MixesHubView: View {
         let cachedPersonal = homeCatalog.recommendations
         let stream = selenaRecommendationStream(knownTracks: [])
         do {
-            let bootstrap = try await environment.withAuthorizedToken {
-                token in
-                try await stream.next(
-                    accessToken: token,
-                    musicService: environment.musicService,
-                    cachedPersonalRecommendations: cachedPersonal,
-                    diversity: settings.selenaDiversityPreference
-                )
-            }
+            let bootstrap = try await environment.nextSelenaBatch(
+                from: stream,
+                cachedPersonalRecommendations: cachedPersonal
+            )
             storeTracks(bootstrap, for: personalMix)
             MixBootstrapPrefetch.artwork(for: bootstrap)
             trackLoadTask?.cancel()
             trackLoadTask = Task {
                 do {
-                    let more = try await environment.withAuthorizedToken {
-                        token in
-                        try await stream.next(
-                            accessToken: token,
-                            musicService: environment.musicService,
-                            diversity: settings.selenaDiversityPreference
-                        )
-                    }
+                    let more = try await environment.nextSelenaBatch(
+                        from: stream
+                    )
                     guard !Task.isCancelled else { return }
                     await MainActor.run {
                         let base = baseTracks(for: personalMix)
@@ -2513,14 +2492,10 @@ struct MixesHubView: View {
     private func bootstrapTracks(for mix: MusicMix) async throws -> [Track] {
         if mix.id == MusicMix.common.id {
             let stream = selenaRecommendationStream(knownTracks: [])
-            return try await environment.withAuthorizedToken { token in
-                try await stream.next(
-                    accessToken: token,
-                    musicService: environment.musicService,
-                    cachedPersonalRecommendations: homeCatalog.recommendations,
-                    diversity: settings.selenaDiversityPreference
-                )
-            }
+            return try await environment.nextSelenaBatch(
+                from: stream,
+                cachedPersonalRecommendations: homeCatalog.recommendations
+            )
         }
         return try await environment.withAuthorizedToken { token in
             try await environment.musicService.mixTracksBootstrap(
@@ -2559,13 +2534,7 @@ struct MixesHubView: View {
         if mix.id == MusicMix.common.id {
             let stream = selenaRecommendationStream(knownTracks: knownTracks)
             return {
-                let more = try await environment.withAuthorizedToken { token in
-                    try await stream.next(
-                        accessToken: token,
-                        musicService: environment.musicService,
-                        diversity: settings.selenaDiversityPreference
-                    )
-                }
+                let more = try await environment.nextSelenaBatch(from: stream)
                 return await MainActor.run {
                     environment.selenaContinuationTracks(more)
                 }
@@ -2703,32 +2672,6 @@ struct MixesHubView: View {
         let current = tracks(for: mix)
         let queue = current.isEmpty ? player.queue : current
         guard let seed = player.currentTrack ?? queue.first else { return }
-
-        if mix.id == MusicMix.common.id {
-            // Selena owns novelty via diversity — MixRadioMode must not
-            // undo bandit spacing with MixQueueRanker's shuffle.
-            let base = baseTracks(for: mix)
-            let pool = base.isEmpty ? queue : base
-            let ranked = environment.rankSelenaQueue(
-                environment.filteredSelenaTracks(pool),
-                recordExposure: false
-            )
-            storeTracks(
-                ranked,
-                for: mix,
-                updatingBaseline: false,
-                applyBanditPreview: false
-            )
-            if let current = player.currentTrack,
-               let index = ranked.firstIndex(where: { $0.id == current.id }) {
-                player.replaceUpcoming(
-                    with: Array(ranked.suffix(from: index + 1))
-                )
-            } else {
-                player.rerankUpcomingMix(mode: mode, historyArtists: artists)
-            }
-            return
-        }
 
         player.rerankUpcomingMix(mode: mode, historyArtists: artists)
         storeTracks(
