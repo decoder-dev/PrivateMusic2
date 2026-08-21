@@ -1036,36 +1036,43 @@ struct MixesHubView: View {
         mix: MusicMix,
         tracks: [Track]
     ) -> some View {
+        let isSelena = mix.id == MusicMix.common.id
         let selectedMode = player.mixRadioMode
         return VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.text("mix_radio"))
-                .font(.headline)
-
-            // One line, not a static paragraph explaining the whole
-            // feature every time the card renders: the caption already
-            // changes with the selected mode, which is the part worth
-            // reading.
-            Picker(
-                L10n.text("mode"),
-                selection: Binding(
-                    get: { player.mixRadioMode },
-                    set: { applyRadio($0, mix: mix) }
+            if isSelena {
+                // Diversity / moodEnergy live on the wave card — a second
+                // MixRadioMode dial here duplicated «favorite / discover».
+                Text(L10n.text("selena.wave_controls_title"))
+                    .font(.headline)
+                Label(
+                    configuredSelenaSummary,
+                    systemImage: "waveform"
                 )
-            ) {
-                ForEach(MixRadioMode.allCases) { mode in
-                    Text(mode.compactTitle).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            Label(selectedMode.caption, systemImage: "info.circle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(L10n.text("mix_radio"))
+                    .font(.headline)
 
-            // Selena already has the rich wave card in `selenaWaveCard` —
-            // a second identical door on the same screen is noise.
-            if mix.id != MusicMix.common.id {
+                Picker(
+                    L10n.text("mode"),
+                    selection: Binding(
+                        get: { player.mixRadioMode },
+                        set: { applyRadio($0, mix: mix) }
+                    )
+                ) {
+                    ForEach(MixRadioMode.allCases) { mode in
+                        Text(mode.compactTitle).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Label(selectedMode.caption, systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 mixConfigureEntry
             }
 
