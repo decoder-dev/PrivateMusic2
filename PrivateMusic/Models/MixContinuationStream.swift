@@ -65,21 +65,39 @@ enum SelenaRecommendationComposer {
         similarRecommendations: [Track],
         fallbackMix: [Track] = [],
         diversity: SelenaDiversityPreference = .default,
+        bias: (personal: Int, similar: Int, seedEvery: Int)? = nil,
+        artistCap: Int = 3,
         limit: Int = MixTrackRequestPolicy.queueLimit
-    ) -> [Track] {
+    ) -> (tracks: [Track], sources: [String: SelenaComposeSource]) {
         var known = Set<String>()
+        var artistCounts: [String: Int] = [:]
         var result: [Track] = []
+        var sources: [String: SelenaComposeSource] = [:]
+        var effectiveCap = artistCap
         result.reserveCapacity(limit)
 
-        func append(_ track: Track) {
+        func append(_ track: Track, source: SelenaComposeSource) -> Bool {
             guard result.count < limit,
                   known.insert(track.id).inserted else {
-                return
+                return false
+            }
+            let key = MixFeedbackPolicy.normalized(track.artist)
+            if !key.isEmpty, effectiveCap > 0 {
+                let count = artistCounts[key, default: 0]
+                if count >= effectiveCap {
+                    // Hard cap at blend time (troi-style). Leave room for
+                    // other artists; do not burn the slot.
+                    known.remove(track.id)
+                    return false
+                }
+                artistCounts[key] = count + 1
             }
             result.append(track)
+            sources[track.id] = source
+            return true
         }
 
-        let bias = SelenaWavePolicy.composeBias(diversity: diversity)
+        let resolvedBias = bias ?? SelenaWavePolicy.composeBias(diversity: diversity)
         let seeds = seedTracks.prefix(12).map { $0 }
         let personal = personalRecommendations.prefix(limit).map { $0 }
         let similar = similarRecommendations.prefix(limit).map { $0 }
@@ -89,41 +107,57 @@ enum SelenaRecommendationComposer {
         var personalIndex = 0
         var similarIndex = 0
         var fallbackIndex = 0
+        var stalled = 0
 
         while result.count < limit,
               seedIndex < seeds.count
                 || personalIndex < personal.count
                 || similarIndex < similar.count
                 || fallbackIndex < fallback.count {
-            for _ in 0..<bias.personal where personalIndex < personal.count {
-                append(personal[personalIndex])
+            let before = result.count
+            for _ in 0..<resolvedBias.personal where personalIndex < personal.count {
+                _ = append(personal[personalIndex], source: .personal)
                 personalIndex += 1
                 if result.count >= limit { break }
             }
-            for _ in 0..<bias.similar where similarIndex < similar.count {
-                append(similar[similarIndex])
+            for _ in 0..<resolvedBias.similar where similarIndex < similar.count {
+                _ = append(similar[similarIndex], source: .similar)
                 similarIndex += 1
                 if result.count >= limit { break }
             }
-            if result.count % max(bias.seedEvery, 1) == 0, seedIndex < seeds.count {
-                append(seeds[seedIndex])
+            if result.count % max(resolvedBias.seedEvery, 1) == 0,
+               seedIndex < seeds.count {
+                _ = append(seeds[seedIndex], source: .seed)
                 seedIndex += 1
             }
             if personalIndex >= personal.count,
                similarIndex >= similar.count,
                fallbackIndex < fallback.count {
-                append(fallback[fallbackIndex])
+                _ = append(fallback[fallbackIndex], source: .fallback)
                 fallbackIndex += 1
             }
             if personalIndex >= personal.count,
                similarIndex >= similar.count,
                fallbackIndex >= fallback.count,
                seedIndex < seeds.count {
-                append(seeds[seedIndex])
+                _ = append(seeds[seedIndex], source: .seed)
                 seedIndex += 1
             }
+            if result.count == before {
+                stalled += 1
+                // Artist cap blocked every candidate — raise the cap once
+                // so the queue can still fill rather than stall forever.
+                if stalled == 2, effectiveCap > 0, effectiveCap < 8 {
+                    effectiveCap += 2
+                    stalled = 0
+                } else if stalled > 2 {
+                    break
+                }
+            } else {
+                stalled = 0
+            }
         }
-        return result
+        return (result, sources)
     }
 
     private static func unique(_ tracks: [Track], limit: Int) -> [Track] {
@@ -152,6 +186,8 @@ actor SelenaRecommendationCursor {
     /// Artists placed in this session's queue — hard-excluded from the
     /// next generation window (Yandex-style cooldown, not just spacing).
     private var recentArtistKeys: [String] = []
+    /// Which content arms paid off this session — nudges compose bias.
+    private var sourceBandit = SelenaSourceBandit()
 
     init(seedTracks: [Track], knownTracks: [Track] = []) {
         self.seeds = SelenaRecommendationComposer.seedTracks(
@@ -214,20 +250,31 @@ actor SelenaRecommendationCursor {
             personalRecommendations: cooledPersonal,
             similarRecommendations: cooledSimilar,
             fallbackMix: cooledFallback,
-            diversity: diversity
-        ).filter { knownIDs.insert($0.id).inserted }
+            diversity: diversity,
+            bias: sourceBandit.composeBias(diversity: diversity)
+        )
 
-        if !composed.isEmpty {
+        var kept: [Track] = []
+        kept.reserveCapacity(composed.tracks.count)
+        for track in composed.tracks where knownIDs.insert(track.id).inserted {
+            kept.append(track)
+        }
+        sourceBandit.observeCompose(
+            sources: composed.sources,
+            keptIDs: Set(kept.map(\.id))
+        )
+
+        if !kept.isEmpty {
             seeds = SelenaRecommendationComposer.rotatingSeeds(
                 previous: seeds,
-                composed: composed
+                composed: kept
             )
             SelenaWavePolicy.appendCooldownArtists(
                 &recentArtistKeys,
-                from: composed
+                from: kept
             )
         }
-        return composed
+        return kept
     }
 
     private func personalRecommendations(

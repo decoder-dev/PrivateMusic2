@@ -287,7 +287,8 @@ for required_mix_stream_symbol in (
     "actor SelenaRecommendationCursor",
     "seededBy: seed",
     "withThrowingTaskGroup(of: [Track].self)",
-    "knownIDs.insert($0.id).inserted",
+    "knownIDs.insert(track.id).inserted",
+    "sourceBandit",
     "commonMixOffset += MixTrackRequestPolicy.pageSize",
     "rotatingSeeds(",
     "sessionPersonal",
@@ -2072,7 +2073,7 @@ def require_ranking_lives_in_a_tested_policy() -> None:
     """Queue ranking belongs in a policy with tests, not inside a view.
 
     Every other decision of this kind — HomeNextStepPolicy,
-    ArtistAffinityPolicy, MixMoodLaunchPolicy, ContinuationPrefetchPolicy —
+    ArtistAffinityPolicy, ContinuationPrefetchPolicy —
     is a named enum a test can call. Ranking that lives as a private method
     on a 2700-line view cannot be exercised at all, so a change to it can
     only be checked by listening to the app and hoping.

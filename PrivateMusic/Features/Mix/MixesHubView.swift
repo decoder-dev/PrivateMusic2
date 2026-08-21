@@ -1700,12 +1700,18 @@ struct MixesHubView: View {
                             )
                         }
                     }
-                    quickStartChip(
-                        title: L10n.text("more_novelty"),
-                        systemImage: "shuffle"
-                    ) {
-                        settings.selenaDiversityPreference = .discover
-                        start(personalMix)
+                    ForEach(
+                        SelenaDiversityPreference.allCases.filter {
+                            $0 != .default
+                        }
+                    ) { diversity in
+                        quickStartChip(
+                            title: diversity.chipTitle,
+                            systemImage: diversity.chipSymbol
+                        ) {
+                            settings.selenaDiversityPreference = diversity
+                            start(personalMix)
+                        }
                     }
                 }
             }
@@ -2265,7 +2271,7 @@ struct MixesHubView: View {
                 personalRecommendations: homeCatalog.recommendations,
                 similarRecommendations: [],
                 diversity: settings.selenaDiversityPreference
-            )
+            ).tracks
             if !quick.isEmpty {
                 storeTracks(quick, for: personalMix)
             }
@@ -2698,9 +2704,9 @@ struct MixesHubView: View {
         let queue = current.isEmpty ? player.queue : current
         guard let seed = player.currentTrack ?? queue.first else { return }
 
-        if mix.id == MusicMix.common.id, mode == .balanced {
-            // Selena "balanced" is the bandit, not MixQueueRanker's shuffle —
-            // otherwise mode flips undo the spacing Explore already showed.
+        if mix.id == MusicMix.common.id {
+            // Selena owns novelty via diversity — MixRadioMode must not
+            // undo bandit spacing with MixQueueRanker's shuffle.
             let base = baseTracks(for: mix)
             let pool = base.isEmpty ? queue : base
             let ranked = environment.rankSelenaQueue(

@@ -208,7 +208,7 @@ final class SelenaRecommendationComposerTests: XCTestCase {
             personalRecommendations: personal,
             similarRecommendations: similar,
             limit: 6
-        )
+        ).tracks
 
         XCTAssertEqual(
             result.map(\.id),
