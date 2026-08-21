@@ -175,7 +175,11 @@ final class AppEnvironment {
         // familiarity. Must sit after every stored property is set — a
         // `[weak self]` capture before that fails definite initialization.
         player.configureMixTrackFilter { [weak self] tracks in
-            self?.filteredMixTracks(tracks) ?? tracks
+            guard let self else { return tracks }
+            if self.player.queueSource?.usesSelenaWaveFilters == true {
+                return self.filteredSelenaTracks(tracks)
+            }
+            return self.filteredMixTracks(tracks)
         }
         player.configureMixRadioRefill { [weak self, service] seed, mode in
             guard let self else { return [] }

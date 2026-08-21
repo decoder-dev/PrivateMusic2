@@ -85,7 +85,7 @@ final class SelenaWavePolicyTests: XCTestCase {
             similarRecommendations: similar,
             diversity: .discover,
             limit: 5
-        )
+        ).tracks
         let similarCount = discover.filter { $0.artist == "N" }.count
         let personalCount = discover.filter { $0.artist == "P" }.count
         XCTAssertGreaterThanOrEqual(similarCount, personalCount)
