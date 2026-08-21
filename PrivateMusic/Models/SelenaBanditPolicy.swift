@@ -92,6 +92,11 @@ enum SelenaBanditPolicy {
 
     /// 1 for an artist this session has not shown yet, falling as their
     /// share of the queue grows.
+    /// Soft mood boost folded into the bandit score (0...1). PreferMood
+    /// alone lost to continuous familiarity/novelty floats on almost every
+    /// tie-break, so mood must participate in the primary score.
+    static let moodWeight = 0.18
+
     static func novelty(impressions: Int) -> Double {
         1 / (Double(max(0, impressions)) + 1).squareRoot()
     }
@@ -101,10 +106,18 @@ enum SelenaBanditPolicy {
             + noveltyWeight * novelty(impressions: impressions)
     }
 
+    static func moodBoost(_ score: Int) -> Double {
+        guard score > 0 else { return 0 }
+        // Cap so a single keyword match cannot dominate familiarity.
+        return min(1, Double(score) / 2)
+    }
+
     /// - Parameters:
     ///   - affinityByArtistKey: `ArtistAffinityPolicy` scores keyed the way
     ///     `MixFeedbackPolicy.normalized` keys them. Absent means no
     ///     evidence, which scores as unfamiliar rather than as disliked.
+    ///   - moodScoresByTrackID: optional soft moodEnergy boosts from
+    ///     `SelenaWavePolicy.moodScore` — 0 for unmatched tracks.
     static func rerank(
         _ tracks: [Track],
         affinityByArtistKey: [String: Double],
@@ -112,7 +125,9 @@ enum SelenaBanditPolicy {
         bannedArtists: Set<String>,
         familiarityWeight: Double = familiarityWeight,
         noveltyWeight: Double = noveltyWeight,
-        artistSpacing spacing: Int = artistSpacing
+        artistSpacing spacing: Int = artistSpacing,
+        moodScoresByTrackID: [String: Int] = [:],
+        moodWeight: Double = moodWeight
     ) -> [Track] {
         // A ban is a removal, not a demotion. The queue reaching this
         // point is normally already filtered, but a listener can ban an
@@ -127,9 +142,11 @@ enum SelenaBanditPolicy {
 
         let fam = max(0, familiarityWeight)
         let nov = max(0, noveltyWeight)
-        let weightSum = fam + nov
+        let moodW = max(0, moodWeight)
+        let weightSum = fam + nov + moodW
         let famNorm = weightSum > 0 ? fam / weightSum : Self.familiarityWeight
         let novNorm = weightSum > 0 ? nov / weightSum : Self.noveltyWeight
+        let moodNorm = weightSum > 0 ? moodW / weightSum : 0
         let gap = max(1, spacing)
 
         let candidates = allowed.enumerated().map { index, track in
@@ -138,7 +155,7 @@ enum SelenaBanditPolicy {
                 affinity: affinityByArtistKey[key] ?? 0
             ) + novNorm * novelty(
                 impressions: exposure.impressions(forArtistKey: key)
-            )
+            ) + moodNorm * moodBoost(moodScoresByTrackID[track.id] ?? 0)
             return Candidate(
                 track: track,
                 artistKey: key,

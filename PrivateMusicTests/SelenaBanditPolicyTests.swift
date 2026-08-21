@@ -195,6 +195,23 @@ final class SelenaBanditPolicyTests: XCTestCase {
         )
     }
 
+    func testMoodBoostCanOutrankEqualAffinityCandidates() {
+        let calm = track(1, artist: "A", title: "Спокойный вечер")
+        let other = track(2, artist: "B", title: "Party Fire")
+        let result = SelenaBanditPolicy.rerank(
+            [other, calm],
+            affinityByArtistKey: [:],
+            exposure: SelenaExposure(),
+            bannedArtists: [],
+            moodScoresByTrackID: [
+                calm.id: SelenaWavePolicy.moodScore(calm, mood: .calm),
+                other.id: 0
+            ],
+            moodWeight: SelenaBanditPolicy.moodWeight
+        )
+        XCTAssertEqual(result.first?.id, calm.id)
+    }
+
     // MARK: - Spacing
 
     /// The point of the whole thing: favourites recur, but never back to
