@@ -412,21 +412,27 @@ struct LibraryView: View {
                 knownTracks: pin.tracks
             )
             environment.player.resumePinned(pin) {
-                try await environment.withAuthorizedToken { token in
+                let more = try await environment.withAuthorizedToken { token in
                     try await stream.next(
                         accessToken: token,
                         musicService: environment.musicService
                     )
                 }
+                return await MainActor.run {
+                    environment.selenaContinuationTracks(more)
+                }
             }
         } else {
             let cursor = MixTrackContinuationCursor(mix: mix)
             environment.player.resumePinned(pin) {
-                try await environment.withAuthorizedToken { token in
+                let more = try await environment.withAuthorizedToken { token in
                     try await cursor.next(
                         accessToken: token,
                         musicService: environment.musicService
                     )
+                }
+                return await MainActor.run {
+                    environment.continuationTracks(more)
                 }
             }
         }

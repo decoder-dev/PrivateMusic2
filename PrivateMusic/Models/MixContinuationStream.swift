@@ -44,6 +44,16 @@ enum SelenaRecommendationComposer {
         )
     }
 
+    /// Keep the seed window sliding toward freshly composed material so
+    /// later fan-out rounds are not stuck on the bootstrap snapshot.
+    static func rotatingSeeds(
+        previous: [Track],
+        composed: [Track],
+        limit: Int = 32
+    ) -> [Track] {
+        unique(composed + previous, limit: limit)
+    }
+
     static func compose(
         seedTracks: [Track],
         personalRecommendations: [Track],
@@ -127,6 +137,9 @@ actor SelenaRecommendationCursor {
     private var knownIDs: Set<String>
     private var seedIndex = 0
     private var commonMixOffset = 0
+    /// Last personal recommendations page. Reused across continuation so
+    /// every refill does not pay another identical network round-trip.
+    private var sessionPersonal: [Track] = []
 
     init(seedTracks: [Track], knownTracks: [Track] = []) {
         self.seeds = SelenaRecommendationComposer.seedTracks(
@@ -174,10 +187,9 @@ actor SelenaRecommendationCursor {
         ).filter { knownIDs.insert($0.id).inserted }
 
         if !composed.isEmpty {
-            seeds = SelenaRecommendationComposer.seedTracks(
-                history: [],
-                recommendations: seeds + composed,
-                loaded: []
+            seeds = SelenaRecommendationComposer.rotatingSeeds(
+                previous: seeds,
+                composed: composed
             )
         }
         return composed
@@ -188,13 +200,19 @@ actor SelenaRecommendationCursor {
         musicService: any MusicService,
         cached: [Track]
     ) async throws -> [Track] {
-        // Home already paid for a personal recommendations page — reuse it
-        // on the first Explore bootstrap instead of asking again.
-        if !cached.isEmpty { return cached }
+        if !cached.isEmpty {
+            sessionPersonal = cached
+            return cached
+        }
+        if !sessionPersonal.isEmpty {
+            return sessionPersonal
+        }
         do {
-            return try await musicService.recommendations(
+            let fresh = try await musicService.recommendations(
                 accessToken: accessToken
             )
+            sessionPersonal = fresh
+            return fresh
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as APIError where error == .unauthorized

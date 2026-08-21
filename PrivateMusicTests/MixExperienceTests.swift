@@ -334,6 +334,61 @@ final class SelenaRecommendationComposerTests: XCTestCase {
         XCTAssertTrue(page.contains { $0.artist == "Cached" })
     }
 
+    func testRotatingSeedsPreferFreshlyComposedTracks() {
+        let previous = (1...32).map { makeTrack(id: $0, artist: "Old \($0)") }
+        let composed = [
+            makeTrack(id: 100, artist: "New A"),
+            makeTrack(id: 101, artist: "New B"),
+            makeTrack(id: 102, artist: "New C")
+        ]
+
+        let rotated = SelenaRecommendationComposer.rotatingSeeds(
+            previous: previous,
+            composed: composed,
+            limit: 32
+        )
+
+        XCTAssertEqual(
+            Array(rotated.prefix(3).map(\.id)),
+            ["1_100", "1_101", "1_102"]
+        )
+        XCTAssertEqual(rotated.count, 32)
+        // Oldest bootstrap seeds fall off the window first.
+        XCTAssertFalse(rotated.contains { $0.id == "1_1" })
+    }
+
+    func testSelenaCursorReusesSessionPersonalOnLaterPages() async throws {
+        let service = CursorMusicService()
+        let seeds = (1...3).map { makeTrack(id: $0, artist: "Seed \($0)") }
+        let cached = [
+            makeTrack(id: 70, artist: "Session"),
+            makeTrack(id: 71, artist: "Session")
+        ]
+        let cursor = SelenaRecommendationCursor(
+            seedTracks: seeds,
+            knownTracks: []
+        )
+
+        _ = try await cursor.next(
+            accessToken: "token",
+            musicService: service,
+            cachedPersonalRecommendations: cached
+        )
+        let beforeSecond = await service.recommendationTargets.count
+        let second = try await cursor.next(
+            accessToken: "token",
+            musicService: service
+        )
+        let afterSecond = await service.recommendationTargets.count
+
+        // Second page must not pay for another unseeded personal fetch.
+        XCTAssertFalse(
+            (await service.recommendationTargets).contains { $0 == nil }
+        )
+        XCTAssertEqual(afterSecond - beforeSecond, 3)
+        XCTAssertFalse(second.isEmpty)
+    }
+
     private func makeTrack(id: Int, artist: String) -> Track {
         Track(
             trackID: id,
