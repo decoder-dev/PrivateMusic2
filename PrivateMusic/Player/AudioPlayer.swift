@@ -35,7 +35,11 @@ enum SleepTimerMode: Equatable, Sendable {
 /// is left `nil` and treated as an implicit automix seeded by the tapped
 /// track — see `AudioPlayer.queueContextTitle`.
 enum QueueSource: Equatable {
-    case mix(title: String)
+    /// A mix session. `id` is the stable identity (catalog mix id, or a
+    /// synthetic id for artist radio / my-music / seed mixes); `title` is
+    /// display-only. Comparing queues by title alone used to rerank the
+    /// wrong mix when VK shipped duplicate shelf names.
+    case mix(id: String, title: String)
     case playlist(title: String)
     case album(title: String)
     case history
@@ -43,6 +47,52 @@ enum QueueSource: Equatable {
     /// case for it the player captioned a library queue as a mix seeded by
     /// the tapped track — which is not what is playing.
     case library
+
+    static func catalogMix(_ mix: MusicMix) -> QueueSource {
+        .mix(id: mix.id, title: mix.title)
+    }
+
+    static func myMusicMix(title: String) -> QueueSource {
+        .mix(id: MixQueueIdentity.myMusic, title: title)
+    }
+
+    static func artistMix(named name: String, title: String) -> QueueSource {
+        .mix(id: MixQueueIdentity.artist(name), title: title)
+    }
+
+    static func seedMix(trackID: String, title: String) -> QueueSource {
+        .mix(id: MixQueueIdentity.seed(trackID), title: title)
+    }
+
+    var mixID: String? {
+        if case let .mix(id, _) = self { return id }
+        return nil
+    }
+
+    var mixTitle: String? {
+        if case let .mix(_, title) = self { return title }
+        return nil
+    }
+
+    /// Personal station and "mix from my music" share Selena wave filters /
+    /// bandit ranking — catalog VK mixes do not.
+    var usesSelenaWaveFilters: Bool {
+        guard let mixID else { return false }
+        return mixID == MusicMix.common.id || mixID == MixQueueIdentity.myMusic
+    }
+}
+
+/// Stable ids for mix queues that are not catalog shelves.
+enum MixQueueIdentity {
+    static let myMusic = "my-music"
+
+    static func artist(_ name: String) -> String {
+        "artist:" + MixFeedbackPolicy.normalized(name)
+    }
+
+    static func seed(_ trackID: String) -> String {
+        "seed:" + trackID
+    }
 }
 
 enum PendingPlayerSheet: Equatable, Sendable {
@@ -352,6 +402,41 @@ enum AudioProcessingRoutePolicy {
     }
 }
 
+/// Configures `AVAudioSession` for music playback with graceful fallbacks.
+///
+/// `allowBluetoothA2DP` is rejected on some simulator / policy combinations
+/// when paired with `longFormAudio`; fall back to the plain category so CI
+/// and older runtimes still activate the session.
+enum PlaybackAudioSessionPolicy {
+    static func configure(
+        _ session: AVAudioSession = .sharedInstance()
+    ) -> Bool {
+        let optionSets: [AVAudioSession.CategoryOptions] = [
+            [.allowBluetoothA2DP],
+            []
+        ]
+        for options in optionSets {
+            do {
+                try session.setCategory(
+                    .playback,
+                    mode: .default,
+                    policy: .longFormAudio,
+                    options: options
+                )
+                // Leave sample rate at the hardware / stream default (VK MP3 is
+                // usually 44.1 kHz). Forcing 48 kHz resamples every buffer.
+                if #available(iOS 17.0, *) {
+                    try? session.setPrefersInterruptionOnRouteDisconnect(true)
+                }
+                return true
+            } catch {
+                continue
+            }
+        }
+        return false
+    }
+}
+
 /// Whether `MTAudioProcessingTap` can be attached for a given source URL.
 ///
 /// Apple documents that `AVAudioMix` / audio taps work on file-based and
@@ -363,13 +448,19 @@ enum AudioProcessingRoutePolicy {
 enum AudioProcessingAttachPolicy {
     static func supportsAudioTap(url: URL, isOffline: Bool) -> Bool {
         if isOffline { return true }
-        return url.pathExtension.caseInsensitiveCompare("m3u8") != .orderedSame
+        return !StreamQualityPolicy.isHLSStream(url)
     }
 
     /// After media-services reset (typical on car attach), suppress auto-skip
     /// briefly so a transient item failure retries the same track instead of
     /// jumping through the queue with error toasts.
     static let postResetAdvanceSuppression: TimeInterval = 8
+}
+
+/// How `loadCurrent` picks between VK progressive MP3 and the original HLS URL.
+private enum PlaybackURLStrategy {
+    case automatic
+    case originalOnly
 }
 
 /// Exact seeks force AVFoundation to decode to a precise frame — expensive on
@@ -1174,18 +1265,32 @@ final class AudioPlayer {
     private(set) var queueSource: QueueSource? {
         didSet { syncHighlight() }
     }
-    private(set) var queueSeedTrackTitle: String?
+    private(set) var queueSeedTrackTitle: String? {
+        didSet { syncHighlight() }
+    }
     /// Active mix radio ordering. Owned here because it describes the
     /// live queue: every surface offering the control (mix hub, queue
     /// sheet) reads one value instead of keeping its own `@State`, which
     /// let two pickers disagree about the current ordering.
     private(set) var mixRadioMode: MixRadioMode = .balanced
+
+    /// Identity for mix-aware UI (filters, radio mode, open-queue). Prefer
+    /// this over comparing display titles.
+    func isPlayingMix(id: String) -> Bool {
+        queueSource?.mixID == id
+    }
+
+    func isPlaying(_ mix: MusicMix) -> Bool {
+        isPlayingMix(id: mix.id)
+    }
     private(set) var isPlaying = false {
         didSet { syncHighlight() }
     }
     private(set) var isBuffering = false
-    /// Exact transport clock. Not `@Published` — UI observes `progress` so
-    /// catalog/library EnvironmentObject consumers are not invalidated at 2 Hz.
+    /// Exact transport clock. Not observed by list rows — UI reads
+    /// `progress` instead so catalog/library surfaces are not invalidated
+    /// at ~4 Hz.
+    @ObservationIgnored
     private(set) var elapsedTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
     /// Shuffle mode of the queue that is playing right now.
@@ -1277,8 +1382,19 @@ final class AudioPlayer {
     private var pauseAtMinimumVolume = true
     private var advanceOnPlaybackError = true
     private var preferHighQuality = true
+    private var crossfadeEnabled = true
+    /// After a progressive MP3 upgrade fails, replay the original HLS URL once.
+    private var playbackURLStrategy: PlaybackURLStrategy = .automatic
+    private var playbackURLStrategyTrackID: String?
+    private var activePlaybackURL: URL?
+    private var incomingPlayer: AVPlayer?
+    private var crossfadeTask: Task<Void, Never>?
+    private var isCrossfading = false
+    private var incomingPreparedTrackID: String?
     /// Optional filter applied to mix queue fills (local dislike memory).
     private var mixTrackFilter: (([Track]) -> [Track])?
+    /// Selena source-arm feedback: track id + whether the listen succeeded.
+    private var selenaSourceFeedback: ((String, Bool) -> Void)?
     /// Optional server-backed refill for closerToSeed / moreNovel modes.
     private var mixRadioRefillProvider:
         ((Track, MixRadioMode) async throws -> [Track])?
@@ -1359,7 +1475,14 @@ final class AudioPlayer {
         highlight.update(
             currentTrackID: currentTrack?.id,
             isPlaying: isPlaying,
-            queueSource: queueSource
+            queueSource: queueSource,
+            currentArtist: currentTrack?.artist,
+            currentTrackTitle: currentTrack?.title,
+            currentTrackArtworkURL: currentTrack?.artworkURL,
+            queueContextTitle: QueueContextTitlePolicy.resolve(
+                queueSource: queueSource,
+                queueSeedTrackTitle: queueSeedTrackTitle
+            )
         )
     }
 
@@ -1367,24 +1490,10 @@ final class AudioPlayer {
     /// "player.now_playing_kicker" in the full-screen player in place of a bare
     /// "N of M" position (that position now lives in the queue screen).
     var queueContextTitle: String {
-        switch queueSource {
-        case let .mix(title) where QueueSourceTitle.isUsable(title):
-            return title
-        case let .playlist(title) where QueueSourceTitle.isUsable(title):
-            return title
-        case let .album(title) where QueueSourceTitle.isUsable(title):
-            return title
-        case .history:
-            return L10n.text("listening_history")
-        case .library:
-            return L10n.text("library.your_tracks")
-        default:
-            if let seed = queueSeedTrackTitle,
-               QueueSourceTitle.isUsable(seed) {
-                return L10n.format("mix_based_on_0", seed)
-            }
-            return L10n.text("player.your_queue")
-        }
+        QueueContextTitlePolicy.resolve(
+            queueSource: queueSource,
+            queueSeedTrackTitle: queueSeedTrackTitle
+        )
     }
 
     func presentPlayer() {
@@ -1445,6 +1554,7 @@ final class AudioPlayer {
         // unity so the system volume slider is the only attenuation.
         advanceOnPlaybackError = settings.advanceOnPlaybackError
         preferHighQuality = settings.preferHighQuality
+        crossfadeEnabled = settings.crossfadeEnabled
         let initialShuffle = PlaybackShufflePreference.resolve(
             defaults: defaults
         )
@@ -1475,6 +1585,12 @@ final class AudioPlayer {
         _ filter: @escaping ([Track]) -> [Track]
     ) {
         mixTrackFilter = filter
+    }
+
+    func configureSelenaSourceFeedback(
+        _ handler: @escaping (String, Bool) -> Void
+    ) {
+        selenaSourceFeedback = handler
     }
 
     func configureMixRadioRefill(
@@ -1676,11 +1792,13 @@ final class AudioPlayer {
         }
         // Mix queues from VK often cluster the same artists. Apply
         // balanced radio diversity up front so «Баланс» is not a no-op
-        // that leaves the original clustered order.
+        // that leaves the original clustered order. Selena already ran
+        // SelenaBanditPolicy — reshuffling would discard that order.
         if case .mix = source, !shuffleEnabled,
+           source?.usesSelenaWaveFilters != true,
            let index = currentIndex {
             let historyArtists = Set(
-                historyStore.entries.prefix(40).map(\.track.artist)
+                historyStore.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist)
             )
             queue = MixQueueRanker.rerank(
                 queue: queue,
@@ -1742,6 +1860,27 @@ final class AudioPlayer {
             at: min(adjustedCurrentIndex + 1, queue.count)
         )
         pinnedPlayNextIDs.insert(track.id)
+        persistPlayback()
+        publishNowPlayingQueue()
+        scheduleNeighborPreloads()
+    }
+
+    /// Appends `track` at the end of the queue (Play Last). Starts playback
+    /// when nothing is queued yet.
+    func playLast(_ track: Track) {
+        guard let currentIndex, let currentTrack else {
+            play(track, in: [track])
+            return
+        }
+        guard track.id != currentTrack.id else { return }
+        cancelContinuation()
+        cancelMixRadioRefill()
+        queue.removeAll { $0.id == track.id }
+        let adjustedCurrentIndex = queue.firstIndex {
+            $0.id == currentTrack.id
+        } ?? min(currentIndex, max(queue.count - 1, 0))
+        self.currentIndex = adjustedCurrentIndex
+        queue.append(track)
         persistPlayback()
         publishNowPlayingQueue()
         scheduleNeighborPreloads()
@@ -1965,6 +2104,7 @@ final class AudioPlayer {
     }
 
     func pause() {
+        cancelCrossfade()
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
         advanceAfterContinuationPrefetch = false
@@ -2009,7 +2149,14 @@ final class AudioPlayer {
     }
 
     func next() {
+        cancelCrossfade()
         guard let currentIndex, !queue.isEmpty else { return }
+        if queueSource?.usesSelenaWaveFilters == true,
+           let track = currentTrack,
+           listenedTrackID != track.id {
+            // Skipped before the listen threshold — punish that source arm.
+            selenaSourceFeedback?(track.id, false)
+        }
         let nextIndex = queue.index(after: currentIndex)
         if nextIndex >= queue.endIndex, repeatMode == .off {
             if sleepTimerMode == .endOfQueue {
@@ -2038,6 +2185,7 @@ final class AudioPlayer {
     }
 
     func previous() {
+        cancelCrossfade()
         if elapsedTime > 4 {
             seek(to: 0)
             return
@@ -2060,6 +2208,7 @@ final class AudioPlayer {
     }
 
     func seek(to seconds: TimeInterval) {
+        cancelCrossfade()
         let upperBound = duration > 0 ? duration : seconds
         let targetSeconds = min(max(0, seconds), upperBound)
         lastListeningElapsedTime = targetSeconds
@@ -2083,6 +2232,7 @@ final class AudioPlayer {
     }
 
     func stop() {
+        cancelCrossfade()
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
         minimumVolumeResumeSuppressed = false
@@ -2134,6 +2284,7 @@ final class AudioPlayer {
         lastNowPlayingSecond = -1
         lastPersistedQueueSignature = ""
         defaults.removeObject(forKey: PlaybackSnapshot.key)
+        defaults.removeObject(forKey: PlaybackSnapshot.legacyKey)
         defaults.removeObject(forKey: PlaybackSnapshot.elapsedKey)
         try? AVAudioSession.sharedInstance().setActive(
             false,
@@ -2170,6 +2321,7 @@ final class AudioPlayer {
         startAt position: TimeInterval,
         automatic: Bool = false
     ) {
+        cancelCrossfade()
         let autoplay = requestedAutoplay
             && (!automatic || allowsAutomaticPlayback)
         if requestedAutoplay, !autoplay {
@@ -2178,9 +2330,27 @@ final class AudioPlayer {
             resumeAfterRouteTransfer = playbackIntended
         }
         guard let track = currentTrack else { return }
+        if playbackURLStrategyTrackID != track.id {
+            playbackURLStrategy = .automatic
+            playbackURLStrategyTrackID = track.id
+        }
         let offlineURL = offlineURLProvider?(track)
-        let remoteURL = track.streamURL.flatMap { url in
+        let sourceRemoteURL = track.streamURL.flatMap { url in
             StreamURLLoadPolicy.isPlayableRemoteURL(url) ? url : nil
+        }
+        let remoteURL = sourceRemoteURL.map { resolvePlaybackURL(from: $0) }
+        if offlineURL == nil,
+           StreamQualityPolicy.shouldRefreshHLSBeforePlay(
+            sourceURL: sourceRemoteURL,
+            playbackURL: remoteURL,
+            alreadyRefreshed: didAttemptStreamRefresh
+           ),
+           streamRefreshProvider != nil {
+            refreshCurrentStream(
+                autoplay: autoplay,
+                automatic: automatic
+            )
+            return
         }
         guard let url = offlineURL ?? remoteURL else {
             if streamRefreshProvider != nil {
@@ -2220,6 +2390,7 @@ final class AudioPlayer {
             )
             return
         }
+        activePlaybackURL = url
         errorMessage = nil
 
         playbackGeneration += 1
@@ -2227,11 +2398,10 @@ final class AudioPlayer {
         let isOffline = offlineURL != nil
         let item = takePreloadedPlayback(for: track, url: url)
             ?? makePlaybackItem(url: url, isOffline: isOffline)
-        let wantsAudioTap = equalizer.requiresAudioTap
-            && AudioProcessingAttachPolicy.supportsAudioTap(
-                url: url,
-                isOffline: isOffline
-            )
+        let wantsAudioTap = shouldAttachAudioProcessing(
+            url: url,
+            isOffline: isOffline
+        )
         player.allowsExternalPlayback = AudioProcessingRoutePolicy
             .allowsExternalPlayback(requiresAudioTap: wantsAudioTap)
         // Defer mix attach until tracks exist (readyToPlay). Premature
@@ -2335,6 +2505,27 @@ final class AudioPlayer {
             )
     }
 
+    private func resolvePlaybackURL(from url: URL) -> URL {
+        // Whether processing will actually run, not merely whether the user
+        // switched it on: `allowRealtimeAudioProcessing` already withholds
+        // the tap under Low Power Mode and thermal pressure, so those states
+        // do not force a rewrite for a tap that will not attach anyway.
+        let requiresAudioProcessing = PlaybackResourcePolicy
+            .allowRealtimeAudioProcessing(
+                requiresAudioTap: equalizer.requiresAudioTap
+            )
+        return StreamQualityPolicy.playbackURL(
+            url,
+            preferHighQuality: preferHighQuality,
+            requiresAudioProcessing: requiresAudioProcessing,
+            allowProgressiveUpgrade: playbackURLStrategy == .automatic
+                && PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
+                    preferHighQuality: preferHighQuality,
+                    requiresAudioProcessing: requiresAudioProcessing
+                )
+        )
+    }
+
     private func makePlaybackAsset(
         url: URL,
         isOffline: Bool
@@ -2403,6 +2594,10 @@ final class AudioPlayer {
             return
         }
         let track = queue[nextIndex]
+        if preloadStreamRefreshTrackID == track.id,
+           preloadStreamRefreshTask != nil {
+            return
+        }
         if let refreshTrackID = preloadStreamRefreshTrackID,
            refreshTrackID != track.id {
             preloadStreamRefreshTask?.cancel()
@@ -2413,8 +2608,21 @@ final class AudioPlayer {
         let offlineURL = offlineURLProvider?(track)
         guard (offlineURL != nil || remotePreloadingAllowed),
               offlineURL != nil || !restoredTrackIDs.contains(track.id),
-              let url = offlineURL ?? track.streamURL else {
+              let sourceURL = offlineURL ?? track.streamURL else {
             invalidatePreloadedPlayback()
+            return
+        }
+        let url = offlineURL ?? resolvePlaybackURL(from: sourceURL)
+        if offlineURL == nil,
+           StreamQualityPolicy.shouldRefreshHLSBeforePlay(
+            sourceURL: track.streamURL,
+            playbackURL: url,
+            alreadyRefreshed: attemptedPreloadRefreshes.contains(
+                Self.preloadRefreshKey(trackID: track.id, url: url)
+            )
+           ),
+           streamRefreshProvider != nil {
+            startPreloadStreamRefresh(track: track, playlistURL: url)
             return
         }
         if let existing = preloadedPlayback,
@@ -2532,19 +2740,37 @@ final class AudioPlayer {
         let failedURL = slot.url
         invalidatePreloadedPlayback()
         guard !failedURL.isFileURL,
-              preloadStreamRefreshTask == nil,
-              let provider = streamRefreshProvider,
               let track = queue.first(where: { $0.id == trackID }) else {
             return
         }
-        let refreshKey = "\(trackID)#\(failedURL.absoluteString)"
+        startPreloadStreamRefresh(track: track, playlistURL: failedURL)
+    }
+
+    private static func preloadRefreshKey(trackID: String, url: URL) -> String {
+        "\(trackID)#\(url.absoluteString)"
+    }
+
+    /// One `audio.getById` for the upcoming track when the resolved URL is
+    /// still HLS, so skip / crossfade can warm a progressive MP3 instead.
+    private func startPreloadStreamRefresh(track: Track, playlistURL: URL) {
+        guard !playlistURL.isFileURL,
+              preloadStreamRefreshTask == nil,
+              let provider = streamRefreshProvider else {
+            return
+        }
+        let trackID = track.id
+        let refreshKey = Self.preloadRefreshKey(
+            trackID: trackID,
+            url: playlistURL
+        )
         guard attemptedPreloadRefreshes.insert(refreshKey).inserted else {
             return
         }
+        invalidatePreloadedPlayback()
         let refreshID = UUID()
         preloadStreamRefreshTrackID = trackID
         preloadStreamRefreshID = refreshID
-        preloadStreamRefreshTask = Task { [weak self] in
+        preloadStreamRefreshTask = Task { @MainActor [weak self] in
             defer {
                 if let self,
                    self.preloadStreamRefreshID == refreshID {
@@ -2573,7 +2799,9 @@ final class AudioPlayer {
                 self.scheduleNeighborPreloads()
             } catch is CancellationError {
                 self?.attemptedPreloadRefreshes.remove(refreshKey)
-            } catch {}
+            } catch {
+                self?.scheduleNeighborPreloads()
+            }
         }
     }
 
@@ -2610,26 +2838,9 @@ final class AudioPlayer {
 
     @discardableResult
     private func configureAudioSession() -> Bool {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(
-                .playback,
-                mode: .default,
-                policy: .longFormAudio,
-                options: []
-            )
-            if #available(iOS 17.0, *) {
-                // Keep the system's expected media-app behavior when wired or
-                // wireless headphones disappear: interrupt playback instead
-                // of leaking audio through the device speaker.
-                try? session.setPrefersInterruptionOnRouteDisconnect(true)
-            }
-            audioSessionConfigured = true
-            return true
-        } catch {
-            audioSessionConfigured = false
-            return false
-        }
+        let configured = PlaybackAudioSessionPolicy.configure()
+        audioSessionConfigured = configured
+        return configured
     }
 
     private func activateAudioSession() -> Bool {
@@ -2809,6 +3020,7 @@ final class AudioPlayer {
             self.pauseAtMinimumVolume = self.settings.pauseAtMinimumVolume
             self.advanceOnPlaybackError = self.settings.advanceOnPlaybackError
             let highQuality = self.settings.preferHighQuality
+            self.crossfadeEnabled = self.settings.crossfadeEnabled
             self.handleOutputVolume(
                 AVAudioSession.sharedInstance().outputVolume
             )
@@ -2827,12 +3039,15 @@ final class AudioPlayer {
                     spatialAudio: spatialAudio,
                     spatialIntensity: spatialIntensity
                 )
-                let requiresAudioTap = self.equalizer.requiresAudioTap
+                let requiresEffectiveTap = self.effectiveRequiresAudioTap(
+                    url: (self.player.currentItem?.asset as? AVURLAsset)?.url,
+                    isOffline: self.loadedOfflineTrackID == self.currentTrack?.id
+                )
                 self.player.allowsExternalPlayback = AudioProcessingRoutePolicy
                     .allowsExternalPlayback(
-                        requiresAudioTap: requiresAudioTap
+                        requiresAudioTap: requiresEffectiveTap
                     )
-                if requiredTap != requiresAudioTap,
+                if requiredTap != self.equalizer.requiresAudioTap,
                    self.player.currentItem != nil {
                     self.reloadCurrentItemForAudioProcessing()
                 }
@@ -2859,6 +3074,7 @@ final class AudioPlayer {
             )
             Task { @MainActor in
                 guard let self,
+                      !self.isCrossfading,
                       let finishedItem = finished.item,
                       finishedItem === self.player.currentItem else {
                     return
@@ -2893,9 +3109,17 @@ final class AudioPlayer {
                 self.handleItemFailure(failed.error)
             }
         })
+        // Deliberately unfiltered (`object: nil`). There is exactly one
+        // `AVAudioSession` per process, so naming it as the sender buys no
+        // selectivity — but it does mean any of these the system posts
+        // without that sender, or with an internal one, is silently
+        // dropped. Automatic Ear Detection is the case that costs: it
+        // arrives as an interruption while the buds stay the route, so a
+        // missed notification is a pause that never happens and no other
+        // branch can recover it.
         registrations.notifications.append(center.addObserver(
             forName: AVAudioSession.interruptionNotification,
-            object: AVAudioSession.sharedInstance(),
+            object: nil,
             queue: .main
         ) { [weak self] notification in
             let boxed = IsolatedNotification(raw: notification)
@@ -2905,7 +3129,7 @@ final class AudioPlayer {
         })
         registrations.notifications.append(center.addObserver(
             forName: AVAudioSession.routeChangeNotification,
-            object: AVAudioSession.sharedInstance(),
+            object: nil,
             queue: .main
         ) { [weak self] notification in
             let boxed = IsolatedNotification(raw: notification)
@@ -2915,11 +3139,29 @@ final class AudioPlayer {
         })
         registrations.notifications.append(center.addObserver(
             forName: AVAudioSession.mediaServicesWereResetNotification,
-            object: AVAudioSession.sharedInstance(),
+            object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.handleMediaServicesReset()
+            }
+        })
+        registrations.notifications.append(center.addObserver(
+            forName: .NSProcessInfoPowerStateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handlePlaybackResourceConstraintsChanged()
+            }
+        })
+        registrations.notifications.append(center.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handlePlaybackResourceConstraintsChanged()
             }
         })
         outputVolumeObservation = AVAudioSession.sharedInstance().observe(
@@ -2959,6 +3201,7 @@ final class AudioPlayer {
                 }
                 self.sampleListeningProgress()
                 self.sampleBufferHealth()
+                self.maybeAdvanceWithCrossfade()
                 let buffering = self.isPlaying
                     && self.player.timeControlStatus
                         == .waitingToPlayAtSpecifiedRate
@@ -3427,6 +3670,7 @@ final class AudioPlayer {
         cancelContinuation()
         cancelStreamRefresh()
         cancelPreloading()
+        cancelCrossfade()
         playbackGeneration += 1
         itemStatusObservation?.invalidate()
         itemStatusObservation = nil
@@ -3489,11 +3733,17 @@ final class AudioPlayer {
         let requiredTap = equalizer.requiresAudioTap
         equalizer.setOutputProfile(profile)
         let requiresAudioTap = equalizer.requiresAudioTap
+        let currentItem = player.currentItem
         player.allowsExternalPlayback = AudioProcessingRoutePolicy
-            .allowsExternalPlayback(requiresAudioTap: requiresAudioTap)
+            .allowsExternalPlayback(
+                requiresAudioTap: effectiveRequiresAudioTap(
+                    url: (currentItem?.asset as? AVURLAsset)?.url,
+                    isOffline: loadedOfflineTrackID == currentTrack?.id
+                )
+            )
         guard reloadIfNeeded,
               requiredTap != requiresAudioTap,
-              let item = player.currentItem else {
+              let item = currentItem else {
             return
         }
         // A tone-profile change (e.g. connecting to CarKit) can flip
@@ -3511,11 +3761,233 @@ final class AudioPlayer {
               ) else {
             return
         }
-        if requiresAudioTap {
+        if shouldAttachAudioProcessing(
+            url: url,
+            isOffline: loadedOfflineTrackID == currentTrack?.id
+        ) {
             attachAudioProcessing(to: item)
         } else {
             item.audioMix = nil
         }
+    }
+
+    private func shouldAttachAudioProcessing(
+        url: URL,
+        isOffline: Bool
+    ) -> Bool {
+        PlaybackResourcePolicy.allowRealtimeAudioProcessing(
+            requiresAudioTap: equalizer.requiresAudioTap
+        )
+        && AudioProcessingAttachPolicy.supportsAudioTap(
+            url: url,
+            isOffline: isOffline
+        )
+    }
+
+    private func effectiveRequiresAudioTap(
+        url: URL?,
+        isOffline: Bool
+    ) -> Bool {
+        guard let url else {
+            return equalizer.requiresAudioTap
+                && PlaybackResourcePolicy.allowRealtimeAudioProcessing(
+                    requiresAudioTap: true
+                )
+        }
+        return shouldAttachAudioProcessing(url: url, isOffline: isOffline)
+    }
+
+    private func handlePlaybackResourceConstraintsChanged() {
+        guard currentTrack != nil, player.currentItem != nil else { return }
+        if !PlaybackResourcePolicy.allowOverlappingPlayback(
+            userEnabled: crossfadeEnabled,
+            requiresAudioTap: equalizer.requiresAudioTap
+        ) {
+            cancelCrossfade()
+        }
+        reloadCurrentItemForAudioProcessing()
+    }
+
+    private func cancelCrossfade() {
+        crossfadeTask?.cancel()
+        crossfadeTask = nil
+        isCrossfading = false
+        incomingPreparedTrackID = nil
+        if let incoming = incomingPlayer {
+            incoming.pause()
+            incoming.replaceCurrentItem(with: nil)
+        }
+        incomingPlayer = nil
+        player.volume = 1
+    }
+
+    private func upcomingPlayback() -> (
+        track: Track,
+        index: Int,
+        url: URL,
+        isOffline: Bool
+    )? {
+        guard let currentIndex, !queue.isEmpty, repeatMode != .one else {
+            return nil
+        }
+        var nextIndex = queue.index(after: currentIndex)
+        if nextIndex >= queue.endIndex {
+            guard repeatMode == .all else { return nil }
+            nextIndex = 0
+        }
+        guard queue.indices.contains(nextIndex) else { return nil }
+        let track = queue[nextIndex]
+        let offlineURL = offlineURLProvider?(track)
+        let sourceURL = track.streamURL.flatMap { url in
+            StreamURLLoadPolicy.isPlayableRemoteURL(url) ? url : nil
+        }
+        guard let url = offlineURL ?? sourceURL.map({
+            resolvePlaybackURL(from: $0)
+        }) else {
+            return nil
+        }
+        return (track, nextIndex, url, offlineURL != nil)
+    }
+
+    private func maybeAdvanceWithCrossfade() {
+        guard isPlaying, !isCrossfading, duration > 0 else { return }
+        let remaining = duration - elapsedTime
+        guard let upcoming = upcomingPlayback() else { return }
+        let currentURL = (player.currentItem?.asset as? AVURLAsset)?.url
+            ?? activePlaybackURL
+        guard PlaybackTransitionPolicy.allowsCrossfade(
+            userEnabled: crossfadeEnabled,
+            currentURL: currentURL,
+            nextURL: upcoming.url,
+            requiresAudioTap: equalizer.requiresAudioTap,
+            lowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled,
+            thermalState: ProcessInfo.processInfo.thermalState
+        ) else {
+            return
+        }
+        if PlaybackTransitionPolicy.shouldPrepareIncoming(
+            remaining: remaining,
+            duration: duration,
+            hasNextTrack: true,
+            isRepeatOne: false,
+            isAlreadyTransitioning: incomingPlayer != nil
+        ) {
+            prepareIncomingPlayback(upcoming)
+        }
+        let incomingReady = incomingPlayer?.currentItem?.status == .readyToPlay
+        guard PlaybackTransitionPolicy.shouldStartFade(
+            remaining: remaining,
+            incomingIsReady: incomingReady,
+            isAlreadyFading: isCrossfading
+        ) else {
+            return
+        }
+        startCrossfade(to: upcoming)
+    }
+
+    private func prepareIncomingPlayback(
+        _ upcoming: (
+            track: Track,
+            index: Int,
+            url: URL,
+            isOffline: Bool
+        )
+    ) {
+        if incomingPreparedTrackID == upcoming.track.id,
+           incomingPlayer != nil {
+            return
+        }
+        incomingPlayer?.pause()
+        incomingPlayer?.replaceCurrentItem(with: nil)
+        let incoming = AVPlayer()
+        incoming.automaticallyWaitsToMinimizeStalling = true
+        incoming.volume = 0
+        incoming.allowsExternalPlayback = false
+        let item = takePreloadedPlayback(for: upcoming.track, url: upcoming.url)
+            ?? makePlaybackItem(url: upcoming.url, isOffline: upcoming.isOffline)
+        incoming.replaceCurrentItem(with: item)
+        incomingPlayer = incoming
+        incomingPreparedTrackID = upcoming.track.id
+    }
+
+    private func startCrossfade(
+        to upcoming: (
+            track: Track,
+            index: Int,
+            url: URL,
+            isOffline: Bool
+        )
+    ) {
+        guard let incoming = incomingPlayer else { return }
+        isCrossfading = true
+        incoming.play()
+        let steps = 8
+        let stepDuration = PlaybackTransitionPolicy.fadeDuration
+            / Double(steps)
+        crossfadeTask?.cancel()
+        crossfadeTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            for step in 1...steps {
+                try? await Task.sleep(for: .seconds(stepDuration))
+                guard !Task.isCancelled, self.isCrossfading else { return }
+                let progress = Float(step) / Float(steps)
+                self.player.volume = max(0, 1 - progress)
+                incoming.volume = progress
+            }
+            guard !Task.isCancelled, self.isCrossfading else { return }
+            self.commitCrossfade(
+                incoming: incoming,
+                upcoming: upcoming
+            )
+        }
+    }
+
+    private func commitCrossfade(
+        incoming: AVPlayer,
+        upcoming: (
+            track: Track,
+            index: Int,
+            url: URL,
+            isOffline: Bool
+        )
+    ) {
+        let outgoing = player
+        outgoing.pause()
+        outgoing.volume = 1
+        outgoing.replaceCurrentItem(with: nil)
+        player = incoming
+        incomingPlayer = nil
+        incomingPreparedTrackID = nil
+        isCrossfading = false
+        crossfadeTask = nil
+        player.volume = 1
+        configurePlayerInstance()
+        registrations.removePeriodicTime()
+        installPeriodicTimeObserver()
+        currentIndex = upcoming.index
+        loadedTrackID = upcoming.track.id
+        loadedOfflineTrackID = upcoming.isOffline ? upcoming.track.id : nil
+        activePlaybackURL = upcoming.url
+        playbackURLStrategyTrackID = upcoming.track.id
+        resetProgressForTrackTransition()
+        persistPlayback()
+        if let item = player.currentItem,
+           shouldAttachAudioProcessing(
+            url: upcoming.url,
+            isOffline: upcoming.isOffline
+           ) {
+            attachAudioProcessing(to: item)
+        }
+        publishNowPlayingQueue()
+        nowPlaying.update(
+            track: upcoming.track,
+            elapsedTime: elapsedTime,
+            rate: isPlaying ? 1 : 0,
+            queueCount: queue.count,
+            queueIndex: upcoming.index
+        )
+        scheduleNeighborPreloads()
+        prunePinnedPlayNextIDs()
     }
 
     private func handleOutputVolume(
@@ -3608,6 +4080,24 @@ final class AudioPlayer {
 
     private func handleItemFailure(_ error: Error?) {
         publishPlaybackState(force: true)
+        if let track = currentTrack,
+           let sourceURL = track.streamURL,
+           playbackURLStrategy == .automatic,
+           let playbackURL = activePlaybackURL,
+           StreamQualityPolicy.usedProgressiveUpgrade(
+               original: sourceURL,
+               playback: playbackURL
+           ) {
+            playbackURLStrategy = .originalOnly
+            streamRecoveryAttempts = 0
+            didAttemptStreamRefresh = false
+            loadCurrent(
+                autoplay: playbackIntended,
+                startAt: elapsedTime,
+                automatic: true
+            )
+            return
+        }
         if let track = currentTrack,
            loadedOfflineTrackID == track.id {
             loadedOfflineTrackID = nil
@@ -4136,6 +4626,9 @@ final class AudioPlayer {
             return
         }
         let droppedID = queue[currentIndex].id
+        if queueSource?.usesSelenaWaveFilters == true {
+            selenaSourceFeedback?(droppedID, false)
+        }
         var nextQueue = queue
         nextQueue.remove(at: currentIndex)
         nextQueue.removeAll { $0.id == droppedID }
@@ -4175,6 +4668,9 @@ final class AudioPlayer {
         historyArtists: Set<String> = [],
         refillFromServer: Bool = true
     ) {
+        // Selena / My Music own novelty via diversity + bandit — never
+        // let MixQueueRanker or seed refill undo that order.
+        guard queueSource?.usesSelenaWaveFilters != true else { return }
         mixRadioMode = mode
         guard let currentIndex,
               queue.indices.contains(currentIndex) else {
@@ -4207,6 +4703,7 @@ final class AudioPlayer {
     }
 
     private func startMixRadioRefill(seed: Track, mode: MixRadioMode) {
+        guard queueSource?.usesSelenaWaveFilters != true else { return }
         guard let provider = mixRadioRefillProvider else { return }
         cancelMixRadioRefill()
         let generation = mixRadioRefillGeneration
@@ -4239,7 +4736,7 @@ final class AudioPlayer {
                         seed: seed,
                         mode: mode,
                         historyArtists: Set(
-                            self.historyStore.entries.prefix(40)
+                            self.historyStore.entries.prefix(MixListeningHistoryWindow.ranking)
                                 .map(\.track.artist)
                         )
                     )
@@ -4266,7 +4763,7 @@ final class AudioPlayer {
             track,
             in: snapshot.tracks,
             continuation: continuation,
-            source: .mix(title: snapshot.mixTitle)
+            source: .mix(id: snapshot.mixID, title: snapshot.mixTitle)
         )
         if snapshot.elapsed > 1 {
             seek(to: snapshot.elapsed)
@@ -4371,10 +4868,16 @@ final class AudioPlayer {
         let snapshot = PlaybackSnapshot(
             queue: queue,
             currentIndex: currentIndex,
-            elapsedTime: elapsedTime
+            elapsedTime: elapsedTime,
+            mixID: queueSource?.mixID,
+            mixTitle: queueSource?.mixTitle,
+            mixRadioMode: mixRadioMode.rawValue
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         defaults.set(data, forKey: PlaybackSnapshot.key)
+        // Drop the legacy key once we have a v2 write so restore does not
+        // prefer a stale title-less snapshot after an upgrade.
+        defaults.removeObject(forKey: PlaybackSnapshot.legacyKey)
         lastPersistedQueueSignature = signature
     }
 
@@ -4449,13 +4952,18 @@ final class AudioPlayer {
         }
         listenedTrackID = track.id
         historyStore.record(track)
+        if queueSource?.usesSelenaWaveFilters == true {
+            selenaSourceFeedback?(track.id, true)
+        }
         if loadedOfflineTrackID == track.id {
             offlinePlayedHandler?(track)
         }
     }
 
     private func restorePlayback() {
-        guard let data = defaults.data(forKey: PlaybackSnapshot.key),
+        let data = defaults.data(forKey: PlaybackSnapshot.key)
+            ?? defaults.data(forKey: PlaybackSnapshot.legacyKey)
+        guard let data,
               let snapshot = try? JSONDecoder().decode(
                 PlaybackSnapshot.self,
                 from: data
@@ -4467,6 +4975,17 @@ final class AudioPlayer {
         sourceOrderedQueue = snapshot.queue
         restoredTrackIDs = Set(snapshot.queue.map(\.id))
         currentIndex = snapshot.currentIndex
+        if let mixID = snapshot.mixID, let mixTitle = snapshot.mixTitle {
+            queueSource = .mix(id: mixID, title: mixTitle)
+        } else if let mixTitle = snapshot.mixTitle {
+            // v1 snapshots only had a title — keep mix behaviour alive
+            // under a synthetic id so bans/filters still apply.
+            queueSource = .mix(id: "restored:" + mixTitle, title: mixTitle)
+        }
+        if let raw = snapshot.mixRadioMode,
+           let mode = MixRadioMode(rawValue: raw) {
+            mixRadioMode = mode
+        }
         loadedTrackID = nil
         duration = currentTrack?.duration ?? 0
         let storedElapsed = defaults.object(
@@ -4493,10 +5012,14 @@ final class AudioPlayer {
 }
 
 private struct PlaybackSnapshot: Codable {
-    static let key = "player.playback.snapshot.v1"
+    static let key = "player.playback.snapshot.v2"
+    static let legacyKey = "player.playback.snapshot.v1"
     static let elapsedKey = "player.playback.elapsed.v1"
 
     let queue: [Track]
     let currentIndex: Int
     let elapsedTime: TimeInterval
+    var mixID: String? = nil
+    var mixTitle: String? = nil
+    var mixRadioMode: String? = nil
 }

@@ -10,56 +10,105 @@ struct CatalogView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(ListeningHistoryStore.self) private var history
     @Environment(HomeCatalogStore.self) private var homeCatalog
+    @Environment(MusicLibraryStore.self) private var libraryStore
+    @Environment(MixFeedbackStore.self) private var mixFeedback
+    @Environment(HomePersonalizationStore.self) private var personalization
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var actionErrorMessage: String?
     @State private var sharingTrack: Track?
     @State private var selectedAlbum: Album?
     @State private var loadingAlbumTrackID: String?
-    @State private var loadingPlayAlbumID: String?
     @State private var albumLookupTask: Task<Void, Never>?
+    @State private var isNextStepLaunching = false
+    @State private var pendingHiddenArtist: HomeNextStepCandidate?
+    @State private var openingMixID: String?
+    @State private var containerWidth: CGFloat = 390
+    @State private var topSafeAreaInset: CGFloat = 0
+    @State private var nextStepCandidate: HomeNextStepCandidate?
 
     var body: some View {
         ScrollViewReader { scrollProxy in
-            GeometryReader { proxy in
-                let metrics = HomeMetrics(containerWidth: proxy.size.width)
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 22) {
+            let metrics = HomeMetrics(containerWidth: containerWidth)
+            let heroForegroundTopOrigin =
+                HomeStageMetrics.resolvedForegroundTopOrigin(
+                    reportedTopSafeAreaInset: topSafeAreaInset
+                )
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: BubbleSpacing.xxl) {
+                    if settings.homeStageEnabled {
+                        HomeStageView(
+                            width: containerWidth,
+                            horizontalPadding: metrics.horizontalPadding,
+                            foregroundTopOrigin: heroForegroundTopOrigin
+                        )
+                        .id(MainTabScrollDestination.home)
+                    } else {
                         welcomeHeader
+                            .padding(.top, heroForegroundTopOrigin)
                             .id(MainTabScrollDestination.home)
-
-                        if !history.entries.isEmpty {
-                            recentlyPlayedSection(metrics: metrics)
-                        }
-                        if isLoading && contentIsEmpty {
-                            catalogSkeleton(metrics: metrics)
-                        } else {
-                            if !homeCatalog.newReleases.isEmpty {
-                                newReleasesSection(metrics: metrics)
-                            }
-                            vibeChipsSection
-                            if !homeMixes.isEmpty {
-                                mixesSection(metrics: metrics)
-                            }
-                            if !recommendations.isEmpty {
-                                recommendationsSection(metrics: metrics)
-                                if !moreRecommendations.isEmpty {
-                                    trackListSection
-                                }
-                            }
-                            if !playlists.isEmpty {
-                                playlistsSection(metrics: metrics)
-                            }
-                            if contentIsEmpty { unavailableView }
-                            if let errorMessage, !contentIsEmpty {
-                                retryRow(errorMessage)
-                            }
-                        }
                     }
-                    .padding(.horizontal, metrics.horizontalPadding)
-                    .padding(.top, 4)
+
+                    if let nextStepCandidate {
+                        nextStepSection(
+                            nextStepCandidate,
+                            metrics: metrics
+                        )
+                    }
+                    if homeCatalog.errorMessage != nil,
+                       nextStepCandidate == nil,
+                       history.entries.isEmpty {
+                        retryRow(errorMessage ?? homeCatalog.errorMessage ?? "")
+                    }
+                    if !history.entries.isEmpty {
+                        recentlyPlayedSection(metrics: metrics)
+                    }
+                    exploreMusicEntry
+                }
+                .padding(.horizontal, metrics.horizontalPadding)
+                .padding(.top, BubbleSpacing.xs)
+            }
+            // The vertical indicator sat right over the stage's
+            // artwork and controls at the top of the scroll — the one
+            // place on Home it can't afford to compete for attention.
+            .scrollIndicators(.hidden)
+            // Read the viewport once from the background. Wrapping the
+            // ScrollView in a GeometryReader re-laid the whole Home tree
+            // on every scroll frame and is what made Главная feel sticky.
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: HomeContainerLayoutKey.self,
+                        value: HomeContainerLayout(
+                            width: proxy.size.width,
+                            topSafeAreaInset: proxy.safeAreaInsets.top
+                        )
+                    )
                 }
             }
+            .onPreferenceChange(HomeContainerLayoutKey.self) { layout in
+                let roundedWidth = layout.width.rounded()
+                if roundedWidth > 0,
+                   abs(roundedWidth - containerWidth) >= 1 {
+                    containerWidth = roundedWidth
+                }
+                let roundedTop = layout.topSafeAreaInset.rounded()
+                if abs(roundedTop - topSafeAreaInset) >= 1 {
+                    topSafeAreaInset = roundedTop
+                }
+            }
+            // Applied on the ScrollView so the last shelf clears the iOS 26
+            // accessory mini player. The legacy overlay dock already reserves
+            // this in `tabScreen`.
+            .clearsMiniPlayer()
+            // Gives up its own top safe-area reservation so the stage's
+            // artwork-derived atmosphere can paint behind the status bar
+            // and the compact nav title instead of stopping at a hard
+            // edge there. `HomeStageView` (and the plain welcome header)
+            // reintroduce that same inset as top padding on their own
+            // foreground content, so nothing actually moves under the
+            // Dynamic Island — only the background reaches it.
+            .ignoresSafeArea(edges: .top)
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .home else { return }
                 scrollToTop(scrollProxy, destination: .home)
@@ -68,7 +117,6 @@ struct CatalogView: View {
         .background(ThemeBackground())
         .navigationTitle(L10n.text("tab.home"))
         .navigationBarTitleDisplayMode(.inline)
-        .dynamicTypeSize(...DynamicTypeSize.large)
         .trackShareSheet(track: $sharingTrack)
         .navigationDestination(
             isPresented: Binding(
@@ -80,9 +128,20 @@ struct CatalogView: View {
                 AlbumDetailView(album: selectedAlbum)
             }
         }
+        .navigationDestination(
+            isPresented: Binding(
+                get: { openingMixID != nil },
+                set: { if !$0 { openingMixID = nil } }
+            )
+        ) {
+            MixesHubView(focusedMixID: openingMixID)
+        }
         .refreshable { await load(force: true) }
         .task(id: sessionStore.resolvedOfflineAccountID) {
             await load()
+        }
+        .task(id: nextStepRefreshKey) {
+            nextStepCandidate = resolveNextStepCandidate()
         }
         // Liked-album mutations update `LikedAlbumsStore` in place. Reloading
         // the whole home snapshot here used to fan out recommendations /
@@ -92,6 +151,20 @@ struct CatalogView: View {
             actionErrorMessage = error
             environment.mixActionError = nil
         }
+        // The candidate is recomputed on every body pass; recording it here
+        // (rather than inside the computed property) is what makes the
+        // "prefer what's already shown" stickiness actually stick instead
+        // of just reading its own last write back immediately.
+        .onChange(of: nextStepCandidate?.stabilityKey) { _, key in
+            if let key {
+                personalization.recordShownNextStep(key: key)
+            }
+        }
+        .onChange(of: nextStepCandidate?.artistKey) { _, key in
+            if let key {
+                personalization.recordShown(artistKey: key)
+            }
+        }
         .onReceive(
             NotificationCenter.default.publisher(
                 for: MusicLibraryEvents.didChangePlaylists
@@ -100,7 +173,7 @@ struct CatalogView: View {
             Task { await load(force: true) }
         }
         .alert(
-            "could_not_open_album",
+            L10n.text("playback_error"),
             isPresented: Binding(
                 get: { actionErrorMessage != nil },
                 set: { if !$0 { actionErrorMessage = nil } }
@@ -109,6 +182,33 @@ struct CatalogView: View {
             Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
             Text(actionErrorMessage ?? "")
+        }
+        .confirmationDialog(
+            L10n.text("hide_artist_in_mixes"),
+            isPresented: Binding(
+                get: { pendingHiddenArtist != nil },
+                set: { if !$0 { pendingHiddenArtist = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(L10n.text("hide_artist"), role: .destructive) {
+                if let candidate = pendingHiddenArtist {
+                    hideNextStepArtist(candidate)
+                }
+                pendingHiddenArtist = nil
+            }
+            Button(L10n.text("action.cancel"), role: .cancel) {
+                pendingHiddenArtist = nil
+            }
+        } message: {
+            if let candidate = pendingHiddenArtist {
+                Text(
+                    L10n.format(
+                        "hide_artist_in_mixes_confirmation_0",
+                        candidate.titleArgument ?? candidate.artistKey ?? ""
+                    )
+                )
+            }
         }
     }
 
@@ -125,37 +225,59 @@ struct CatalogView: View {
         }
     }
 
-    private var recommendations: [Track] { homeCatalog.recommendations }
-    private var featuredRecommendations: [Track] {
-        Array(recommendations.prefix(14))
-    }
-    private var moreRecommendations: [Track] {
-        Array(recommendations.dropFirst(14).prefix(16))
-    }
-    private var playlists: [Playlist] { homeCatalog.playlists }
-    private var isLoading: Bool { homeCatalog.isRefreshing }
     private var errorMessage: String? {
         actionErrorMessage ?? homeCatalog.errorMessage
     }
 
-    private var contentIsEmpty: Bool {
-        recommendations.isEmpty && playlists.isEmpty
-            && homeCatalog.newReleases.isEmpty
-            && homeCatalog.mixes.isEmpty
+    private var nextStepRefreshKey: HomeNextStepRefreshKey {
+        HomeNextStepRefreshKey(
+            currentTrackID: highlight.currentTrackID,
+            queueSource: highlight.queueSource,
+            currentArtist: highlight.currentArtist,
+            selectedMood: settings.mixMoodPreference,
+            historyHeadTrackIDs: history.entries.prefix(24).map(\.track.id),
+            mixIDs: homeCatalog.mixes.map(\.id),
+            recommendationsEmpty: homeCatalog.recommendations.isEmpty,
+            previouslyShownArtistKey: personalization.lastShownArtistKey,
+            previouslyShownKey: personalization.lastShownNextStepKey,
+            bannedArtistKeys: mixFeedback.bannedArtists.sorted(),
+            bannedTrackIDs: mixFeedback.bannedTrackIDs.sorted(),
+            librarySignatures: libraryStore.signatures.sorted()
+        )
     }
 
-    /// Home carries one mix shelf. The themed "charts" and "kids" shelves
-    /// used to sit here too, but every mix they showed is also in this
-    /// shelf and in the Mix tab, so the same card appeared two or three
-    /// times across one screen — and Home grew to ten stacked sections.
-    /// The Mix tab groups all of them (social, official shelves,
-    /// algorithmic) so nothing is lost by keeping Home to a single row.
-    private var homeMixes: [MusicMix] {
-        Array(
-            homeCatalog.mixes
-                .filter { $0.id != MusicMix.common.id }
-                .prefix(16)
+    private func resolveNextStepCandidate() -> HomeNextStepCandidate? {
+        HomeNextStepPolicy.select(
+            HomeNextStepRequest(
+                affinityCandidates: ArtistAffinityPolicy.candidates(
+                    history: history.entries,
+                    isLiked: { libraryStore.contains($0) },
+                    bannedArtistKeys: mixFeedback.bannedArtists,
+                    bannedTrackIDs: mixFeedback.bannedTrackIDs
+                ),
+                previouslyShownArtistKey: personalization.lastShownArtistKey,
+                previouslyShownKey: personalization.lastShownNextStepKey,
+                mixes: homeCatalog.mixes,
+                selectedMood: settings.mixMoodPreference,
+                occupancy: HomeNextStepPolicy.occupancy(
+                    hasCurrentTrack: highlight.currentTrackID != nil,
+                    queueSource: highlight.queueSource,
+                    currentArtist: highlight.currentArtist,
+                    mixes: homeCatalog.mixes
+                ),
+                hasCurrentTrack: highlight.currentTrackID != nil,
+                hasListeningHistory: !history.entries.isEmpty,
+                hasRecommendations: !homeCatalog.recommendations.isEmpty
+            )
         )
+    }
+
+    private func seedTrack(forArtistKey key: String) -> Track? {
+        history.entries.first { entry in
+            ArtistCreditDisplay.components(entry.track.artist).contains {
+                MixFeedbackPolicy.normalized($0) == key
+            }
+        }?.track
     }
 
     private var welcomeHeader: some View {
@@ -193,163 +315,257 @@ struct CatalogView: View {
         }
     }
 
-    private var vibeChipsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HomeSectionHeader(
-                L10n.text("what_is_the_vibe_right_now"),
-                subtitle: L10n.text("a_quick_start_based_on_your_mood")
-            )
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(MixMoodPreference.allCases.filter { $0 != .any }) {
-                        mood in
-                        Button {
-                            settings.mixMoodPreference = mood
-                            Task { await playVibe(mood) }
-                        } label: {
-                            Text(mood.title)
-                                .font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(
-                            settings.mixMoodPreference == mood
-                                ? settings.theme.accent
-                                : Color.secondary
-                        )
+    // MARK: - What's Next
+
+    private func nextStepSection(
+        _ candidate: HomeNextStepCandidate,
+        metrics: HomeMetrics
+    ) -> some View {
+        let artworkSize = metrics.nextStepWidth
+        return VStack(alignment: .leading, spacing: BubbleSpacing.m) {
+            PremiumSectionHeader("home_next.title")
+            HStack(alignment: .center, spacing: BubbleSpacing.m) {
+                nextStepArtwork(candidate, size: artworkSize)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(nextStepTitle(candidate))
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(L10n.text(candidate.subtitleKey))
+                        .font(BubbleType.metadata)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if candidate.sourceIsSelena {
+                        Text(L10n.text("home_next.source.selena"))
+                            .font(BubbleType.micro)
+                            .foregroundStyle(.tertiary)
+                    } else if candidate.kind == .vkMix {
+                        Text(L10n.text("home_next.vk.title"))
+                            .font(BubbleType.micro)
+                            .foregroundStyle(.tertiary)
                     }
+                    HStack(spacing: BubbleSpacing.s) {
+                        nextStepActionButton(candidate)
+                        Spacer(minLength: 0)
+                        if nextStepHasMenu(candidate) {
+                            Menu {
+                                nextStepMenu(candidate)
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 32, height: 32)
+                                    .contentShape(Rectangle())
+                                    .minimumHitTarget(
+                                        visualSize: 32,
+                                        in: Rectangle()
+                                    )
+                            }
+                            .accessibilityLabel(L10n.text("more"))
+                        }
+                    }
+                    .padding(.top, 2)
                 }
+                Spacer(minLength: 0)
             }
         }
     }
 
-    private func mixesSection(metrics: HomeMetrics) -> some View {
-        shelfMixesSection(
-            title: L10n.text("mixes"),
-            subtitle: L10n.text("selena.catalog_subtitle"),
-            mixes: homeMixes,
-            metrics: metrics
+    private func nextStepTitle(_ candidate: HomeNextStepCandidate) -> String {
+        if candidate.kind == .vkMix, let title = candidate.titleArgument {
+            return title
+        }
+        if let argument = candidate.titleArgument {
+            return L10n.format(candidate.titleKey, argument)
+        }
+        return L10n.text(candidate.titleKey)
+    }
+
+    @ViewBuilder
+    private func nextStepArtwork(
+        _ candidate: HomeNextStepCandidate,
+        size: CGFloat
+    ) -> some View {
+        if let mix = nextStepMix(for: candidate) {
+            MixArtworkView(
+                mix: mix,
+                tracks: [],
+                size: size,
+                cornerRadius: PremiumLayout.artworkRadius(for: size)
+            )
+        } else if let url = candidate.artworkURL {
+            HomeTrackArtwork(url: url, size: size)
+        } else {
+            nextStepGlyph(candidate, size: size)
+        }
+    }
+
+    private func nextStepMix(
+        for candidate: HomeNextStepCandidate
+    ) -> MusicMix? {
+        guard let mixID = candidate.mixID else { return nil }
+        return homeCatalog.mixes.first { $0.id == mixID }
+            ?? (mixID == MusicMix.common.id ? .common : nil)
+    }
+
+    private func nextStepGlyph(
+        _ candidate: HomeNextStepCandidate,
+        size: CGFloat
+    ) -> some View {
+        let role: BubbleRole = switch candidate.kind {
+        case .artistContinuation: .artist
+        case .vibeContinuation: .mood
+        case .vkMix: .mix
+        case .personalStation: .station
+        }
+        let tint = BubblePalette.surface(role, tint: nil).color
+        return ZStack {
+            LinearGradient(
+                colors: [tint, tint.opacity(0.55)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Image(systemName: candidate.kind == .artistContinuation
+                ? "person.wave.2.fill"
+                : "sparkles")
+                .font(.system(size: size * 0.32, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
+        }
+        .frame(width: size, height: size)
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: PremiumLayout.artworkRadius(for: size),
+                style: .continuous
+            )
         )
     }
 
-    private func shelfMixesSection(
-        title: String,
-        subtitle: String,
-        mixes: [MusicMix],
-        metrics: HomeMetrics
+    private func nextStepActionButton(
+        _ candidate: HomeNextStepCandidate
     ) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HomeSectionHeader(title, subtitle: subtitle)
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: metrics.cardSpacing) {
-                    ForEach(mixes) { mix in
-                        Button {
-                            Task {
-                                await environment.startCatalogMix(mix)
-                            }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                MixArtworkView(
-                                    mix: mix,
-                                    tracks: [],
-                                    size: metrics.trackWidth
-                                )
-                                Text(mix.title)
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(2)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .frame(
-                                        width: metrics.trackWidth,
-                                        alignment: .leading
-                                    )
-                                if let percent = mix.matchPercent {
-                                    Text(
-                                        L10n.format("percent_d0", percent)
-                                    )
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                } else if let curator = mix.curator?.displayName {
-                                    Text(curator)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                        }
-                        .buttonStyle(PremiumPressStyle())
-                        .contextMenu {
-                            Button {
-                                Task {
-                                    await environment.startCatalogMix(mix)
-                                }
-                            } label: {
-                                Label(L10n.text("listen"),
-                                    systemImage: "play.fill"
-                                )
-                            }
-                            if let curator = mix.curator, curator.isUsable {
-                                Text(curator.displayName)
-                            }
-                        }
-                    }
+        Button {
+            launchNextStep(candidate)
+        } label: {
+            ZStack {
+                Text(L10n.text(candidate.actionKey))
+                    .opacity(isNextStepLaunching ? 0 : 1)
+                if isNextStepLaunching {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            .frame(minWidth: 92, minHeight: 44)
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(isNextStepLaunching)
+    }
+
+    private func nextStepHasMenu(_ candidate: HomeNextStepCandidate) -> Bool {
+        candidate.artistKey != nil || candidate.kind == .vkMix
+    }
+
+    @ViewBuilder
+    private func nextStepMenu(_ candidate: HomeNextStepCandidate) -> some View {
+        if candidate.artistKey != nil {
+            Button {
+                suppressNextStep(candidate, includeArtist: false)
+            } label: {
+                Label(
+                    L10n.text("home_next.less_like_this"),
+                    systemImage: "hand.thumbsdown"
+                )
+            }
+            Button(role: .destructive) {
+                pendingHiddenArtist = candidate
+            } label: {
+                Label(
+                    L10n.text("home_next.hide_artist"),
+                    systemImage: "person.badge.minus"
+                )
+            }
+        }
+        if let mixID = candidate.mixID, candidate.kind == .vkMix {
+            Button {
+                openingMixID = mixID
+            } label: {
+                Label(L10n.text("open_mix"), systemImage: "square.stack")
+            }
+        }
+    }
+
+    private func launchNextStep(_ candidate: HomeNextStepCandidate) {
+        guard !isNextStepLaunching else { return }
+        Haptics.selection()
+        isNextStepLaunching = true
+        Task {
+            defer { isNextStepLaunching = false }
+            switch candidate.action {
+            case let .artist(name, artistKey):
+                await environment.startMixFromArtist(
+                    named: name,
+                    seed: seedTrack(forArtistKey: artistKey)
+                )
+            case .personalStation:
+                await environment.startPersonalStation(in: homeCatalog.mixes)
+            case let .mood(mood):
+                await environment.startMoodStation(
+                    mood,
+                    in: homeCatalog.mixes
+                )
+            case let .mix(id):
+                if let mix = homeCatalog.mixes.first(where: { $0.id == id }) {
+                    await environment.startCatalogMix(mix)
                 }
             }
         }
     }
 
-    private func playVibe(_ mood: MixMoodPreference) async {
-        let matches = homeCatalog.mixes.filter {
-            MixQueueFilter.shelfMatchesMood(
-                $0.sectionTitle ?? $0.title,
-                mood: mood
-            )
-                || MixQueueFilter.shelfMatchesMood($0.subtitle, mood: mood)
-                || MixSeedRadio.looksLikeVibeShelf($0.sectionTitle ?? $0.title)
-        }
-        if let mix = matches.first {
-            await environment.startCatalogMix(mix)
-            return
-        }
-        if let personal = homeCatalog.mixes.first(
-            where: { $0.id == MusicMix.common.id }
-        ) {
-            await environment.startCatalogMix(personal)
-            return
-        }
-        await environment.startMixFromMyMusic()
-    }
-
-    private func recommendationsSection(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HomeSectionHeader(
-                "for_you",
-                subtitle: "recommendations_based_on_vk_data"
-            )
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(
-                    alignment: .top,
-                    spacing: metrics.cardSpacing
-                ) {
-                    ForEach(featuredRecommendations) { track in
-                        homeTrackItem(
-                            track,
-                            queue: recommendations,
-                            artworkSize: metrics.trackWidth
-                        )
-                        .contextMenu {
-                            trackContextMenu(track, queue: recommendations)
-                        }
-                    }
-                }
+    private func suppressNextStep(
+        _ candidate: HomeNextStepCandidate,
+        includeArtist: Bool
+    ) {
+        Haptics.selection()
+        if let artistKey = candidate.artistKey,
+           let seed = seedTrack(forArtistKey: artistKey) {
+            mixFeedback.ban(seed, includeArtist: includeArtist)
+            if includeArtist {
+                personalization.clearIfShowing(artistKey: artistKey)
             }
         }
+        personalization.clearNextStepIfShowing(key: candidate.stabilityKey)
+    }
+
+    private func hideNextStepArtist(_ candidate: HomeNextStepCandidate) {
+        suppressNextStep(candidate, includeArtist: true)
+    }
+
+    private var exploreMusicEntry: some View {
+        NavigationLink {
+            MixesHubView(
+                deprioritizedMixID: nextStepCandidate?.mixID,
+                startsOnVK: nextStepCandidate?.kind == .personalStation
+            )
+        } label: {
+            HStack(spacing: BubbleSpacing.s) {
+                Text(L10n.text("explore_music"))
+                    .font(.subheadline.weight(.semibold))
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 4)
+            .frame(minHeight: PremiumLayout.minimumTapTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PremiumPressStyle())
     }
 
     private func recentlyPlayedSection(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HomeSectionHeader(
+        VStack(alignment: .leading, spacing: BubbleSpacing.m) {
+            PremiumSectionHeader(
                 "recently_played",
                 subtitle: "history_is_stored_only_on_this_device"
             )
@@ -358,7 +574,7 @@ struct CatalogView: View {
                     alignment: .top,
                     spacing: metrics.cardSpacing
                 ) {
-                    ForEach(history.entries.prefix(12)) { entry in
+                    ForEach(history.entries.prefix(5)) { entry in
                         homeTrackItem(
                             entry.track,
                             queue: history.entries.map(\.track),
@@ -376,243 +592,6 @@ struct CatalogView: View {
                 }
             }
         }
-    }
-
-    private var trackListSection: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HomeSectionHeader(
-                "more_for_you",
-                subtitle: "more_recommendations"
-            )
-            VStack(spacing: 0) {
-                ForEach(
-                    Array(moreRecommendations.enumerated()),
-                    id: \.element.id
-                ) { index, track in
-                    TrackRow(track: track, queue: recommendations)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                    if index < moreRecommendations.count - 1 {
-                        Divider().padding(.leading, 72)
-                    }
-                }
-            }
-            .premiumCard()
-        }
-    }
-
-    private func newReleasesSection(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            NavigationLink {
-                NewReleasesView(albums: homeCatalog.newReleases)
-            } label: {
-                HStack {
-                    HomeSectionHeader(
-                        "new_releases",
-                        subtitle: "fresh_albums"
-                    )
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .buttonStyle(.plain)
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(
-                    alignment: .top,
-                    spacing: metrics.cardSpacing
-                ) {
-                    ForEach(homeCatalog.newReleases.prefix(16)) { album in
-                        VStack(alignment: .leading, spacing: 6) {
-                            ZStack(alignment: .bottomTrailing) {
-                                Button { selectedAlbum = album } label: {
-                                    AsyncArtwork(
-                                        url: album.artworkURL,
-                                        size: metrics.newReleaseWidth
-                                    )
-                                }
-                                .buttonStyle(PremiumPressStyle())
-
-                                let playbackAction = playbackAction(for: album)
-                                Button {
-                                    performPlaybackAction(
-                                        playbackAction,
-                                        for: album
-                                    )
-                                } label: {
-                                    Group {
-                                        if loadingPlayAlbumID == album.id {
-                                            ProgressView()
-                                                .tint(.black)
-                                        } else {
-                                            Image(
-                                                systemName:
-                                                    playbackAction.systemImage
-                                            )
-                                        }
-                                    }
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(.black)
-                                    .frame(width: 30, height: 30)
-                                    .background(.white, in: Circle())
-                                }
-                                .buttonStyle(PremiumPressStyle())
-                                .padding(6)
-                                .disabled(
-                                    loadingPlayAlbumID != nil
-                                        && loadingPlayAlbumID != album.id
-                                )
-                                .accessibilityLabel(
-                                    L10n.text(
-                                        playbackAction.accessibilityLabelKey(
-                                            playKey: "play_album"
-                                        )
-                                    )
-                                )
-                            }
-                            Button { selectedAlbum = album } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(
-                                        Album.isUsableTitle(album.title)
-                                            ? album.title
-                                            : L10n.text("album")
-                                    )
-                                        .font(.footnote.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(2)
-                                        .multilineTextAlignment(.leading)
-                                        .fixedSize(
-                                            horizontal: false,
-                                            vertical: true
-                                        )
-                                    Text(album.artistText)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .frame(
-                            width: metrics.newReleaseWidth,
-                            alignment: .topLeading
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private func playlistsSection(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HomeSectionHeader(
-                "your_playlists",
-                subtitle: L10n.format(
-                    "n_0_in_your_library",
-                    L10n.playlistCount(playlists.count)
-                )
-            )
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(
-                    alignment: .top,
-                    spacing: metrics.cardSpacing
-                ) {
-                    ForEach(playlists.prefix(16)) { playlist in
-                        NavigationLink {
-                            PlaylistDetailView(playlist: playlist)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                PlaylistArtworkView(
-                                    playlist: playlist,
-                                    size: metrics.playlistWidth
-                                )
-                                Text(playlist.title)
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(2)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .frame(
-                                        height: 34,
-                                        alignment: .topLeading
-                                    )
-                                Text(
-                                    L10n.format(
-                                        "n_0_1",
-                                        L10n.trackCount(playlist.count),
-                                        playlist.source.shortTitle
-                                    )
-                                )
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            .frame(
-                                width: metrics.playlistWidth,
-                                alignment: .topLeading
-                            )
-                        }
-                        .buttonStyle(PremiumPressStyle())
-                    }
-                }
-            }
-        }
-    }
-
-    private func catalogSkeleton(metrics: HomeMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 22) {
-            ForEach(0..<2, id: \.self) { section in
-                VStack(alignment: .leading, spacing: 11) {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(.primary.opacity(0.11))
-                        .frame(
-                            width: section == 0 ? 112 : 150,
-                            height: 16
-                        )
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(
-                            alignment: .top,
-                            spacing: metrics.cardSpacing
-                        ) {
-                            ForEach(0..<3, id: \.self) { _ in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    RoundedRectangle(
-                                        cornerRadius:
-                                            PremiumLayout.artworkRadius(
-                                                for: metrics.trackWidth
-                                            ),
-                                        style: .continuous
-                                    )
-                                        .fill(.primary.opacity(0.09))
-                                        .frame(
-                                            width: metrics.trackWidth,
-                                            height: metrics.trackWidth
-                                        )
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(.primary.opacity(0.09))
-                                        .frame(
-                                            width: metrics.trackWidth * 0.82,
-                                            height: 11
-                                        )
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(.primary.opacity(0.06))
-                                        .frame(
-                                            width: metrics.trackWidth * 0.58,
-                                            height: 9
-                                        )
-                                }
-                                .frame(
-                                    width: metrics.trackWidth,
-                                    alignment: .leading
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .redacted(reason: .placeholder)
-        .accessibilityLabel(L10n.text("loading_recommendations_and_mixes"))
     }
 
     private func homeTrackCard(
@@ -696,6 +675,7 @@ struct CatalogView: View {
                 .foregroundStyle(settings.theme.buttonForeground)
                 .frame(width: 32, height: 32)
                 .background(settings.theme.accent, in: Circle())
+                .minimumHitTarget(visualSize: 32)
             }
             .buttonStyle(PremiumPressStyle())
             .offset(x: artworkSize - 39, y: artworkSize - 39)
@@ -812,64 +792,6 @@ struct CatalogView: View {
         }
     }
 
-    private func playAlbum(_ album: Album) {
-        guard sessionStore.accessToken != nil else { return }
-        loadingPlayAlbumID = album.id
-        Task {
-            defer { loadingPlayAlbumID = nil }
-            do {
-                let page = try await environment.withAuthorizedToken { token in
-                    try await environment.musicService.albumTracks(
-                        album,
-                        accessToken: token,
-                        offset: 0,
-                        count: 50
-                    )
-                }
-                guard let first = page.items.first else { return }
-                environment.player.play(
-                    first,
-                    in: page.items,
-                    source: albumQueueSource(for: album)
-                )
-            } catch is CancellationError {
-                return
-            } catch {
-                actionErrorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func playbackAction(for album: Album) -> QueueSourcePlaybackAction {
-        QueueSourcePlaybackAction.resolve(
-            target: albumQueueSource(for: album),
-            isPlaying: highlight.isPlaying,
-            queueSource: highlight.queueSource
-        )
-    }
-
-    private func performPlaybackAction(
-        _ action: QueueSourcePlaybackAction,
-        for album: Album
-    ) {
-        switch action {
-        case .start:
-            playAlbum(album)
-        case .resume:
-            environment.player.resume()
-        case .pause:
-            environment.player.pause()
-        }
-    }
-
-    private func albumQueueSource(for album: Album) -> QueueSource {
-        .album(title: albumPlaybackTitle(album))
-    }
-
-    private func albumPlaybackTitle(_ album: Album) -> String {
-        Album.isUsableTitle(album.title) ? album.title : L10n.text("album")
-    }
-
     @ViewBuilder
     private func trackContextMenu(
         _ track: Track,
@@ -880,6 +802,13 @@ struct CatalogView: View {
             environment.player.playNext(track)
         } label: {
             Label(L10n.text("play_next"), systemImage: "text.badge.plus")
+        }
+        Button {
+            environment.player.playLast(track)
+        } label: {
+            Label(L10n.text("play_last"),
+                systemImage: "text.line.last.and.arrowtriangle.forward"
+            )
         }
         Button {
             environment.player.play(track, in: queue, source: source)
@@ -896,26 +825,6 @@ struct CatalogView: View {
         } label: {
             Label(L10n.text("share_audio_file"), systemImage: "square.and.arrow.up")
         }
-    }
-
-    private var unavailableView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "waveform.slash")
-                .font(.system(size: 40, weight: .medium))
-            Text(L10n.text("home.unavailable"))
-                .font(.title3.bold())
-            Text(
-                errorMessage
-                    ?? L10n.text("vk_did_not_return_recommendations")
-            )
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button(L10n.text("action.refresh")) { Task { await load(force: true) } }
-                .buttonStyle(PrimaryButtonStyle())
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 52)
     }
 
     private func retryRow(_ message: String) -> some View {
@@ -940,6 +849,22 @@ struct CatalogView: View {
     }
 }
 
+private struct HomeContainerLayout: Equatable {
+    var width: CGFloat = 0
+    var topSafeAreaInset: CGFloat = 0
+}
+
+private struct HomeContainerLayoutKey: PreferenceKey {
+    static var defaultValue: HomeContainerLayout { HomeContainerLayout() }
+
+    static func reduce(
+        value: inout HomeContainerLayout,
+        nextValue: () -> HomeContainerLayout
+    ) {
+        value = nextValue()
+    }
+}
+
 struct HomeMetrics {
     let containerWidth: CGFloat
 
@@ -951,13 +876,11 @@ struct HomeMetrics {
         containerWidth <= 350 ? 10 : 12
     }
 
-    var trackWidth: CGFloat {
-        AdaptiveLayout.shelfCardWidth(
-            for: containerWidth,
-            compactMax: 142,
-            regularMax: AdaptiveLayout.regularCardWidthCap,
-            fraction: 0.36,
-            compactMin: 114
+    var nextStepWidth: CGFloat {
+        BubbleMetrics.clamp(
+            containerWidth * 0.18,
+            minimum: 64,
+            maximum: 76
         )
     }
 
@@ -971,52 +894,6 @@ struct HomeMetrics {
         )
     }
 
-    var playlistWidth: CGFloat {
-        AdaptiveLayout.shelfCardWidth(
-            for: containerWidth,
-            compactMax: 140,
-            regularMax: AdaptiveLayout.regularCardWidthCap,
-            fraction: 0.35,
-            compactMin: 112
-        )
-    }
-
-    var newReleaseWidth: CGFloat {
-        AdaptiveLayout.shelfCardWidth(
-            for: containerWidth,
-            compactMax: 140,
-            regularMax: AdaptiveLayout.regularCardWidthCap,
-            fraction: 0.35,
-            compactMin: 112
-        )
-    }
-}
-
-private struct HomeSectionHeader: View {
-    let title: String
-    let subtitle: String?
-
-    init(_ title: String, subtitle: String? = nil) {
-        self.title = title
-        self.subtitle = subtitle
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(L10n.text(title))
-                .font(.headline.weight(.bold))
-                .lineLimit(1)
-            if let subtitle {
-                Text(L10n.text(subtitle))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-    }
 }
 
 private struct HomeTrackArtwork: View {

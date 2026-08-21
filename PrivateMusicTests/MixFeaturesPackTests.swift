@@ -82,6 +82,66 @@ final class MixQueueFilterTests: XCTestCase {
             )
         )
     }
+
+    func testMoodShelfMatchHandlesDecomposedY() {
+        // "й" may be represented as "и" + combining breve (U+0306).
+        // When that happens, diacritic-insensitive folding can
+        // effectively erase the breve and break substring matching for
+        // mood markers that include "й".
+        let decomposedY = "и\u{0306}"
+        XCTAssertTrue(
+            MixQueueFilter.shelfMatchesMood(
+                "Споко" + decomposedY,
+                mood: .calm
+            )
+        )
+    }
+
+    func testLatinMoodMarkersUseWordBoundaries() {
+        XCTAssertFalse(
+            MixQueueFilter.textContainsMarker("desktop", marker: "top")
+        )
+        XCTAssertFalse(
+            MixQueueFilter.textContainsMarker("stop signs", marker: "top")
+        )
+        XCTAssertTrue(
+            MixQueueFilter.textContainsMarker("chart hits", marker: "hit")
+        )
+        XCTAssertTrue(
+            MixQueueFilter.textContainsMarker("melancholy evening", marker: "melanch")
+        )
+        XCTAssertTrue(
+            MixQueueFilter.shelfMatchesMood("Party mix", mood: .energetic)
+        )
+    }
+
+    func testApplyAllowingFallbackSurfacesRelaxation() {
+        let english = Track(
+            trackID: 2,
+            ownerID: 1,
+            title: "Song",
+            artist: "Artist",
+            duration: 100,
+            streamURL: nil,
+            artworkURL: nil
+        )
+        let outcome = MixQueueFilter.applyAllowingFallback(
+            [english],
+            language: .russian,
+            familiarity: .any,
+            historyArtists: []
+        )
+        XCTAssertTrue(outcome.didRelax)
+        XCTAssertEqual(outcome.tracks.map(\.id), [english.id])
+
+        let strict = MixQueueFilter.applyStrict(
+            [english],
+            language: .russian,
+            familiarity: .any,
+            historyArtists: []
+        )
+        XCTAssertTrue(strict.isEmpty)
+    }
 }
 
 final class SnippetPreviewPolicyTests: XCTestCase {
@@ -121,5 +181,52 @@ final class MixFeedbackStoreUnbanTests: XCTestCase {
         XCTAssertTrue(store.bannedArtists.contains("alpha"))
         store.unbanArtist(key: "Alpha")
         XCTAssertTrue(store.bannedArtistRecords.isEmpty)
+    }
+}
+
+final class MixFilterQueueWiringTests: XCTestCase {
+    /// Language/familiarity must ride the same pipe as bans into the
+    /// live mix queue — not a ban-only filter that leaves chip changes
+    /// looking like they "do nothing".
+    func testPlayerMixFilterUsesFullFilteredMixTracks() {
+        let source = SourceInspection.code(
+            "PrivateMusic/App/AppEnvironment.swift"
+        )
+        XCTAssertTrue(source.contains("configureMixTrackFilter"))
+        XCTAssertTrue(source.contains("filteredMixTracks(tracks)"))
+        XCTAssertTrue(source.contains("reapplyMixFiltersToPlayingQueue"))
+        XCTAssertTrue(source.contains("filterMixTracks"))
+        XCTAssertTrue(source.contains("mix_filters_relaxed_to_keep_queue"))
+    }
+
+    func testHubRefilterSyncsPlayingQueue() {
+        let source = SourceInspection.code(
+            "PrivateMusic/Features/Mix/MixesHubView.swift"
+        )
+        XCTAssertTrue(source.contains("syncPlayingQueue(with:"))
+        XCTAssertTrue(source.contains("currentMixForFilters"))
+        XCTAssertTrue(source.contains("player.isPlaying(mix)"))
+        XCTAssertTrue(source.contains("mixID"))
+    }
+
+    func testQueueSourceMixCarriesStableID() {
+        let mix = MusicMix.common
+        let source = QueueSource.catalogMix(mix)
+        XCTAssertEqual(source.mixID, mix.id)
+        XCTAssertEqual(source.mixTitle, mix.title)
+        XCTAssertEqual(
+            QueueSource.myMusicMix(title: "x").mixID,
+            MixQueueIdentity.myMusic
+        )
+    }
+
+    func testEnvironmentOwnsSharedSelenaExposure() {
+        let source = SourceInspection.code(
+            "PrivateMusic/App/AppEnvironment.swift"
+        )
+        XCTAssertTrue(source.contains("recordSelenaExposure"))
+        XCTAssertTrue(source.contains("resetSelenaExposure"))
+        XCTAssertTrue(source.contains("SelenaBanditPolicy.rerank"))
+        XCTAssertTrue(source.contains("refreshHomeCatalog()"))
     }
 }

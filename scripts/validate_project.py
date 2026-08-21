@@ -18,6 +18,57 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def strip_swift_comments(source: str) -> str:
+    """Drop // and /* */ comments so `in` checks cannot match a comment.
+
+    String literals are preserved so URLs like https://... are not sliced
+    at `//`.
+    """
+    output: list[str] = []
+    length = len(source)
+    index = 0
+    in_string = False
+    escaped = False
+    while index < length:
+        character = source[index]
+        nxt = source[index + 1] if index + 1 < length else ""
+        if in_string:
+            output.append(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            index += 1
+            continue
+        if character == '"':
+            in_string = True
+            output.append(character)
+            index += 1
+            continue
+        if character == "/" and nxt == "/":
+            index += 2
+            while index < length and source[index] != "\n":
+                index += 1
+            continue
+        if character == "/" and nxt == "*":
+            index += 2
+            while index < length - 1 and not (
+                source[index] == "*" and source[index + 1] == "/"
+            ):
+                index += 1
+            index = min(index + 2, length)
+            continue
+        output.append(character)
+        index += 1
+    return "".join(output)
+
+
+def swift_code(source: str) -> str:
+    return strip_swift_comments(source)
+
+
 swift_files = sorted(SOURCE.rglob("*.swift"))
 if len(swift_files) < 20:
     fail(f"expected at least 20 Swift files, found {len(swift_files)}")
@@ -39,6 +90,9 @@ required = {
     "PrivateMusic/Models/OfflineTrackStore.swift",
     "PrivateMusic/Features/Library/OfflineDownloadsView.swift",
     "PrivateMusic/Services/HLSOfflineDownloadService.swift",
+    "PrivateMusic/UI/ContrastPolicy.swift",
+    "PrivateMusic/UI/HitTarget.swift",
+    "PrivateMusic/Models/SelenaBanditPolicy.swift",
 }
 for relative in required:
     if not (ROOT / relative).is_file():
@@ -178,6 +232,7 @@ for required_system_tab_symbol in (
     "tabViewBottomAccessory",
     "MainTab.search.title",
     "value: MainTab.search",
+    "role: .search",
     "SystemPlaybackAccessory",
 ):
     if required_system_tab_symbol not in main_tab_source:
@@ -185,16 +240,11 @@ for required_system_tab_symbol in (
             "iOS 26+ must use system Liquid Glass TabView like Apple Music: "
             f"{required_system_tab_symbol}"
         )
-for forbidden_system_tab_search_chrome in (
-    "role: .search",
-    "tabViewSearchActivation",
-):
-    if forbidden_system_tab_search_chrome in main_tab_source:
-        fail(
-            "iOS 26+ Search must be a regular fifth labeled tab, "
-            "not detached search chrome: "
-            f"{forbidden_system_tab_search_chrome}"
-        )
+if "tabViewSearchActivation" in swift_code(main_tab_source):
+    fail(
+        "Search must not use tabViewSearchActivation; Tab(role: .search) "
+        "already drives the system search field"
+    )
 if "tab.switch_hint" not in main_tab_source:
     fail("iPad sidebar tabs must expose a VoiceOver switch hint")
 watch_remote_view = (
@@ -214,8 +264,11 @@ if ".searchable(" not in search_view_source:
     fail("SearchView must bind system .searchable for the Search tab")
 if "SystemSearchTabModifier" not in search_view_source:
     fail("SearchView must apply SystemSearchTabModifier outside ScrollViewReader")
-if "isSystemSearchPresented = true" not in search_view_source:
-    fail("Search tab activation must present the system search field")
+if "isSystemSearchPresented = true" in swift_code(search_view_source):
+    fail(
+        "Search must not force isSystemSearchPresented; Tab(role: .search) "
+        "already presents the system field"
+    )
 if "func presentQueue()" not in audio_player_source:
     fail("AudioPlayer must expose presentQueue for Mix hub queue button")
 if "cancelMixRadioRefill()" not in audio_player_source:
@@ -232,9 +285,13 @@ for required_mix_stream_symbol in (
     "actor MixTrackContinuationCursor",
     "nextOffset += MixTrackRequestPolicy.continuationPages",
     "actor SelenaRecommendationCursor",
-    "musicService.recommendations(\n                    seededBy: seed",
-    "knownIDs.insert($0.id).inserted",
+    "seededBy: seed",
+    "withThrowingTaskGroup(of: [Track].self)",
+    "knownIDs.insert(track.id).inserted",
     "commonMixOffset += MixTrackRequestPolicy.pageSize",
+    "rotatingSeeds(",
+    "sessionPersonal",
+    "diversity:",
 ):
     if required_mix_stream_symbol not in mix_stream_source:
         fail(
@@ -300,6 +357,7 @@ for symbol in (
     "pm_biquad_process_channel",
     "pm_spatial_process_planar",
     "pm_spatial_process_interleaved",
+    "pm_buffer_peak_magnitude",
 ):
     if symbol not in native_dsp_header_text:
         fail(f"PrivateMusicDSP.h must expose {symbol}")
@@ -310,6 +368,9 @@ for symbol in (
     "pm_text_identity_hash",
     "pm_text_fold_utf8",
     "pm_text_find",
+    "pm_text_normalize_identity",
+    "pm_artwork_extract_tint_rgba",
+    "PMArtworkTint",
     "pm_mix_select_best",
     "pm_mix_score_candidate",
     # Fixed-memory buffer-health ring estimator feeding the network-aware
@@ -335,8 +396,10 @@ for symbol in (
     "pm_iso_walk",
     "pm_iso_contains_types",
     "pm_cmaf_extract_fragment",
+    "pm_cmaf_parse_initialization",
     "pm_vk_unmask",
     "pm_buffer_max_loaded_ahead",
+    "pm_aes128_cbc_decrypt",
 ):
     if symbol not in native_media_header_text:
         fail(f"PrivateMusicMedia.h must expose {symbol}")
@@ -377,6 +440,8 @@ cmaf_source = (SOURCE / "Services" / "CMAFAudioDemuxer.swift").read_text(
 )
 if "pm_cmaf_extract_fragment(" not in cmaf_source:
     fail("CMAFAudioDemuxer must extract trun/mdat samples through pm_cmaf_extract_fragment")
+if "pm_cmaf_parse_initialization(" not in cmaf_source:
+    fail("CMAFAudioDemuxer must parse moov/esds/stsd through pm_cmaf_parse_initialization")
 if "func parseTRUN" in cmaf_source or "func parseTFHD" in cmaf_source:
     fail("CMAF tfhd/trun tables must stay in PrivateMusicMedia.c")
 if "[UInt32?]" in cmaf_source:
@@ -386,6 +451,15 @@ hls_exporter_source = (
 ).read_text(encoding="utf-8")
 if "pm_iso_contains_types(" not in hls_exporter_source:
     fail("HLSSegmentExporter must detect ftyp/moov/moof/mdat via pm_iso_contains_types")
+if "pm_aes128_cbc_decrypt(" not in hls_exporter_source:
+    fail("HLSSegmentExporter must decrypt AES-128 segments through C")
+if "CCCrypt(" in hls_exporter_source or "import CommonCrypto" in hls_exporter_source:
+    fail("HLS AES-128 decrypt must live in PrivateMusicMedia.c, not Swift")
+track_share_source = (
+    SOURCE / "Features" / "Player" / "TrackShareSheet.swift"
+).read_text(encoding="utf-8")
+if "progressiveURL(" not in track_share_source:
+    fail("TrackShareService must prefer rewritten progressive MP3 over HLS stitching")
 vk_resolver_source = (
     SOURCE / "Services" / "VKAudioURLResolver.swift"
 ).read_text(encoding="utf-8")
@@ -395,6 +469,8 @@ if "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN0PQRSTUVWXYZO123456789+/=" in vk_res
     fail("VK unmask alphabet/decode/shuffle must stay in PrivateMusicMedia.c")
 if "pm_buffer_max_loaded_ahead(" not in audio_player_source:
     fail("AudioPlayer must fold loadedTimeRanges through pm_buffer_max_loaded_ahead")
+if audio_player_source.count("shouldRefreshHLSBeforePlay(") < 2:
+    fail("AudioPlayer must refresh remaining HLS before both play and neighbor preload")
 if "CMTimeSubtract(end, position)" in audio_player_source:
     fail("loadedTimeRanges max-ahead must not be walked in Swift")
 equalizer_source = (SOURCE / "Player" / "EqualizerDSP.swift").read_text(
@@ -412,6 +488,30 @@ if "for frame in 0..<frameCount" in equalizer_source:
         "EqualizerDSP must not walk audio frames from Swift: the realtime tap "
         "hot paths live in PrivateMusicDSP.c"
     )
+if "pm_buffer_peak_magnitude(" not in equalizer_source:
+    fail("EqualizerDSP silence gate must call pm_buffer_peak_magnitude")
+if "vDSP_maxmgv" in equalizer_source or "import Accelerate" in equalizer_source:
+    fail(
+        "EqualizerDSP silence gate must use pm_buffer_peak_magnitude in C, "
+        "not vDSP from Swift"
+    )
+metal_tint_source = (
+    SOURCE / "Core" / "GPU" / "ArtworkTintGPU.swift"
+).read_text(encoding="utf-8")
+if "pm_artwork_tint_reduce" not in metal_tint_source:
+    fail("ArtworkTintGPU must embed the pm_artwork_tint_reduce Metal kernel")
+if "makeLibrary(" not in metal_tint_source:
+    fail("ArtworkTintGPU must compile the Metal kernel at runtime")
+artwork_tint_gpu_source = metal_tint_source
+if "MTLCreateSystemDefaultDevice" not in artwork_tint_gpu_source:
+    fail("ArtworkTintGPU must drive the Metal artwork tint kernel")
+bubble_palette_source = (
+    SOURCE / "UI" / "Bubble" / "BubblePalette.swift"
+).read_text(encoding="utf-8")
+if "pm_artwork_extract_tint_rgba(" not in bubble_palette_source:
+    fail("BubbleArtworkTint must fall back to pm_artwork_extract_tint_rgba")
+if "ArtworkTintGPU.extract" not in bubble_palette_source:
+    fail("BubbleArtworkTint must prefer ArtworkTintGPU when Metal is available")
 spatial_source = (SOURCE / "Player" / "SpatialAudioDSP.swift").read_text(
     encoding="utf-8"
 )
@@ -425,6 +525,8 @@ if "pm_mix_select_best(" not in mix_ranker_source:
 for symbol in ("pm_hash_fnv1a64_bytes(", "pm_text_identity_hash("):
     if symbol not in mix_ranker_source:
         fail(f"MixQueueRanker must hash through {symbol[:-1]}")
+if "pm_text_normalize_identity(" not in mix_ranker_source:
+    fail("MixQueueRanker must normalize artist/album names through C")
 native_text_source_path = SOURCE / "Core" / "Text" / "NativeTextSearch.swift"
 if not native_text_source_path.is_file():
     fail("NativeTextSearch must live under Core/Text/")
@@ -458,6 +560,13 @@ if "id: \\.offset" in queue_view_source:
     fail("QueueView must use stable track identity, not list offset")
 if "id: \\.element.id" not in queue_view_source:
     fail("QueueView must identify rows by track id")
+if "QueueRowMetrics.listRowInsets" not in queue_view_source:
+    fail("QueueView must add vertical breathing room between queue rows")
+if "excludingLikedAlbums" not in library_view_source:
+    fail(
+        "Library playlist shelf must hide entries that already live on the "
+        "Albums shelf"
+    )
 if "PlaybackAccessoryModifier" not in main_tab_source:
     fail(
         "iOS 26.0 must attach bottom accessory via PlaybackAccessoryModifier "
@@ -478,7 +587,8 @@ for required_shelf_symbol in (
     "static let artworkSize",
     "static var shelfHeight",
     "func artworkSize(for width: CGFloat)",
-    "func shelfHeight(for width: CGFloat)",
+    "func shelfHeight(",
+    "captionHeight: CGFloat = captionHeight",
     "func librarySectionSpacing()",
 ):
     if required_shelf_symbol not in shelf_metrics_source:
@@ -491,7 +601,8 @@ for required_shelf_card_symbol in (
     "func albumCard(",
     "PlaylistArtworkView(",
     "size: LibraryShelfMetrics.artworkSize(for:",
-    ".frame(height: LibraryShelfMetrics.shelfHeight(for:",
+    "LibraryShelfMetrics.shelfHeight(",
+    "captionHeight: shelfCaptionHeight",
 ):
     if required_shelf_card_symbol not in library_view_source:
         fail(
@@ -889,7 +1000,7 @@ for required_dock_glass_symbol in (
             "pre-iOS 26 fallback dock must retain Liquid Glass + safe inset: "
             f"{required_dock_glass_symbol}"
         )
-if "AdaptiveGlassContainer(spacing: 10)" in main_tab_source:
+if "AdaptiveGlassContainer(spacing: 10)" in swift_code(main_tab_source):
     fail(
         "PlaybackTabDock must not wrap chrome in GlassEffectContainer "
         "(morphs into floating orbs)"
@@ -898,6 +1009,76 @@ if "showsOwnGlassChrome: false" not in main_tab_source:
     fail(
         "system tab accessory mini player must disable stacked glass chrome"
     )
+if "playbackDockReservesContent" not in main_tab_source:
+    fail(
+        "legacy and regular-width docks must publish playbackDockReservesContent "
+        "so tab roots are not padded twice for the mini player"
+    )
+catalog_view_source = (
+    SOURCE / "Features" / "Catalog" / "CatalogView.swift"
+).read_text(encoding="utf-8")
+home_stage_source = (
+    SOURCE / "Features" / "Catalog" / "HomeStageView.swift"
+).read_text(encoding="utf-8")
+if ".clearsMiniPlayer()" not in catalog_view_source:
+    fail("Home scroll content must lift above the mini player")
+if "HomeContainerLayoutKey" not in catalog_view_source:
+    fail(
+        "Home must measure the viewport from a ScrollView background, "
+        "not wrap the scroll view in GeometryReader"
+    )
+if "@Environment(AudioPlayer.self)" in home_stage_source:
+    fail(
+        "HomeStageView must not observe AudioPlayer — use "
+        "PlaybackHighlightModel so Главная does not rebuild on transport ticks"
+    )
+if "PlaybackHighlightModel.self" not in home_stage_source:
+    fail("HomeStageView must observe PlaybackHighlightModel for hero state")
+if ".dynamicTypeSize(...DynamicTypeSize.large)" in catalog_view_source:
+    fail("Home must not freeze Dynamic Type at the default size")
+if ".dynamicTypeSize(...DynamicTypeSize.large)" in library_view_source:
+    fail("Library must not freeze Dynamic Type at the default size")
+if ".dynamicTypeSize(...DynamicTypeSize.large)" in main_tab_source:
+    fail("the tab dock must not freeze Dynamic Type at the default size")
+if ".dynamicTypeSize(...DynamicTypeSize.accessibility1)" in player_view_source:
+    fail("the full player must not cap Dynamic Type at accessibility1")
+if "playerStackGap(" not in swift_code(player_view_source):
+    fail("the scrolling player must stack with fixed gaps, not unbound Spacers")
+if "flexible: false" not in swift_code(player_view_source):
+    fail("the scrolling player must turn off flexible spacers")
+if "usesFlexibleGaps" not in swift_code(player_view_source):
+    fail("player gap flexibility must be a layout policy, not a source comment")
+if "guard !usesScrollingLayout" not in swift_code(player_view_source):
+    fail("the accessibility player must not dismiss while scrolling")
+if "ContrastPolicy.flattensCustomGlass" not in swift_code(player_view_source):
+    fail("player Liquid Glass must flatten under Increase Contrast")
+if "frame(minHeight: tabRowHeight)" not in main_tab_source:
+    fail("the legacy dock must grow with Dynamic Type instead of clipping captions")
+adaptive_glass_source = (
+    SOURCE / "Features" / "Shared" / "AdaptiveGlass.swift"
+).read_text(encoding="utf-8")
+if "ContrastPolicy.flattensCustomGlass" not in adaptive_glass_source:
+    fail("custom Liquid Glass must flatten under Increase Contrast")
+if "colorSchemeContrast" not in adaptive_glass_source:
+    fail("AdaptiveGlass must read Increase Contrast")
+premium_design_source = (
+    SOURCE / "Features" / "Shared" / "PremiumDesign.swift"
+).read_text(encoding="utf-8")
+if "glassEffect" in swift_code(premium_design_source):
+    fail(
+        "premium cards are content, not chrome — they must not use Liquid Glass"
+    )
+if "regularMaterial" not in premium_design_source:
+    fail("premium cards must use a standard material in the content layer")
+if "colorSchemeContrast" not in premium_design_source:
+    fail("premium cards must thicken their stroke under Increase Contrast")
+album_detail_source = (
+    SOURCE / "Features" / "Album" / "AlbumDetailView.swift"
+).read_text(encoding="utf-8")
+if "clearsMiniPlayer(includingWhenDockReservesSpace: true)" not in album_detail_source:
+    fail("album track lists must lift above the mini player")
+if "func miniPlayerClearance(hasMiniPlayer: Bool)" not in all_source:
+    fail("BottomAccessoryMetrics must expose mini-player-only clearance")
 if "LikedTrackBadge(track: track)" in mini_player_source:
     fail("mini-player must not overlay a liked-track badge on artwork")
 if ".buttonStyle(.glassProminent)" in mini_player_source:
@@ -1058,14 +1239,51 @@ if ".buttonStyle(.glassProminent)" not in player_view_source:
 for required_player_symbol in (
     ".background(playerBackground.ignoresSafeArea())",
     ".buttonStyle(.glass)",
-    "AdaptiveGlassContainer(spacing: 8)",
-    "AdaptiveGlassContainer(spacing: 18)",
+    "Do NOT wrap transport buttons in GlassEffectContainer",
     ".simultaneousGesture(fullScreenDismissGesture)",
     "PlayerDismissGesturePolicy.shouldDismiss",
     "PlayerArtworkCarouselPolicy.neighborIndices",
 ):
     if required_player_symbol not in player_view_source:
         fail(f"player is missing full-bleed/glass symbol: {required_player_symbol}")
+# Sibling interactive glass in a GlassEffectContainer morphs into one blob —
+# transport, quick actions, and the header AirPlay+menu cluster all forbid it.
+if "AdaptiveGlassContainer(spacing: 8)" in swift_code(player_view_source):
+    fail(
+        "player header must not use GlassEffectContainer "
+        "(AirPlay + menu morph into one blob)"
+    )
+if "AdaptiveGlassContainer(spacing: 18)" in swift_code(player_view_source):
+    fail(
+        "player transport controls must not use GlassEffectContainer "
+        "(morphs into one gooey blob)"
+    )
+if "AdaptiveGlassContainer(spacing: 14)" in swift_code(player_view_source):
+    fail(
+        "player quick actions must not use GlassEffectContainer "
+        "(morphs into one gooey blob)"
+    )
+# Artwork vertical dismiss must use the same policy as the root gesture —
+# a looser inline threshold over the cover made two dismiss policies fight.
+if "vertical > 72" in swift_code(player_view_source):
+    fail(
+        "player artwork dismiss must use PlayerDismissGesturePolicy, "
+        "not an inline vertical > 72 threshold"
+    )
+if "PlayerProgressControls" not in player_view_source:
+    fail("player progress must use isolated PlayerProgressControls")
+if "enum PlayerProgressPolicy" not in all_source:
+    fail("PlayerProgressPolicy must exist for unit-tested scrubber math")
+if ".title3.monospacedDigit()" in swift_code(player_view_source):
+    fail(
+        "player scrub labels must not jump to title3 — fixed metrics only"
+    )
+if "struct HomeStageAtmosphereLayer" not in all_source:
+    fail("Home atmosphere must live in an isolated layer view")
+if "HomeNextStepRefreshKey" not in all_source:
+    fail("Home must cache What's Next behind HomeNextStepRefreshKey")
+if "task(id: nextStepRefreshKey)" not in catalog_view_source:
+    fail("CatalogView must rebuild What's Next only when inputs change")
 # Mini-player uses plain controls; full-screen player keeps glassProminent.
 for required_preload_symbol in (
     "PlaybackPreloadPolicy.nextIndex",
@@ -1646,6 +1864,352 @@ def require_artist_album_shelf_fix() -> None:
 
 require_artist_album_shelf_fix()
 
+
+def require_home_is_not_a_recommendation_feed() -> None:
+    """Root Home must not stack competing recommendation shelves."""
+    catalog = (
+        SOURCE / "Features" / "Catalog" / "CatalogView.swift"
+    ).read_text(encoding="utf-8")
+    policy = (
+        SOURCE / "Models" / "HomeNextStepPolicy.swift"
+    ).read_text(encoding="utf-8")
+    for forbidden in (
+        "vkMixesSection",
+        "recommendationsSection",
+        "dynamicArtistSection",
+        'PremiumSectionHeader(\n                "vk_mixes"',
+        'PremiumSectionHeader(\n                "for_you"',
+        'PremiumSectionHeader(\n            "selena.name"',
+    ):
+        if forbidden in catalog:
+            fail(
+                "Home must not keep a permanent recommendation shelf: "
+                f"found {forbidden!r} in CatalogView"
+            )
+    for required_symbol in (
+        "HomeNextStepPolicy.select(",
+        "explore_music",
+        "home_next.title",
+        "recentlyPlayedSection",
+    ):
+        if required_symbol not in catalog:
+            fail(f"simplified Home is missing {required_symbol}")
+    for required_symbol in (
+        "enum HomeNextStepPolicy",
+        "static func select(",
+        "hysteresis",
+        "HomeNextStepOccupancy",
+    ):
+        if required_symbol not in policy:
+            fail(f"HomeNextStepPolicy is missing {required_symbol}")
+
+
+def require_minimum_hit_targets() -> None:
+    """Every control drawn smaller than 44x44 must still accept 44x44.
+
+    The Human Interface Guidelines put the floor at 44 points. Some of our
+    controls are deliberately drawn smaller — the play chip in the corner of
+    a cover reads as a chip, not a button — so the rule is not "draw it
+    bigger", it is "accept touches wider than you draw". A square frame
+    under 44 points inside a Button is that situation, and it has to be
+    paired with `minimumHitTarget`.
+    """
+    square_frame = re.compile(
+        r"\.frame\(width:\s*(\d+),\s*height:\s*(\d+)\)"
+    )
+    offenders = []
+    for path in swift_files:
+        lines = path.read_text(encoding="utf-8").split("\n")
+        for index, line in enumerate(lines):
+            if not re.search(r"\b(Button|Menu)\s*[({]", line):
+                continue
+            depth = 0
+            opened = False
+            end = min(index + 60, len(lines) - 1)
+            for cursor in range(index, min(index + 140, len(lines))):
+                depth += lines[cursor].count("{") - lines[cursor].count("}")
+                if lines[cursor].count("{"):
+                    opened = True
+                if opened and depth <= 0:
+                    end = cursor
+                    break
+            tail = end
+            while (
+                tail + 1 < len(lines)
+                and lines[tail + 1].strip().startswith(".")
+            ):
+                tail += 1
+            body = "\n".join(lines[index:tail + 1])
+            sizes = [
+                int(width)
+                for width, height in square_frame.findall(body)
+                if width == height
+            ]
+            if not sizes or min(sizes) >= 44:
+                continue
+            if "minimumHitTarget" in body or "minimumTapTarget" in body:
+                continue
+            # A small square inside a control that is *also* laid out large
+            # — a row, a card — is decoration sitting on a target that
+            # already clears 44 on its own.
+            if ".infinity" in body or max(sizes) >= 44:
+                continue
+            # Artwork sets the size of the row or card it sits in.
+            if "AsyncArtwork" in body:
+                continue
+            if re.search(r"\.frame\((?:min)?(?:Width|Height):\s*(\d+)", body):
+                spans = [
+                    int(value)
+                    for value in re.findall(
+                        r"\.frame\(min(?:Width|Height):\s*(\d+)", body
+                    )
+                ]
+                if spans and max(spans) >= 44:
+                    continue
+            # System button styles bring their own padding and hit metrics —
+            # except `.controlSize(.small|.mini)`, which shrinks the target
+            # back under 44pt. Those still need an explicit hit expansion.
+            if re.search(
+                r"\.buttonStyle\(\.(bordered|borderedProminent|glass)",
+                body,
+            ) and not re.search(
+                r"\.controlSize\(\.(small|mini)\)",
+                body,
+            ):
+                continue
+            relative = path.relative_to(ROOT)
+            offenders.append(f"{relative}:{index + 1} ({min(sizes)}pt)")
+    if offenders:
+        fail(
+            "controls drawn under 44pt without minimumHitTarget: "
+            + ", ".join(offenders)
+        )
+
+
+require_minimum_hit_targets()
+
+
+def require_text_scales_with_dynamic_type() -> None:
+    """Body text must use a text style, not a fixed point size.
+
+    `Font.system(size:)` is frozen: it ignores the reader's text-size
+    setting entirely, which is the accessibility setting people actually
+    change. Text styles (`.subheadline`, `.callout`, ...) scale.
+
+    The exceptions are text set inside a canvas of a fixed size — a badge
+    pill, a generated cover — where larger type has nowhere to go and would
+    simply overrun the artwork rather than push anything aside. Annotate
+    those lines with `// dynamic-type-exempt:` on the preceding line.
+    """
+    allowed = {
+        "PrivateMusic/Features/Shared/PlaylistArtworkView.swift",
+    }
+    offenders = []
+    for path in swift_files:
+        relative = str(path.relative_to(ROOT))
+        if relative in allowed:
+            continue
+        lines = path.read_text(encoding="utf-8").split("\n")
+        for index, line in enumerate(lines):
+            if ".font(.system(size:" not in line:
+                continue
+            if index > 0 and "dynamic-type-exempt:" in lines[index - 1]:
+                continue
+            for back in range(index - 1, max(-1, index - 12), -1):
+                previous = lines[back].strip()
+                if previous.startswith(("Image(", "Label(")):
+                    break
+                if previous.startswith("Text("):
+                    offenders.append(f"{relative}:{index + 1}")
+                    break
+                if re.match(
+                    r"^(ProgressView|Group|VStack|HStack|ZStack|Button)\b",
+                    previous,
+                ):
+                    break
+    if offenders:
+        fail("text frozen against Dynamic Type: " + ", ".join(offenders))
+
+
+require_text_scales_with_dynamic_type()
+
+
+def require_motion_respects_reduce_motion() -> None:
+    """Animation started from an action must honour Reduce Motion.
+
+    Every declarative `.animation(...)` in the app already asks the
+    environment first. `withAnimation` is the imperative side, and it has
+    no environment to ask — so it either sits inside an explicit
+    `reduceMotion` branch or goes through `BubbleMotion.animate`, which
+    reads the setting itself.
+    """
+    home = "PrivateMusic/UI/Bubble/BubbleFoundation.swift"
+    offenders = []
+    for path in swift_files:
+        relative = str(path.relative_to(ROOT))
+        if relative == home:
+            continue
+        lines = path.read_text(encoding="utf-8").split("\n")
+        for index, line in enumerate(lines):
+            if "withAnimation(" not in line:
+                continue
+            window = "\n".join(
+                lines[max(0, index - 6):min(index + 5, len(lines))]
+            )
+            if "reduceMotion" in window or "BubbleMotion" in window:
+                continue
+            offenders.append(f"{relative}:{index + 1}")
+    if offenders:
+        fail(
+            "animation ignores Reduce Motion: " + ", ".join(offenders)
+        )
+
+
+require_motion_respects_reduce_motion()
+
+
+def require_ranking_lives_in_a_tested_policy() -> None:
+    """Queue ranking belongs in a policy with tests, not inside a view.
+
+    Every other decision of this kind — HomeNextStepPolicy,
+    ArtistAffinityPolicy, ContinuationPrefetchPolicy —
+    is a named enum a test can call. Ranking that lives as a private method
+    on a 2700-line view cannot be exercised at all, so a change to it can
+    only be checked by listening to the app and hoping.
+    """
+    hub = swift_code(
+        (SOURCE / "Features" / "Mix" / "MixesHubView.swift")
+        .read_text(encoding="utf-8")
+    )
+    env = swift_code(
+        (SOURCE / "App" / "AppEnvironment.swift").read_text(encoding="utf-8")
+    )
+    # Explore may call SelenaBanditPolicy directly or via the shared
+    # AppEnvironment helper Home and Library also use.
+    hub_ranks = "SelenaBanditPolicy.rerank(" in hub or "rankSelenaQueue(" in hub
+    env_ranks = "SelenaBanditPolicy.rerank(" in env
+    if not hub_ranks or not env_ranks:
+        fail("MixesHubView must rerank through SelenaBanditPolicy")
+    for inlined in ("func selenaBanditRerank", "sqrt(log("):
+        if inlined in hub:
+            fail(f"ranking maths must stay in SelenaBanditPolicy: {inlined}")
+    policy = swift_code(
+        (SOURCE / "Models" / "SelenaBanditPolicy.swift")
+        .read_text(encoding="utf-8")
+    )
+    for required_symbol in (
+        "enum SelenaBanditPolicy",
+        "struct SelenaExposure",
+        "static func rerank(",
+        "static func familiarity(",
+        "static func novelty(",
+        "static func spacedOrder(",
+        "ArtistAffinityPolicy.qualifyingScore",
+    ):
+        if required_symbol not in policy:
+            fail(f"SelenaBanditPolicy is missing {required_symbol}")
+    if "affinityByArtistKey:" not in hub and "affinityByArtistKey:" not in env:
+        fail(
+            "the personal mix must rank on real listening evidence: "
+            "pass ArtistAffinityPolicy scores into SelenaBanditPolicy"
+        )
+    # Home's personal station must share Explore's cursor path — not a
+    # separate mixTracksBootstrap for MusicMix.common.
+    if "func startSelenaStation(" not in env:
+        fail("Home must launch Selena through startSelenaStation")
+    if "SelenaRecommendationCursor(" not in env:
+        fail("startSelenaStation must compose through SelenaRecommendationCursor")
+    if "refreshHomeCatalog(force: true)" not in hub:
+        fail("Explore pull-to-refresh must force-refresh Home recommendations")
+    wave = SOURCE / "Models" / "SelenaWavePolicy.swift"
+    if not wave.is_file():
+        fail("Selena wave policy (Yandex-like dials) is missing")
+    wave_source = swift_code(wave.read_text(encoding="utf-8"))
+    for required in (
+        "enum SelenaDiversityPreference",
+        "enum SelenaWavePolicy",
+        "static func banditWeights(",
+        "static func preferMood(",
+        "static func dedupeRepeats(",
+        "static func applyingArtistCooldown(",
+        "artistCooldownWindow",
+    ):
+        if required not in wave_source:
+            fail(f"SelenaWavePolicy is missing {required}")
+    if "recentArtistKeys" not in mix_stream_source:
+        fail("Selena cursor must track artist cooldown across refills")
+    cooccur = SOURCE / "Models" / "ArtistCooccurrenceIndex.swift"
+    if not cooccur.is_file():
+        fail("Selena seed rotation needs ArtistCooccurrenceIndex")
+    if "ArtistCooccurrenceIndex.boostSeeds(" not in mix_stream_source:
+        fail("seedTracks must boost via ArtistCooccurrenceIndex")
+    configure = swift_code(
+        (SOURCE / "Features" / "Mix" / "MixConfigureSheet.swift")
+        .read_text(encoding="utf-8")
+    )
+    if "enum MixConfigureScope" not in configure:
+        fail("mix configure must split Selena-rich vs mix-basic scopes")
+    if "case selena" not in configure or "case mix" not in configure:
+        fail("MixConfigureScope must distinguish selena and mix")
+    if "configure_selena" not in hub:
+        fail("Explore Selena must expose its own configure entry")
+    if "selenaWaveCard" not in hub:
+        fail("Selena must own the rich wave card")
+    if "startConfiguredSelena" not in hub:
+        fail("Selena start must stay on the personal station")
+    audio = swift_code(
+        (SOURCE / "Player" / "AudioPlayer.swift").read_text(encoding="utf-8")
+    )
+    if "usesSelenaWaveFilters" not in audio:
+        fail("QueueSource must flag Selena-flavored queues")
+    if "usesSelenaWaveFilters" not in audio or "usesSelenaWaveFilters != true" not in audio:
+        fail("play() must not MixQueueRanker-reshuffle Selena bandit order")
+    if "usesSelenaWaveFilters != true" not in audio or "func rerankUpcomingMix(" not in audio:
+        fail("rerankUpcomingMix must refuse Selena wave queues")
+    queue_view = swift_code(
+        (SOURCE / "Features" / "Player" / "QueueView.swift").read_text(encoding="utf-8")
+    )
+    if "usesSelenaWaveFilters" not in queue_view:
+        fail("Queue sheet must hide Mix Radio for Selena wave queues")
+
+
+require_ranking_lives_in_a_tested_policy()
+
+
+def require_one_artist_identity_key() -> None:
+    """"Is this the same artist" must have exactly one answer.
+
+    Bans, artist affinity, the mix rationale, album matching, the artist
+    screen's track filter and the queue ranker all decide artist identity,
+    and each had grown its own hand-copied folding. They agreed only by
+    luck: fixing one — the way Cyrillic `й` folds, say — would have left
+    the others quietly disagreeing, and an artist can then be banned on one
+    screen and playing on another.
+
+    `MixFeedbackPolicy.normalized` is that one answer, and the en_US_POSIX
+    locale it folds against is the fingerprint of a copy.
+    """
+    home = "PrivateMusic/Models/MixFeedbackStore.swift"
+    offenders = [
+        str(path.relative_to(ROOT))
+        for path in swift_files
+        if str(path.relative_to(ROOT)) != home
+        and 'Locale(identifier: "en_US_POSIX")'
+        in swift_code(path.read_text(encoding="utf-8"))
+    ]
+    if offenders:
+        fail(
+            "artist identity folding must come from "
+            "MixFeedbackPolicy.normalized, not a copy in: "
+            + ", ".join(offenders)
+        )
+
+
+require_one_artist_identity_key()
+
+
+require_home_is_not_a_recommendation_feed()
+
 print(f"OK: {len(swift_files)} Swift files")
 print("OK: no embedded client secret or CAPTCHA interception")
 print("OK: Keychain, ephemeral URLSession and Now Playing are present")
@@ -1654,3 +2218,8 @@ print("OK: Info.plist, HTTPS endpoints and release icons")
 print("OK: valid no-tracking privacy manifest")
 print("OK: edge-to-edge player and consistent Liquid Glass controls")
 print("OK: deterministic player presentation and lightweight action dock")
+print("OK: every control accepts the 44pt minimum touch area")
+print("OK: body text scales with Dynamic Type")
+print("OK: motion respects Reduce Motion")
+print("OK: mix ranking lives in a tested policy")
+print("OK: one artist identity key")

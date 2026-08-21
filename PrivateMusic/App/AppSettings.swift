@@ -17,9 +17,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 
     var accent: Color {
-        self == .dark
-            ? Color(red: 0.04, green: 0.50, blue: 1.0)
-            : .black
+        BubbleGamut.accentColor(for: self)
     }
 
     var secondaryAccent: Color {
@@ -83,13 +81,43 @@ enum AppTextScale: String, CaseIterable, Identifiable {
         }
     }
 
-    var dynamicTypeSize: DynamicTypeSize {
-        switch self {
-        case .compact: .medium
-        case .system: .large
-        case .large: .xLarge
-        case .extraLarge: .xxLarge
+    /// How this in-app preference maps onto Dynamic Type.
+    ///
+    /// `nil` means follow the system size (including accessibility sizes).
+    /// Compact lowers the ceiling for standard sizes only. Accessibility
+    /// sizes the reader already chose are never clamped — see
+    /// `AppTextScalePolicy.resolvedRange(for:inherited:)`.
+    var dynamicTypeRange: ClosedRange<DynamicTypeSize>? {
+        AppTextScalePolicy.range(for: self)
+    }
+}
+
+enum AppTextScalePolicy {
+    static func range(
+        for scale: AppTextScale
+    ) -> ClosedRange<DynamicTypeSize>? {
+        switch scale {
+        case .compact:
+            DynamicTypeSize.xSmall ... DynamicTypeSize.medium
+        case .system:
+            nil
+        case .large:
+            DynamicTypeSize.xLarge ... DynamicTypeSize.accessibility5
+        case .extraLarge:
+            DynamicTypeSize.xxLarge ... DynamicTypeSize.accessibility5
         }
+    }
+
+    /// Compact may shrink default sizes. It must not pull an accessibility
+    /// size the reader already chose back down to `.medium`.
+    static func resolvedRange(
+        for scale: AppTextScale,
+        inherited: DynamicTypeSize
+    ) -> ClosedRange<DynamicTypeSize>? {
+        if inherited.isAccessibilitySize {
+            return nil
+        }
+        return range(for: scale)
     }
 }
 
@@ -138,6 +166,13 @@ final class AppSettings {
     var textScale: AppTextScale {
         didSet { defaults.set(textScale.rawValue, forKey: Keys.textScale) }
     }
+    /// Opens Home with the now-playing stage instead of going straight
+    /// into shelves. The shelves stay exactly where they are underneath.
+    var homeStageEnabled: Bool {
+        didSet {
+            defaults.set(homeStageEnabled, forKey: Keys.homeStageEnabled)
+        }
+    }
     /// Pins playback chrome to the flat pre-iOS 26 look: the full-screen
     /// player, the mini player and the tab bar it sits in. Below iOS 26
     /// everything already draws that way and the switch has nothing to do,
@@ -164,6 +199,11 @@ final class AppSettings {
             defaults.set(preferHighQuality, forKey: Keys.preferHighQuality)
         }
     }
+    var crossfadeEnabled: Bool {
+        didSet {
+            defaults.set(crossfadeEnabled, forKey: Keys.crossfadeEnabled)
+        }
+    }
     var mixMoodPreference: MixMoodPreference {
         didSet {
             defaults.set(
@@ -185,6 +225,17 @@ final class AppSettings {
             defaults.set(
                 mixFamiliarityPreference.rawValue,
                 forKey: Keys.mixFamiliarityPreference
+            )
+        }
+    }
+    /// Yandex-style diversity dial for Selena only (`favorite` /
+    /// `popular` / `discover` / `default`). Catalog mixes keep
+    /// `mixFamiliarityPreference` instead.
+    var selenaDiversityPreference: SelenaDiversityPreference {
+        didSet {
+            defaults.set(
+                selenaDiversityPreference.rawValue,
+                forKey: Keys.selenaDiversityPreference
             )
         }
     }
@@ -312,6 +363,9 @@ final class AppSettings {
         textScale = AppTextScale(
             rawValue: defaults.string(forKey: Keys.textScale) ?? ""
         ) ?? .system
+        homeStageEnabled = defaults.object(
+            forKey: Keys.homeStageEnabled
+        ) as? Bool ?? true
         // 3.28.82 shipped this as a player-only switch under its own key.
         classicChrome = defaults.object(forKey: Keys.classicChrome) as? Bool
             ?? defaults.object(
@@ -334,6 +388,9 @@ final class AppSettings {
         preferHighQuality = defaults.object(
             forKey: Keys.preferHighQuality
         ) as? Bool ?? true
+        crossfadeEnabled = defaults.object(
+            forKey: Keys.crossfadeEnabled
+        ) as? Bool ?? true
         mixMoodPreference = MixMoodPreference(
             rawValue: defaults.string(forKey: Keys.mixMoodPreference) ?? ""
         ) ?? .any
@@ -345,6 +402,11 @@ final class AppSettings {
                 forKey: Keys.mixFamiliarityPreference
             ) ?? ""
         ) ?? .any
+        selenaDiversityPreference = SelenaDiversityPreference(
+            rawValue: defaults.string(
+                forKey: Keys.selenaDiversityPreference
+            ) ?? ""
+        ) ?? .default
         loudnessNormalization = defaults.object(
             forKey: Keys.loudnessNormalization
         ) as? Bool ?? false
@@ -431,6 +493,7 @@ final class AppSettings {
         static let appearance = "appearance.mode"
         static let textScale = "appearance.textScale"
         static let classicChrome = "appearance.classicChrome"
+        static let homeStageEnabled = "home.stage.enabled"
         static let equalizer = "audio.equalizer.enabled"
         static let preset = "audio.equalizer.preset"
         static let gains = "audio.equalizer.gains"
@@ -448,9 +511,11 @@ final class AppSettings {
             "offline.cache.automatic.enabled"
         static let hapticsEnabled = "feedback.haptics.enabled"
         static let preferHighQuality = "audio.playback.preferHighQuality"
+        static let crossfadeEnabled = "audio.playback.crossfadeEnabled"
         static let mixMoodPreference = "mix.filters.mood"
         static let mixLanguagePreference = "mix.filters.language"
         static let mixFamiliarityPreference = "mix.filters.familiarity"
+        static let selenaDiversityPreference = "selena.wave.diversity"
         static let loudnessNormalization =
             "audio.equalizer.loudnessNormalization"
         static let dynamicRangeCompression =
@@ -465,8 +530,24 @@ final class AppSettings {
     }
 }
 
+private struct AppTextScaleModifier: ViewModifier {
+    let scale: AppTextScale
+    @Environment(\.dynamicTypeSize) private var inheritedSize
+
+    func body(content: Content) -> some View {
+        if let range = AppTextScalePolicy.resolvedRange(
+            for: scale,
+            inherited: inheritedSize
+        ) {
+            content.dynamicTypeSize(range)
+        } else {
+            content
+        }
+    }
+}
+
 extension View {
     func appTextScale(_ scale: AppTextScale) -> some View {
-        dynamicTypeSize(scale.dynamicTypeSize)
+        modifier(AppTextScaleModifier(scale: scale))
     }
 }

@@ -14,6 +14,9 @@ struct LibraryView: View {
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(PinnedMixStore.self) private var pinnedMixStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Default 40pt is two caption lines at the standard text size.
+    /// Accessibility sizes grow the shelf instead of clipping the titles.
+    @ScaledMetric(relativeTo: .subheadline) private var shelfCaptionHeight: CGFloat = 40
     private let offlinePlaylists =
         OfflinePlaylistStore.shared
     @State private var tracks = TrackCollectionViewModel(source: .library)
@@ -32,15 +35,14 @@ struct LibraryView: View {
     @State private var paginationTask: Task<Void, Never>?
     @State private var playlistPaginationTask: Task<Void, Never>?
     @State private var addedTrackReloadTask: Task<Void, Never>?
+    /// Viewport width from a background GeometryReader — wrapping the
+    /// ScrollView itself re-laid the whole library on every scroll frame
+    /// (same sticky-scroll bug Home and Explore already fixed).
+    @State private var containerWidth: CGFloat = 390
 
     var body: some View {
         ScrollViewReader { proxy in
-            GeometryReader { geometry in
-                // Zero-width proposals (some previews) must not produce
-                // empty frames — fall back to a compact-phone width.
-                let shelfWidth = geometry.size.width > 0
-                    ? geometry.size.width
-                    : 390
+            let shelfWidth = containerWidth
             ScrollView {
                 // Section gaps are per-section padding rather than stack
                 // spacing: the track rows share this stack (a nested lazy
@@ -52,7 +54,8 @@ struct LibraryView: View {
                     if playlists.isLoading && playlists.playlists.isEmpty {
                         playlistSkeleton(width: shelfWidth)
                             .librarySectionSpacing()
-                    } else if !playlists.playlists.isEmpty {
+                    } else if !playlists.playlists.isEmpty,
+                              !shelfPlaylists.isEmpty {
                         playlistShelf(width: shelfWidth)
                             .librarySectionSpacing()
                     }
@@ -80,7 +83,8 @@ struct LibraryView: View {
                             EmptyStateView(
                                 title: "could_not_load_tracks",
                                 systemImage: "wifi.exclamationmark",
-                                description: error
+                                description: error,
+                                descriptionIsLocalizedKey: false
                             )
                             Button(L10n.text("action.retry")) {
                                 Task { await loadTracks(force: true) }
@@ -128,6 +132,21 @@ struct LibraryView: View {
                 // under the header.
                 .padding(.top, LibraryShelfMetrics.contentTopPadding)
             }
+            .clearsMiniPlayer()
+            .background {
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: LibraryWidthKey.self,
+                        value: geometry.size.width
+                    )
+                }
+            }
+            .onPreferenceChange(LibraryWidthKey.self) { width in
+                let rounded = width.rounded()
+                if rounded > 0, abs(rounded - containerWidth) >= 1 {
+                    containerWidth = rounded
+                }
+            }
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .library else { return }
                 if reduceMotion {
@@ -141,12 +160,10 @@ struct LibraryView: View {
                     }
                 }
             }
-            }
         }
         .background(ThemeBackground())
         .navigationTitle(L10n.text("tab.library"))
         .navigationBarTitleDisplayMode(.inline)
-        .dynamicTypeSize(...DynamicTypeSize.large)
         .searchable(
             text: $trackSearchQuery,
             placement: .navigationBarDrawer(displayMode: .always),
@@ -162,17 +179,17 @@ struct LibraryView: View {
                             OfflineDownloadsView()
                         } label: {
                             Image(systemName: "arrow.down.circle")
-                                .frame(width: 24, height: 24)
+                                .frame(width: 28, height: 28)
                                 .overlay(alignment: .topTrailing) {
                                     if isOfflineActivityActive {
                                         ProgressView()
                                             .controlSize(.mini)
-                                            .offset(x: 3, y: -3)
                                     } else if offlineStore
                                         .downloadedTrackCount > 0 {
                                         Text(
                                             "\(min(validDownloadCount, 99))"
                                         )
+                                        // dynamic-type-exempt: 9pt badge on a 28pt icon
                                         .font(.system(size: 9, weight: .bold))
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, 3)
@@ -181,7 +198,6 @@ struct LibraryView: View {
                                             Capsule()
                                                 .fill(settings.theme.accent)
                                         )
-                                        .offset(x: 3, y: -3)
                                     }
                                 }
                         }
@@ -396,21 +412,22 @@ struct LibraryView: View {
                 knownTracks: pin.tracks
             )
             environment.player.resumePinned(pin) {
-                try await environment.withAuthorizedToken { token in
-                    try await stream.next(
-                        accessToken: token,
-                        musicService: environment.musicService
-                    )
+                let more = try await environment.nextSelenaBatch(from: stream)
+                return await MainActor.run {
+                    environment.selenaContinuationTracks(more)
                 }
             }
         } else {
             let cursor = MixTrackContinuationCursor(mix: mix)
             environment.player.resumePinned(pin) {
-                try await environment.withAuthorizedToken { token in
+                let more = try await environment.withAuthorizedToken { token in
                     try await cursor.next(
                         accessToken: token,
                         musicService: environment.musicService
                     )
+                }
+                return await MainActor.run {
+                    environment.continuationTracks(more)
                 }
             }
         }
@@ -437,7 +454,6 @@ struct LibraryView: View {
                 .minimumScaleFactor(0.8)
         }
         .buttonStyle(.bordered)
-        .controlSize(.small)
         .tint(settings.theme.accent)
         .disabled(filteredTracks.isEmpty)
         .accessibilityLabel(L10n.text("shuffle"))
@@ -667,7 +683,16 @@ struct LibraryView: View {
     }
 
     private var currentTrackColor: Color {
-        .accentColor
+        settings.theme.accent
+    }
+
+    private var shelfPlaylists: [Playlist] {
+        LibraryPlaylistShelfPolicy.excludingLikedAlbums(
+            playlists.playlists,
+            likedAlbumCompositeIDs: Set(
+                likedAlbumsStore.albums.map(\.compositeID)
+            )
+        )
     }
 
     private func playlistShelf(width: CGFloat) -> some View {
@@ -688,13 +713,13 @@ struct LibraryView: View {
                     // by owner+id. Colliding ForEach ids let SwiftUI reuse one
                     // card for several playlists and drop their artwork.
                     ForEach(
-                        Array(playlists.playlists.enumerated()),
+                        Array(shelfPlaylists.enumerated()),
                         id: \.element.libraryIdentity
                     ) { index, playlist in
                         playlistCard(
                             playlist,
                             index: index,
-                            isLast: index == playlists.playlists.count - 1,
+                            isLast: index == shelfPlaylists.count - 1,
                             width: width
                         )
                     }
@@ -703,7 +728,12 @@ struct LibraryView: View {
             }
             // A lazy row has no intrinsic height: pin it so the cards keep
             // their artwork instead of collapsing to caption-only chips.
-            .frame(height: LibraryShelfMetrics.shelfHeight(for: width))
+            .frame(
+                height: LibraryShelfMetrics.shelfHeight(
+                    for: width,
+                    captionHeight: shelfCaptionHeight
+                )
+            )
         }
     }
 
@@ -745,8 +775,7 @@ struct LibraryView: View {
                 }
                 .frame(
                     maxWidth: .infinity,
-                    minHeight: LibraryShelfMetrics.captionHeight,
-                    maxHeight: LibraryShelfMetrics.captionHeight,
+                    minHeight: shelfCaptionHeight,
                     alignment: .topLeading
                 )
             }
@@ -754,7 +783,10 @@ struct LibraryView: View {
         }
         .frame(
             width: LibraryShelfMetrics.cardWidth(for: width),
-            height: LibraryShelfMetrics.cardHeight(for: width),
+            height: LibraryShelfMetrics.cardHeight(
+                for: width,
+                captionHeight: shelfCaptionHeight
+            ),
             alignment: .topLeading
         )
         .premiumAppear(delay: min(Double(index) * 0.025, 0.2))
@@ -805,6 +837,7 @@ struct LibraryView: View {
             .foregroundStyle(.black)
             .frame(width: 32, height: 32)
             .background(.white, in: Circle())
+            .minimumHitTarget(visualSize: 32)
         }
         .buttonStyle(PremiumPressStyle())
         .padding(8)
@@ -834,7 +867,12 @@ struct LibraryView: View {
                 }
                 .padding(.vertical, LibraryShelfMetrics.shelfPadding)
             }
-            .frame(height: LibraryShelfMetrics.shelfHeight(for: width))
+            .frame(
+                height: LibraryShelfMetrics.shelfHeight(
+                    for: width,
+                    captionHeight: shelfCaptionHeight
+                )
+            )
         }
     }
 
@@ -875,8 +913,7 @@ struct LibraryView: View {
                 }
                 .frame(
                     maxWidth: .infinity,
-                    minHeight: LibraryShelfMetrics.captionHeight,
-                    maxHeight: LibraryShelfMetrics.captionHeight,
+                    minHeight: shelfCaptionHeight,
                     alignment: .topLeading
                 )
             }
@@ -884,7 +921,10 @@ struct LibraryView: View {
         }
         .frame(
             width: LibraryShelfMetrics.cardWidth(for: width),
-            height: LibraryShelfMetrics.cardHeight(for: width),
+            height: LibraryShelfMetrics.cardHeight(
+                for: width,
+                captionHeight: shelfCaptionHeight
+            ),
             alignment: .topLeading
         )
     }
@@ -906,6 +946,7 @@ struct LibraryView: View {
             .foregroundStyle(.black)
             .frame(width: 32, height: 32)
             .background(.white, in: Circle())
+            .minimumHitTarget(visualSize: 32)
         }
         .buttonStyle(PremiumPressStyle())
         .padding(8)
@@ -1184,13 +1225,21 @@ struct LibraryView: View {
                             .fill(.primary.opacity(0.08))
                             .frame(
                                 width: LibraryShelfMetrics.cardWidth(for: width),
-                                height: LibraryShelfMetrics.cardHeight(for: width)
+                                height: LibraryShelfMetrics.cardHeight(
+                                    for: width,
+                                    captionHeight: shelfCaptionHeight
+                                )
                             )
                     }
                 }
                 .padding(.vertical, LibraryShelfMetrics.shelfPadding)
             }
-            .frame(height: LibraryShelfMetrics.shelfHeight(for: width))
+            .frame(
+                height: LibraryShelfMetrics.shelfHeight(
+                    for: width,
+                    captionHeight: shelfCaptionHeight
+                )
+            )
         }
         .redacted(reason: .placeholder)
     }
@@ -1315,5 +1364,13 @@ struct LibraryView: View {
                 try await playlistPage(offset: offset)
             }
         }
+    }
+}
+
+private struct LibraryWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }

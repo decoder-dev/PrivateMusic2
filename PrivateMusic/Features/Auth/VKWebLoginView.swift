@@ -173,6 +173,7 @@ struct VKWebLoginView: View {
         Button(action: action) {
             Image(systemName: image)
                 .frame(width: 32, height: 32)
+                .minimumHitTarget(visualSize: 32)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(L10n.text(label))

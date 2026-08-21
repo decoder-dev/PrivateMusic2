@@ -5,6 +5,7 @@ struct ListeningHistoryView: View {
     /// Playback is only triggered from here — observing `AudioPlayer` would
     /// rebuild the whole history list on every buffering / duration tick.
     @Environment(AppEnvironment.self) private var environment
+    @Environment(AppSettings.self) private var settings
     @State private var query = ""
     @State private var showingClearConfirmation = false
     @State private var sharingTrack: Track?
@@ -30,98 +31,110 @@ struct ListeningHistoryView: View {
                     description: "tracks_you_play_will_appear_here"
                 )
             } else {
-                List {
-                    ForEach(filtered) { entry in
-                        Button {
-                            play(entry)
-                        } label: {
-                            HStack(spacing: 12) {
-                                AsyncArtwork(
-                                    url: entry.track.artworkURL,
-                                    size: 48
+                ScrollView {
+                    AppGroupedSurface {
+                        ForEach(Array(filtered.enumerated()), id: \.element.id) {
+                            index, entry in
+                            Button {
+                                play(entry)
+                            } label: {
+                                TrackRowContent(
+                                    artworkURL: entry.track.artworkURL,
+                                    title: entry.track.title,
+                                    artist: entry.track.artist,
+                                    showsLikedBadge: true,
+                                    likedTrack: entry.track,
+                                    durationText: entry.track.duration.formattedDuration
                                 )
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(entry.track.title)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                    Text(entry.track.artist)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button {
+                                    environment.player.playNext(entry.track)
+                                } label: {
+                                    Label(L10n.text("play_next"),
+                                        systemImage:
+                                            "text.line.first.and.arrowtriangle.forward"
+                                    )
                                 }
-                                Spacer(minLength: 8)
-                                LikedTrackBadge(track: entry.track)
-                                    .frame(width: 18, alignment: .trailing)
+                                Button {
+                                    environment.player.playLast(entry.track)
+                                } label: {
+                                    Label(L10n.text("play_last"),
+                                        systemImage:
+                                            "text.line.last.and.arrowtriangle.forward"
+                                    )
+                                }
+                                Button {
+                                    Haptics.open()
+                                    sharingTrack = entry.track
+                                } label: {
+                                    Label(L10n.text("share_audio_file"),
+                                        systemImage: "square.and.arrow.up"
+                                    )
+                                }
+                                Button {
+                                    Haptics.open()
+                                    playlistTarget = entry.track
+                                } label: {
+                                    Label(L10n.text("add_to_playlist"),
+                                        systemImage: "rectangle.stack.badge.plus"
+                                    )
+                                }
                             }
-                        }
-                        .buttonStyle(.plain)
-                        .listRowBackground(Color.clear)
-                        .contextMenu {
-                            Button {
-                                environment.player.playNext(entry.track)
-                            } label: {
-                                Label(L10n.text("play_next"),
-                                    systemImage:
-                                        "text.line.first.and.arrowtriangle.forward"
-                                )
+                            .swipeActions(edge: .leading) {
+                                Button {
+                                    environment.player.playNext(entry.track)
+                                } label: {
+                                    Label(L10n.text("play_next"),
+                                        systemImage: "text.badge.plus"
+                                    )
+                                }
+                                .tint(settings.theme.accent)
+                                Button {
+                                    environment.player.playLast(entry.track)
+                                } label: {
+                                    Label(L10n.text("play_last"),
+                                        systemImage:
+                                            "text.line.last.and.arrowtriangle.forward"
+                                    )
+                                }
+                                .tint(BubbleGamut.mix.color)
+                                Button {
+                                    playlistTarget = entry.track
+                                } label: {
+                                    Label(L10n.text("add_to_playlist"),
+                                        systemImage: "rectangle.stack.badge.plus"
+                                    )
+                                }
+                                .tint(BubbleGamut.mix.color)
                             }
-                            Button {
-                                Haptics.open()
-                                sharingTrack = entry.track
-                            } label: {
-                                Label(L10n.text("share_audio_file"),
-                                    systemImage: "square.and.arrow.up"
-                                )
+                            .swipeActions {
+                                Button {
+                                    sharingTrack = entry.track
+                                } label: {
+                                    Label(L10n.text("share_audio_file"),
+                                        systemImage: "square.and.arrow.up"
+                                    )
+                                }
+                                .tint(BubbleGamut.warning.color)
+                                Button(role: .destructive) {
+                                    history.remove(entry)
+                                } label: {
+                                    Label(L10n.text("action.delete"), systemImage: "trash")
+                                }
                             }
-                            Button {
-                                Haptics.open()
-                                playlistTarget = entry.track
-                            } label: {
-                                Label(L10n.text("add_to_playlist"),
-                                    systemImage: "rectangle.stack.badge.plus"
-                                )
-                            }
-                        }
-                        .swipeActions(edge: .leading) {
-                            Button {
-                                environment.player.playNext(entry.track)
-                            } label: {
-                                Label(L10n.text("play_next"),
-                                    systemImage: "text.badge.plus"
-                                )
-                            }
-                            .tint(.indigo)
-                            Button {
-                                playlistTarget = entry.track
-                            } label: {
-                                Label(L10n.text("add_to_playlist"),
-                                    systemImage: "rectangle.stack.badge.plus"
-                                )
-                            }
-                            .tint(.blue)
-                        }
-                        .swipeActions {
-                            Button {
-                                sharingTrack = entry.track
-                            } label: {
-                                Label(L10n.text("share_audio_file"),
-                                    systemImage: "square.and.arrow.up"
-                                )
-                            }
-                            .tint(.orange)
-                            Button(role: .destructive) {
-                                history.remove(entry)
-                            } label: {
-                                Label(L10n.text("action.delete"), systemImage: "trash")
+                            if index < filtered.count - 1 {
+                                Divider().padding(.leading, 60)
                             }
                         }
                     }
+                    .padding(.horizontal, PremiumLayout.screenPadding)
+                    .padding(.vertical, BubbleSpacing.l)
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
             }
         }
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("library.history"))
         .searchable(

@@ -104,86 +104,76 @@ struct SettingsView: View {
     @Environment(OfflineTrackStore.self) private var offlineStore
 
     var body: some View {
-        Form {
-            Section {
-                NavigationLink {
-                    AppearanceSettingsView()
-                } label: {
-                    Label(L10n.text("appearance"),
+        ScrollView {
+            VStack(alignment: .leading, spacing: BubbleSpacing.section) {
+                AppGroupedSection(title: "tab.settings") {
+                    settingsDestination(
+                        title: "appearance",
                         systemImage: "paintpalette"
-                    )
-                }
-
-                NavigationLink {
-                    PlayerAudioSettingsView()
-                } label: {
-                    Label(L10n.text("player_audio"),
+                    ) { AppearanceSettingsView() }
+                    Divider().padding(.leading, 54)
+                    settingsDestination(
+                        title: "player_audio",
                         systemImage: "waveform"
-                    )
-                }
-
-                NavigationLink {
-                    EqualizerSettingsView()
-                } label: {
-                    Label(L10n.text("equalizer"),
+                    ) { PlayerAudioSettingsView() }
+                    Divider().padding(.leading, 54)
+                    settingsDestination(
+                        title: "equalizer",
                         systemImage: "slider.horizontal.3"
-                    )
-                }
-
-                if OfflineDownloadsFeature.showsControls,
-                   !environment.isShareSessionActive {
-                    NavigationLink {
-                        OfflineStorageSettingsView()
-                    } label: {
-                        Label(L10n.text("offline_storage"),
+                    ) { EqualizerSettingsView() }
+                    if OfflineDownloadsFeature.showsControls,
+                       !environment.isShareSessionActive {
+                        Divider().padding(.leading, 54)
+                        settingsDestination(
+                            title: "offline_storage",
                             systemImage: "externaldrive"
-                        )
+                        ) { OfflineStorageSettingsView() }
                     }
-                }
-
-                NavigationLink {
-                    SleepTimerSettingsView()
-                } label: {
-                    Label(L10n.text("sleep_timer"),
+                    Divider().padding(.leading, 54)
+                    settingsDestination(
+                        title: "sleep_timer",
                         systemImage: "moon.zzz"
-                    )
-                }
-
-                NavigationLink {
-                    ConnectionSettingsView()
-                } label: {
-                    Label(L10n.text("connection"),
+                    ) { SleepTimerSettingsView() }
+                    Divider().padding(.leading, 54)
+                    settingsDestination(
+                        title: "connection",
                         systemImage: "network"
-                    )
-                }
-
-                NavigationLink {
-                    MixFiltersSettingsView()
-                } label: {
-                    Label(L10n.text("mix_filters"),
+                    ) { ConnectionSettingsView() }
+                    Divider().padding(.leading, 54)
+                    settingsDestination(
+                        title: "mix_filters",
                         systemImage: "line.3.horizontal.decrease.circle"
-                    )
-                }
-
-                NavigationLink {
-                    MixFeedbackManagerView()
-                } label: {
-                    Label(L10n.text("hidden_in_mixes"),
+                    ) { MixFiltersSettingsView() }
+                    Divider().padding(.leading, 54)
+                    settingsDestination(
+                        title: "hidden_in_mixes",
                         systemImage: "hand.thumbsdown"
+                    ) { MixFeedbackManagerView() }
+                }
+
+                AppGroupedSection(title: "about") {
+                    labeledValueRow(
+                        title: L10n.text("app"),
+                        value: L10n.text("private_music")
+                    )
+                    Divider().padding(.leading, 54)
+                    labeledValueRow(title: L10n.text("version"), value: version)
+                    Divider().padding(.leading, 54)
+                    labeledValueRow(
+                        title: L10n.text("developer"),
+                        value: "decoder-dev"
+                    )
+                    Divider().padding(.leading, 54)
+                    labeledValueRow(
+                        title: L10n.text("analytics"),
+                        value: L10n.text("not_used")
                     )
                 }
             }
-
-            Section(L10n.text("about")) {
-                LabeledContent(L10n.text("app"), value: L10n.text("private_music"))
-                LabeledContent(L10n.text("version"), value: version)
-                LabeledContent(L10n.text("developer"), value: "decoder-dev")
-                LabeledContent(L10n.text("analytics"),
-                    value: L10n.text("not_used")
-                )
-            }
+            .padding(.horizontal, PremiumLayout.screenPadding)
+            .padding(.vertical, BubbleSpacing.l)
         }
-        .scrollContentBackground(.hidden)
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("tab.settings"))
     }
@@ -196,6 +186,39 @@ struct SettingsView: View {
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "—"
         return "\(short) (\(build))"
+    }
+
+    private func settingsDestination<Destination: View>(
+        title: String,
+        systemImage: String,
+        @ViewBuilder destination: @escaping () -> Destination
+    ) -> some View {
+        NavigationLink {
+            destination()
+        } label: {
+            AppGroupedRow {
+                Label(L10n.text(title), systemImage: systemImage)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+            } trailing: {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func labeledValueRow(title: String, value: String) -> some View {
+        AppGroupedRow {
+            Text(title)
+                .font(.callout.weight(.semibold))
+        } trailing: {
+            Text(value)
+                .font(BubbleType.metadata)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -228,6 +251,18 @@ private struct AppearanceSettingsView: View {
                 }
             }
 
+            Section(L10n.text("home_stage.section")) {
+                Toggle(isOn: $settings.homeStageEnabled) {
+                    Label(
+                        L10n.text("home_stage.toggle"),
+                        systemImage: "sparkles.rectangle.stack"
+                    )
+                }
+                Text(L10n.text("home_stage.footnote"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Section(L10n.text("text_size")) {
                 Picker(
                     L10n.text("text_scale_picker"),
@@ -249,7 +284,7 @@ private struct AppearanceSettingsView: View {
                 }
 
                 Button(L10n.text("reset_appearance")) {
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    BubbleMotion.animate(.easeInOut(duration: 0.25)) {
                         settings.resetAppearance()
                     }
                 }
@@ -260,7 +295,7 @@ private struct AppearanceSettingsView: View {
                     isOn: Binding(
                         get: { settings.hapticsEnabled },
                         set: { newValue in
-                            withAnimation(
+                            BubbleMotion.animate(
                                 .spring(response: 0.3, dampingFraction: 0.8)
                             ) {
                                 settings.hapticsEnabled = newValue
@@ -293,7 +328,7 @@ private struct AppearanceSettingsView: View {
         ) {
             ForEach(AppTheme.allCases) { theme in
                 Button {
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    BubbleMotion.animate(.easeInOut(duration: 0.25)) {
                         settings.theme = theme
                         settings.appearance =
                             theme == .dark ? .dark : .light
@@ -349,6 +384,19 @@ private struct PlayerAudioSettingsView: View {
                 }
                 Text(
                     L10n.text("prefers_vk_hq_streams_and_does_not_cap_the_hls_bitrate_turn_it_off_to_sa")
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+                Toggle(
+                    isOn: $settings.crossfadeEnabled
+                ) {
+                    Label(L10n.text("crossfade"),
+                        systemImage: "arrow.left.arrow.right"
+                    )
+                }
+                Text(
+                    L10n.text("overlaps_the_next_track_for_a_short_fade_skipped_on_hls_eq_and_low_powe")
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -518,6 +566,18 @@ struct EqualizerSettingsView: View {
                 Toggle(L10n.text("dynamic_range_compression"),
                     isOn: $settings.dynamicRangeCompression
                 )
+                // Low Power Mode and thermal pressure suspend the realtime
+                // tap on purpose. Saying so is the difference between a
+                // deliberate pause and a switch that reads as on while
+                // doing nothing.
+                if let suspension = processingSuspensionKey {
+                    Label(
+                        L10n.text(suspension),
+                        systemImage: "pause.circle"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
             }
 
             Section(L10n.text("equalizer_preset")) {
@@ -609,6 +669,24 @@ struct EqualizerSettingsView: View {
                 Button(L10n.text("done")) { dismiss() }
             }
         }
+    }
+
+    /// Why on-device processing is not running right now, or `nil` when it
+    /// is. Only meaningful once something is actually switched on — with
+    /// every toggle off there is nothing being suspended.
+    private var processingSuspensionKey: String? {
+        let wantsProcessing = settings.equalizerEnabled
+            || settings.loudnessNormalization
+            || settings.dynamicRangeCompression
+        guard wantsProcessing else { return nil }
+        guard !PlaybackResourcePolicy.allowRealtimeAudioProcessing(
+            requiresAudioTap: true
+        ) else {
+            return nil
+        }
+        return ProcessInfo.processInfo.isLowPowerModeEnabled
+            ? "audio_processing.paused_low_power"
+            : "audio_processing.paused_thermal"
     }
 
     private var equalizerEnabledBinding: Binding<Bool> {
@@ -703,7 +781,8 @@ private struct OfflineStorageSettingsView: View {
                                             cornerRadius: 4
                                         )
                                         .fill(
-                                            Color.orange.opacity(0.7)
+                                            BubbleGamut.warning.color
+                                                .opacity(0.7)
                                         )
                                         .frame(
                                             width: max(
@@ -744,7 +823,8 @@ private struct OfflineStorageSettingsView: View {
                             } icon: {
                                 Circle()
                                     .fill(
-                                        Color.orange.opacity(0.7)
+                                        BubbleGamut.warning.color
+                                            .opacity(0.7)
                                     )
                                     .frame(width: 8, height: 8)
                             }
@@ -989,11 +1069,13 @@ private struct OfflineStorageSettingsView: View {
         case .deleting:
             return .secondary
         case .completed:
-            return .green
+            return BubbleGamut.success.color
         case .incomplete:
-            return .orange
+            return BubbleGamut.warning.color
         case .idle:
-            return hasSavedOrActiveContent ? Color.red : Color.green
+            return hasSavedOrActiveContent
+                ? BubbleGamut.destructive.color
+                : BubbleGamut.success.color
         }
     }
 
@@ -1012,11 +1094,11 @@ private struct OfflineStorageSettingsView: View {
 
     private func usageColor(usage: StorageUsage) -> Color {
         if usage.usageRatio > 0.8 {
-            return .red
+            return BubbleGamut.destructive.color
         } else if usage.usageRatio > 0.5 {
-            return .orange
+            return BubbleGamut.warning.color
         }
-        return .green
+        return BubbleGamut.success.color
     }
 }
 
@@ -1131,7 +1213,7 @@ private struct ConnectionSettingsView: View {
                 if let refreshError {
                     Text(refreshError)
                         .font(.footnote)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(BubbleGamut.destructive.color)
                 }
                 Text(
                     L10n.text("the_saved_session_remains_in_the_system_keychain_during_temporary_outage")
@@ -1198,7 +1280,9 @@ private struct ConnectionSettingsView: View {
     }
 
     private var networkTint: Color {
-        networkMonitor.state == .offline ? .orange : .green
+        networkMonitor.state == .offline
+            ? BubbleGamut.warning.color
+            : BubbleGamut.success.color
     }
 
     private var sessionTitle: String {

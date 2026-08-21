@@ -6,11 +6,16 @@ struct MiniPlayerView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @GestureState private var dragOffset: CGSize = .zero
+    @State private var tintCache = BubbleTintCache.shared
     let playerNamespace: Namespace.ID
     /// Legacy floating dock needs its own glass plate. The iOS 26.1+
     /// `tabViewBottomAccessory` already provides system chrome — stacking
     /// another plate reads as a detached black pill over the tab bar.
     var showsOwnGlassChrome: Bool = true
+    /// System `tabViewBottomAccessory` is a short slot above the tab bar.
+    /// The dock card (progress under the row) overflows that slot and paints
+    /// over the tabs — fold progress into the row and cap the height.
+    var fillsAccessorySlot: Bool = false
 
     var body: some View {
         if let track = player.currentTrack {
@@ -20,25 +25,38 @@ struct MiniPlayerView: View {
                     transportControls
                 }
                 .padding(.horizontal, MiniPlayerLayoutMetrics.horizontalPadding)
-                .padding(.top, MiniPlayerLayoutMetrics.verticalPadding)
-                .padding(
-                    .bottom,
-                    MiniPlayerLayoutMetrics.progressTopSpacing
-                )
+                .padding(.top, rowTopPadding)
+                .padding(.bottom, rowBottomPadding)
 
-                progressBar
+                if !fillsAccessorySlot {
+                    progressBar
+                }
             }
-            .frame(minHeight: MiniPlayerLayoutMetrics.minHeight)
+            .overlay(alignment: .bottom) {
+                if fillsAccessorySlot {
+                    progressBar
+                }
+            }
+            .frame(
+                minHeight: fillsAccessorySlot
+                    ? nil
+                    : MiniPlayerLayoutMetrics.minHeight
+            )
+            .frame(
+                maxHeight: fillsAccessorySlot
+                    ? MiniPlayerLayoutMetrics.accessoryMaxHeight
+                    : nil
+            )
+            .clipped()
             .modifier(
                 MiniPlayerChromeModifier(
                     showsOwnGlassChrome: showsOwnGlassChrome,
                     shape: containerShape,
-                    tint: settings.theme.accent.opacity(
-                        MiniPlayerLayoutMetrics.glassTintOpacity
-                    ),
+                    tint: chromeTint,
                     shadowOpacity: settings.theme == .dark ? 0.18 : 0.08
                 )
             )
+            .tint(artworkTintColor)
             .miniPlayerTransitionSource(playerNamespace)
             .offset(liveDragOffset)
             .animation(
@@ -51,6 +69,25 @@ struct MiniPlayerView: View {
             .simultaneousGesture(miniPlayerGesture)
             .accessibilityElement(children: .contain)
         }
+    }
+
+    private var artworkTintColor: Color {
+        _ = tintCache.revision
+        return BubblePalette.surface(
+            .accent,
+            tint: tintCache.cached(for: player.currentTrack?.artworkURL)
+        ).color
+    }
+
+    private var chromeTint: Color {
+        _ = tintCache.revision
+        let hasArtworkTint = tintCache.cached(
+            for: player.currentTrack?.artworkURL
+        ) != nil
+        let opacity = hasArtworkTint
+            ? (settings.theme == .dark ? 0.32 : 0.18)
+            : MiniPlayerLayoutMetrics.glassTintOpacity
+        return artworkTintColor.opacity(opacity)
     }
 
     // MARK: - Open zone (artwork + metadata)
@@ -119,7 +156,7 @@ struct MiniPlayerView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Text(track.artist)
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -144,12 +181,13 @@ struct MiniPlayerView: View {
             player.previous()
         } label: {
             Image(systemName: "backward.fill")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 19, weight: .semibold))
                 .frame(
                     width: MiniPlayerLayoutMetrics.tapTarget,
                     height: MiniPlayerLayoutMetrics.tapTarget
                 )
-                .contentShape(Rectangle())
+                // Actions are circles, per BubbleShapeLanguage.
+                .contentShape(BubbleShapeLanguage.action)
         }
         .buttonStyle(PremiumPressStyle())
         .accessibilityLabel(L10n.text("previous_track"))
@@ -175,7 +213,7 @@ struct MiniPlayerView: View {
                         ? "pause.fill"
                         : "play.fill"
                 )
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold))
                 .frame(
                     width: MiniPlayerLayoutMetrics.tapTarget,
                     height: MiniPlayerLayoutMetrics.tapTarget
@@ -199,18 +237,27 @@ struct MiniPlayerView: View {
             player.next()
         } label: {
             Image(systemName: "forward.fill")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 19, weight: .semibold))
                 .frame(
                     width: MiniPlayerLayoutMetrics.tapTarget,
                     height: MiniPlayerLayoutMetrics.tapTarget
                 )
-                .contentShape(Rectangle())
+                // Actions are circles, per BubbleShapeLanguage.
+                .contentShape(BubbleShapeLanguage.action)
         }
         .buttonStyle(PremiumPressStyle())
         .accessibilityLabel(L10n.text("next_track"))
     }
 
     // MARK: - Progress
+
+    private var rowTopPadding: CGFloat {
+        fillsAccessorySlot ? 4 : MiniPlayerLayoutMetrics.verticalPadding
+    }
+
+    private var rowBottomPadding: CGFloat {
+        fillsAccessorySlot ? 4 : MiniPlayerLayoutMetrics.progressTopSpacing
+    }
 
     private var progressBar: some View {
         GeometryReader { proxy in
@@ -221,12 +268,48 @@ struct MiniPlayerView: View {
                         .fill(.tint)
                         .frame(width: proxy.size.width * progressFraction)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .highPriorityGesture(progressSeekGesture(width: proxy.size.width))
         }
         .frame(height: MiniPlayerLayoutMetrics.progressHeight)
         .padding(.horizontal, MiniPlayerLayoutMetrics.progressSideInset)
-        .padding(.bottom, MiniPlayerLayoutMetrics.progressBottomInset)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+        .padding(
+            .bottom,
+            fillsAccessorySlot ? 3 : MiniPlayerLayoutMetrics.progressBottomInset
+        )
+        .accessibilityLabel(L10n.text("playback_position"))
+        .accessibilityValue(progress.elapsedTime.formattedDuration)
+        .accessibilityAdjustableAction { direction in
+            let step = max(player.duration * 0.05, 5)
+            switch direction {
+            case .increment:
+                player.seek(to: min(player.duration, progress.elapsedTime + step))
+            case .decrement:
+                player.seek(to: max(0, progress.elapsedTime - step))
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    private func progressSeekGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onEnded { value in
+                seekFromProgress(x: value.location.x, width: width)
+            }
+    }
+
+    private func seekFromProgress(x: CGFloat, width: CGFloat) {
+        guard let time = MiniPlayerProgressPolicy.seekTime(
+            x: x,
+            width: width,
+            duration: player.duration
+        ) else {
+            return
+        }
+        Haptics.selection()
+        player.seek(to: time)
     }
 
     // MARK: - Gestures / chrome

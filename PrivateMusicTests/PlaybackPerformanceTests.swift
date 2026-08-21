@@ -31,11 +31,22 @@ final class PlaybackHighlightModelTests: XCTestCase {
         highlight.update(
             currentTrackID: "42",
             isPlaying: true,
-            queueSource: .album(title: "Album")
+            queueSource: .album(title: "Album"),
+            currentArtist: "RIVE",
+            currentTrackTitle: "Track 42",
+            currentTrackArtworkURL: URL(string: "https://example.com/a.jpg"),
+            queueContextTitle: "Album"
         )
         XCTAssertEqual(highlight.currentTrackID, "42")
         XCTAssertTrue(highlight.isPlaying)
         XCTAssertEqual(highlight.queueSource, .album(title: "Album"))
+        XCTAssertEqual(highlight.currentArtist, "RIVE")
+        XCTAssertEqual(highlight.currentTrackTitle, "Track 42")
+        XCTAssertEqual(
+            highlight.currentTrackArtworkURL?.absoluteString,
+            "https://example.com/a.jpg"
+        )
+        XCTAssertEqual(highlight.queueContextTitle, "Album")
         XCTAssertTrue(highlight.isCurrent("42"))
         XCTAssertFalse(highlight.isCurrent("7"))
     }
@@ -159,6 +170,8 @@ final class PlayerHighlightSyncTests: XCTestCase {
         )
         XCTAssertEqual(player.highlight.currentTrackID, first.id)
         XCTAssertEqual(player.highlight.queueSource, .album(title: "Album"))
+        XCTAssertEqual(player.highlight.currentTrackTitle, first.title)
+        XCTAssertEqual(player.highlight.queueContextTitle, "Album")
 
         player.next()
         XCTAssertEqual(player.highlight.currentTrackID, second.id)
@@ -213,6 +226,59 @@ final class RemoteCommandCoalescingTests: XCTestCase {
                 incoming: .play
             ),
             .play
+        )
+    }
+}
+
+final class PlayerProgressPolicyTests: XCTestCase {
+    func testDisplayedElapsedPrefersScrubPosition() {
+        XCTAssertEqual(
+            PlayerProgressPolicy.displayedElapsed(
+                scrubPosition: 42,
+                elapsedTime: 10
+            ),
+            42,
+            accuracy: 0.000_1
+        )
+    }
+
+    func testRemainingTimeNeverNegative() {
+        XCTAssertEqual(
+            PlayerProgressPolicy.remainingTime(elapsed: 90, duration: 100),
+            10,
+            accuracy: 0.000_1
+        )
+        XCTAssertEqual(
+            PlayerProgressPolicy.remainingTime(elapsed: 120, duration: 100),
+            0,
+            accuracy: 0.000_1
+        )
+    }
+
+    func testTimeRowUsesStableMetrics() {
+        XCTAssertEqual(PlayerProgressPolicy.timeLabelFontSize, 11)
+        XCTAssertEqual(PlayerProgressPolicy.thumbDiameter, 12)
+        XCTAssertGreaterThan(PlayerProgressPolicy.timeRowHeight, 0)
+    }
+}
+
+final class NativeBufferPeakTests: XCTestCase {
+    func testPeakMagnitudeFindsLargestSample() {
+        let samples: [Float] = [0.01, -0.4, 0.2, 0.05]
+        let peak = samples.withUnsafeBufferPointer { buffer in
+            pm_buffer_peak_magnitude(
+                buffer.baseAddress,
+                Int32(buffer.count)
+            )
+        }
+        XCTAssertEqual(peak, 0.4, accuracy: 0.000_001)
+    }
+
+    func testPeakMagnitudeReturnsZeroForEmptyInput() {
+        XCTAssertEqual(
+            pm_buffer_peak_magnitude(nil, 0),
+            0,
+            accuracy: 0.000_001
         )
     }
 }

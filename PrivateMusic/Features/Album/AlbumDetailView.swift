@@ -28,7 +28,8 @@ struct AlbumDetailView: View {
                             ? "music.note.list"
                             : "lock.fill",
                         description: model.errorMessage
-                            ?? "vk_returned_no_available_audio"
+                            ?? "vk_returned_no_available_audio",
+                        descriptionIsLocalizedKey: model.errorMessage == nil
                     )
                     Button(L10n.text("action.retry")) {
                         Task { await load(force: true) }
@@ -42,6 +43,7 @@ struct AlbumDetailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ThemeBackground())
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .collapsingInlineNavigationTitle(
             displayedTitle,
             isVisible: $showsNavTitle
@@ -152,7 +154,9 @@ struct AlbumDetailView: View {
                     Image(systemName: isFollowed ? "heart.fill" : "heart")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(
-                            isFollowed ? Color.red : settings.theme.accent
+                            isFollowed
+                                ? BubbleGamut.liked(for: settings.theme)
+                                : settings.theme.accent
                         )
                         .frame(width: 46, height: 46)
                         .contentShape(Circle())

@@ -178,6 +178,11 @@ enum MixFeedbackPolicy {
         }
     }
 
+    /// Forgiving on purpose: this is an identity key, so it has to match
+    /// an artist however VK happened to spell them. `.diacriticInsensitive`
+    /// also folds `й` → `и`, which is fine here because both the stored ban
+    /// and the lookup go through this same function. Text that must *not*
+    /// lose `й` is folded by `MixQueueFilter.normalizeMoodText` instead.
     static func normalized(_ value: String) -> String {
         value
             .folding(

@@ -8,6 +8,7 @@ struct OfflineDownloadsView: View {
     @Environment(PlaybackHighlightModel.self) private var highlight
     @Environment(OfflineTrackStore.self) private var offlineStore
     @Environment(SessionStore.self) private var sessionStore
+    @Environment(AppSettings.self) private var settings
     private let offlinePlaylists =
         OfflinePlaylistStore.shared
 
@@ -97,6 +98,7 @@ struct OfflineDownloadsView: View {
         .animation(.easeInOut(duration: 0.3), value: contentSnapshot)
         .background(ThemeBackground())
         .scrollContentBackground(.hidden)
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(selection != nil)
@@ -124,7 +126,7 @@ struct OfflineDownloadsView: View {
                 } else if section != .playlists,
                           !recordsForCurrentSection.isEmpty {
                     Button(L10n.text("select")) {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        BubbleMotion.animate(.easeInOut(duration: 0.2)) {
                             selection = []
                         }
                     }
@@ -475,7 +477,7 @@ struct OfflineDownloadsView: View {
             },
             onLongPress: {
                 guard selection == nil else { return }
-                withAnimation(.easeInOut(duration: 0.2)) {
+                BubbleMotion.animate(.easeInOut(duration: 0.2)) {
                     selection = [record.track.id]
                 }
                 Haptics.selection()
@@ -520,8 +522,10 @@ struct OfflineDownloadsView: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title3)
                         .foregroundStyle(.secondary)
+                        .minimumHitTarget(visualSize: 24)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(L10n.text("cancel_download"))
             }
             if let progress = status.progress {
                 AnimatedProgressView(progress: progress)
@@ -792,14 +796,14 @@ struct OfflineDownloadsView: View {
         } else {
             current.insert(track.id)
         }
-        withAnimation(.easeInOut(duration: 0.2)) {
+        BubbleMotion.animate(.easeInOut(duration: 0.2)) {
             selection = current
         }
         Haptics.selection()
     }
 
     private func exitSelection() {
-        withAnimation(.easeInOut(duration: 0.2)) {
+        BubbleMotion.animate(.easeInOut(duration: 0.2)) {
             selection = nil
         }
     }
@@ -864,6 +868,7 @@ private struct DownloadedTrackRow: View {
     let onDelete: () -> Void
     let onLongPress: () -> Void
     let onToggleSelection: () -> Void
+    @Environment(AppSettings.self) private var settings
 
     var body: some View {
         HStack(spacing: 12) {
@@ -875,7 +880,9 @@ private struct DownloadedTrackRow: View {
                 )
                 .font(.title3)
                 .foregroundStyle(
-                    isSelected ? Color.accentColor : Color.secondary
+                    isSelected
+                        ? settings.theme.accent
+                        : Color.secondary
                 )
             }
 
@@ -953,7 +960,7 @@ private struct DownloadedTrackRow: View {
                 Button(action: onShare) {
                     Label(L10n.text("share"), systemImage: "square.and.arrow.up")
                 }
-                .tint(.accentColor)
+                .tint(BubbleGamut.warning.color)
             }
         }
         .swipeActions(edge: .trailing) {
@@ -1013,6 +1020,7 @@ private struct DownloadStorageSummary: View {
     let usage: StorageUsage
     let onClearCache: () -> Void
     let onDeleteAll: () -> Void
+    @Environment(AppSettings.self) private var settings
 
     var body: some View {
         let lines = DownloadStorageText.summary(
@@ -1040,8 +1048,8 @@ private struct DownloadStorageSummary: View {
                         Capsule()
                             .fill(
                                 clampedUsageRatio > 0.9
-                                    ? Color.red
-                                    : Color.accentColor
+                                    ? BubbleGamut.destructive.color
+                                    : settings.theme.accent
                             )
                             .frame(
                                 width: proxy.size.width * clampedUsageRatio
@@ -1136,6 +1144,7 @@ private struct DownloadStorageSummary: View {
 
 private struct AnimatedProgressView: View {
     let progress: Double
+    @Environment(AppSettings.self) private var settings
 
     @State private var animatedProgress: Double = 0
 
@@ -1147,7 +1156,7 @@ private struct AnimatedProgressView: View {
                         .fill(Color.secondary.opacity(0.2))
                         .frame(height: 4)
                     Capsule()
-                        .fill(Color.accentColor)
+                        .fill(settings.theme.accent)
                         .frame(
                             width: proxy.size.width
                                 * animatedProgress,
@@ -1169,7 +1178,7 @@ private struct AnimatedProgressView: View {
             animatedProgress = progress
         }
         .onChange(of: progress) { newProgress in
-            withAnimation(.easeInOut(duration: 0.4)) {
+            BubbleMotion.animate(.easeInOut(duration: 0.4)) {
                 animatedProgress = newProgress
             }
         }

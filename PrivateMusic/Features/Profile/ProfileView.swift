@@ -11,49 +11,18 @@ struct ProfileView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: 22) {
-                    profileCard
-                    NavigationLink {
-                        SettingsView()
-                    } label: {
-                        Label(L10n.text("tab.settings"), systemImage: "gearshape.fill")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
-                            .premiumCard(interactive: true)
-                    }
-                    .buttonStyle(.plain)
-                    linksCard
-
-                    Button(role: .destructive) {
-                        showingLogoutConfirmation = true
-                    } label: {
-                        Label(L10n.text("sign_out"), systemImage: "rectangle.portrait.and.arrow.right")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
-                            .premiumCard(interactive: true)
-                    }
-
-                    VStack(spacing: 8) {
-                        Image("AppIconPreview")
-                            .resizable()
-                            .frame(width: 60, height: 60)
-                            .clipShape(
-                                RoundedRectangle(
-                                    cornerRadius: PremiumLayout.controlRadius,
-                                    style: .continuous
-                                )
-                            )
-                        Text("Private Music \(version)")
-                            .foregroundStyle(.secondary)
-                        Text("decoder-dev")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.top, 28)
+                VStack(spacing: BubbleSpacing.section) {
+                    identityHeader
+                    accountSection
+                    supportSection
+                    sessionSection
+                    footer
                 }
                 .id(MainTabScrollDestination.profile)
-                .padding()
+                .padding(.horizontal, PremiumLayout.screenPadding)
+                .padding(.vertical, BubbleSpacing.l)
             }
+            .clearsMiniPlayer()
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .profile else { return }
                 if reduceMotion {
@@ -91,77 +60,153 @@ struct ProfileView: View {
         ) as? String ?? "—"
     }
 
-    private var profileCard: some View {
+    /// Identity dominates the surface it sits on rather than the other
+    /// way around — no card, no shadow, just the avatar and the name on
+    /// the same background everything else already reads from.
+    private var identityHeader: some View {
         HStack(spacing: 16) {
-            AsyncArtwork(url: sessionStore.profile?.photoURL, size: 76)
-            VStack(alignment: .leading, spacing: 4) {
+            AsyncArtwork(url: sessionStore.profile?.photoURL, size: 64)
+                .clipShape(Circle())
+                .overlay { Circle().stroke(.primary.opacity(0.1)) }
+            VStack(alignment: .leading, spacing: 3) {
                 Text(
                     sessionStore.profile?.displayName
                         ?? L10n.text("listener")
                 )
-                    .font(.title3.bold())
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                .font(.title2.weight(.semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 Text(L10n.text("private_music"))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Spacer()
         }
-        .padding()
-        .premiumCard()
+        .padding(.vertical, 4)
     }
 
-    private var linksCard: some View {
-        VStack(spacing: 0) {
-            linkButton(
-                title: "private_music_group",
-                subtitle: "news_and_updates",
-                icon: "paperplane.fill",
-                url: environment.configuration.telegramGroupURL
-            )
+    private var accountSection: some View {
+        AppGroupedSection(title: "account") {
+            NavigationLink {
+                SettingsView()
+            } label: {
+                groupedRow(
+                    title: L10n.text("tab.settings"),
+                    subtitle: nil,
+                    systemImage: "gearshape.fill",
+                    trailing: "chevron.right"
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var supportSection: some View {
+        AppGroupedSection(title: "support") {
+            Button {
+                openURL(environment.configuration.telegramGroupURL)
+            } label: {
+                groupedRow(
+                    title: L10n.text("private_music_group"),
+                    subtitle: L10n.text("news_and_updates"),
+                    systemImage: "paperplane.fill",
+                    trailing: "arrow.up.right"
+                )
+            }
+            .buttonStyle(.plain)
             Divider().padding(.leading, 54)
-            linkButton(
-                title: "vpn",
-                subtitle: "open_telegram_bot",
-                icon: "lock.fill",
-                url: environment.configuration.telegramVPNURL
-            )
+            Button {
+                openURL(environment.configuration.telegramVPNURL)
+            } label: {
+                groupedRow(
+                    title: L10n.text("vpn"),
+                    subtitle: L10n.text("open_telegram_bot"),
+                    systemImage: "lock.fill",
+                    trailing: "arrow.up.right"
+                )
+            }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal)
-        .premiumCard()
     }
 
-    private func linkButton(
+    private var sessionSection: some View {
+        AppGroupedSection(title: "session") {
+            Button(role: .destructive) {
+                showingLogoutConfirmation = true
+            } label: {
+                groupedRow(
+                    title: L10n.text("sign_out"),
+                    subtitle: nil,
+                    systemImage: "rectangle.portrait.and.arrow.right",
+                    trailing: nil,
+                    foregroundStyle: .red,
+                    isDestructive: true
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func groupedRow(
         title: String,
-        subtitle: String,
-        icon: String,
-        url: URL
+        subtitle: String?,
+        systemImage: String,
+        trailing: String?,
+        foregroundStyle: Color = .primary,
+        isDestructive: Bool = false
     ) -> some View {
-        Button {
-            openURL(url)
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
+        AppGroupedRow {
+            HStack(spacing: BubbleSpacing.m) {
+                Image(systemName: systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(foregroundStyle)
                     .frame(width: 28)
-                    .foregroundStyle(.primary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L10n.text(title))
-                        .foregroundStyle(.primary)
+                    Text(title)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(foregroundStyle)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(L10n.text(subtitle))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(BubbleType.metadata)
+                            .foregroundStyle(
+                                isDestructive ? .red.opacity(0.82) : .secondary
+                            )
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                Spacer()
-                Image(systemName: "arrow.up.right")
+            }
+        } trailing: {
+            if let trailing {
+                Image(systemName: trailing)
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
-            .padding(.vertical, 15)
         }
-        .buttonStyle(.plain)
+    }
+
+    /// Tertiary information stays tertiary: a 60pt icon and two full-size
+    /// text lines competed with the identity above them for attention.
+    private var footer: some View {
+        VStack(spacing: 4) {
+            Image("AppIconPreview")
+                .resizable()
+                .frame(width: 36, height: 36)
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: PremiumLayout.controlRadius,
+                        style: .continuous
+                    )
+                )
+            Text("Private Music \(version)")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            Text("decoder-dev")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.top, 8)
     }
 }

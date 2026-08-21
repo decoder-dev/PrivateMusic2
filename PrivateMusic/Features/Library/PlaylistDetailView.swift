@@ -24,13 +24,15 @@ struct PlaylistDetailView: View {
                 EmptyStateView(
                     title: "could_not_open_playlist",
                     systemImage: "wifi.exclamationmark",
-                    description: error
+                    description: error,
+                    descriptionIsLocalizedKey: false
                 )
             } else if model.hasLoaded && model.tracks.isEmpty {
                 EmptyStateView(
                     title: playlist.title,
                     systemImage: "music.note",
-                    description: "this_playlist_has_no_available_tracks"
+                    description: "this_playlist_has_no_available_tracks",
+                    titleIsLocalizedKey: false
                 )
             } else {
                 playlistList
@@ -38,6 +40,7 @@ struct PlaylistDetailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ThemeBackground())
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .collapsingInlineNavigationTitle(
             playlist.title,
             isVisible: $showsNavTitle

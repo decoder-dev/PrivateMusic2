@@ -21,14 +21,15 @@ enum MixRationaleBuilder {
         guard !mixTracks.isEmpty else { return .empty }
 
         let mixArtists = frequencyMap(
-            mixTracks.map { normalized($0.artist) }.filter { !$0.isEmpty }
+            mixTracks.map { MixFeedbackPolicy.normalized($0.artist) }
+                .filter { !$0.isEmpty }
         )
         let recentArtists = frequencyMap(
-            history.prefix(40).map { normalized($0.track.artist) }
+            history.prefix(MixListeningHistoryWindow.ranking).map { MixFeedbackPolicy.normalized($0.track.artist) }
                 .filter { !$0.isEmpty }
         )
         let recommendationArtists = Set(
-            recommendations.prefix(40).map { normalized($0.artist) }
+            recommendations.prefix(MixListeningHistoryWindow.ranking).map { MixFeedbackPolicy.normalized($0.artist) }
                 .filter { !$0.isEmpty }
         )
         let historyArtistSet = Set(recentArtists.keys)
@@ -87,7 +88,7 @@ enum MixRationaleBuilder {
         if lines.count < limit {
             let albums = Set(
                 mixTracks.compactMap { track -> String? in
-                    guard let album = track.albumTitle.map(normalized),
+                    guard let album = track.albumTitle.map(MixFeedbackPolicy.normalized),
                           !album.isEmpty else {
                         return nil
                     }
@@ -95,8 +96,8 @@ enum MixRationaleBuilder {
                 }
             )
             let historyAlbums = Set(
-                history.prefix(40).compactMap { entry -> String? in
-                    guard let album = entry.track.albumTitle.map(normalized),
+                history.prefix(MixListeningHistoryWindow.ranking).compactMap { entry -> String? in
+                    guard let album = entry.track.albumTitle.map(MixFeedbackPolicy.normalized),
                           !album.isEmpty else {
                         return nil
                     }
@@ -156,17 +157,8 @@ enum MixRationaleBuilder {
         from tracks: [Track]
     ) -> String? {
         tracks.first {
-            normalized($0.artist) == normalizedName
+            MixFeedbackPolicy.normalized($0.artist) == normalizedName
         }?.artist
     }
 
-    private static func normalized(_ value: String) -> String {
-        value
-            .folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: Locale(identifier: "en_US_POSIX")
-            )
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }

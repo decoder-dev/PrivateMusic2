@@ -109,7 +109,100 @@ final class StreamQualityPolicyTests: XCTestCase {
         )
         XCTAssertEqual(
             StreamQualityPolicy.preferredPeakBitRate(preferHighQuality: false),
-            160_000
+            256_000
+        )
+    }
+
+    func testProgressiveURLFromIndexM3U8() {
+        let hls = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123/index.m3u8?extra=foo"
+        )!
+        let mp3 = StreamQualityPolicy.progressiveURL(from: hls)
+        XCTAssertEqual(
+            mp3?.absoluteString,
+            "https://psv4.vkuseraudio.net/s/v1/a2/abc123.mp3"
+        )
+        XCTAssertEqual(
+            StreamQualityPolicy.playbackURL(
+                hls,
+                preferHighQuality: true
+            ),
+            mp3
+        )
+    }
+
+    func testProgressiveURLFromLegacyHexPattern() {
+        let hls = URL(
+            string: "https://cs9-11v5.vkuseraudio.net/abc123/audios/def456/index.m3u8"
+        )!
+        let mp3 = StreamQualityPolicy.progressiveURL(from: hls)
+        XCTAssertEqual(
+            mp3?.absoluteString,
+            "https://cs9-11v5.vkuseraudio.net/abc123/audios/def456.mp3"
+        )
+    }
+
+    func testPlaybackURLSkipsUpgradeWhenDataSaverEnabled() {
+        let hls = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123/index.m3u8"
+        )!
+        XCTAssertEqual(
+            StreamQualityPolicy.playbackURL(
+                hls,
+                preferHighQuality: false
+            ),
+            hls
+        )
+    }
+
+    func testUsedProgressiveUpgradeDetectsHLSRewrite() {
+        let hls = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123/index.m3u8"
+        )!
+        let mp3 = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123.mp3"
+        )!
+        XCTAssertTrue(
+            StreamQualityPolicy.usedProgressiveUpgrade(
+                original: hls,
+                playback: mp3
+            )
+        )
+        XCTAssertFalse(
+            StreamQualityPolicy.usedProgressiveUpgrade(
+                original: mp3,
+                playback: mp3
+            )
+        )
+    }
+
+    func testShouldRefreshHLSBeforePlayOnlyWhenRewriteStaysOnPlaylist() {
+        let hls = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123/index.m3u8"
+        )!
+        let mp3 = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123.mp3"
+        )!
+        XCTAssertTrue(
+            StreamQualityPolicy.shouldRefreshHLSBeforePlay(
+                sourceURL: hls,
+                playbackURL: hls,
+                alreadyRefreshed: false
+            )
+        )
+        XCTAssertFalse(
+            StreamQualityPolicy.shouldRefreshHLSBeforePlay(
+                sourceURL: hls,
+                playbackURL: mp3,
+                alreadyRefreshed: false
+            )
+        )
+        XCTAssertFalse(
+            StreamQualityPolicy.shouldRefreshHLSBeforePlay(
+                sourceURL: hls,
+                playbackURL: hls,
+                alreadyRefreshed: true
+            )
         )
     }
 
@@ -238,6 +331,198 @@ final class MixRationaleEnrichmentTests: XCTestCase {
                     "about_d0_of_the_artists_are_new_to_your_recent_history",
                     100
                 )
+            )
+        )
+    }
+}
+
+final class PlaybackResourcePolicyTests: XCTestCase {
+    func testProgressiveUpgradeBlockedInLowPowerMode() {
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
+                preferHighQuality: true,
+                lowPowerMode: true,
+                thermalState: .nominal
+            )
+        )
+    }
+
+    /// A tap cannot attach to an HLS playlist, so leaving the stream on the
+    /// ladder with processing switched on silently disabled the equalizer,
+    /// loudness normalization, DRC and spatial audio — while every one of
+    /// those toggles still read as on. Processing the listener explicitly
+    /// asked for now earns the rewrite on its own.
+    func testProcessingEarnsTheProgressiveUpgradeWithoutHighQuality() {
+        XCTAssertTrue(
+            PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
+                preferHighQuality: false,
+                requiresAudioProcessing: true,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+
+        let hls = URL(
+            string: "https://psv4.vkuseraudio.net/s/v1/a2/abc123/index.m3u8"
+        )!
+        let upgraded = StreamQualityPolicy.playbackURL(
+            hls,
+            preferHighQuality: false,
+            requiresAudioProcessing: true
+        )
+        XCTAssertEqual(
+            upgraded,
+            StreamQualityPolicy.progressiveURL(from: hls)
+        )
+        XCTAssertFalse(StreamQualityPolicy.isHLSStream(upgraded))
+        XCTAssertTrue(
+            AudioProcessingAttachPolicy.supportsAudioTap(
+                url: upgraded,
+                isOffline: false
+            ),
+            "the rewritten URL has to be tappable, or the fix bought nothing"
+        )
+    }
+
+    /// The rewrite is still not free: a constrained device keeps the ladder
+    /// even with processing on, because the tap is withheld there anyway.
+    func testProcessingDoesNotForceTheUpgradeOnAConstrainedDevice() {
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
+                preferHighQuality: false,
+                requiresAudioProcessing: true,
+                lowPowerMode: true,
+                thermalState: .nominal
+            )
+        )
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
+                preferHighQuality: false,
+                requiresAudioProcessing: true,
+                lowPowerMode: false,
+                thermalState: .critical
+            )
+        )
+    }
+
+    /// With nothing switched on, the data saver still keeps the ladder.
+    func testDataSaverStillSkipsTheUpgradeWithoutProcessing() {
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
+                preferHighQuality: false,
+                requiresAudioProcessing: false,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+    }
+
+    func testRealtimeProcessingBlockedWhenThermalStateIsSerious() {
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowRealtimeAudioProcessing(
+                requiresAudioTap: true,
+                lowPowerMode: false,
+                thermalState: .serious
+            )
+        )
+    }
+
+    func testRealtimeProcessingAllowedInNominalConditions() {
+        XCTAssertTrue(
+            PlaybackResourcePolicy.allowRealtimeAudioProcessing(
+                requiresAudioTap: true,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+    }
+
+    func testOverlappingPlaybackBlockedWhenTapOrLowPower() {
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowOverlappingPlayback(
+                userEnabled: true,
+                requiresAudioTap: true,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+        XCTAssertFalse(
+            PlaybackResourcePolicy.allowOverlappingPlayback(
+                userEnabled: true,
+                requiresAudioTap: false,
+                lowPowerMode: true,
+                thermalState: .nominal
+            )
+        )
+        XCTAssertTrue(
+            PlaybackResourcePolicy.allowOverlappingPlayback(
+                userEnabled: true,
+                requiresAudioTap: false,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+    }
+}
+
+final class PlaybackTransitionPolicyTests: XCTestCase {
+    func testCrossfadeSkippedForHLSAndWhenDisabled() {
+        let hls = URL(string: "https://example.com/index.m3u8")!
+        let mp3 = URL(string: "https://example.com/a.mp3")!
+        XCTAssertFalse(
+            PlaybackTransitionPolicy.allowsCrossfade(
+                userEnabled: false,
+                currentURL: mp3,
+                nextURL: mp3,
+                requiresAudioTap: false,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+        XCTAssertFalse(
+            PlaybackTransitionPolicy.allowsCrossfade(
+                userEnabled: true,
+                currentURL: hls,
+                nextURL: mp3,
+                requiresAudioTap: false,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+        XCTAssertTrue(
+            PlaybackTransitionPolicy.allowsCrossfade(
+                userEnabled: true,
+                currentURL: mp3,
+                nextURL: mp3,
+                requiresAudioTap: false,
+                lowPowerMode: false,
+                thermalState: .nominal
+            )
+        )
+    }
+
+    func testPrepareAndFadeWindows() {
+        XCTAssertTrue(
+            PlaybackTransitionPolicy.shouldPrepareIncoming(
+                remaining: 1.0,
+                duration: 180,
+                hasNextTrack: true,
+                isRepeatOne: false,
+                isAlreadyTransitioning: false
+            )
+        )
+        XCTAssertFalse(
+            PlaybackTransitionPolicy.shouldStartFade(
+                remaining: 1.0,
+                incomingIsReady: true,
+                isAlreadyFading: false
+            )
+        )
+        XCTAssertTrue(
+            PlaybackTransitionPolicy.shouldStartFade(
+                remaining: 0.4,
+                incomingIsReady: true,
+                isAlreadyFading: false
             )
         )
     }

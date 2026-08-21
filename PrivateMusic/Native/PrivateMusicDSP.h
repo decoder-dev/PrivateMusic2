@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -95,6 +96,10 @@ void pm_spatial_process_interleaved(
     bool has_side_high_pass,
     float *side_state
 );
+
+/// Peak magnitude of a float PCM buffer. Uses Accelerate/vDSP from C so the
+/// MTAudioProcessingTap silence gate never crosses into Swift.
+float pm_buffer_peak_magnitude(const float *samples, int32_t count);
 
 #ifdef __cplusplus
 }

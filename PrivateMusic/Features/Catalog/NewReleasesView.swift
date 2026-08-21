@@ -48,6 +48,7 @@ struct NewReleasesView: View {
                                 .foregroundStyle(.black)
                                 .frame(width: 32, height: 32)
                                 .background(.white, in: Circle())
+                                .minimumHitTarget(visualSize: 32)
                             }
                             .buttonStyle(PremiumPressStyle())
                             .padding(8)
@@ -93,6 +94,7 @@ struct NewReleasesView: View {
             }
             .padding(16)
         }
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("new_releases"))
         .navigationBarTitleDisplayMode(.inline)

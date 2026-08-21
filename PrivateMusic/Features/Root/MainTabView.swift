@@ -1,8 +1,10 @@
 import SwiftUI
 
+/// Mix is not a root destination. Home holds now-playing plus one next
+/// step; the full hub (VK catalog, Selena controls, moods) is Explore,
+/// pushed from Home. Four root tabs read as one product.
 private enum MainTab: CaseIterable, Hashable, Identifiable {
     case home
-    case mix
     case library
     case search
     case profile
@@ -12,7 +14,6 @@ private enum MainTab: CaseIterable, Hashable, Identifiable {
     var title: String {
         switch self {
         case .home: L10n.text("tab.home")
-        case .mix: L10n.text("tab.mix")
         case .library: L10n.text("tab.library")
         case .search: L10n.text("tab.search")
         case .profile: L10n.text("tab.profile")
@@ -22,7 +23,6 @@ private enum MainTab: CaseIterable, Hashable, Identifiable {
     var image: String {
         switch self {
         case .home: "house.fill"
-        case .mix: "sparkles"
         case .library: "music.note.list"
         case .search: "magnifyingglass"
         case .profile: "person.crop.circle"
@@ -32,7 +32,6 @@ private enum MainTab: CaseIterable, Hashable, Identifiable {
     var scrollDestination: MainTabScrollDestination {
         switch self {
         case .home: .home
-        case .mix: .mix
         case .library: .library
         case .search: .search
         case .profile: .profile
@@ -58,6 +57,7 @@ struct MainTabView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SessionStore.self) private var sessionStore
     @Environment(AppSettings.self) private var settings
+    @Environment(AudioPlayer.self) private var player
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedTab: MainTab = .home
@@ -115,6 +115,7 @@ struct MainTabView: View {
             .listStyle(.sidebar)
         } detail: {
             regularTabDetail
+                .environment(\.playbackDockReservesContent, true)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     RegularWidthPlaybackBar(
                         playerNamespace: playerNamespace
@@ -135,8 +136,6 @@ struct MainTabView: View {
         switch selectedTab {
         case .home:
             NavigationStack { CatalogView() }
-        case .mix:
-            NavigationStack { MixesHubView() }
         case .library:
             NavigationStack { LibraryView() }
         case .search:
@@ -149,7 +148,7 @@ struct MainTabView: View {
     }
 
     private var sidebarTabs: [MainTab] {
-        [.home, .mix, .library, .search, .profile]
+        [.home, .library, .search, .profile]
     }
 
     /// Custom floating dock for iOS 16–25. iOS 26.0+ uses the system
@@ -158,9 +157,6 @@ struct MainTabView: View {
         ZStack {
             tabScreen(.home) {
                 NavigationStack { CatalogView() }
-            }
-            tabScreen(.mix) {
-                NavigationStack { MixesHubView() }
             }
             tabScreen(.library) {
                 NavigationStack { LibraryView() }
@@ -211,14 +207,26 @@ struct MainTabView: View {
     ) -> some View {
         content()
             .safeAreaInset(edge: .bottom, spacing: 0) {
+                // Reservation goes through BottomAccessoryMetrics so the
+                // dock, the mini player and the clearance between them are
+                // decided in one place. Before the dock has measured
+                // itself the estimate still clears it, which is what used
+                // to let the first shelf paint underneath on the first
+                // frame.
                 Color.clear
-                    .frame(height: dockHeight)
+                    .frame(
+                        height: BottomAccessoryMetrics.inset(
+                            measuredDockHeight: dockHeight,
+                            hasMiniPlayer: player.currentTrack != nil
+                        )
+                    )
                     .accessibilityHidden(true)
             }
             .opacity(selectedTab == tab ? 1 : 0)
             .allowsHitTesting(selectedTab == tab)
             .accessibilityHidden(selectedTab != tab)
             .zIndex(selectedTab == tab ? 1 : 0)
+            .environment(\.playbackDockReservesContent, true)
             .animation(
                 reduceMotion ? nil : .easeInOut(duration: 0.18),
                 value: selectedTab
@@ -245,14 +253,6 @@ private struct SystemLiquidGlassTabView: View {
             }
 
             Tab(
-                MainTab.mix.title,
-                systemImage: MainTab.mix.image,
-                value: MainTab.mix
-            ) {
-                NavigationStack { MixesHubView() }
-            }
-
-            Tab(
                 MainTab.library.title,
                 systemImage: MainTab.library.image,
                 value: MainTab.library
@@ -268,10 +268,15 @@ private struct SystemLiquidGlassTabView: View {
                 NavigationStack { ProfileView() }
             }
 
+            // `role: .search` pins Search to the trailing cluster the way
+            // Music does. Selecting the tab morphs the tab bar into the
+            // system search field; the Search screen underneath stays the
+            // results surface.
             Tab(
                 MainTab.search.title,
                 systemImage: MainTab.search.image,
-                value: MainTab.search
+                value: MainTab.search,
+                role: .search
             ) {
                 NavigationStack {
                     SearchView(isActive: selection == .search)
@@ -329,9 +334,12 @@ private struct SystemPlaybackAccessory: View {
             // a second glass plate (looks like a floating black pill).
             MiniPlayerView(
                 playerNamespace: playerNamespace,
-                showsOwnGlassChrome: false
+                showsOwnGlassChrome: false,
+                fillsAccessorySlot: true
             )
             .padding(.horizontal, 4)
+            .frame(maxHeight: MiniPlayerLayoutMetrics.accessoryMaxHeight)
+            .clipped()
         case .inline:
             // Compact chrome sized for the minimized system tab bar.
             InlineMiniPlayerView(playerNamespace: playerNamespace)
@@ -393,6 +401,7 @@ private struct PlaybackTabDock: View {
     @Environment(AppSettings.self) private var settings
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Binding var selection: MainTab
     let playerNamespace: Namespace.ID
 
@@ -405,7 +414,7 @@ private struct PlaybackTabDock: View {
         // above the home indicator, because the overlay is already aligned
         // to the safe area. Keep it tight: the dock reads as detached and
         // wastes usable screen when it floats high.
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             if player.currentTrack != nil {
                 MiniPlayerView(playerNamespace: playerNamespace)
                     .transition(
@@ -430,7 +439,6 @@ private struct PlaybackTabDock: View {
                 searchTabButton
             }
         }
-        .dynamicTypeSize(...DynamicTypeSize.large)
         .padding(.horizontal, 12)
         .padding(.top, 6)
         .padding(.bottom, 0)
@@ -443,7 +451,22 @@ private struct PlaybackTabDock: View {
     }
 
     private var primaryTabs: [MainTab] {
-        [.home, .mix, .library, .profile]
+        [.home, .library, .profile]
+    }
+
+    /// Accessibility sizes have to grow the row; freezing it at 48pt is
+    /// what made the dock cap Dynamic Type in the first place. This is a
+    /// floor, not a ceiling — two-line captions may need more.
+    private var tabRowHeight: CGFloat {
+        PlaybackDockMetrics.tabRowMinHeight(
+            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
+        )
+    }
+
+    private var searchControlSize: CGFloat {
+        PlaybackDockMetrics.searchControlSize(
+            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
+        )
     }
 
     private var searchTabButton: some View {
@@ -457,7 +480,7 @@ private struct PlaybackTabDock: View {
                         ? selectedColor
                         : Color.primary.opacity(0.72)
                 )
-                .frame(width: 58, height: 58)
+                .frame(width: searchControlSize, height: searchControlSize)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -477,32 +500,43 @@ private struct PlaybackTabDock: View {
         Button {
             selectTab(tab)
         } label: {
-            VStack(spacing: 3) {
+            VStack(spacing: BubbleSpacing.xs - 1) {
                 Image(systemName: tab.image)
-                    .font(.system(size: 20, weight: .semibold))
-                    .scaleEffect(selection == tab ? 1.04 : 0.94)
-                    .frame(width: 30, height: 26)
+                    .font(.system(size: 19, weight: .semibold))
+                    // Deliberately small: the selection surface carries the
+                    // state, so the row never reflows as tabs change.
+                    .scaleEffect(selection == tab ? 1.02 : 1)
+                    .frame(width: 34, height: 26)
                     .background {
                         if selection == tab {
-                            Circle()
-                                .fill(settings.theme.accent.opacity(0.16))
+                            // Chrome is a capsule, per BubbleShapeLanguage.
+                            BubbleShapeLanguage.chrome
+                                .fill(settings.theme.accent.opacity(0.18))
                         }
                     }
                 Text(tab.title)
-                    .font(.caption2.weight(.semibold))
-                    .lineLimit(1)
+                    .font(BubbleType.micro)
+                    // Weight, not size, carries selection. `.micro` is
+                    // already medium; regular here made the inactive row
+                    // read a step lighter than the rest of the chrome.
+                    .fontWeight(selection == tab ? .semibold : .medium)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     .minimumScaleFactor(0.78)
             }
+            .animation(
+                BubbleMotion.state(reduceMotion: reduceMotion),
+                value: selection
+            )
             .foregroundStyle(
                 selection == tab
                     ? selectedColor
                     : Color.primary.opacity(0.72)
             )
             .frame(maxWidth: .infinity)
-            .frame(height: 48)
+            .frame(minHeight: tabRowHeight)
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(BubblePressStyle())
         .accessibilityLabel(tab.title)
         .accessibilityAddTraits(selection == tab ? .isSelected : [])
     }

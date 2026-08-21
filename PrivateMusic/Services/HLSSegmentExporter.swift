@@ -1,5 +1,4 @@
 import AVFoundation
-import CommonCrypto
 import Foundation
 import OSLog
 
@@ -95,8 +94,7 @@ actor HLSSegmentExporter {
                 initialization,
                 headers: headers,
                 keyCache: &keyCache,
-                cache: &initializationCache,
-                nextOffsetByURL: &nextOffsetByURL
+                cache: &initializationCache
             )
             logger.info(
                 "HLS export: init fetched, \(initializationData?.count ?? 0) bytes"
@@ -1118,8 +1116,10 @@ actor HLSSegmentExporter {
         return result
     }
 
-    /// Resolves a BYTERANGE spec. An implicit offset continues the previous
-    /// range of the *same URL*; each URL keeps its own offset.
+    /// Resolves a media-segment BYTERANGE spec. An implicit offset continues
+    /// the previous *media* range of the same URL (RFC 8216 §4.4.4.2). Map
+    /// ranges are independent and must not advance this cursor — vkpymusic
+    /// PR #41 / RFC 8216 §4.4.4.5.
     private func resolveByteRange(
         _ spec: HLSByteRangeSpec?,
         for url: URL,
@@ -1143,6 +1143,23 @@ actor HLSSegmentExporter {
         return start..<end
     }
 
+    /// Map BYTERANGE: omitted offset starts at byte 0 of the resource, never
+    /// at the next media-segment cursor.
+    private func resolveMapByteRange(
+        _ spec: HLSByteRangeSpec?
+    ) throws -> Range<Int>? {
+        guard let spec else { return nil }
+        guard spec.length > 0 else {
+            throw HLSExportError.invalidByteRange
+        }
+        let start = spec.explicitOffset ?? 0
+        guard start >= 0,
+              start <= Int.max - spec.length else {
+            throw HLSExportError.invalidByteRange
+        }
+        return start..<(start + spec.length)
+    }
+
     private func resolvedURL(_ string: String, base: URL) -> URL {
         if let absolute = URL(string: string), absolute.scheme != nil {
             return absolute
@@ -1159,17 +1176,12 @@ actor HLSSegmentExporter {
         _ initialization: HLSInitializationSection,
         headers: [String: String],
         keyCache: inout [URL: Data],
-        cache: inout [InitializationCacheKey: Data],
-        nextOffsetByURL: inout [URL: Int]
+        cache: inout [InitializationCacheKey: Data]
     ) async throws -> Data {
         if let cached = cache[initialization.cacheKey] {
             return cached
         }
-        let range = try resolveByteRange(
-            initialization.byteRangeSpec,
-            for: initialization.url,
-            nextOffsetByURL: &nextOffsetByURL
-        )
+        let range = try resolveMapByteRange(initialization.byteRangeSpec)
         var data = try await fetchData(
             from: initialization.url,
             kind: .initialization,
@@ -1455,70 +1467,45 @@ actor HLSSegmentExporter {
         key: Data,
         iv: Data
     ) throws -> Data {
-        guard key.count == kCCKeySizeAES128, iv.count == kCCBlockSizeAES128 else {
+        guard key.count == PM_AES128_KEY_BYTES,
+              iv.count == PM_AES128_IV_BYTES else {
             throw HLSExportError.decryptionFailed
         }
-        let outputCapacity = data.count + kCCBlockSizeAES128
+        let outputCapacity = data.count + Int(PM_AES128_BLOCK_BYTES)
         var output = Data(count: outputCapacity)
-        var outputLength = 0
+        var outputLength: Int32 = 0
         let status = output.withUnsafeMutableBytes { outputBytes in
             data.withUnsafeBytes { dataBytes in
                 key.withUnsafeBytes { keyBytes in
                     iv.withUnsafeBytes { ivBytes in
-                        CCCrypt(
-                            CCOperation(kCCDecrypt),
-                            CCAlgorithm(kCCAlgorithmAES),
-                            CCOptions(kCCOptionPKCS7Padding),
-                            keyBytes.baseAddress,
-                            key.count,
-                            ivBytes.baseAddress,
-                            dataBytes.baseAddress,
-                            data.count,
-                            outputBytes.baseAddress,
-                            outputCapacity,
+                        pm_aes128_cbc_decrypt(
+                            dataBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            Int32(data.count),
+                            keyBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            ivBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            outputBytes.baseAddress?.assumingMemoryBound(
+                                to: UInt8.self
+                            ),
+                            Int32(outputCapacity),
                             &outputLength
                         )
                     }
                 }
             }
         }
-        guard status == kCCSuccess else {
+        guard status == PM_AES128_OK else {
             throw HLSExportError.decryptionFailed
         }
-        return output.prefix(outputLength)
+        return output.prefix(Int(outputLength))
     }
 
     // MARK: - .movpkg handling
-
-    private func collectFragments(in packageURL: URL) throws -> [URL] {
-        guard let enumerator = fileManager.enumerator(
-            at: packageURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return []
-        }
-        var fragments: [URL] = []
-        for case let url as URL in enumerator {
-            let values = try? url.resourceValues(
-                forKeys: [.isRegularFileKey, .fileSizeKey]
-            )
-            guard values?.isRegularFile == true,
-                  (values?.fileSize ?? 0) > 188 else {
-                continue
-            }
-            let ext = url.pathExtension.lowercased()
-            guard ext != "plist", ext != "json", ext != "xml",
-                  ext != "m3u8", ext != "txt" else {
-                continue
-            }
-            guard isMPEGTS(url) else { continue }
-            fragments.append(url)
-        }
-        return fragments.sorted { lhs, rhs in
-            lhs.path.localizedStandardCompare(rhs.path) == .orderedAscending
-        }
-    }
 
     /// MPEG-TS packets are 188 bytes long and start with the 0x47 sync byte.
     private func isMPEGTS(_ url: URL) -> Bool {

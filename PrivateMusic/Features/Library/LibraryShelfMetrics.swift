@@ -18,7 +18,9 @@ enum LibraryShelfMetrics {
     static let cardSpacing: CGFloat = 14
     /// Gap between artwork and the title/subtitle block.
     static let captionSpacing: CGFloat = 8
-    /// Two capped-Dynamic-Type lines (title + count/artist).
+    /// Two lines at the default text size (title + count/artist).
+    /// Callers scale this with Dynamic Type so accessibility sizes grow
+    /// the caption instead of clipping it.
     static let captionHeight: CGFloat = 40
     /// Slack around the row for the pressed-card scale effect.
     static let shelfPadding: CGFloat = 2
@@ -57,12 +59,18 @@ enum LibraryShelfMetrics {
         artworkSize(for: width)
     }
 
-    static func cardHeight(for width: CGFloat) -> CGFloat {
+    static func cardHeight(
+        for width: CGFloat,
+        captionHeight: CGFloat = captionHeight
+    ) -> CGFloat {
         artworkSize(for: width) + captionSpacing + captionHeight
     }
 
-    static func shelfHeight(for width: CGFloat) -> CGFloat {
-        cardHeight(for: width) + shelfPadding * 2
+    static func shelfHeight(
+        for width: CGFloat,
+        captionHeight: CGFloat = captionHeight
+    ) -> CGFloat {
+        cardHeight(for: width, captionHeight: captionHeight) + shelfPadding * 2
     }
 }
 
