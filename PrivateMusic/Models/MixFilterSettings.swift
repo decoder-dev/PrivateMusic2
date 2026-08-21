@@ -42,6 +42,17 @@ enum MixMoodPreference: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    var chipSymbol: String {
+        switch self {
+        case .any: "circle"
+        case .energetic: "bolt.fill"
+        case .calm: "moon.fill"
+        case .sad: "cloud.rain.fill"
+        case .joyful: "face.smiling"
+        case .love: "heart.fill"
+        }
+    }
+
     var vibeMarkers: [String] {
         switch self {
         case .any: return []
@@ -68,6 +79,14 @@ enum MixLanguagePreference: String, CaseIterable, Identifiable, Sendable {
         case .foreign: L10n.text("foreign")
         }
     }
+
+    var chipSymbol: String {
+        switch self {
+        case .any: "circle"
+        case .russian: "character.textbox"
+        case .foreign: "globe"
+        }
+    }
 }
 
 enum MixFamiliarityPreference: String, CaseIterable, Identifiable, Sendable {
@@ -82,6 +101,23 @@ enum MixFamiliarityPreference: String, CaseIterable, Identifiable, Sendable {
         case .any: L10n.text("any_familiarity")
         case .hits: L10n.text("more_hits")
         case .obscure: L10n.text("more_discoveries")
+        }
+    }
+
+    /// Shorter labels for the configure sheet chips.
+    var chipTitle: String {
+        switch self {
+        case .any: L10n.text("any_familiarity")
+        case .hits: L10n.text("familiar_hits_chip")
+        case .obscure: L10n.text("unfamiliar_chip")
+        }
+    }
+
+    var chipSymbol: String {
+        switch self {
+        case .any: "circle"
+        case .hits: "star.fill"
+        case .obscure: "sparkles"
         }
     }
 }
