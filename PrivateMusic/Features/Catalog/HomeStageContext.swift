@@ -331,7 +331,6 @@ struct HomeStagePresentation: Equatable {
     let showsTransportButton: Bool
     let showsCallToAction: Bool
     let chipIsProminent: Bool
-    let showsRail: Bool
 
     static func resolve(hasCurrentTrack: Bool) -> HomeStagePresentation {
         HomeStagePresentation(
@@ -340,8 +339,7 @@ struct HomeStagePresentation: Equatable {
             showsHeart: hasCurrentTrack,
             showsTransportButton: hasCurrentTrack,
             showsCallToAction: !hasCurrentTrack,
-            chipIsProminent: hasCurrentTrack,
-            showsRail: true
+            chipIsProminent: hasCurrentTrack
         )
     }
 }
