@@ -233,24 +233,16 @@ enum HomeNextStepPolicy {
         }
 
         if request.selectedMood != .any {
-            switch MixMoodLaunchPolicy.resolve(
-                mood: request.selectedMood,
-                in: request.mixes
-            ) {
-            case let .mix(mix) where mix.id != MusicMix.common.id:
-                let confidence = request.hasCurrentTrack
-                    ? vibePlayingConfidence
-                    : vibeIdleConfidence
-                candidates.append(
-                    vibeCandidate(
-                        mix: mix,
-                        mood: request.selectedMood,
-                        confidence: confidence
-                    )
+            // Mood continues Selena's wave — not a jump onto a catalog shelf.
+            let confidence = request.hasCurrentTrack
+                ? vibePlayingConfidence
+                : vibeIdleConfidence
+            candidates.append(
+                moodWaveCandidate(
+                    mood: request.selectedMood,
+                    confidence: confidence
                 )
-            default:
-                break
-            }
+            )
         }
 
         return candidates
@@ -349,8 +341,7 @@ enum HomeNextStepPolicy {
         )
     }
 
-    private static func vibeCandidate(
-        mix: MusicMix,
+    private static func moodWaveCandidate(
         mood: MixMoodPreference,
         confidence: Double
     ) -> HomeNextStepCandidate {
@@ -361,11 +352,11 @@ enum HomeNextStepPolicy {
             titleArgument: nil,
             subtitleKey: "home_next.vibe.subtitle",
             actionKey: "home_next.action.continue",
-            artworkURL: mix.artworkURL,
+            artworkURL: nil,
             confidence: confidence,
-            stabilityKey: "vibe:\(mood.rawValue):\(mix.id)",
-            sourceIsSelena: false,
-            mixID: mix.id,
+            stabilityKey: "vibe:\(mood.rawValue):selena",
+            sourceIsSelena: true,
+            mixID: MusicMix.common.id,
             artistKey: nil,
             action: .mood(mood)
         )
