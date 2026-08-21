@@ -2131,9 +2131,13 @@ def require_ranking_lives_in_a_tested_policy() -> None:
         "static func banditWeights(",
         "static func preferMood(",
         "static func dedupeRepeats(",
+        "static func applyingArtistCooldown(",
+        "artistCooldownWindow",
     ):
         if required not in wave_source:
             fail(f"SelenaWavePolicy is missing {required}")
+    if "recentArtistKeys" not in mix_stream_source:
+        fail("Selena cursor must track artist cooldown across refills")
     configure = swift_code(
         (SOURCE / "Features" / "Mix" / "MixConfigureSheet.swift")
         .read_text(encoding="utf-8")

@@ -144,6 +144,9 @@ actor SelenaRecommendationCursor {
     /// Last personal recommendations page. Reused across continuation so
     /// every refill does not pay another identical network round-trip.
     private var sessionPersonal: [Track] = []
+    /// Artists placed in this session's queue — hard-excluded from the
+    /// next generation window (Yandex-style cooldown, not just spacing).
+    private var recentArtistKeys: [String] = []
 
     init(seedTracks: [Track], knownTracks: [Track] = []) {
         self.seeds = SelenaRecommendationComposer.seedTracks(
@@ -152,6 +155,10 @@ actor SelenaRecommendationCursor {
             loaded: []
         )
         self.knownIDs = Set(knownTracks.map(\.id))
+        SelenaWavePolicy.appendCooldownArtists(
+            &self.recentArtistKeys,
+            from: knownTracks
+        )
     }
 
     func next(
@@ -184,11 +191,24 @@ actor SelenaRecommendationCursor {
             )
         }
 
+        let cooledPersonal = SelenaWavePolicy.applyingArtistCooldown(
+            personal,
+            recentArtistKeys: recentArtistKeys
+        )
+        let cooledSimilar = SelenaWavePolicy.applyingArtistCooldown(
+            similar,
+            recentArtistKeys: recentArtistKeys
+        )
+        let cooledFallback = SelenaWavePolicy.applyingArtistCooldown(
+            fallback,
+            recentArtistKeys: recentArtistKeys
+        )
+
         let composed = SelenaRecommendationComposer.compose(
             seedTracks: seeds,
-            personalRecommendations: personal,
-            similarRecommendations: similar,
-            fallbackMix: fallback,
+            personalRecommendations: cooledPersonal,
+            similarRecommendations: cooledSimilar,
+            fallbackMix: cooledFallback,
             diversity: diversity
         ).filter { knownIDs.insert($0.id).inserted }
 
@@ -196,6 +216,10 @@ actor SelenaRecommendationCursor {
             seeds = SelenaRecommendationComposer.rotatingSeeds(
                 previous: seeds,
                 composed: composed
+            )
+            SelenaWavePolicy.appendCooldownArtists(
+                &recentArtistKeys,
+                from: composed
             )
         }
         return composed
