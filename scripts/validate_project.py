@@ -2138,6 +2138,11 @@ def require_ranking_lives_in_a_tested_policy() -> None:
             fail(f"SelenaWavePolicy is missing {required}")
     if "recentArtistKeys" not in mix_stream_source:
         fail("Selena cursor must track artist cooldown across refills")
+    cooccur = SOURCE / "Models" / "ArtistCooccurrenceIndex.swift"
+    if not cooccur.is_file():
+        fail("Selena seed rotation needs ArtistCooccurrenceIndex")
+    if "ArtistCooccurrenceIndex.boostSeeds(" not in mix_stream_source:
+        fail("seedTracks must boost via ArtistCooccurrenceIndex")
     configure = swift_code(
         (SOURCE / "Features" / "Mix" / "MixConfigureSheet.swift")
         .read_text(encoding="utf-8")
