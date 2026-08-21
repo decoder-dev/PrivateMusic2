@@ -284,11 +284,11 @@ final class SelenaRecommendationComposerTests: XCTestCase {
         let firstPage = try await cursor.next(
             accessToken: "token",
             musicService: service
-        )
+        ).tracks
         let secondPage = try await cursor.next(
             accessToken: "token",
             musicService: service
-        )
+        ).tracks
 
         let recommendationTargets = await service.recommendationTargets
         let seededTargets = recommendationTargets.compactMap {
@@ -325,7 +325,7 @@ final class SelenaRecommendationComposerTests: XCTestCase {
             accessToken: "token",
             musicService: service,
             cachedPersonalRecommendations: cached
-        )
+        ).tracks
 
         let recommendationTargets = await service.recommendationTargets
         // Cached personal skips the unseeded recommendations() call
@@ -379,7 +379,7 @@ final class SelenaRecommendationComposerTests: XCTestCase {
         let second = try await cursor.next(
             accessToken: "token",
             musicService: service
-        )
+        ).tracks
         let targets = await service.recommendationTargets
 
         // Second page must not pay for another unseeded personal fetch.
