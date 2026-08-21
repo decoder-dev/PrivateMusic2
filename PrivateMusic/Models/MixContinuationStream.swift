@@ -59,6 +59,7 @@ enum SelenaRecommendationComposer {
         personalRecommendations: [Track],
         similarRecommendations: [Track],
         fallbackMix: [Track] = [],
+        diversity: SelenaDiversityPreference = .default,
         limit: Int = MixTrackRequestPolicy.queueLimit
     ) -> [Track] {
         var known = Set<String>()
@@ -73,6 +74,7 @@ enum SelenaRecommendationComposer {
             result.append(track)
         }
 
+        let bias = SelenaWavePolicy.composeBias(diversity: diversity)
         let seeds = seedTracks.prefix(12).map { $0 }
         let personal = personalRecommendations.prefix(limit).map { $0 }
         let similar = similarRecommendations.prefix(limit).map { $0 }
@@ -88,15 +90,17 @@ enum SelenaRecommendationComposer {
                 || personalIndex < personal.count
                 || similarIndex < similar.count
                 || fallbackIndex < fallback.count {
-            if personalIndex < personal.count {
+            for _ in 0..<bias.personal where personalIndex < personal.count {
                 append(personal[personalIndex])
                 personalIndex += 1
+                if result.count >= limit { break }
             }
-            if similarIndex < similar.count {
+            for _ in 0..<bias.similar where similarIndex < similar.count {
                 append(similar[similarIndex])
                 similarIndex += 1
+                if result.count >= limit { break }
             }
-            if result.count % 4 == 0, seedIndex < seeds.count {
+            if result.count % max(bias.seedEvery, 1) == 0, seedIndex < seeds.count {
                 append(seeds[seedIndex])
                 seedIndex += 1
             }
@@ -153,7 +157,8 @@ actor SelenaRecommendationCursor {
     func next(
         accessToken: String,
         musicService: any MusicService,
-        cachedPersonalRecommendations: [Track] = []
+        cachedPersonalRecommendations: [Track] = [],
+        diversity: SelenaDiversityPreference = .default
     ) async throws -> [Track] {
         // Seed fan-out and personal taste used to run one after another —
         // four round-trips before Explore could paint Selena. Run them
@@ -183,7 +188,8 @@ actor SelenaRecommendationCursor {
             seedTracks: seeds,
             personalRecommendations: personal,
             similarRecommendations: similar,
-            fallbackMix: fallback
+            fallbackMix: fallback,
+            diversity: diversity
         ).filter { knownIDs.insert($0.id).inserted }
 
         if !composed.isEmpty {

@@ -291,6 +291,7 @@ for required_mix_stream_symbol in (
     "commonMixOffset += MixTrackRequestPolicy.pageSize",
     "rotatingSeeds(",
     "sessionPersonal",
+    "diversity:",
 ):
     if required_mix_stream_symbol not in mix_stream_source:
         fail(
@@ -2120,6 +2121,33 @@ def require_ranking_lives_in_a_tested_policy() -> None:
         fail("startSelenaStation must compose through SelenaRecommendationCursor")
     if "refreshHomeCatalog(force: true)" not in hub:
         fail("Explore pull-to-refresh must force-refresh Home recommendations")
+    wave = SOURCE / "Models" / "SelenaWavePolicy.swift"
+    if not wave.is_file():
+        fail("Selena wave policy (Yandex-like dials) is missing")
+    wave_source = swift_code(wave.read_text(encoding="utf-8"))
+    for required in (
+        "enum SelenaDiversityPreference",
+        "enum SelenaWavePolicy",
+        "static func banditWeights(",
+        "static func preferMood(",
+        "static func dedupeRepeats(",
+    ):
+        if required not in wave_source:
+            fail(f"SelenaWavePolicy is missing {required}")
+    configure = swift_code(
+        (SOURCE / "Features" / "Mix" / "MixConfigureSheet.swift")
+        .read_text(encoding="utf-8")
+    )
+    if "enum MixConfigureScope" not in configure:
+        fail("mix configure must split Selena-rich vs mix-basic scopes")
+    if "case selena" not in configure or "case mix" not in configure:
+        fail("MixConfigureScope must distinguish selena and mix")
+    if "configure_selena" not in hub:
+        fail("Explore Selena must expose its own configure entry")
+    if "selenaWaveCard" not in hub:
+        fail("Selena must own the rich wave card")
+    if "startConfiguredSelena" not in hub:
+        fail("Selena start must stay on the personal station")
 
 
 require_ranking_lives_in_a_tested_policy()

@@ -35,11 +35,24 @@ final class AppEnvironment {
 
     /// Bandit order shared by Home play, Explore preview, and refill.
     func rankSelenaQueue(_ tracks: [Track], recordExposure: Bool = true) -> [Track] {
-        let ranked = SelenaBanditPolicy.rerank(
+        let diversity = settings.selenaDiversityPreference
+        let weights = SelenaWavePolicy.banditWeights(diversity: diversity)
+        let moodOrdered = SelenaWavePolicy.preferMood(
             tracks,
+            mood: settings.mixMoodPreference
+        )
+        let deduped = SelenaWavePolicy.dedupeRepeats(
+            moodOrdered,
+            recentTrackIDs: []
+        )
+        let ranked = SelenaBanditPolicy.rerank(
+            deduped,
             affinityByArtistKey: selenaArtistAffinity(),
             exposure: selenaExposure,
-            bannedArtists: mixFeedbackStore.bannedArtists
+            bannedArtists: mixFeedbackStore.bannedArtists,
+            familiarityWeight: weights.familiarity,
+            noveltyWeight: weights.novelty,
+            artistSpacing: SelenaWavePolicy.artistSpacing(diversity: diversity)
         )
         if recordExposure {
             recordSelenaExposure(ranked)
@@ -49,7 +62,7 @@ final class AppEnvironment {
 
     /// Continuations for Selena / My Music — filter with relax notice, then bandit.
     func selenaContinuationTracks(_ tracks: [Track]) -> [Track] {
-        let outcome = filterMixTracks(tracks, relaxIfEmpty: true)
+        let outcome = filterSelenaTracks(tracks, relaxIfEmpty: true)
         if outcome.didRelax {
             mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
         }
@@ -790,6 +803,12 @@ final class AppEnvironment {
         filterMixTracks(tracks, relaxIfEmpty: true).tracks
     }
 
+    /// Selena wave filters — language (incl. instrumental), diversity-implied
+    /// familiarity, then soft moodEnergy order and fingerprint dedupe.
+    func filteredSelenaTracks(_ tracks: [Track]) -> [Track] {
+        filterSelenaTracks(tracks, relaxIfEmpty: true).tracks
+    }
+
     /// Same filters without the silent widen — used when the listener
     /// just tightened a chip and expects the queue to shrink.
     func filterMixTracks(
@@ -802,10 +821,15 @@ final class AppEnvironment {
                 .map(\.track.artist)
         )
         let afterFeedback = mixFeedbackStore.filtering(tracks)
+        // Instrumental is a Selena-only dial; catalog mixes ignore it.
+        let language: MixLanguagePreference =
+            settings.mixLanguagePreference == .instrumental
+            ? .any
+            : settings.mixLanguagePreference
         if relaxIfEmpty {
             return MixQueueFilter.applyAllowingFallback(
                 afterFeedback,
-                language: settings.mixLanguagePreference,
+                language: language,
                 familiarity: settings.mixFamiliarityPreference,
                 historyArtists: historyArtists
             )
@@ -813,12 +837,65 @@ final class AppEnvironment {
         return MixFilterOutcome(
             tracks: MixQueueFilter.applyStrict(
                 afterFeedback,
-                language: settings.mixLanguagePreference,
+                language: language,
                 familiarity: settings.mixFamiliarityPreference,
                 historyArtists: historyArtists
             ),
             didRelax: false
         )
+    }
+
+    func filterSelenaTracks(
+        _ tracks: [Track],
+        relaxIfEmpty: Bool
+    ) -> MixFilterOutcome {
+        let historyArtists = Set(
+            historyStore.entries
+                .prefix(MixListeningHistoryWindow.familiarity)
+                .map(\.track.artist)
+        )
+        let recentIDs = Set(
+            historyStore.entries
+                .prefix(MixListeningHistoryWindow.ranking)
+                .map(\.track.id)
+        )
+        let afterFeedback = mixFeedbackStore.filtering(tracks)
+        let familiarity = SelenaWavePolicy.impliedFamiliarity(
+            diversity: settings.selenaDiversityPreference
+        )
+        let base: MixFilterOutcome
+        if relaxIfEmpty {
+            base = MixQueueFilter.applyAllowingFallback(
+                afterFeedback,
+                language: settings.mixLanguagePreference,
+                familiarity: familiarity,
+                historyArtists: historyArtists
+            )
+        } else {
+            base = MixFilterOutcome(
+                tracks: MixQueueFilter.applyStrict(
+                    afterFeedback,
+                    language: settings.mixLanguagePreference,
+                    familiarity: familiarity,
+                    historyArtists: historyArtists
+                ),
+                didRelax: false
+            )
+        }
+        let moodOrdered = SelenaWavePolicy.preferMood(
+            base.tracks,
+            mood: settings.mixMoodPreference
+        )
+        let deduped = SelenaWavePolicy.dedupeRepeats(
+            moodOrdered,
+            recentTrackIDs: recentIDs
+        )
+        // If dedupe emptied a non-empty filtered pool, keep mood order —
+        // better a repeat than silence.
+        if deduped.isEmpty, !moodOrdered.isEmpty {
+            return MixFilterOutcome(tracks: moodOrdered, didRelax: true)
+        }
+        return MixFilterOutcome(tracks: deduped, didRelax: base.didRelax)
     }
 
     /// Re-run mix filters on the unplayed suffix of the live mix queue.
@@ -832,8 +909,14 @@ final class AppEnvironment {
               player.queue.indices.contains(index) else { return }
         let upcoming = Array(player.queue.suffix(from: index + 1))
         guard !upcoming.isEmpty else { return }
-        let outcome = filterMixTracks(upcoming, relaxIfEmpty: true)
-        player.replaceUpcoming(with: outcome.tracks)
+        let isSelena = player.queueSource?.mixID == MusicMix.common.id
+        let outcome = isSelena
+            ? filterSelenaTracks(upcoming, relaxIfEmpty: true)
+            : filterMixTracks(upcoming, relaxIfEmpty: true)
+        let next = isSelena
+            ? rankSelenaQueue(outcome.tracks, recordExposure: false)
+            : outcome.tracks
+        player.replaceUpcoming(with: next)
         if outcome.didRelax {
             mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
         }
@@ -1176,6 +1259,9 @@ final class AppEnvironment {
                     try await musicService.recommendations(accessToken: token)
                 }
             }
+            let recent = Array(
+                historyStore.entries.prefix(MixListeningHistoryWindow.ranking)
+            )
             let seeds = SelenaRecommendationComposer.seedTracks(
                 history: historyStore.entries,
                 recommendations: personal,
@@ -1183,16 +1269,18 @@ final class AppEnvironment {
             )
             let stream = SelenaRecommendationCursor(
                 seedTracks: seeds,
-                knownTracks: []
+                knownTracks: recent.map(\.track)
             )
+            let diversity = settings.selenaDiversityPreference
             let bootstrap = try await withAuthorizedToken { token in
                 try await stream.next(
                     accessToken: token,
                     musicService: musicService,
-                    cachedPersonalRecommendations: personal
+                    cachedPersonalRecommendations: personal,
+                    diversity: diversity
                 )
             }
-            let cleaned = filteredMixTracks(bootstrap)
+            let cleaned = filteredSelenaTracks(bootstrap)
             guard !cleaned.isEmpty else {
                 mixActionError = L10n.text("the_mix_is_empty_for_now")
                 return
@@ -1215,7 +1303,8 @@ final class AppEnvironment {
                     let more = try await self.withAuthorizedToken { token in
                         try await stream.next(
                             accessToken: token,
-                            musicService: self.musicService
+                            musicService: self.musicService,
+                            diversity: self.settings.selenaDiversityPreference
                         )
                     }
                     return self.selenaContinuationTracks(more)
