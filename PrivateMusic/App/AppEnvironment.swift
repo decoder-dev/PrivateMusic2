@@ -1037,7 +1037,8 @@ final class AppEnvironment {
                     let more = try await self.withAuthorizedToken { token in
                         try await stream.next(
                             accessToken: token,
-                            musicService: self.musicService
+                            musicService: self.musicService,
+                            diversity: self.settings.selenaDiversityPreference
                         )
                     }
                     return self.selenaContinuationTracks(more)
