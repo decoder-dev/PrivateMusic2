@@ -51,6 +51,45 @@ enum SelenaDiversityPreference: String, CaseIterable, Identifiable, Sendable {
 /// How Selena shapes the personal station from wave dials — local stand-in
 /// for Yandex rotor moodEnergy / diversity, applied on top of VK seeds.
 enum SelenaWavePolicy {
+    /// How many recent queue placements an artist stays ineligible for
+    /// *candidate generation* — Yandex My Wave filters "played < ~25
+    /// tracks ago" before ranking; in-queue spacing (3–4) alone only nudges.
+    static let artistCooldownWindow = 25
+
+    /// Drop tracks whose artist is still inside the session cooldown window.
+    /// If every candidate would vanish, return the input unchanged — silence
+    /// is worse than a repeat.
+    static func applyingArtistCooldown(
+        _ tracks: [Track],
+        recentArtistKeys: [String],
+        window: Int = artistCooldownWindow
+    ) -> [Track] {
+        guard !tracks.isEmpty, window > 0, !recentArtistKeys.isEmpty else {
+            return tracks
+        }
+        let blocked = Set(recentArtistKeys.suffix(window))
+        let filtered = tracks.filter { track in
+            let key = MixFeedbackPolicy.normalized(track.artist)
+            return key.isEmpty || !blocked.contains(key)
+        }
+        return filtered.isEmpty ? tracks : filtered
+    }
+
+    static func appendCooldownArtists(
+        _ keys: inout [String],
+        from tracks: [Track],
+        window: Int = artistCooldownWindow
+    ) {
+        for track in tracks {
+            let key = MixFeedbackPolicy.normalized(track.artist)
+            guard !key.isEmpty else { continue }
+            keys.append(key)
+        }
+        if keys.count > window {
+            keys.removeFirst(keys.count - window)
+        }
+    }
+
     /// Bandit familiarity vs novelty mix. Sums to 1.
     static func banditWeights(
         diversity: SelenaDiversityPreference
