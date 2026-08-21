@@ -1781,7 +1781,7 @@ final class AudioPlayer {
         if case .mix = source, !shuffleEnabled,
            let index = currentIndex {
             let historyArtists = Set(
-                historyStore.entries.prefix(40).map(\.track.artist)
+                historyStore.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist)
             )
             queue = MixQueueRanker.rerank(
                 queue: queue,
@@ -4706,7 +4706,7 @@ final class AudioPlayer {
                         seed: seed,
                         mode: mode,
                         historyArtists: Set(
-                            self.historyStore.entries.prefix(40)
+                            self.historyStore.entries.prefix(MixListeningHistoryWindow.ranking)
                                 .map(\.track.artist)
                         )
                     )

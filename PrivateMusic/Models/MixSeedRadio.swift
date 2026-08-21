@@ -79,7 +79,8 @@ enum MixSeedRadio {
     private static func containsAny(_ title: String, _ markers: [String]) -> Bool {
         // Fold haystack *and* needles the same way. Diacritic-insensitive
         // folding turns й→и, so raw markers like "вайб" / "спокойн" would
-        // never match a folded shelf title.
+        // never match a folded shelf title. Latin tokens then go through
+        // MixQueueFilter's word-boundary check so "hit" ≠ "white".
         let locale = Locale(identifier: "ru_RU")
         func fold(_ value: String) -> String {
             value
@@ -90,6 +91,8 @@ enum MixSeedRadio {
                 .lowercased()
         }
         let blob = fold(title)
-        return markers.contains { blob.contains(fold($0)) }
+        return markers.contains {
+            MixQueueFilter.textContainsMarker(blob, marker: fold($0))
+        }
     }
 }

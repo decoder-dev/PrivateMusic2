@@ -47,6 +47,7 @@ struct HomeStageBubbleRail: View {
                 for: .scrollContent
             )
             .frame(height: HomeStageMetrics.railHeight(for: width))
+            .padding(.bottom, HomeStageMetrics.railShadowPadding)
             .padding(.horizontal, -horizontalPadding)
         }
     }
