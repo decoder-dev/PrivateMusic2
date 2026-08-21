@@ -353,8 +353,9 @@ final class SelenaRecommendationComposerTests: XCTestCase {
             ["1_100", "1_101", "1_102"]
         )
         XCTAssertEqual(rotated.count, 32)
-        // Oldest bootstrap seeds fall off the window first.
-        XCTAssertFalse(rotated.contains { $0.id == "1_1" })
+        // Tail of the previous window falls off first — not the head.
+        XCTAssertFalse(rotated.contains { $0.id == "1_32" })
+        XCTAssertTrue(rotated.contains { $0.id == "1_1" })
     }
 
     func testSelenaCursorReusesSessionPersonalOnLaterPages() async throws {
