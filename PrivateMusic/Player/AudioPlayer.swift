@@ -73,6 +73,13 @@ enum QueueSource: Equatable {
         if case let .mix(_, title) = self { return title }
         return nil
     }
+
+    /// Personal station and "mix from my music" share Selena wave filters /
+    /// bandit ranking — catalog VK mixes do not.
+    var usesSelenaWaveFilters: Bool {
+        guard let mixID else { return false }
+        return mixID == MusicMix.common.id || mixID == MixQueueIdentity.myMusic
+    }
 }
 
 /// Stable ids for mix queues that are not catalog shelves.
@@ -1777,8 +1784,10 @@ final class AudioPlayer {
         }
         // Mix queues from VK often cluster the same artists. Apply
         // balanced radio diversity up front so «Баланс» is not a no-op
-        // that leaves the original clustered order.
+        // that leaves the original clustered order. Selena already ran
+        // SelenaBanditPolicy — reshuffling would discard that order.
         if case .mix = source, !shuffleEnabled,
+           !source.usesSelenaWaveFilters,
            let index = currentIndex {
             let historyArtists = Set(
                 historyStore.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist)

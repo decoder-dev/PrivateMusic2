@@ -320,7 +320,8 @@ struct MixesHubView: View {
             parts.append(settings.mixFamiliarityPreference.chipTitle)
         }
         if settings.mixLanguagePreference != .any,
-           settings.mixLanguagePreference != .instrumental {
+           MixLanguagePreference.catalogValue(settings.mixLanguagePreference)
+            != .any {
             parts.append(settings.mixLanguagePreference.title)
         }
         if parts.isEmpty {
@@ -1703,7 +1704,8 @@ struct MixesHubView: View {
                         title: L10n.text("more_novelty"),
                         systemImage: "shuffle"
                     ) {
-                        start(personalMix, applying: .moreNovel)
+                        settings.selenaDiversityPreference = .discover
+                        start(personalMix)
                     }
                 }
             }

@@ -37,12 +37,18 @@ final class AppEnvironment {
     func rankSelenaQueue(_ tracks: [Track], recordExposure: Bool = true) -> [Track] {
         let diversity = settings.selenaDiversityPreference
         let weights = SelenaWavePolicy.banditWeights(diversity: diversity)
-        let moodOrdered = SelenaWavePolicy.preferMood(
-            tracks,
-            mood: settings.mixMoodPreference
-        )
+        let mood = settings.mixMoodPreference
+        let moodScores: [String: Int] = {
+            guard mood != .any else { return [:] }
+            var scores: [String: Int] = [:]
+            for track in tracks {
+                let score = SelenaWavePolicy.moodScore(track, mood: mood)
+                if score > 0 { scores[track.id] = score }
+            }
+            return scores
+        }()
         let deduped = SelenaWavePolicy.dedupeRepeats(
-            moodOrdered,
+            tracks,
             recentTrackIDs: []
         )
         let ranked = SelenaBanditPolicy.rerank(
@@ -52,7 +58,9 @@ final class AppEnvironment {
             bannedArtists: mixFeedbackStore.bannedArtists,
             familiarityWeight: weights.familiarity,
             noveltyWeight: weights.novelty,
-            artistSpacing: SelenaWavePolicy.artistSpacing(diversity: diversity)
+            artistSpacing: SelenaWavePolicy.artistSpacing(diversity: diversity),
+            moodScoresByTrackID: moodScores,
+            moodWeight: moodScores.isEmpty ? 0 : SelenaBanditPolicy.moodWeight
         )
         if recordExposure {
             recordSelenaExposure(ranked)
@@ -800,13 +808,21 @@ final class AppEnvironment {
     /// Falls back to the ban-only pool when filters would empty it so a
     /// cold start always has something to play.
     func filteredMixTracks(_ tracks: [Track]) -> [Track] {
-        filterMixTracks(tracks, relaxIfEmpty: true).tracks
+        let outcome = filterMixTracks(tracks, relaxIfEmpty: true)
+        if outcome.didRelax {
+            mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
+        }
+        return outcome.tracks
     }
 
     /// Selena wave filters — language (incl. instrumental), diversity-implied
     /// familiarity, then soft moodEnergy order and fingerprint dedupe.
     func filteredSelenaTracks(_ tracks: [Track]) -> [Track] {
-        filterSelenaTracks(tracks, relaxIfEmpty: true).tracks
+        let outcome = filterSelenaTracks(tracks, relaxIfEmpty: true)
+        if outcome.didRelax {
+            mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
+        }
+        return outcome.tracks
     }
 
     /// Same filters without the silent widen — used when the listener
@@ -822,10 +838,9 @@ final class AppEnvironment {
         )
         let afterFeedback = mixFeedbackStore.filtering(tracks)
         // Instrumental is a Selena-only dial; catalog mixes ignore it.
-        let language: MixLanguagePreference =
-            settings.mixLanguagePreference == .instrumental
-            ? .any
-            : settings.mixLanguagePreference
+        let language = MixLanguagePreference.catalogValue(
+            settings.mixLanguagePreference
+        )
         if relaxIfEmpty {
             return MixQueueFilter.applyAllowingFallback(
                 afterFeedback,
@@ -904,7 +919,7 @@ final class AppEnvironment {
               player.queue.indices.contains(index) else { return }
         let upcoming = Array(player.queue.suffix(from: index + 1))
         guard !upcoming.isEmpty else { return }
-        let isSelena = player.queueSource?.mixID == MusicMix.common.id
+        let isSelena = player.queueSource?.usesSelenaWaveFilters == true
         let outcome = isSelena
             ? filterSelenaTracks(upcoming, relaxIfEmpty: true)
             : filterMixTracks(upcoming, relaxIfEmpty: true)
@@ -926,7 +941,17 @@ final class AppEnvironment {
            let index = player.currentIndex,
            player.queue.indices.contains(index) {
             let upcoming = Array(player.queue.suffix(from: index + 1))
-            player.replaceUpcoming(with: filteredMixTracks(upcoming))
+            let isSelena = player.queueSource?.usesSelenaWaveFilters == true
+            if isSelena {
+                player.replaceUpcoming(
+                    with: rankSelenaQueue(
+                        filterSelenaTracks(upcoming, relaxIfEmpty: true).tracks,
+                        recordExposure: false
+                    )
+                )
+            } else {
+                player.replaceUpcoming(with: filteredMixTracks(upcoming))
+            }
         }
         Haptics.selection()
     }
@@ -999,7 +1024,7 @@ final class AppEnvironment {
             let recs = try await withAuthorizedToken { token in
                 try await musicService.recommendations(accessToken: token)
             }
-            let blended = filteredMixTracks(
+            let blended = filteredSelenaTracks(
                 MixSeedRadio.blend(
                     seeds: page.items,
                     recommendations: recs

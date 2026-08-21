@@ -2157,6 +2157,13 @@ def require_ranking_lives_in_a_tested_policy() -> None:
         fail("Selena must own the rich wave card")
     if "startConfiguredSelena" not in hub:
         fail("Selena start must stay on the personal station")
+    audio = swift_code(
+        (SOURCE / "Player" / "AudioPlayer.swift").read_text(encoding="utf-8")
+    )
+    if "usesSelenaWaveFilters" not in audio:
+        fail("QueueSource must flag Selena-flavored queues")
+    if "usesSelenaWaveFilters" not in audio or "!source.usesSelenaWaveFilters" not in audio:
+        fail("play() must not MixQueueRanker-reshuffle Selena bandit order")
 
 
 require_ranking_lives_in_a_tested_policy()
