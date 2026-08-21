@@ -285,7 +285,8 @@ for required_mix_stream_symbol in (
     "actor MixTrackContinuationCursor",
     "nextOffset += MixTrackRequestPolicy.continuationPages",
     "actor SelenaRecommendationCursor",
-    "musicService.recommendations(\n                    seededBy: seed",
+    "seededBy: seed",
+    "withThrowingTaskGroup(of: [Track].self)",
     "knownIDs.insert($0.id).inserted",
     "commonMixOffset += MixTrackRequestPolicy.pageSize",
 ):
