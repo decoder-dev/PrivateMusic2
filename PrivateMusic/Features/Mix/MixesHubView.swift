@@ -78,6 +78,7 @@ struct MixesHubView: View {
     /// When Home's What's Next is already the Selena station, open Explore
     /// on VK so the first screen is not the same hero again.
     var startsOnVK: Bool = false
+    @State private var showingMixConfigure = false
 
     private let defaultPreviewTrackLimit = 15
     private let expandedPreviewTrackLimit = 60
@@ -169,6 +170,11 @@ struct MixesHubView: View {
         }
         .refreshable { await load(force: true) }
         .task(id: sessionStore.accessToken) { await load() }
+        .sheet(isPresented: $showingMixConfigure) {
+            MixConfigureSheet {
+                startConfiguredMix()
+            }
+        }
         .onAppear {
             if focusedMixID != nil || startsOnVK {
                 hubTab = .vk
@@ -185,7 +191,7 @@ struct MixesHubView: View {
             environment.mixActionError = nil
         }
         .onChange(of: settings.mixMoodPreference) { _, mood in
-            // Mood launches are explicit (`launchMood` / Home's
+            // Mood launches are explicit (`startConfiguredMix` / Home's
             // `startMoodStation`). This only reacts to clearing the mood
             // back to `.any`, which refilters the current mix in place.
             guard sessionStore.accessToken != nil, mood == .any else { return }
@@ -260,47 +266,52 @@ struct MixesHubView: View {
         }
     }
 
-    /// Selena's own mood picker. Resolution goes through the same
-    /// `MixMoodLaunchPolicy` (and, for the VK-mix branch, the same local
-    /// `start(_:)`) as everything else that starts a mood — a named mood
-    /// must win over a generic vibe shelf, and the screen must end up
-    /// showing whatever it just started rather than whatever was on
-    /// screen before.
+    /// Selena's mix tuner. Mood / language / familiarity live in one
+    /// sheet so the same dial is not split across a Form, menus, and a
+    /// second mood row.
     private var moodQuickLaunch: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(L10n.text("what_is_the_vibe_right_now"))
                 .font(.headline)
-            Text(L10n.text("a_quick_start_based_on_your_mood"))
+            Text(configuredMixSummary)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(
-                        MixMoodPreference.allCases.filter { $0 != .any }
-                    ) { mood in
-                        Button {
-                            launchMood(mood)
-                        } label: {
-                            Text(mood.title)
-                                .font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(
-                            settings.mixMoodPreference == mood
-                                ? settings.theme.accent
-                                : Color.secondary
-                        )
-                        .disabled(loadingMixID != nil)
-                    }
-                }
+            Button {
+                showingMixConfigure = true
+            } label: {
+                Label(
+                    L10n.text("configure_mix"),
+                    systemImage: "slider.horizontal.3"
+                )
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.borderedProminent)
+            .tint(settings.theme.accent)
+            .disabled(loadingMixID != nil)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .premiumCard()
+    }
+
+    private var configuredMixSummary: String {
+        var parts: [String] = []
+        if settings.mixMoodPreference != .any {
+            parts.append(settings.mixMoodPreference.title)
+        }
+        if settings.mixFamiliarityPreference != .any {
+            parts.append(settings.mixFamiliarityPreference.chipTitle)
+        }
+        if settings.mixLanguagePreference != .any {
+            parts.append(settings.mixLanguagePreference.title)
+        }
+        if parts.isEmpty {
+            return L10n.text("a_quick_start_based_on_your_mood")
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func launchMood(_ mood: MixMoodPreference) {
@@ -311,6 +322,15 @@ struct MixesHubView: View {
         // start playback.
         settings.mixMoodPreference = mood
         startResolvedMood(mood)
+    }
+
+    private func startConfiguredMix() {
+        let mood = settings.mixMoodPreference
+        if mood == .any {
+            start(personalMix)
+        } else {
+            startResolvedMood(mood)
+        }
     }
 
     /// A quiet entry point, not another shelf: the album art already gets
@@ -1126,8 +1146,8 @@ struct MixesHubView: View {
     private func mixUtilityLinks(mix: MusicMix, tracks: [Track]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                NavigationLink {
-                    MixFiltersSettingsView()
+                Button {
+                    showingMixConfigure = true
                 } label: {
                     Label(
                         L10n.text("mix_filters"),
@@ -1171,108 +1191,43 @@ struct MixesHubView: View {
     }
 
     private func mixFilterChips(mix: MusicMix) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
+        Button {
+            showingMixConfigure = true
+        } label: {
+            HStack(spacing: 8) {
                 Image(systemName: "slider.horizontal.3")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(L10n.text("quick_filters"))
+                Text(L10n.text("configure_mix"))
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if hasActiveMixFilters {
+                    Text(configuredMixSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    // Mood launches a station — it lives in `moodQuickLaunch`,
-                    // not under "quick filters". Putting it here made three
-                    // identical chips mean two different things (filter vs
-                    // start playback + switch tab).
-                    languageFilterMenu(mix: mix)
-                    familiarityFilterMenu(mix: mix)
-                }
-            }
-        }
-    }
-
-    private func languageFilterMenu(mix: MusicMix) -> some View {
-        Menu {
-            ForEach(MixLanguagePreference.allCases) { language in
-                Button {
-                    settings.mixLanguagePreference = language
-                } label: {
-                    selectedMenuRow(
-                        language.title,
-                        isSelected: settings.mixLanguagePreference == language
-                    )
-                }
-            }
-        } label: {
-            filterChip(
-                title: settings.mixLanguagePreference.title,
-                prefix: L10n.text("language"),
-                isActive: settings.mixLanguagePreference != .any
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.primary.opacity(0.06))
             )
+            .contentShape(Capsule(style: .continuous))
         }
+        .buttonStyle(PremiumPressStyle())
+        .accessibilityHint(L10n.text("mix_filters"))
     }
 
-    private func familiarityFilterMenu(mix: MusicMix) -> some View {
-        Menu {
-            ForEach(MixFamiliarityPreference.allCases) { familiarity in
-                Button {
-                    settings.mixFamiliarityPreference = familiarity
-                } label: {
-                    selectedMenuRow(
-                        familiarity.title,
-                        isSelected: settings.mixFamiliarityPreference == familiarity
-                    )
-                }
-            }
-        } label: {
-            filterChip(
-                title: settings.mixFamiliarityPreference.title,
-                prefix: L10n.text("familiarity"),
-                isActive: settings.mixFamiliarityPreference != .any
-            )
-        }
-    }
-
-    private func filterChip(
-        title: String,
-        prefix: String,
-        isActive: Bool
-    ) -> some View {
-        HStack(spacing: 5) {
-            Text(prefix)
-                .foregroundStyle(.secondary)
-            Text(title)
-                .foregroundStyle(isActive ? settings.theme.accent : .primary)
-            Image(systemName: "chevron.down")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.secondary)
-        }
-        .font(.caption.weight(.semibold))
-        .lineLimit(1)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            Capsule(style: .continuous)
-                .fill(
-                    isActive
-                        ? settings.theme.accent.opacity(0.14)
-                        : Color.primary.opacity(0.06)
-                )
-        )
-    }
-
-    private func selectedMenuRow(
-        _ title: String,
-        isSelected: Bool
-    ) -> some View {
-        HStack {
-            Text(title)
-            if isSelected {
-                Image(systemName: "checkmark")
-            }
-        }
+    private var hasActiveMixFilters: Bool {
+        settings.mixMoodPreference != .any
+            || settings.mixLanguagePreference != .any
+            || settings.mixFamiliarityPreference != .any
     }
 
     private func tracksBlock(

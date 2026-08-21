@@ -716,6 +716,11 @@
 "the_file_is_ready_tap_the_button_below" = "The file is ready. Tap the button below.";
 "mix_filters" = "Mix Filters";
 "mix_filters_relaxed_to_keep_queue" = "Filters would empty the queue — kept the remaining tracks.";
+"configure_mix" = "Configure Mix";
+"start_your_mix" = "Start Your Mix";
+"action.reset" = "Reset";
+"familiar_hits_chip" = "Familiar";
+"unfamiliar_chip" = "Unfamiliar";
 "storage_2" = "Storage";
 "charts_and_hits" = "Charts and hits";
 "language" = "Language";
