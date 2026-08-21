@@ -2042,8 +2042,16 @@ struct MixesHubView: View {
     }
 
     private func actionErrorRow(_ message: String) -> some View {
-        Button { actionError = nil } label: {
-            Label(message, systemImage: "exclamationmark.triangle")
+        let isFilterNotice = message == L10n.text(
+            "mix_filters_relaxed_to_keep_queue"
+        )
+        return Button { actionError = nil } label: {
+            Label(
+                message,
+                systemImage: isFilterNotice
+                    ? "info.circle"
+                    : "exclamationmark.triangle"
+            )
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget, alignment: .leading)

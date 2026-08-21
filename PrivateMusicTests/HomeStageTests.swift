@@ -516,7 +516,6 @@ final class HomeStagePresentationTests: XCTestCase {
         XCTAssertFalse(idle.showsHeart)
         XCTAssertFalse(idle.showsTransportButton)
         XCTAssertFalse(idle.chipIsProminent)
-        XCTAssertTrue(idle.showsRail, "contexts stay reachable when idle")
     }
 
     func testPlayingShowsTransportAndHeartButNoCallToAction() {

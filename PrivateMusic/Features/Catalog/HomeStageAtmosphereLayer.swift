@@ -23,6 +23,9 @@ struct HomeStageAtmosphereLayer: View {
                     image
                         .resizable()
                         .scaledToFill()
+                        // Overscan so the blur does not sample empty
+                        // pixels at the bled left/right edges.
+                        .scaleEffect(HomeStageAtmospherePolicy.overscan)
                         .blur(radius: HomeStageAtmospherePolicy.blurRadius)
                         .saturation(1.15)
                         .opacity(settings.theme == .light ? 0.22 : 0.64)
@@ -78,4 +81,6 @@ enum HomeStageAtmospherePolicy {
     /// the full-screen player background.
     static let maxPixelSize: CGFloat = 240
     static let blurRadius: CGFloat = 36
+    /// Enough overscan that a 36pt blur still has pixels at the frame edge.
+    static let overscan: CGFloat = 1.15
 }

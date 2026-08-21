@@ -760,10 +760,6 @@ final class AppEnvironment {
 
     /// Same filters without the silent widen — used when the listener
     /// just tightened a chip and expects the queue to shrink.
-    func strictlyFilteredMixTracks(_ tracks: [Track]) -> [Track] {
-        filterMixTracks(tracks, relaxIfEmpty: false).tracks
-    }
-
     func filterMixTracks(
         _ tracks: [Track],
         relaxIfEmpty: Bool
