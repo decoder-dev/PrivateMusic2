@@ -717,10 +717,12 @@
 "mix_filters" = "Фильтры микса";
 "mix_filters_relaxed_to_keep_queue" = "Фильтры опустошили бы очередь — оставили оставшиеся треки.";
 "configure_mix" = "Настроить микс";
+"configure_mix_accessibility_hint" = "Открывает настроение, узнаваемость и язык";
 "start_your_mix" = "Запустить свой микс";
 "action.reset" = "Сбросить";
 "familiar_hits_chip" = "Знакомое";
 "unfamiliar_chip" = "Незнакомое";
+"mix_mood_applies_on_start" = "Настроение выбирает станцию при запуске — очередь на лету не режет.";
 "storage_2" = "Хранилище";
 "charts_and_hits" = "Чарты и хиты";
 "language" = "Язык";

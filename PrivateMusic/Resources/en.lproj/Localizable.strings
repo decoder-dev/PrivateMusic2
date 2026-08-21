@@ -717,10 +717,12 @@
 "mix_filters" = "Mix Filters";
 "mix_filters_relaxed_to_keep_queue" = "Filters would empty the queue — kept the remaining tracks.";
 "configure_mix" = "Configure Mix";
+"configure_mix_accessibility_hint" = "Opens mood, familiarity, and language options";
 "start_your_mix" = "Start Your Mix";
 "action.reset" = "Reset";
 "familiar_hits_chip" = "Familiar";
 "unfamiliar_chip" = "Unfamiliar";
+"mix_mood_applies_on_start" = "Mood chooses which station starts — it does not trim the queue live.";
 "storage_2" = "Storage";
 "charts_and_hits" = "Charts and hits";
 "language" = "Language";
