@@ -102,6 +102,11 @@ enum MixLanguagePreference: String, CaseIterable, Identifiable, Sendable {
     static var selenaCases: [MixLanguagePreference] {
         [.russian, .foreign, .instrumental]
     }
+
+    /// Catalog mixes must never see `.instrumental` — coerce at one gate.
+    static func catalogValue(_ preference: MixLanguagePreference) -> MixLanguagePreference {
+        preference == .instrumental ? .any : preference
+    }
 }
 
 enum MixFamiliarityPreference: String, CaseIterable, Identifiable, Sendable {
