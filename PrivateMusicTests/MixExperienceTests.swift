@@ -296,12 +296,42 @@ final class SelenaRecommendationComposerTests: XCTestCase {
         }
         XCTAssertFalse(firstPage.isEmpty)
         XCTAssertFalse(secondPage.isEmpty)
-        XCTAssertEqual(Array(seededTargets.prefix(3)), seeds.prefix(3).map(\.id))
+        // Parallel seed fan-out does not preserve call order — only that
+        // the first page asked for the first three seeds.
+        XCTAssertEqual(
+            Set(seededTargets.prefix(3)),
+            Set(seeds.prefix(3).map(\.id))
+        )
         XCTAssertGreaterThanOrEqual(seededTargets.count, 6)
         XCTAssertEqual(
             Set((firstPage + secondPage).map(\.id)).count,
             firstPage.count + secondPage.count
         )
+    }
+
+    func testSelenaCursorReusesCachedPersonalRecommendations() async throws {
+        let service = CursorMusicService()
+        let seeds = (1...3).map { makeTrack(id: $0, artist: "Seed \($0)") }
+        let cached = [
+            makeTrack(id: 50, artist: "Cached"),
+            makeTrack(id: 51, artist: "Cached")
+        ]
+        let cursor = SelenaRecommendationCursor(
+            seedTracks: seeds,
+            knownTracks: []
+        )
+
+        let page = try await cursor.next(
+            accessToken: "token",
+            musicService: service,
+            cachedPersonalRecommendations: cached
+        )
+
+        let recommendationTargets = await service.recommendationTargets
+        // Cached personal skips the unseeded recommendations() call
+        // (recorded as a nil target).
+        XCTAssertFalse(recommendationTargets.contains { $0 == nil })
+        XCTAssertTrue(page.contains { $0.artist == "Cached" })
     }
 
     private func makeTrack(id: Int, artist: String) -> Track {
