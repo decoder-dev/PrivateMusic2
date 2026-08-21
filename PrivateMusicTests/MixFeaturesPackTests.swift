@@ -99,10 +99,10 @@ final class MixQueueFilterTests: XCTestCase {
 
     func testLatinMoodMarkersUseWordBoundaries() {
         XCTAssertFalse(
-            MixQueueFilter.textContainsMarker("white noise", marker: "hit")
+            MixQueueFilter.textContainsMarker("desktop", marker: "top")
         )
         XCTAssertFalse(
-            MixQueueFilter.textContainsMarker("desktop", marker: "top")
+            MixQueueFilter.textContainsMarker("stop signs", marker: "top")
         )
         XCTAssertTrue(
             MixQueueFilter.textContainsMarker("chart hits", marker: "hit")
