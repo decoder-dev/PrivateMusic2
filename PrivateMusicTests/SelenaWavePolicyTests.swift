@@ -91,6 +91,25 @@ final class SelenaWavePolicyTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(similarCount, personalCount)
     }
 
+    func testArtistCooldownDropsHotArtistsUnlessPoolWouldEmpty() {
+        let hot = makeTrack(id: 1, title: "Hot", artist: "Same")
+        let cool = makeTrack(id: 2, title: "Cool", artist: "Other")
+        let filtered = SelenaWavePolicy.applyingArtistCooldown(
+            [hot, cool],
+            recentArtistKeys: Array(
+                repeating: MixFeedbackPolicy.normalized("Same"),
+                count: 3
+            )
+        )
+        XCTAssertEqual(filtered.map(\.id), [cool.id])
+
+        let onlyHot = SelenaWavePolicy.applyingArtistCooldown(
+            [hot],
+            recentArtistKeys: [MixFeedbackPolicy.normalized("Same")]
+        )
+        XCTAssertEqual(onlyHot.map(\.id), [hot.id])
+    }
+
     private func makeTrack(
         id: Int,
         title: String,
