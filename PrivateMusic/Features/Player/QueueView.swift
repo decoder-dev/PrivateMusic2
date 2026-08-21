@@ -52,7 +52,7 @@ struct QueueView: View {
                             get: { player.mixRadioMode },
                             set: { mode in
                                 let artists = Set(
-                                    history.entries.prefix(40)
+                                    history.entries.prefix(MixListeningHistoryWindow.ranking)
                                         .map(\.track.artist)
                                 )
                                 player.rerankUpcomingMix(

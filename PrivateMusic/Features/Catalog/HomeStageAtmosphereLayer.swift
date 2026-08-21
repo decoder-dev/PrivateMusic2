@@ -9,6 +9,9 @@ struct HomeStageAtmosphereLayer: View {
     let width: CGFloat
     let horizontalPadding: CGFloat
     let foregroundTopOrigin: CGFloat
+    /// When false the mask ends with the transport row instead of
+    /// bleeding into an empty context-rail band.
+    var hasRail: Bool = true
 
     var body: some View {
         ZStack {
@@ -35,7 +38,8 @@ struct HomeStageAtmosphereLayer: View {
             maxWidth: .infinity,
             maxHeight: HomeStageMetrics.atmosphereHeight(
                 for: width,
-                topSafeAreaInset: foregroundTopOrigin
+                topSafeAreaInset: foregroundTopOrigin,
+                hasRail: hasRail
             )
         )
         .clipped()

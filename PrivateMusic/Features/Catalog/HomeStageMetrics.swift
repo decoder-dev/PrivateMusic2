@@ -67,10 +67,13 @@ enum HomeStageMetrics {
     static let belowHeadline = BubbleSpacing.xxl
     static let belowArtwork = BubbleSpacing.xxl
     static let belowTransport = BubbleSpacing.xxl
+    /// Room for the context-tile rest elevation so the ScrollView does not
+    /// clip the soft shadow under the rail.
+    static let railShadowPadding = BubbleSpacing.s
 
-    static var fixedSpacing: CGFloat {
+    static func fixedSpacing(hasRail: Bool = true) -> CGFloat {
         chipHeight + belowChip + belowHeadline + belowArtwork
-            + belowTransport
+            + (hasRail ? belowTransport : BubbleSpacing.m)
     }
 
     /// Total height of the stage at the default text size, so "does it
@@ -78,15 +81,22 @@ enum HomeStageMetrics {
     /// screenshot. Large Dynamic Type grows the chip and now-playing
     /// title past the floors below; tests that use this value are
     /// asserting the default-size composition, not the accessibility one.
+    ///
+    /// Pass `hasRail: false` when the context rail is empty so the hero
+    /// does not reserve a blank tile band (or its shadow pad).
     static func stageHeight(
         for width: CGFloat,
-        headlineLines: Int = 1
+        headlineLines: Int = 1,
+        hasRail: Bool = true
     ) -> CGFloat {
-        headlineSize(for: width) * CGFloat(headlineLines)
+        let railBand: CGFloat = hasRail
+            ? railHeight(for: width) + railShadowPadding
+            : 0
+        return headlineSize(for: width) * CGFloat(headlineLines)
             + artworkSize(for: width)
             + controlHeight(for: width)
-            + railHeight(for: width)
-            + fixedSpacing
+            + railBand
+            + fixedSpacing(hasRail: hasRail)
     }
 
     /// The atmosphere fades out level with the transport row, so the hero
@@ -97,11 +107,16 @@ enum HomeStageMetrics {
     /// nav bar instead of stopping at the safe-area boundary — the stage
     /// used to leave that strip flat black, the one clean seam this hero
     /// was supposed not to have.
+    ///
+    /// When the rail is absent the fade ends with the transport row
+    /// instead of bleeding into an empty tile band.
     static func atmosphereHeight(
         for width: CGFloat,
-        topSafeAreaInset: CGFloat = 0
+        topSafeAreaInset: CGFloat = 0,
+        hasRail: Bool = true
     ) -> CGFloat {
-        stageHeight(for: width) - railHeight(for: width) * 0.35
+        let fadeIntoRail = hasRail ? railHeight(for: width) * 0.35 : 0
+        return stageHeight(for: width, hasRail: hasRail) - fadeIntoRail
             + topSafeAreaInset
     }
 }

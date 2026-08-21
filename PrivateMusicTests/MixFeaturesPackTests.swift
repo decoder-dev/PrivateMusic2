@@ -96,6 +96,52 @@ final class MixQueueFilterTests: XCTestCase {
             )
         )
     }
+
+    func testLatinMoodMarkersUseWordBoundaries() {
+        XCTAssertFalse(
+            MixQueueFilter.textContainsMarker("white noise", marker: "hit")
+        )
+        XCTAssertFalse(
+            MixQueueFilter.textContainsMarker("desktop", marker: "top")
+        )
+        XCTAssertTrue(
+            MixQueueFilter.textContainsMarker("chart hits", marker: "hit")
+        )
+        XCTAssertTrue(
+            MixQueueFilter.textContainsMarker("melancholy evening", marker: "melanch")
+        )
+        XCTAssertTrue(
+            MixQueueFilter.shelfMatchesMood("Party mix", mood: .energetic)
+        )
+    }
+
+    func testApplyAllowingFallbackSurfacesRelaxation() {
+        let english = Track(
+            trackID: 2,
+            ownerID: 1,
+            title: "Song",
+            artist: "Artist",
+            duration: 100,
+            streamURL: nil,
+            artworkURL: nil
+        )
+        let outcome = MixQueueFilter.applyAllowingFallback(
+            [english],
+            language: .russian,
+            familiarity: .any,
+            historyArtists: []
+        )
+        XCTAssertTrue(outcome.didRelax)
+        XCTAssertEqual(outcome.tracks.map(\.id), [english.id])
+
+        let strict = MixQueueFilter.applyStrict(
+            [english],
+            language: .russian,
+            familiarity: .any,
+            historyArtists: []
+        )
+        XCTAssertTrue(strict.isEmpty)
+    }
 }
 
 final class SnippetPreviewPolicyTests: XCTestCase {
@@ -149,6 +195,8 @@ final class MixFilterQueueWiringTests: XCTestCase {
         XCTAssertTrue(source.contains("configureMixTrackFilter"))
         XCTAssertTrue(source.contains("filteredMixTracks(tracks)"))
         XCTAssertTrue(source.contains("reapplyMixFiltersToPlayingQueue"))
+        XCTAssertTrue(source.contains("filterMixTracks"))
+        XCTAssertTrue(source.contains("mix_filters_relaxed_to_keep_queue"))
     }
 
     func testHubRefilterSyncsPlayingQueue() {
