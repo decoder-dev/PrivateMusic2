@@ -109,7 +109,10 @@ enum SelenaBanditPolicy {
         _ tracks: [Track],
         affinityByArtistKey: [String: Double],
         exposure: SelenaExposure,
-        bannedArtists: Set<String>
+        bannedArtists: Set<String>,
+        familiarityWeight: Double = familiarityWeight,
+        noveltyWeight: Double = noveltyWeight,
+        artistSpacing spacing: Int = artistSpacing
     ) -> [Track] {
         // A ban is a removal, not a demotion. The queue reaching this
         // point is normally already filtered, but a listener can ban an
@@ -122,19 +125,28 @@ enum SelenaBanditPolicy {
         }
         guard allowed.count > 1 else { return allowed }
 
+        let fam = max(0, familiarityWeight)
+        let nov = max(0, noveltyWeight)
+        let weightSum = fam + nov
+        let famNorm = weightSum > 0 ? fam / weightSum : Self.familiarityWeight
+        let novNorm = weightSum > 0 ? nov / weightSum : Self.noveltyWeight
+        let gap = max(1, spacing)
+
         let candidates = allowed.enumerated().map { index, track in
             let key = MixFeedbackPolicy.normalized(track.artist)
+            let raw = famNorm * familiarity(
+                affinity: affinityByArtistKey[key] ?? 0
+            ) + novNorm * novelty(
+                impressions: exposure.impressions(forArtistKey: key)
+            )
             return Candidate(
                 track: track,
                 artistKey: key,
-                score: score(
-                    affinity: affinityByArtistKey[key] ?? 0,
-                    impressions: exposure.impressions(forArtistKey: key)
-                ),
+                score: raw,
                 index: index
             )
         }
-        return spacedOrder(candidates)
+        return spacedOrder(candidates, artistSpacing: gap)
     }
 
     private struct Candidate {
@@ -155,7 +167,10 @@ enum SelenaBanditPolicy {
     /// with one artist left comes back whole and clumped rather than
     /// short. Dropping music to look varied is the worse trade, and the
     /// listener asked for a queue, not a demonstration.
-    private static func spacedOrder(_ candidates: [Candidate]) -> [Track] {
+    private static func spacedOrder(
+        _ candidates: [Candidate],
+        artistSpacing gap: Int = artistSpacing
+    ) -> [Track] {
         var remaining = candidates.sorted {
             // Ties keep the incoming order, so the same queue and the same
             // evidence always give the same result.
@@ -165,6 +180,7 @@ enum SelenaBanditPolicy {
         result.reserveCapacity(remaining.count)
         var recentKeys: [String] = []
         var lastPositionByKey: [String: Int] = [:]
+        let spacing = max(1, gap)
 
         while !remaining.isEmpty {
             let pick = remaining.firstIndex {
@@ -179,7 +195,7 @@ enum SelenaBanditPolicy {
             if !chosen.artistKey.isEmpty {
                 lastPositionByKey[chosen.artistKey] = result.count - 1
                 recentKeys.append(chosen.artistKey)
-                if recentKeys.count > artistSpacing {
+                if recentKeys.count > spacing {
                     recentKeys.removeFirst()
                 }
             }

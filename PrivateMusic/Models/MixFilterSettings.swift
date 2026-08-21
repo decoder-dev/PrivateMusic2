@@ -69,6 +69,9 @@ enum MixLanguagePreference: String, CaseIterable, Identifiable, Sendable {
     case any
     case russian
     case foreign
+    /// Yandex wave `without_words` — instrumental / no lyrics signal.
+    /// Selena-only in the configure dial; catalog mixes stay bilingual.
+    case instrumental
 
     var id: String { rawValue }
 
@@ -77,6 +80,7 @@ enum MixLanguagePreference: String, CaseIterable, Identifiable, Sendable {
         case .any: L10n.text("any_language")
         case .russian: L10n.text("russian")
         case .foreign: L10n.text("foreign")
+        case .instrumental: L10n.text("selena.language.instrumental")
         }
     }
 
@@ -85,7 +89,18 @@ enum MixLanguagePreference: String, CaseIterable, Identifiable, Sendable {
         case .any: "circle"
         case .russian: "character.textbox"
         case .foreign: "globe"
+        case .instrumental: "music.quarternote.3"
         }
+    }
+
+    /// Options shown on the catalog-mix dial (basic).
+    static var mixCases: [MixLanguagePreference] {
+        [.russian, .foreign]
+    }
+
+    /// Options shown on Selena's wave dial (rich).
+    static var selenaCases: [MixLanguagePreference] {
+        [.russian, .foreign, .instrumental]
     }
 }
 
@@ -255,7 +270,21 @@ enum MixQueueFilter {
             return containsCyrillic(track.title) || containsCyrillic(track.artist)
         case .foreign:
             return !containsCyrillic(track.title) && !containsCyrillic(track.artist)
+        case .instrumental:
+            return looksInstrumental(track)
         }
+    }
+
+    /// Heuristic stand-in for Yandex `without_words` — title markers only;
+    /// VK does not expose an instrumental flag on audio objects.
+    static func looksInstrumental(_ track: Track) -> Bool {
+        let blob = normalizeMoodText("\(track.title) \(track.artist)")
+        let markers = [
+            "instrumental", "инструментал", "karaoke", "караоке",
+            "minus", "минус", "acoustic version", "piano version",
+            "orchestral", "soundtrack", "ost", "theme"
+        ]
+        return markers.contains { textContainsMarker(blob, marker: normalizeMoodText($0)) }
     }
 
     static func matchesFamiliarity(
