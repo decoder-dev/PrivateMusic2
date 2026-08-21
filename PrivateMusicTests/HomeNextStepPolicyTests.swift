@@ -362,6 +362,8 @@ final class HomeNextStepPolicyTests: XCTestCase {
             )
         )
         XCTAssertEqual(winner?.kind, .vibeContinuation)
-        XCTAssertEqual(winner?.mixID, "energy")
+        XCTAssertEqual(winner?.mixID, MusicMix.common.id)
+        XCTAssertEqual(winner?.action, .mood(.energetic))
+        XCTAssertTrue(winner?.sourceIsSelena == true)
     }
 }
