@@ -38,8 +38,13 @@ enum SelenaRecommendationComposer {
         loaded: [Track],
         limit: Int = 32
     ) -> [Track] {
-        unique(
+        let base = unique(
             history.map(\.track) + loaded + recommendations,
+            limit: limit * 2
+        )
+        return ArtistCooccurrenceIndex.boostSeeds(
+            base,
+            history: history,
             limit: limit
         )
     }
