@@ -696,7 +696,6 @@
 "diversifies_the_queue_closer_to_track_and_more_novelty_pull_vk_recommend" = "Разбавляет очередь; «Ближе к треку» и «Больше новизны» подтягивают рекомендации VK";
 "russian" = "Русский";
 "smooths_volume_jumps_between_tracks_works_on_progressive_streams_on_devi" = "Сглаживает скачки громкости между треками. Работает на прогрессивных потоках; для HLS обработка на устройстве недоступна.";
-"selena.catalog_subtitle" = "Селена ранжирует миксы VK, социальные и каталожные подборки";
 "tales_lullabies_and_family_mixes" = "Сказки, колыбельные и семейные миксы";
 "download_2" = "Скачать";
 "hidden_in_mixes" = "Скрытое в миксах";
@@ -806,4 +805,3 @@
 "selena.wave_card_title" = "Настрой свою волну";
 "selena.wave_card_empty" = "Настроение, разнообразие и язык — как в Яндекс Музыке";
 "mix.basic_card_empty" = "Язык и узнаваемость для каталожных миксов";
-"selena.wave_controls_title" = "Волна сейчас";

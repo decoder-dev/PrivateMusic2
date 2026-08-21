@@ -186,8 +186,6 @@ actor SelenaRecommendationCursor {
     /// Artists placed in this session's queue — hard-excluded from the
     /// next generation window (Yandex-style cooldown, not just spacing).
     private var recentArtistKeys: [String] = []
-    /// Which content arms paid off this session — nudges compose bias.
-    private var sourceBandit = SelenaSourceBandit()
 
     init(seedTracks: [Track], knownTracks: [Track] = []) {
         self.seeds = SelenaRecommendationComposer.seedTracks(
@@ -206,8 +204,9 @@ actor SelenaRecommendationCursor {
         accessToken: String,
         musicService: any MusicService,
         cachedPersonalRecommendations: [Track] = [],
-        diversity: SelenaDiversityPreference = .default
-    ) async throws -> [Track] {
+        diversity: SelenaDiversityPreference = .default,
+        bias: (personal: Int, similar: Int, seedEvery: Int)? = nil
+    ) async throws -> (tracks: [Track], sources: [String: SelenaComposeSource]) {
         // Seed fan-out and personal taste used to run one after another —
         // four round-trips before Explore could paint Selena. Run them
         // together; the wall clock is one RTT, not four.
@@ -251,18 +250,18 @@ actor SelenaRecommendationCursor {
             similarRecommendations: cooledSimilar,
             fallbackMix: cooledFallback,
             diversity: diversity,
-            bias: sourceBandit.composeBias(diversity: diversity)
+            bias: bias
         )
 
         var kept: [Track] = []
+        var keptSources: [String: SelenaComposeSource] = [:]
         kept.reserveCapacity(composed.tracks.count)
         for track in composed.tracks where knownIDs.insert(track.id).inserted {
             kept.append(track)
+            if let source = composed.sources[track.id] {
+                keptSources[track.id] = source
+            }
         }
-        sourceBandit.observeCompose(
-            sources: composed.sources,
-            keptIDs: Set(kept.map(\.id))
-        )
 
         if !kept.isEmpty {
             seeds = SelenaRecommendationComposer.rotatingSeeds(
@@ -274,7 +273,7 @@ actor SelenaRecommendationCursor {
                 from: kept
             )
         }
-        return kept
+        return (kept, keptSources)
     }
 
     private func personalRecommendations(
