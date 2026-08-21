@@ -2245,12 +2245,30 @@ struct MixesHubView: View {
             : nil
         do {
             if needsMixes {
-                mixes = try await environment.withAuthorizedToken { token in
-                    try await environment.musicService
-                        .mixes(accessToken: token)
+                // Home already hydrated the same catalog — reuse it on a
+                // cold Explore open instead of paying for catalogSnapshot
+                // again before Selena can even paint.
+                if !force, !homeCatalog.mixes.isEmpty {
+                    mixes = homeCatalog.mixes
+                    loadErrorMessage = nil
+                } else {
+                    mixes = try await environment.withAuthorizedToken {
+                        token in
+                        try await environment.musicService
+                            .mixes(accessToken: token)
+                    }
+                    loadErrorMessage = nil
                 }
-                loadErrorMessage = nil
-                ensureVKSelection(forceReload: force)
+                // VK track hydrate is for the VK tab. Doing it on Selena
+                // land steals bandwidth from the recommendation stream.
+                let shouldLoadVKTracks =
+                    hubTab == .vk
+                    || focusedMixID != nil
+                    || startsOnVK
+                ensureVKSelection(
+                    forceReload: force,
+                    loadTracks: shouldLoadVKTracks
+                )
             }
         } catch is CancellationError {
             // The view went away or the token changed — drop the sibling
@@ -2265,13 +2283,35 @@ struct MixesHubView: View {
     }
 
     private func loadSelenaTracks() async {
+        // Instant first paint when Home already has personal
+        // recommendations — Explore used to sit on a skeleton until four
+        // recommendation round-trips finished even though the same tracks
+        // were already in memory.
+        if selenaTracks.isEmpty, !homeCatalog.recommendations.isEmpty {
+            let seeds = SelenaRecommendationComposer.seedTracks(
+                history: history.entries,
+                recommendations: homeCatalog.recommendations,
+                loaded: []
+            )
+            let quick = SelenaRecommendationComposer.compose(
+                seedTracks: seeds,
+                personalRecommendations: homeCatalog.recommendations,
+                similarRecommendations: []
+            )
+            if !quick.isEmpty {
+                storeTracks(quick, for: personalMix)
+            }
+        }
+
+        let cachedPersonal = homeCatalog.recommendations
         let stream = selenaRecommendationStream(knownTracks: [])
         do {
             let bootstrap = try await environment.withAuthorizedToken {
                 token in
                 try await stream.next(
                     accessToken: token,
-                    musicService: environment.musicService
+                    musicService: environment.musicService,
+                    cachedPersonalRecommendations: cachedPersonal
                 )
             }
             storeTracks(bootstrap, for: personalMix)
@@ -2301,7 +2341,10 @@ struct MixesHubView: View {
         }
     }
 
-    private func ensureVKSelection(forceReload: Bool = false) {
+    private func ensureVKSelection(
+        forceReload: Bool = false,
+        loadTracks: Bool = true
+    ) {
         guard !orderedVKMixes.isEmpty else {
             selectedVKMix = nil
             vkTracks = []
@@ -2321,8 +2364,12 @@ struct MixesHubView: View {
             ?? orderedVKMixes.first
         guard let mix = preferred else { return }
         if selectedVKMix?.id != mix.id {
-            applyVKSelection(mix, tracks: vkTrackCache[mix.id])
-        } else if forceReload || vkTracks.isEmpty {
+            applyVKSelection(
+                mix,
+                tracks: vkTrackCache[mix.id],
+                loadIfMissing: loadTracks
+            )
+        } else if forceReload || (loadTracks && vkTracks.isEmpty) {
             loadVKTracks(mix)
         }
     }
@@ -2354,7 +2401,8 @@ struct MixesHubView: View {
 
     private func applyVKSelection(
         _ mix: MusicMix,
-        tracks: [Track]?
+        tracks: [Track]?,
+        loadIfMissing: Bool = true
     ) {
         selectedVKMix = mix
         if let tracks, !tracks.isEmpty {
@@ -2364,7 +2412,9 @@ struct MixesHubView: View {
         } else {
             vkTracks = []
             vkRationale = .empty
-            loadVKTracks(mix)
+            if loadIfMissing {
+                loadVKTracks(mix)
+            }
         }
     }
 
@@ -2644,9 +2694,11 @@ struct MixesHubView: View {
 
     @MainActor
     private func startResolvedMood(_ mood: MixMoodPreference) {
-        // Mood chips can fire before the VK catalog arrives. Waiting for
-        // `load()` keeps "Спокойно" from collapsing into My Music just
-        // because the shelf list was still empty.
+        // Prefer Home's already-fetched mixes so a mood chip does not wait
+        // on Explore's own Selena bootstrap + catalog round-trip.
+        if mixes.isEmpty, !homeCatalog.mixes.isEmpty {
+            mixes = homeCatalog.mixes
+        }
         if mixes.isEmpty, sessionStore.accessToken != nil {
             launchTask?.cancel()
             launchTask = Task {
