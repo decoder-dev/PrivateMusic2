@@ -8,6 +8,9 @@ struct MixConfigureSheet: View {
 
     /// When set, the primary button starts a mix after applying filters.
     var onStart: (() -> Void)? = nil
+    /// Fires after the sheet has dismissed when Start was tapped — keeps
+    /// mix launch off the same turn as teardown.
+    @State private var pendingStart = false
 
     var body: some View {
         NavigationStack {
@@ -15,16 +18,23 @@ struct MixConfigureSheet: View {
                 showsStartAction: onStart != nil,
                 onCancel: { dismiss() },
                 onStart: {
+                    pendingStart = true
                     dismiss()
-                    onStart?()
                 }
             )
             .background(ThemeBackground())
             .navigationTitle(L10n.text("configure_mix"))
             .navigationBarTitleDisplayMode(.inline)
         }
-        .presentationDetents(onStart == nil ? [.large] : [.medium, .large])
+        // Large so mood + familiarity + language + Start fit without
+        // burying Language under the fold on a medium detent.
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .onDisappear {
+            guard pendingStart else { return }
+            pendingStart = false
+            onStart?()
+        }
     }
 }
 
@@ -32,10 +42,16 @@ struct MixConfigureSheet: View {
 struct MixConfigureContent: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(AppSettings.self) private var settings
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var showsStartAction = false
     var onCancel: (() -> Void)? = nil
     var onStart: (() -> Void)? = nil
+
+    private var increaseContrast: Bool {
+        colorSchemeContrast == .increased
+    }
 
     var body: some View {
         ScrollView {
@@ -43,18 +59,28 @@ struct MixConfigureContent: View {
                 moodSection
                 familiaritySection
                 languageSection
+
+                if !showsStartAction {
+                    Text(
+                        L10n.text(
+                            "like_vk_mix_filters_they_apply_to_the_mix_queue_and_to_recommendations_o"
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(.horizontal, BubbleSpacing.l)
             .padding(.top, BubbleSpacing.m)
-            .padding(
-                .bottom,
-                showsStartAction ? 100 : BubbleSpacing.xxl
-            )
+            .padding(.bottom, BubbleSpacing.xxl)
         }
         .toolbar {
             if let onCancel {
+                // Filters write through immediately — this closes the
+                // sheet, it does not discard the dial.
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.text("action.cancel"), action: onCancel)
+                    Button(L10n.text("done"), action: onCancel)
                 }
             }
             ToolbarItem(placement: .primaryAction) {
@@ -68,15 +94,28 @@ struct MixConfigureContent: View {
             if showsStartAction, let onStart {
                 VStack(spacing: 0) {
                     Divider().opacity(0.35)
-                    BubbleCallToAction(
-                        title: L10n.text("start_your_mix"),
-                        height: 52
-                    ) {
+                    Button(action: {
                         Haptics.selection()
                         environment.reapplyMixFiltersToPlayingQueue()
                         onStart()
+                    }) {
+                        HStack(spacing: BubbleSpacing.s) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 16, weight: .bold))
+                            Text(L10n.text("start_your_mix"))
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(settings.theme.buttonForeground)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(
+                            settings.theme.accent,
+                            in: Capsule(style: .continuous)
+                        )
                     }
-                    .frame(maxWidth: .infinity)
+                    .buttonStyle(BubblePressStyle())
+                    .accessibilityLabel(L10n.text("start_your_mix"))
                     .padding(.horizontal, BubbleSpacing.l)
                     .padding(.top, BubbleSpacing.m)
                     .padding(.bottom, BubbleSpacing.m)
@@ -93,12 +132,17 @@ struct MixConfigureContent: View {
     }
 
     private var moodSection: some View {
-        filterSection(title: L10n.text("mood")) {
+        filterSection(
+            title: L10n.text("mood"),
+            footnote: L10n.text("mix_mood_applies_on_start")
+        ) {
             ForEach(MixMoodPreference.allCases.filter { $0 != .any }) { mood in
                 MixConfigureChip(
                     title: mood.title,
                     systemImage: mood.chipSymbol,
-                    isSelected: settings.mixMoodPreference == mood
+                    isSelected: settings.mixMoodPreference == mood,
+                    increaseContrast: increaseContrast,
+                    reduceTransparency: reduceTransparency
                 ) {
                     toggleMood(mood)
                 }
@@ -114,7 +158,9 @@ struct MixConfigureContent: View {
                 MixConfigureChip(
                     title: familiarity.chipTitle,
                     systemImage: familiarity.chipSymbol,
-                    isSelected: settings.mixFamiliarityPreference == familiarity
+                    isSelected: settings.mixFamiliarityPreference == familiarity,
+                    increaseContrast: increaseContrast,
+                    reduceTransparency: reduceTransparency
                 ) {
                     toggleFamiliarity(familiarity)
                 }
@@ -130,7 +176,9 @@ struct MixConfigureContent: View {
                 MixConfigureChip(
                     title: language.title,
                     systemImage: language.chipSymbol,
-                    isSelected: settings.mixLanguagePreference == language
+                    isSelected: settings.mixLanguagePreference == language,
+                    increaseContrast: increaseContrast,
+                    reduceTransparency: reduceTransparency
                 ) {
                     toggleLanguage(language)
                 }
@@ -140,6 +188,7 @@ struct MixConfigureContent: View {
 
     private func filterSection<Content: View>(
         title: String,
+        footnote: String? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: BubbleSpacing.m) {
@@ -148,6 +197,11 @@ struct MixConfigureContent: View {
                 .foregroundStyle(.secondary)
             MixFilterChipFlow(spacing: BubbleSpacing.s) {
                 content()
+            }
+            if let footnote {
+                Text(footnote)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
         }
         .accessibilityElement(children: .contain)
@@ -164,6 +218,8 @@ struct MixConfigureContent: View {
 
     private func toggleMood(_ mood: MixMoodPreference) {
         Haptics.selection()
+        // Mood shapes which station Start launches — it is not a live
+        // queue filter like language / familiarity.
         settings.mixMoodPreference =
             settings.mixMoodPreference == mood ? .any : mood
     }
@@ -193,6 +249,8 @@ private struct MixConfigureChip: View {
     let title: String
     let systemImage: String
     let isSelected: Bool
+    var increaseContrast = false
+    var reduceTransparency = false
     let action: () -> Void
 
     var body: some View {
@@ -208,31 +266,49 @@ private struct MixConfigureChip: View {
                         .font(.caption.weight(.bold))
                 }
             }
-            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            .foregroundStyle(
+                isSelected
+                    ? settings.theme.buttonForeground
+                    : Color.primary
+            )
             .padding(.horizontal, BubbleSpacing.m)
             .frame(minHeight: PremiumLayout.minimumTapTarget)
             .background(
                 Capsule(style: .continuous)
-                    .fill(
-                        isSelected
-                            ? settings.theme.accent
-                            : Color.primary.opacity(0.06)
-                    )
+                    .fill(fillColor)
             )
             .overlay {
                 Capsule(style: .continuous)
-                    .strokeBorder(
-                        isSelected
-                            ? Color.clear
-                            : Color.primary.opacity(0.08),
-                        lineWidth: 1
-                    )
+                    .strokeBorder(strokeColor, lineWidth: strokeWidth)
             }
             .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(BubblePressStyle())
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityLabel(title)
+    }
+
+    private var fillColor: Color {
+        if isSelected {
+            return settings.theme.accent
+        }
+        let base = increaseContrast || reduceTransparency ? 0.10 : 0.06
+        return Color.primary.opacity(base)
+    }
+
+    private var strokeColor: Color {
+        if isSelected { return .clear }
+        return Color.primary.opacity(
+            ContrastPolicy.strokeOpacity(
+                increased: increaseContrast,
+                reduceTransparency: reduceTransparency,
+                base: 0.08
+            )
+        )
+    }
+
+    private var strokeWidth: CGFloat {
+        ContrastPolicy.strokeWidth(increased: increaseContrast)
     }
 }
 
