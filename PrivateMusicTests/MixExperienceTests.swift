@@ -379,13 +379,11 @@ final class SelenaRecommendationComposerTests: XCTestCase {
             accessToken: "token",
             musicService: service
         )
-        let afterSecond = await service.recommendationTargets.count
+        let targets = await service.recommendationTargets
 
         // Second page must not pay for another unseeded personal fetch.
-        XCTAssertFalse(
-            (await service.recommendationTargets).contains { $0 == nil }
-        )
-        XCTAssertEqual(afterSecond - beforeSecond, 3)
+        XCTAssertFalse(targets.contains { $0 == nil })
+        XCTAssertEqual(targets.count - beforeSecond, 3)
         XCTAssertFalse(second.isEmpty)
     }
 
