@@ -129,10 +129,9 @@ enum MixQueueFilter {
         }
     }
 
-    /// Stem-style substring for Cyrillic; Latin uses a word start so
-    /// "hit" cannot light up inside "white", while longer stems like
-    /// "melanch" still reach "melancholy". Tokens of three letters or
-    /// fewer require a full word boundary.
+    /// Stem-style substring for Cyrillic; Latin anchors at a word start so
+    /// "top" does not light up inside "desktop" / "stop", while stems like
+    /// "hit" / "melanch" still reach "hits" / "melancholy".
     static func textContainsMarker(_ haystack: String, marker: String) -> Bool {
         guard !marker.isEmpty else { return false }
         let trimmed = marker.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -151,11 +150,7 @@ enum MixQueueFilter {
 
     private static func matchesLatinMarker(_ haystack: String, token: String) -> Bool {
         let escaped = NSRegularExpression.escapedPattern(for: token)
-        // Short Latin tokens are too ambiguous as prefixes ("hit" ⊂ "white"
-        // is filtered by `\b…\b`; "top" must not match "stop").
-        let pattern = token.count <= 3
-            ? "\\b\(escaped)\\b"
-            : "\\b\(escaped)"
+        let pattern = "\\b\(escaped)"
         return haystack.range(of: pattern, options: .regularExpression) != nil
     }
 
