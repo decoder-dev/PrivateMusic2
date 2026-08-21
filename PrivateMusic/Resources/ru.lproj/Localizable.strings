@@ -714,7 +714,7 @@
 "manage" = "Управление";
 "settings.level" = "Уровень";
 "the_file_is_ready_tap_the_button_below" = "Файл готов. Нажмите кнопку ниже.";
-"mix_filters" = "Фильтры микса";
+"mix_filters" = "Волна и миксы";
 "mix_filters_relaxed_to_keep_queue" = "Фильтры опустошили бы очередь — оставили оставшиеся треки.";
 "configure_mix" = "Настроить микс";
 "configure_mix_accessibility_hint" = "Открывает язык и узнаваемость каталожного микса";
