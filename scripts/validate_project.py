@@ -288,7 +288,6 @@ for required_mix_stream_symbol in (
     "seededBy: seed",
     "withThrowingTaskGroup(of: [Track].self)",
     "knownIDs.insert(track.id).inserted",
-    "sourceBandit",
     "commonMixOffset += MixTrackRequestPolicy.pageSize",
     "rotatingSeeds(",
     "sessionPersonal",
@@ -2165,6 +2164,13 @@ def require_ranking_lives_in_a_tested_policy() -> None:
         fail("QueueSource must flag Selena-flavored queues")
     if "usesSelenaWaveFilters" not in audio or "usesSelenaWaveFilters != true" not in audio:
         fail("play() must not MixQueueRanker-reshuffle Selena bandit order")
+    if "usesSelenaWaveFilters != true" not in audio or "func rerankUpcomingMix(" not in audio:
+        fail("rerankUpcomingMix must refuse Selena wave queues")
+    queue_view = swift_code(
+        (SOURCE / "Features" / "Player" / "QueueView.swift").read_text(encoding="utf-8")
+    )
+    if "usesSelenaWaveFilters" not in queue_view:
+        fail("Queue sheet must hide Mix Radio for Selena wave queues")
 
 
 require_ranking_lives_in_a_tested_policy()
