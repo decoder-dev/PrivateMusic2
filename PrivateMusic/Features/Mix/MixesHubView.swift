@@ -2164,6 +2164,12 @@ struct MixesHubView: View {
         guard needsMixes || needsSelena else { return }
         isLoading = true
         defer { isLoading = false }
+        // Pull-to-refresh must also refresh Home's personal recommendations —
+        // otherwise Selena keeps composing from a stale cache while the
+        // catalog shelves update.
+        if force {
+            await environment.refreshHomeCatalog(force: true)
+        }
         // Selena is the tab everyone lands on, and its tracks come from the
         // recommendation stream — they do not read `mixes` at all. Fetching
         // them after the VK catalog meant the default tab sat on a skeleton
@@ -2405,9 +2411,8 @@ struct MixesHubView: View {
             selectVKMix(mix)
         }
         if mix.id == MusicMix.common.id {
-            // Selena is a personal recommendation session: reset
-            // exploration counters so the UCB decision matches the
-            // *current* queue, not some older one.
+            // Fresh Selena sit-down: clear session spacing so the bandit
+            // decision matches this queue, not an older Home/Explore run.
             environment.resetSelenaExposure()
         }
         // If the mix was already bootstrapped under different filter
@@ -2417,20 +2422,17 @@ struct MixesHubView: View {
             storeTracks(base, for: mix)
         }
         let loaded = tracks(for: mix)
-        let queueToPlay: [Track] = if mix.id == MusicMix.common.id {
-            SelenaBanditPolicy.rerank(
-                loaded,
-                affinityByArtistKey: environment.selenaArtistAffinity(),
-                exposure: environment.selenaExposure,
-                bannedArtists: mixFeedbackStore.bannedArtists
-            )
+        let queueToPlay: [Track]
+        if mix.id == MusicMix.common.id {
+            // Re-rank under the reset exposure so the list on screen and
+            // the queue that starts are the same order.
+            let ranked = environment.rankSelenaQueue(loaded)
+            selenaTracks = ranked
+            queueToPlay = ranked
         } else {
-            loaded
+            queueToPlay = loaded
         }
         if let first = queueToPlay.first {
-            if mix.id == MusicMix.common.id {
-                environment.recordSelenaExposure(queueToPlay)
-            }
             playTrack(first, queue: queueToPlay, mix: mix, applying: mode)
             return
         }
@@ -2448,14 +2450,7 @@ struct MixesHubView: View {
 
                 let queue: [Track] = if mix.id == MusicMix.common.id {
                     await MainActor.run {
-                        let reranked = SelenaBanditPolicy.rerank(
-                            initialQueue,
-                            affinityByArtistKey: environment.selenaArtistAffinity(),
-                            exposure: environment.selenaExposure,
-                            bannedArtists: mixFeedbackStore.bannedArtists
-                        )
-                        environment.recordSelenaExposure(reranked)
-                        return reranked
+                        environment.rankSelenaQueue(initialQueue)
                     }
                 } else {
                     initialQueue
@@ -2478,7 +2473,8 @@ struct MixesHubView: View {
             return try await environment.withAuthorizedToken { token in
                 try await stream.next(
                     accessToken: token,
-                    musicService: environment.musicService
+                    musicService: environment.musicService,
+                    cachedPersonalRecommendations: homeCatalog.recommendations
                 )
             }
         }
@@ -2525,16 +2521,8 @@ struct MixesHubView: View {
                         musicService: environment.musicService
                     )
                 }
-                let filtered = environment.filteredMixTracks(more)
                 return await MainActor.run {
-                    let reranked = SelenaBanditPolicy.rerank(
-                        filtered,
-                        affinityByArtistKey: environment.selenaArtistAffinity(),
-                        exposure: environment.selenaExposure,
-                        bannedArtists: mixFeedbackStore.bannedArtists
-                    )
-                    environment.recordSelenaExposure(reranked)
-                    return reranked
+                    environment.selenaContinuationTracks(more)
                 }
             }
         }
@@ -2547,7 +2535,9 @@ struct MixesHubView: View {
                     musicService: environment.musicService
                 )
             }
-            return environment.filteredMixTracks(more)
+            return await MainActor.run {
+                environment.continuationTracks(more)
+            }
         }
     }
 
@@ -2567,11 +2557,23 @@ struct MixesHubView: View {
     private func storeTracks(
         _ tracks: [Track],
         for mix: MusicMix,
-        updatingBaseline: Bool = true
+        updatingBaseline: Bool = true,
+        applyBanditPreview: Bool = true
     ) {
         let cleaned = environment.filteredMixTracks(tracks)
+        let display: [Track]
+        if mix.id == MusicMix.common.id, applyBanditPreview {
+            // Preview must match play order — bandit without burning
+            // exposure until the listener actually starts the station.
+            display = environment.rankSelenaQueue(
+                cleaned,
+                recordExposure: false
+            )
+        } else {
+            display = cleaned
+        }
         let rationale = MixRationaleBuilder.build(
-            mixTracks: cleaned,
+            mixTracks: display,
             history: history.entries,
             recommendations: homeCatalog.recommendations
         )
@@ -2579,7 +2581,7 @@ struct MixesHubView: View {
             if updatingBaseline {
                 selenaTrackBase = tracks
             }
-            selenaTracks = cleaned
+            selenaTracks = display
             selenaRationale = rationale
             return
         }
@@ -2677,10 +2679,37 @@ struct MixesHubView: View {
             return
         }
         let artists = Set(history.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist))
-        player.rerankUpcomingMix(mode: mode, historyArtists: artists)
         let current = tracks(for: mix)
         let queue = current.isEmpty ? player.queue : current
         guard let seed = player.currentTrack ?? queue.first else { return }
+
+        if mix.id == MusicMix.common.id, mode == .balanced {
+            // Selena "balanced" is the bandit, not MixQueueRanker's shuffle —
+            // otherwise mode flips undo the spacing Explore already showed.
+            let base = baseTracks(for: mix)
+            let pool = base.isEmpty ? queue : base
+            let ranked = environment.rankSelenaQueue(
+                environment.filteredMixTracks(pool),
+                recordExposure: false
+            )
+            storeTracks(
+                ranked,
+                for: mix,
+                updatingBaseline: false,
+                applyBanditPreview: false
+            )
+            if let current = player.currentTrack,
+               let index = ranked.firstIndex(where: { $0.id == current.id }) {
+                player.replaceUpcoming(
+                    with: Array(ranked.suffix(from: index + 1))
+                )
+            } else {
+                player.rerankUpcomingMix(mode: mode, historyArtists: artists)
+            }
+            return
+        }
+
+        player.rerankUpcomingMix(mode: mode, historyArtists: artists)
         storeTracks(
             MixQueueRanker.rerank(
                 queue: queue,
@@ -2690,7 +2719,9 @@ struct MixesHubView: View {
                 historyArtists: artists
             ),
             for: mix,
-            updatingBaseline: false
+            updatingBaseline: false,
+            // Mode already shaped the list; don't let bandit reshuffle it.
+            applyBanditPreview: false
         )
         // Server refill for closerToSeed / moreNovel is owned by AudioPlayer.
     }
