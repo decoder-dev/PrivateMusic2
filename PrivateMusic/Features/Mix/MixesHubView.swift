@@ -330,7 +330,7 @@ struct MixesHubView: View {
     }
 
     /// Always stays on Selena — mood is a live wave dial, not a jump to a
-    /// VK vibe shelf (Home chips still use MixMoodLaunchPolicy for that).
+    /// VK vibe shelf.
     private func startConfiguredSelena() {
         start(personalMix)
     }
@@ -2658,38 +2658,6 @@ struct MixesHubView: View {
             return personalMix
         case .vk:
             return selectedVKMix ?? orderedVKMixes.first ?? personalMix
-        }
-    }
-
-    @MainActor
-    private func startResolvedMood(_ mood: MixMoodPreference) {
-        // Prefer Home's already-fetched mixes so a mood chip does not wait
-        // on Explore's own Selena bootstrap + catalog round-trip.
-        if mixes.isEmpty, !homeCatalog.mixes.isEmpty {
-            mixes = homeCatalog.mixes
-        }
-        if mixes.isEmpty, sessionStore.accessToken != nil {
-            launchTask?.cancel()
-            launchTask = Task {
-                await load()
-                guard !Task.isCancelled else { return }
-                await MainActor.run { finishResolvedMood(mood) }
-            }
-            return
-        }
-        finishResolvedMood(mood)
-    }
-
-    @MainActor
-    private func finishResolvedMood(_ mood: MixMoodPreference) {
-        switch MixMoodLaunchPolicy.resolve(mood: mood, in: mixes) {
-        case let .mix(mix):
-            hubTab = mix.id == MusicMix.common.id ? .selena : .vk
-            start(mix)
-        case .myMusic:
-            hubTab = .selena
-            launchTask?.cancel()
-            launchTask = Task { await environment.startMixFromMyMusic() }
         }
     }
 

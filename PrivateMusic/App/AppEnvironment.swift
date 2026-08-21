@@ -854,11 +854,6 @@ final class AppEnvironment {
                 .prefix(MixListeningHistoryWindow.familiarity)
                 .map(\.track.artist)
         )
-        let recentIDs = Set(
-            historyStore.entries
-                .prefix(MixListeningHistoryWindow.ranking)
-                .map(\.track.id)
-        )
         let afterFeedback = mixFeedbackStore.filtering(tracks)
         let familiarity = SelenaWavePolicy.impliedFamiliarity(
             diversity: settings.selenaDiversityPreference
@@ -886,12 +881,12 @@ final class AppEnvironment {
             base.tracks,
             mood: settings.mixMoodPreference
         )
+        // Fingerprint dedupe only here — recent-play exclusion lives on the
+        // cursor's knownIDs so the opening page is not half-empty.
         let deduped = SelenaWavePolicy.dedupeRepeats(
             moodOrdered,
-            recentTrackIDs: recentIDs
+            recentTrackIDs: []
         )
-        // If dedupe emptied a non-empty filtered pool, keep mood order —
-        // better a repeat than silence.
         if deduped.isEmpty, !moodOrdered.isEmpty {
             return MixFilterOutcome(tracks: moodOrdered, didRelax: true)
         }
@@ -1073,28 +1068,18 @@ final class AppEnvironment {
     }
 
     /// Starting a mood used to mean writing `settings.mixMoodPreference`
-    /// and then launching the ordinary personal station, so «Активно» and
-    /// «Спокойно» produced the same queue. `MixMoodLaunchPolicy` is the
-    /// one resolver Home's vibe chips and the stage bubbles both go
-    /// through, so the mood reaches the queue rather than just the UI.
+    /// and then launching a matching VK vibe shelf, so «Активно» left
+    /// Selena entirely. Yandex My Wave keeps moodEnergy on the personal
+    /// station — we do the same: set the dial and start Selena.
     func startMoodStation(
         _ mood: MixMoodPreference,
         in mixes: [MusicMix]
     ) async {
-        var catalog = mixes
-        // Home can fire a vibe bubble before `refreshHomeCatalog` finishes.
-        // Waiting here keeps «Спокойно» from collapsing into My Music —
-        // the same guarantee Explore's `startResolvedMood` already had.
-        if catalog.isEmpty {
+        settings.mixMoodPreference = mood
+        if mixes.isEmpty {
             await refreshHomeCatalog()
-            catalog = homeCatalogStore.mixes
         }
-        switch MixMoodLaunchPolicy.resolve(mood: mood, in: catalog) {
-        case let .mix(mix):
-            await startCatalogMix(mix)
-        case .myMusic:
-            await startMixFromMyMusic()
-        }
+        await startSelenaStation()
     }
 
     /// Radio for one artist. Tapping an artist bubble used to call
