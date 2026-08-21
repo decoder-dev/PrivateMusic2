@@ -289,6 +289,8 @@ for required_mix_stream_symbol in (
     "withThrowingTaskGroup(of: [Track].self)",
     "knownIDs.insert($0.id).inserted",
     "commonMixOffset += MixTrackRequestPolicy.pageSize",
+    "rotatingSeeds(",
+    "sessionPersonal",
 ):
     if required_mix_stream_symbol not in mix_stream_source:
         fail(
@@ -2078,7 +2080,14 @@ def require_ranking_lives_in_a_tested_policy() -> None:
         (SOURCE / "Features" / "Mix" / "MixesHubView.swift")
         .read_text(encoding="utf-8")
     )
-    if "SelenaBanditPolicy.rerank(" not in hub:
+    env = swift_code(
+        (SOURCE / "App" / "AppEnvironment.swift").read_text(encoding="utf-8")
+    )
+    # Explore may call SelenaBanditPolicy directly or via the shared
+    # AppEnvironment helper Home and Library also use.
+    hub_ranks = "SelenaBanditPolicy.rerank(" in hub or "rankSelenaQueue(" in hub
+    env_ranks = "SelenaBanditPolicy.rerank(" in env
+    if not hub_ranks or not env_ranks:
         fail("MixesHubView must rerank through SelenaBanditPolicy")
     for inlined in ("func selenaBanditRerank", "sqrt(log("):
         if inlined in hub:
@@ -2098,11 +2107,19 @@ def require_ranking_lives_in_a_tested_policy() -> None:
     ):
         if required_symbol not in policy:
             fail(f"SelenaBanditPolicy is missing {required_symbol}")
-    if "affinityByArtistKey:" not in hub:
+    if "affinityByArtistKey:" not in hub and "affinityByArtistKey:" not in env:
         fail(
             "the personal mix must rank on real listening evidence: "
             "pass ArtistAffinityPolicy scores into SelenaBanditPolicy"
         )
+    # Home's personal station must share Explore's cursor path — not a
+    # separate mixTracksBootstrap for MusicMix.common.
+    if "func startSelenaStation(" not in env:
+        fail("Home must launch Selena through startSelenaStation")
+    if "SelenaRecommendationCursor(" not in env:
+        fail("startSelenaStation must compose through SelenaRecommendationCursor")
+    if "refreshHomeCatalog(force: true)" not in hub:
+        fail("Explore pull-to-refresh must force-refresh Home recommendations")
 
 
 require_ranking_lives_in_a_tested_policy()
