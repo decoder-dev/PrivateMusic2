@@ -42,7 +42,7 @@ struct LibraryView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            let shelfWidth = containerWidth > 0 ? containerWidth : 390
+            let shelfWidth = containerWidth
             ScrollView {
                 // Section gaps are per-section padding rather than stack
                 // spacing: the track rows share this stack (a nested lazy

@@ -173,7 +173,7 @@ struct CatalogView: View {
             Task { await load(force: true) }
         }
         .alert(
-            "could_not_open_album",
+            L10n.text("playback_error"),
             isPresented: Binding(
                 get: { actionErrorMessage != nil },
                 set: { if !$0 { actionErrorMessage = nil } }
@@ -561,7 +561,6 @@ struct CatalogView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PremiumPressStyle())
-        .accessibilityHint(L10n.text("explore_music"))
     }
 
     private func recentlyPlayedSection(metrics: HomeMetrics) -> some View {
