@@ -139,19 +139,27 @@ actor SelenaRecommendationCursor {
 
     func next(
         accessToken: String,
-        musicService: any MusicService
+        musicService: any MusicService,
+        cachedPersonalRecommendations: [Track] = []
     ) async throws -> [Track] {
-        let similarTracks = try await seededRecommendations(
+        // Seed fan-out and personal taste used to run one after another —
+        // four round-trips before Explore could paint Selena. Run them
+        // together; the wall clock is one RTT, not four.
+        async let similarTracks = seededRecommendations(
             accessToken: accessToken,
             musicService: musicService
         )
-        let personalTracks = try await personalRecommendations(
+        async let personalTracks = personalRecommendations(
             accessToken: accessToken,
-            musicService: musicService
+            musicService: musicService,
+            cached: cachedPersonalRecommendations
         )
 
+        let similar = try await similarTracks
+        let personal = try await personalTracks
+
         var fallback: [Track] = []
-        if personalTracks.isEmpty && similarTracks.isEmpty {
+        if personal.isEmpty && similar.isEmpty {
             fallback = try await nextCommonMixPage(
                 accessToken: accessToken,
                 musicService: musicService
@@ -160,8 +168,8 @@ actor SelenaRecommendationCursor {
 
         let composed = SelenaRecommendationComposer.compose(
             seedTracks: seeds,
-            personalRecommendations: personalTracks,
-            similarRecommendations: similarTracks,
+            personalRecommendations: personal,
+            similarRecommendations: similar,
             fallbackMix: fallback
         ).filter { knownIDs.insert($0.id).inserted }
 
@@ -177,8 +185,12 @@ actor SelenaRecommendationCursor {
 
     private func personalRecommendations(
         accessToken: String,
-        musicService: any MusicService
+        musicService: any MusicService,
+        cached: [Track]
     ) async throws -> [Track] {
+        // Home already paid for a personal recommendations page — reuse it
+        // on the first Explore bootstrap instead of asking again.
+        if !cached.isEmpty { return cached }
         do {
             return try await musicService.recommendations(
                 accessToken: accessToken
@@ -198,26 +210,32 @@ actor SelenaRecommendationCursor {
         musicService: any MusicService
     ) async throws -> [Track] {
         guard !seeds.isEmpty else { return [] }
-        var collected: [Track] = []
         let seedBatch = nextSeeds(count: 3)
-        for seed in seedBatch {
-            do {
-                let tracks = try await musicService.recommendations(
-                    seededBy: seed,
-                    accessToken: accessToken,
-                    shuffle: true
-                )
-                collected.append(contentsOf: tracks)
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch let error as APIError where error == .unauthorized
-                || error.isConnectivityFailure {
-                throw error
-            } catch {
-                continue
+        return try await withThrowingTaskGroup(of: [Track].self) { group in
+            for seed in seedBatch {
+                group.addTask {
+                    do {
+                        return try await musicService.recommendations(
+                            seededBy: seed,
+                            accessToken: accessToken,
+                            shuffle: true
+                        )
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch let error as APIError where error == .unauthorized
+                        || error.isConnectivityFailure {
+                        throw error
+                    } catch {
+                        return []
+                    }
+                }
             }
+            var collected: [Track] = []
+            for try await tracks in group {
+                collected.append(contentsOf: tracks)
+            }
+            return collected
         }
-        return collected
     }
 
     private func nextCommonMixPage(
