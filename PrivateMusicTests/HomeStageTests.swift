@@ -660,14 +660,25 @@ final class HomeStageMetricsTests: XCTestCase {
     func testHeroWithoutRailStaysCompact() {
         for width in widths {
             let withRail = HomeStageMetrics.stageHeight(for: width)
+            let withoutRail = HomeStageMetrics.stageHeight(
+                for: width,
+                hasRail: false
+            )
             let rail = HomeStageMetrics.railHeight(for: width)
-            let heroOnly = withRail - rail
 
-            XCTAssertGreaterThanOrEqual(heroOnly, 280)
+            XCTAssertLessThan(withoutRail, withRail)
+            XCTAssertGreaterThanOrEqual(withoutRail, 280)
             // The stabilized navigation gap makes the Hero read slightly
             // lower/airier than before, but it still must stay comfortably
             // short of becoming a second full-screen player.
-            XCTAssertLessThanOrEqual(heroOnly, 364)
+            XCTAssertLessThanOrEqual(withoutRail, 364)
+            // Rail band + its shadow pad + the larger transport gap is the
+            // whole difference — not a mystery gap.
+            let expectedDelta =
+                rail
+                + HomeStageMetrics.railShadowPadding
+                + (HomeStageMetrics.belowTransport - BubbleSpacing.m)
+            XCTAssertEqual(withRail - withoutRail, expectedDelta, accuracy: 0.5)
         }
     }
 
@@ -717,6 +728,11 @@ final class HomeStageMetricsTests: XCTestCase {
                 ),
                 base + 59
             )
+            let withoutRail = HomeStageMetrics.atmosphereHeight(
+                for: width,
+                hasRail: false
+            )
+            XCTAssertLessThan(withoutRail, base)
         }
     }
 

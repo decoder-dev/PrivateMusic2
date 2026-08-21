@@ -25,11 +25,11 @@ enum MixRationaleBuilder {
                 .filter { !$0.isEmpty }
         )
         let recentArtists = frequencyMap(
-            history.prefix(40).map { MixFeedbackPolicy.normalized($0.track.artist) }
+            history.prefix(MixListeningHistoryWindow.ranking).map { MixFeedbackPolicy.normalized($0.track.artist) }
                 .filter { !$0.isEmpty }
         )
         let recommendationArtists = Set(
-            recommendations.prefix(40).map { MixFeedbackPolicy.normalized($0.artist) }
+            recommendations.prefix(MixListeningHistoryWindow.ranking).map { MixFeedbackPolicy.normalized($0.artist) }
                 .filter { !$0.isEmpty }
         )
         let historyArtistSet = Set(recentArtists.keys)
@@ -96,7 +96,7 @@ enum MixRationaleBuilder {
                 }
             )
             let historyAlbums = Set(
-                history.prefix(40).compactMap { entry -> String? in
+                history.prefix(MixListeningHistoryWindow.ranking).compactMap { entry -> String? in
                     guard let album = entry.track.albumTitle.map(MixFeedbackPolicy.normalized),
                           !album.isEmpty else {
                         return nil

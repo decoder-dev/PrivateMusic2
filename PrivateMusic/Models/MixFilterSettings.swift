@@ -1,5 +1,23 @@
 import Foundation
 
+/// How far back listening history is consulted for mix taste signals.
+/// Named once so familiarity and ranking cannot silently diverge to
+/// unrelated magic numbers again.
+enum MixListeningHistoryWindow {
+    /// Artists treated as "known" for hits / discoveries.
+    static let familiarity = 80
+    /// Artists fed into radio reranking and rationale copy.
+    static let ranking = 40
+}
+
+/// Result of applying language / familiarity filters to a candidate pool.
+struct MixFilterOutcome: Equatable, Sendable {
+    let tracks: [Track]
+    /// True when every candidate was rejected and the caller kept the
+    /// pre-filter pool so the queue would not go empty.
+    let didRelax: Bool
+}
+
 /// Client-side VK-mix style filters. Official mood/language/familiarity
 /// knobs are not documented on `getStreamMixAudios`, so we apply them to
 /// the already-fetched candidate pool (and map mood chips to vibe shelves).
@@ -105,11 +123,58 @@ enum MixQueueFilter {
         let blob = normalizeMoodText(title)
         return mood.vibeMarkers.reduce(into: 0) { score, marker in
             let normalizedMarker = normalizeMoodText(marker)
-            if blob.contains(normalizedMarker) { score += 1 }
+            if textContainsMarker(blob, marker: normalizedMarker) {
+                score += 1
+            }
         }
     }
 
+    /// Stem-style substring for Cyrillic; Latin uses a word start so
+    /// "hit" cannot light up inside "white", while longer stems like
+    /// "melanch" still reach "melancholy". Tokens of three letters or
+    /// fewer require a full word boundary.
+    static func textContainsMarker(_ haystack: String, marker: String) -> Bool {
+        guard !marker.isEmpty else { return false }
+        let trimmed = marker.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if isLatinToken(trimmed) {
+            return matchesLatinMarker(haystack, token: trimmed)
+        }
+        return haystack.contains(trimmed)
+    }
+
+    private static func isLatinToken(_ value: String) -> Bool {
+        value.unicodeScalars.allSatisfy { scalar in
+            CharacterSet.letters.contains(scalar) && scalar.isASCII
+        }
+    }
+
+    private static func matchesLatinMarker(_ haystack: String, token: String) -> Bool {
+        let escaped = NSRegularExpression.escapedPattern(for: token)
+        // Short Latin tokens are too ambiguous as prefixes ("hit" ⊂ "white"
+        // is filtered by `\b…\b`; "top" must not match "stop").
+        let pattern = token.count <= 3
+            ? "\\b\(escaped)\\b"
+            : "\\b\(escaped)"
+        return haystack.range(of: pattern, options: .regularExpression) != nil
+    }
+
     static func apply(
+        _ tracks: [Track],
+        language: MixLanguagePreference,
+        familiarity: MixFamiliarityPreference,
+        historyArtists: Set<String>
+    ) -> [Track] {
+        applyStrict(
+            tracks,
+            language: language,
+            familiarity: familiarity,
+            historyArtists: historyArtists
+        )
+    }
+
+    /// Language / familiarity only — never silently widens the pool.
+    static func applyStrict(
         _ tracks: [Track],
         language: MixLanguagePreference,
         familiarity: MixFamiliarityPreference,
@@ -126,6 +191,26 @@ enum MixQueueFilter {
                     historyArtists: normalizedHistory
                 )
         }
+    }
+
+    /// Seed / bootstrap path: keep something to play when filters empty
+    /// the pool. Callers that care about the silent widen get `didRelax`.
+    static func applyAllowingFallback(
+        _ tracks: [Track],
+        language: MixLanguagePreference,
+        familiarity: MixFamiliarityPreference,
+        historyArtists: Set<String>
+    ) -> MixFilterOutcome {
+        let filtered = applyStrict(
+            tracks,
+            language: language,
+            familiarity: familiarity,
+            historyArtists: historyArtists
+        )
+        if filtered.isEmpty, !tracks.isEmpty {
+            return MixFilterOutcome(tracks: tracks, didRelax: true)
+        }
+        return MixFilterOutcome(tracks: filtered, didRelax: false)
     }
 
     static func matchesLanguage(

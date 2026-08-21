@@ -715,6 +715,7 @@
 "settings.level" = "Уровень";
 "the_file_is_ready_tap_the_button_below" = "Файл готов. Нажмите кнопку ниже.";
 "mix_filters" = "Фильтры микса";
+"mix_filters_relaxed_to_keep_queue" = "Фильтры опустошили бы очередь — оставили оставшиеся треки.";
 "storage_2" = "Хранилище";
 "charts_and_hits" = "Чарты и хиты";
 "language" = "Язык";

@@ -35,15 +35,14 @@ struct LibraryView: View {
     @State private var paginationTask: Task<Void, Never>?
     @State private var playlistPaginationTask: Task<Void, Never>?
     @State private var addedTrackReloadTask: Task<Void, Never>?
+    /// Viewport width from a background GeometryReader — wrapping the
+    /// ScrollView itself re-laid the whole library on every scroll frame
+    /// (same sticky-scroll bug Home and Explore already fixed).
+    @State private var containerWidth: CGFloat = 390
 
     var body: some View {
         ScrollViewReader { proxy in
-            GeometryReader { geometry in
-                // Zero-width proposals (some previews) must not produce
-                // empty frames — fall back to a compact-phone width.
-                let shelfWidth = geometry.size.width > 0
-                    ? geometry.size.width
-                    : 390
+            let shelfWidth = containerWidth > 0 ? containerWidth : 390
             ScrollView {
                 // Section gaps are per-section padding rather than stack
                 // spacing: the track rows share this stack (a nested lazy
@@ -134,6 +133,20 @@ struct LibraryView: View {
                 .padding(.top, LibraryShelfMetrics.contentTopPadding)
             }
             .clearsMiniPlayer()
+            .background {
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: LibraryWidthKey.self,
+                        value: geometry.size.width
+                    )
+                }
+            }
+            .onPreferenceChange(LibraryWidthKey.self) { width in
+                let rounded = width.rounded()
+                if rounded > 0, abs(rounded - containerWidth) >= 1 {
+                    containerWidth = rounded
+                }
+            }
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .library else { return }
                 if reduceMotion {
@@ -146,7 +159,6 @@ struct LibraryView: View {
                         )
                     }
                 }
-            }
             }
         }
         .background(ThemeBackground())
@@ -167,18 +179,17 @@ struct LibraryView: View {
                             OfflineDownloadsView()
                         } label: {
                             Image(systemName: "arrow.down.circle")
-                                .frame(width: 24, height: 24)
+                                .frame(width: 28, height: 28)
                                 .overlay(alignment: .topTrailing) {
                                     if isOfflineActivityActive {
                                         ProgressView()
                                             .controlSize(.mini)
-                                            .offset(x: 3, y: -3)
                                     } else if offlineStore
                                         .downloadedTrackCount > 0 {
                                         Text(
                                             "\(min(validDownloadCount, 99))"
                                         )
-                                        // dynamic-type-exempt: 9pt badge on a 24pt icon
+                                        // dynamic-type-exempt: 9pt badge on a 28pt icon
                                         .font(.system(size: 9, weight: .bold))
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, 3)
@@ -187,7 +198,6 @@ struct LibraryView: View {
                                             Capsule()
                                                 .fill(settings.theme.accent)
                                         )
-                                        .offset(x: 3, y: -3)
                                     }
                                 }
                         }
@@ -1353,5 +1363,13 @@ struct LibraryView: View {
                 try await playlistPage(offset: offset)
             }
         }
+    }
+}
+
+private struct LibraryWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
