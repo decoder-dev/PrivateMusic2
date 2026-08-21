@@ -1787,7 +1787,7 @@ final class AudioPlayer {
         // that leaves the original clustered order. Selena already ran
         // SelenaBanditPolicy — reshuffling would discard that order.
         if case .mix = source, !shuffleEnabled,
-           !source.usesSelenaWaveFilters,
+           source?.usesSelenaWaveFilters != true,
            let index = currentIndex {
             let historyArtists = Set(
                 historyStore.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist)
