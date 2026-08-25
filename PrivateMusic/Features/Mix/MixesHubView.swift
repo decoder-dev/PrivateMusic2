@@ -2571,7 +2571,9 @@ struct MixesHubView: View {
                 recommendations: homeCatalog.recommendations,
                 loaded: knownTracks.isEmpty ? selenaTracks : knownTracks
             ),
-            knownTracks: knownTracks + recent
+            // Hottest first: end of the live queue (most recently composed),
+            // then newest listening history — cooldownArtists keeps a prefix.
+            knownTracks: Array(knownTracks.reversed()) + recent
         )
     }
 

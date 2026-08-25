@@ -43,6 +43,7 @@ struct ArtistView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ThemeBackground())
+        .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .presentationDetents([.medium, .large])

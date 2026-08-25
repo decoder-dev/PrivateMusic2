@@ -3965,6 +3965,13 @@ final class AudioPlayer {
         registrations.removePeriodicTime()
         installPeriodicTimeObserver()
         currentIndex = upcoming.index
+        // Crossfade advances without next()/cancelContinuation — drop any
+        // prefetch keyed to the previous index so the handle cannot stick.
+        if continuationPrefetchTask != nil {
+            continuationPrefetchTask?.cancel()
+            continuationPrefetchTask = nil
+            advanceAfterContinuationPrefetch = false
+        }
         loadedTrackID = upcoming.track.id
         loadedOfflineTrackID = upcoming.isOffline ? upcoming.track.id : nil
         activePlaybackURL = upcoming.url
@@ -4482,6 +4489,14 @@ final class AudioPlayer {
         let sourceIndex = currentIndex
         continuationPrefetchTask = Task { [weak self] in
             guard let self else { return }
+            // Always release the handle. Early returns used to leave it set,
+            // so maybeStartContinuationPrefetch / next() permanently stalled
+            // after a crossfade or generation bump invalidated the guard.
+            defer {
+                if generation == self.continuationGeneration {
+                    self.continuationPrefetchTask = nil
+                }
+            }
             var additions: [Track] = []
             do {
                 for attempt in 0..<3 {
@@ -4509,7 +4524,6 @@ final class AudioPlayer {
                   self.currentIndex == sourceIndex else {
                 return
             }
-            self.continuationPrefetchTask = nil
             let shouldAdvance = ContinuationAdvancePolicy.shouldAdvance(
                 requested: self.advanceAfterContinuationPrefetch,
                 playbackIntended: self.playbackIntended

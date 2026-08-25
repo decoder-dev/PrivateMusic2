@@ -110,6 +110,46 @@ final class SelenaWavePolicyTests: XCTestCase {
         XCTAssertEqual(onlyHot.map(\.id), [hot.id])
     }
 
+    func testCooldownArtistsKeepsNewestFromNewestFirstHistory() {
+        let window = 3
+        // Newest-first history — the shape ListeningHistoryStore hands out.
+        let newestFirst = (1...10).map { index in
+            makeTrack(
+                id: index,
+                title: "T\(index)",
+                artist: "Artist\(index)"
+            )
+        }
+        let keys = SelenaWavePolicy.cooldownArtists(
+            fromNewestFirst: newestFirst,
+            window: window
+        )
+        XCTAssertEqual(
+            keys,
+            [
+                MixFeedbackPolicy.normalized("Artist1"),
+                MixFeedbackPolicy.normalized("Artist2"),
+                MixFeedbackPolicy.normalized("Artist3")
+            ]
+        )
+
+        // Append-then-trim on the same newest-first list used to keep the
+        // oldest artists (Artist8…10) — assert the new seeder does not.
+        var appended: [String] = []
+        SelenaWavePolicy.appendCooldownArtists(
+            &appended,
+            from: newestFirst,
+            window: window
+        )
+        XCTAssertEqual(
+            Set(appended),
+            Set(newestFirst.suffix(window).map {
+                MixFeedbackPolicy.normalized($0.artist)
+            })
+        )
+        XCTAssertNotEqual(Set(keys), Set(appended))
+    }
+
     private func makeTrack(
         id: Int,
         title: String,
