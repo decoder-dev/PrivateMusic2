@@ -536,9 +536,17 @@ struct MixesHubView: View {
                 .modifier(SelectedTraitModifier(isSelected: isSelected))
 
                 Button {
-                    selectVKMix(mix, andPlay: true)
+                    if player.isPlaying(mix) {
+                        toggleOrStart(mix)
+                    } else {
+                        selectVKMix(mix, andPlay: true)
+                    }
                 } label: {
-                    Image(systemName: "play.fill")
+                    Image(
+                        systemName: player.isPlaying(mix) && highlight.isPlaying
+                            ? "pause.fill"
+                            : "play.fill"
+                    )
                         .font(.caption.weight(.bold))
                         .frame(width: 30, height: 30)
                         .foregroundStyle(.black)
@@ -548,7 +556,13 @@ struct MixesHubView: View {
                 .buttonStyle(PremiumPressStyle())
                 .padding(8)
                 .disabled(loadingMixID != nil)
-                .accessibilityLabel(L10n.text("play_mix"))
+                .accessibilityLabel(
+                    L10n.text(
+                        player.isPlaying(mix)
+                            ? (highlight.isPlaying ? "pause" : "resume_playback")
+                            : "play_mix"
+                    )
+                )
                 .accessibilityValue(mix.title)
             }
 
@@ -708,9 +722,22 @@ struct MixesHubView: View {
 
             HStack(spacing: 8) {
                 Button {
-                    selectVKMix(mix, andPlay: true)
+                    if player.isPlaying(mix) {
+                        toggleOrStart(mix)
+                    } else {
+                        selectVKMix(mix, andPlay: true)
+                    }
                 } label: {
-                    Label(L10n.text("listen"), systemImage: "play.fill")
+                    Label(
+                        L10n.text(
+                            player.isPlaying(mix) && highlight.isPlaying
+                                ? "pause"
+                                : "listen"
+                        ),
+                        systemImage: player.isPlaying(mix) && highlight.isPlaying
+                            ? "pause.fill"
+                            : "play.fill"
+                    )
                         .labelStyle(.iconOnly)
                         .minimumHitTarget(visualSize: 28)
                 }
@@ -879,17 +906,27 @@ struct MixesHubView: View {
             .padding(.trailing, 72)
 
             Button {
-                start(mix)
+                toggleOrStart(mix)
             } label: {
-                Image(systemName: "play.fill")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(settings.theme.accent)
-                    .frame(width: 52, height: 52)
-                    .background(.white, in: Circle())
+                Image(
+                    systemName: player.isPlaying(mix) && highlight.isPlaying
+                        ? "pause.fill"
+                        : "play.fill"
+                )
+                .font(.title3.weight(.bold))
+                .foregroundStyle(settings.theme.accent)
+                .frame(width: 52, height: 52)
+                .background(.white, in: Circle())
             }
             .buttonStyle(PremiumPressStyle())
             .disabled(loadingMixID != nil)
-            .accessibilityLabel(L10n.text("play_mix"))
+            .accessibilityLabel(
+                L10n.text(
+                    player.isPlaying(mix)
+                        ? (highlight.isPlaying ? "pause" : "resume_playback")
+                        : "play_mix"
+                )
+            )
             .accessibilityValue(mix.title)
             .frame(
                 maxWidth: .infinity,
@@ -921,8 +958,17 @@ struct MixesHubView: View {
             }
         }
         .contextMenu {
-            Button { start(mix) } label: {
-                Label(L10n.text("play_mix"), systemImage: "play.fill")
+            Button { toggleOrStart(mix) } label: {
+                Label(
+                    L10n.text(
+                        player.isPlaying(mix)
+                            ? (highlight.isPlaying ? "pause" : "resume_playback")
+                            : "play_mix"
+                    ),
+                    systemImage: player.isPlaying(mix) && highlight.isPlaying
+                        ? "pause.fill"
+                        : "play.fill"
+                )
             }
             Button {
                 shuffle(mix)
@@ -1102,6 +1148,11 @@ struct MixesHubView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(tracks.isEmpty || !player.isPlaying(mix))
+                .accessibilityHint(
+                    player.isPlaying(mix)
+                        ? L10n.text("listen_later")
+                        : L10n.text("mix_save_requires_playing")
+                )
 
                 Menu {
                     Button(role: .destructive) {
@@ -2423,6 +2474,18 @@ struct MixesHubView: View {
                 }
             }
         }
+    }
+
+    /// Hero / rail Play must pause or resume the live queue for this mix —
+    /// never rebuild from track 1 while it is already the session.
+    @MainActor
+    private func toggleOrStart(_ mix: MusicMix) {
+        if player.isPlaying(mix) {
+            Haptics.selection()
+            player.playPause()
+            return
+        }
+        start(mix)
     }
 
     @MainActor

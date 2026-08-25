@@ -618,6 +618,7 @@
 "includes_albums_from_recent_listening" = "Есть альбомы из недавних прослушиваний";
 "matched_to_your_recent_taste" = "Подобрано под ваш недавний вкус";
 "listen_later" = "Слушать позже";
+"mix_save_requires_playing" = "Сохранить можно, пока играет этот микс";
 "d0_tracks_resume" = "%d треков · продолжить";
 "resume" = "Продолжить";
 "mix_radio" = "Радио микса";
