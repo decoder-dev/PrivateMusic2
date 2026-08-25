@@ -543,7 +543,10 @@ struct CatalogView: View {
     private var exploreMusicEntry: some View {
         NavigationLink {
             MixesHubView(
-                deprioritizedMixID: nextStepCandidate?.mixID,
+                deprioritizedMixID: nextStepCandidate?.kind
+                    == .vibeContinuation
+                    ? nil
+                    : nextStepCandidate?.mixID,
                 startsOnVK: nextStepCandidate?.kind == .personalStation
             )
         } label: {
