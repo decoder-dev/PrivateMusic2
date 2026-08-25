@@ -157,18 +157,12 @@ jobs:
       # push is needed. A version that already has a release only gets its
       # assets refreshed — the tag keeps pointing at the commit that first
       # shipped it, and existing download links stay valid. Bump
-      # MARKETING_VERSION to cut a new one.
-      # The home-stage branch publishes too, under its own fixed tag. An
-      # Actions artifact is a zip that only a signed-in browser can fetch,
-      # which makes installing a test build on a phone needlessly painful;
-      # a pre-release hands over the .ipa directly. It never carries a
-      # `v*` tag, is never marked latest, and is replaced wholesale on
-      # every push so the tag tracks the branch head instead of freezing
-      # on the first build.
+      # MARKETING_VERSION to cut a new one. An Actions artifact is a zip
+      # that only a signed-in browser can fetch; a pre-release hands over
+      # the .ipa directly.
       - name: Publish GitHub release
         if: >-
           github.event_name == 'push' && (github.ref == 'refs/heads/main' ||
-          github.ref == 'refs/heads/claude/home-stage' ||
           startsWith(github.ref, 'refs/tags/v'))
         env:
           GH_TOKEN: ${{ github.token }}
@@ -191,43 +185,6 @@ jobs:
             "$PWD/artifacts/PrivateMusic-$VERSION-iphone-unsigned.ipa"
             "$PWD/artifacts/PrivateMusic-$VERSION-unsigned.ipa"
           )
-          if [ "$GITHUB_REF" = "refs/heads/claude/home-stage" ]; then
-            PREVIEW_TAG="home-stage-preview"
-            PREVIEW_NOTES="$(mktemp)"
-            cat > "$PREVIEW_NOTES" <<'EOF'
-          Превью ветки `claude/home-stage`. Собирается заново на каждый
-          push, тег всегда указывает на последний коммит ветки.
-
-          ## Сцена на Главной
-          Главная открывается тем, что играет: контекст очереди чипом,
-          исполнитель крупно, обложка, «пауза · название · лайк» и лента
-          подборок-пузырей. Полки — «Новые релизы», «Недавно слушали»,
-          «Миксы», «Плейлисты» — остаются ниже без изменений.
-
-          Пузыри строятся из того, что приложение уже знает: станция
-          Селены, выбранный вайб, исполнители из недавнего и миксы VK с
-          фото кураторов в аватарах.
-
-          Выключается в Настройках → Оформление → «Сцена на Главной».
-
-          ## Установка
-          IPA не подписан.
-          - **`…-iphone-unsigned.ipa`** — без Watch
-          - `…-unsigned.ipa` — полная сборка с Watch
-          EOF
-            gh release delete "$PREVIEW_TAG" --yes --cleanup-tag \
-              >/dev/null 2>&1 || true
-            gh api -X DELETE \
-              "repos/$GITHUB_REPOSITORY/git/refs/tags/$PREVIEW_TAG" \
-              >/dev/null 2>&1 || true
-            retry gh release create "$PREVIEW_TAG" "${ASSETS[@]}" \
-              --target "$GITHUB_SHA" \
-              --title "Сцена на Главной · превью ($VERSION)" \
-              --notes-file "$PREVIEW_NOTES" \
-              --prerelease \
-              --latest=false
-            exit 0
-          fi
           TAG="v$VERSION"
           if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$TAG" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not match MARKETING_VERSION $VERSION"
@@ -235,22 +192,26 @@ jobs:
           fi
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.84 (pre-release)
+          # Private Music 3.28.85 (pre-release)
 
-          Полоса прогресса налезала на рамку мини-плеера.
+          Главная со сценой, микс Селены и волна настроения — из staging
+          в main. Старые ветки `claude/home-stage` и `dec/zalupa` сняты.
 
-          ## Нижняя панель в старом режиме
-          - Полоса прогресса рисовалась вплотную к нижней грани карточки —
-            ровно там, где идёт обводка контейнера и начинается загиб
-            углов (радиус 16 pt). Синяя линия ложилась на границу карточки
-            и обрезалась углом: читалось как случайное наложение, а не как
-            прогресс трека
-          - Полоса отодвинута от нижнего края и от углов. Высота панели не
-            изменилась — отступ взят из внутреннего промежутка, док не
-            стал выше
-          - Добавлены проверки на геометрию: полоса обязана начинаться за
-            радиусом угла и не касаться обводки, а суммарная высота
-            карточки — не расти
+          ## Сцена на Главной
+          - Главная открывается тем, что играет: контекст очереди, крупный
+            исполнитель, обложка, пауза · название · лайк и лента пузырей
+          - Пузыри из станции Селены, вайба, недавних исполнителей и миксов
+            VK с аватарами кураторов
+          - Выключается в Настройках → Оформление → «Сцена на Главной»
+
+          ## Микс Селены и волна
+          - Play на герое и в рейле — пауза/продолжение, без рестарта с
+            первого трека
+          - UI Mix Radio только когда реально играет этот микс
+          - What’s Next / occupancy / дедуп волны настроения, локализация
+            вайбов как у волны Селены
+          - Prefetch библиотеки и continuation без утечек; курсор после
+            успешного ответа; protected sources и one-shot rewards
 
           ## Установка
           IPA не подписан.
