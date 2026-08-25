@@ -344,7 +344,7 @@ struct MixesHubView: View {
             NewReleasesView(albums: homeCatalog.newReleases)
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: "sparkles.tv")
+                Image(systemName: "sparkles.rectangle.stack")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(settings.theme.accent)
                     .frame(width: 28)
@@ -1038,7 +1038,6 @@ struct MixesHubView: View {
         tracks: [Track]
     ) -> some View {
         let isSelena = mix.id == MusicMix.common.id
-        let selectedMode = player.mixRadioMode
         return VStack(alignment: .leading, spacing: 12) {
             if !isSelena {
                 Text(L10n.text("mix_radio"))
@@ -1057,7 +1056,10 @@ struct MixesHubView: View {
                 }
                 .pickerStyle(.segmented)
 
-                Label(selectedMode.caption, systemImage: "info.circle")
+                Label(
+                    player.mixRadioMode.caption,
+                    systemImage: "info.circle"
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2097,7 +2099,9 @@ struct MixesHubView: View {
         // `resumePinned` replays through `play`, which resets the ordering,
         // so re-apply the pinned mode afterwards. Previously this only
         // restored the picker's appearance while the queue stayed unranked.
-        if let saved = MixRadioMode(rawValue: pin.radioMode ?? ""),
+        // Selena ignores MixRadioMode — diversity dial owns that axis.
+        if mix.id != MusicMix.common.id,
+           let saved = MixRadioMode(rawValue: pin.radioMode ?? ""),
            saved != .balanced {
             player.rerankUpcomingMix(
                 mode: saved,
@@ -2661,6 +2665,9 @@ struct MixesHubView: View {
     }
 
     private func applyRadio(_ mode: MixRadioMode, mix: MusicMix) {
+        // Selena owns novelty via the wave diversity dial + bandit — never
+        // let MixQueueRanker reshape the preview or the live queue.
+        guard mix.id != MusicMix.common.id else { return }
         // Radio describes the live queue for THIS mix only. A mode change on
         // another card must not reshuffle a different mix that is playing.
         guard player.isPlaying(mix),
