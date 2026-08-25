@@ -55,7 +55,13 @@ struct HomeNextStepOccupancy: Equatable, Sendable {
 
     func excludes(_ candidate: HomeNextStepCandidate) -> Bool {
         if occupiedKinds.contains(candidate.kind) { return true }
-        if let mixID = candidate.mixID, occupiedMixIDs.contains(mixID) {
+        // Mood wave reuses Selena's mix id as source branding for artwork /
+        // Explore hints — it is not "this mix is already playing". Treating
+        // it as occupancy hid the mood card whenever Selena was on (and
+        // collapsed it with the personal-station candidate in dedupe).
+        if candidate.kind != .vibeContinuation,
+           let mixID = candidate.mixID,
+           occupiedMixIDs.contains(mixID) {
             return true
         }
         if let artistKey = candidate.artistKey,
@@ -253,9 +259,7 @@ enum HomeNextStepPolicy {
     ) -> [HomeNextStepCandidate] {
         var byIdentity: [String: HomeNextStepCandidate] = [:]
         for candidate in candidates {
-            let key = candidate.mixID.map { "mix:\($0)" }
-                ?? candidate.artistKey.map { "artist:\($0)" }
-                ?? candidate.kind.rawValue
+            let key = identityKey(for: candidate)
             if let existing = byIdentity[key] {
                 if candidate.confidence > existing.confidence {
                     byIdentity[key] = candidate
@@ -265,6 +269,23 @@ enum HomeNextStepPolicy {
             }
         }
         return Array(byIdentity.values)
+    }
+
+    /// Mood wave shares Selena's catalog mix id for artwork, but it is a
+    /// different action from starting the personal station — keep both.
+    private static func identityKey(
+        for candidate: HomeNextStepCandidate
+    ) -> String {
+        if candidate.kind == .vibeContinuation {
+            return candidate.stabilityKey
+        }
+        if let mixID = candidate.mixID {
+            return "mix:\(mixID)"
+        }
+        if let artistKey = candidate.artistKey {
+            return "artist:\(artistKey)"
+        }
+        return candidate.kind.rawValue
     }
 
     private static func isOrderedBefore(

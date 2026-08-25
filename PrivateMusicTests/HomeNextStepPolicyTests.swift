@@ -366,4 +366,53 @@ final class HomeNextStepPolicyTests: XCTestCase {
         XCTAssertEqual(winner?.action, .mood(.energetic))
         XCTAssertTrue(winner?.sourceIsSelena == true)
     }
+
+    func testMoodWaveSurvivesWhenSelenaMixIsAlreadyOccupied() {
+        let winner = HomeNextStepPolicy.select(
+            request(
+                selectedMood: .calm,
+                occupancy: HomeNextStepOccupancy(
+                    occupiedKinds: [.personalStation],
+                    occupiedMixIDs: [MusicMix.common.id],
+                    occupiedArtistKeys: []
+                ),
+                hasListeningHistory: true,
+                hasRecommendations: true
+            )
+        )
+        XCTAssertEqual(winner?.kind, .vibeContinuation)
+        XCTAssertEqual(winner?.action, .mood(.calm))
+        XCTAssertEqual(winner?.mixID, MusicMix.common.id)
+    }
+
+    func testMoodWaveDoesNotCollapsePersonalStationInDedupe() {
+        let winner = HomeNextStepPolicy.select(
+            request(
+                selectedMood: .joyful,
+                occupancy: HomeNextStepOccupancy(
+                    occupiedKinds: [],
+                    occupiedMixIDs: [],
+                    occupiedArtistKeys: []
+                ),
+                hasListeningHistory: true,
+                hasRecommendations: true
+            )
+        )
+        // Mood is stronger while playing, but personal station must still
+        // exist as a distinct candidate — only occupancy may hide it.
+        XCTAssertEqual(winner?.kind, .vibeContinuation)
+        let pool = HomeNextStepPolicy.select(
+            request(
+                selectedMood: .joyful,
+                occupancy: HomeNextStepOccupancy(
+                    occupiedKinds: [.vibeContinuation],
+                    occupiedMixIDs: [],
+                    occupiedArtistKeys: []
+                ),
+                hasListeningHistory: true,
+                hasRecommendations: true
+            )
+        )
+        XCTAssertEqual(pool?.kind, .personalStation)
+    }
 }
