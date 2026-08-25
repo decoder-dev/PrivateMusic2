@@ -601,9 +601,16 @@ struct MixesHubView: View {
         }
         .contextMenu {
             Button {
-                selectVKMix(mix, andPlay: true)
+                if player.isPlaying(mix) {
+                    toggleOrStart(mix)
+                } else {
+                    selectVKMix(mix, andPlay: true)
+                }
             } label: {
-                Label(L10n.text("play_mix"), systemImage: "play.fill")
+                Label(
+                    L10n.text(mixPlaybackActionTitle(for: mix)),
+                    systemImage: mixPlaybackActionSymbol(for: mix)
+                )
             }
             Button {
                 selectVKMix(mix)
@@ -730,13 +737,11 @@ struct MixesHubView: View {
                 } label: {
                     Label(
                         L10n.text(
-                            player.isPlaying(mix) && highlight.isPlaying
-                                ? "pause"
+                            player.isPlaying(mix)
+                                ? (highlight.isPlaying ? "pause" : "resume_playback")
                                 : "listen"
                         ),
-                        systemImage: player.isPlaying(mix) && highlight.isPlaying
-                            ? "pause.fill"
-                            : "play.fill"
+                        systemImage: mixPlaybackActionSymbol(for: mix)
                     )
                         .labelStyle(.iconOnly)
                         .minimumHitTarget(visualSize: 28)
@@ -756,9 +761,16 @@ struct MixesHubView: View {
         .frame(width: metrics.cardWidth, alignment: .leading)
         .contextMenu {
             Button {
-                selectVKMix(mix, andPlay: true)
+                if player.isPlaying(mix) {
+                    toggleOrStart(mix)
+                } else {
+                    selectVKMix(mix, andPlay: true)
+                }
             } label: {
-                Label(L10n.text("play_mix"), systemImage: "play.fill")
+                Label(
+                    L10n.text(mixPlaybackActionTitle(for: mix)),
+                    systemImage: mixPlaybackActionSymbol(for: mix)
+                )
             }
             Button {
                 selectVKMix(mix)
@@ -960,14 +972,8 @@ struct MixesHubView: View {
         .contextMenu {
             Button { toggleOrStart(mix) } label: {
                 Label(
-                    L10n.text(
-                        player.isPlaying(mix)
-                            ? (highlight.isPlaying ? "pause" : "resume_playback")
-                            : "play_mix"
-                    ),
-                    systemImage: player.isPlaying(mix) && highlight.isPlaying
-                        ? "pause.fill"
-                        : "play.fill"
+                    L10n.text(mixPlaybackActionTitle(for: mix)),
+                    systemImage: mixPlaybackActionSymbol(for: mix)
                 )
             }
             Button {
@@ -1086,29 +1092,35 @@ struct MixesHubView: View {
         let isSelena = mix.id == MusicMix.common.id
         return VStack(alignment: .leading, spacing: 12) {
             if !isSelena {
-                Text(L10n.text("mix_radio"))
-                    .font(.headline)
+                // Radio mode is a property of the live queue — only show it
+                // for the mix that is actually playing, never for a card the
+                // listener is merely browsing (that used to mislabel mode and
+                // start playback on a segment tap).
+                if player.isPlaying(mix) {
+                    Text(L10n.text("mix_radio"))
+                        .font(.headline)
 
-                Picker(
-                    L10n.text("mode"),
-                    selection: Binding(
-                        get: { player.mixRadioMode },
-                        set: { applyRadio($0, mix: mix) }
-                    )
-                ) {
-                    ForEach(MixRadioMode.allCases) { mode in
-                        Text(mode.compactTitle).tag(mode)
+                    Picker(
+                        L10n.text("mode"),
+                        selection: Binding(
+                            get: { player.mixRadioMode },
+                            set: { applyRadio($0, mix: mix) }
+                        )
+                    ) {
+                        ForEach(MixRadioMode.allCases) { mode in
+                            Text(mode.compactTitle).tag(mode)
+                        }
                     }
-                }
-                .pickerStyle(.segmented)
+                    .pickerStyle(.segmented)
 
-                Label(
-                    player.mixRadioMode.caption,
-                    systemImage: "info.circle"
-                )
+                    Label(
+                        player.mixRadioMode.caption,
+                        systemImage: "info.circle"
+                    )
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                }
 
                 mixConfigureEntry
             }
@@ -2733,11 +2745,10 @@ struct MixesHubView: View {
         // Selena owns novelty via the wave diversity dial + bandit — never
         // let MixQueueRanker reshape the preview or the live queue.
         guard mix.id != MusicMix.common.id else { return }
-        // Radio describes the live queue for THIS mix only. A mode change on
-        // another card must not reshuffle a different mix that is playing.
+        // Radio describes the live queue for THIS mix only. Browsing another
+        // card must not start playback or reshuffle a different mix.
         guard player.isPlaying(mix),
               !player.queue.isEmpty else {
-            start(mix, applying: mode)
             return
         }
         let artists = Set(history.entries.prefix(MixListeningHistoryWindow.ranking).map(\.track.artist))
@@ -2760,6 +2771,21 @@ struct MixesHubView: View {
             applyBanditPreview: false
         )
         // Server refill for closerToSeed / moreNovel is owned by AudioPlayer.
+    }
+
+    /// Pause / resume / play titles for the mix under the finger.
+    private func mixPlaybackActionTitle(for mix: MusicMix) -> String {
+        if player.isPlaying(mix) {
+            return highlight.isPlaying ? "pause" : "resume_playback"
+        }
+        return "play_mix"
+    }
+
+    private func mixPlaybackActionSymbol(for mix: MusicMix) -> String {
+        if player.isPlaying(mix), highlight.isPlaying {
+            return "pause.fill"
+        }
+        return "play.fill"
     }
 
     private func openVibeShelf(
