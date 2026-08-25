@@ -166,7 +166,7 @@
 "appearance" = "Оформление";
 "text_size" = "Масштаб текста";
 "home_stage.action.station" = "Включить";
-"home_stage.action.vibe" = "Запустить микс";
+"home_stage.action.vibe" = "Запустить Селену с этим настроением";
 "home_stage.action.artist" = "Запустить станцию";
 "home_stage.action.mix" = "Запустить микс";
 "artist_radio_0" = "Радио: %@";
@@ -191,7 +191,7 @@
 "home_next.vk.title" = "VK Микс";
 "home_next.vk.subtitle" = "Подборка для продолжения";
 "home_next.vibe.title" = "Продолжить этот вайб";
-"home_next.vibe.subtitle" = "Похоже на то, что вы слушаете сейчас";
+"home_next.vibe.subtitle" = "Волна Селены с этим настроением";
 "home_next.station.title" = "Продолжить с Селеной";
 "home_next.station.subtitle" = "Персональная станция";
 "home_next.action.continue" = "Продолжить";

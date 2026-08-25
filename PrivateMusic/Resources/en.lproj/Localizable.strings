@@ -166,7 +166,7 @@
 "appearance" = "Appearance";
 "text_size" = "Text Size";
 "home_stage.action.station" = "Play";
-"home_stage.action.vibe" = "Start the mix";
+"home_stage.action.vibe" = "Start Selena with this mood";
 "home_stage.action.artist" = "Start the station";
 "home_stage.action.mix" = "Start the mix";
 "artist_radio_0" = "%@ radio";
@@ -191,7 +191,7 @@
 "home_next.vk.title" = "VK Mix";
 "home_next.vk.subtitle" = "A mix to keep going";
 "home_next.vibe.title" = "Keep this vibe going";
-"home_next.vibe.subtitle" = "Similar to what you're playing now";
+"home_next.vibe.subtitle" = "Selena wave tuned to this mood";
 "home_next.station.title" = "Continue with Selena";
 "home_next.station.subtitle" = "Your personal station";
 "home_next.action.continue" = "Continue";
