@@ -4530,6 +4530,10 @@ final class AudioPlayer {
                   self.currentIndex == sourceIndex else {
                 return
             }
+            // Release before chaining — library prefetch walks page-by-page
+            // via scheduleNeighborPreloads → maybeStartContinuationPrefetch,
+            // which no-ops while this handle is still set.
+            self.continuationPrefetchTask = nil
             let shouldAdvance = ContinuationAdvancePolicy.shouldAdvance(
                 requested: self.advanceAfterContinuationPrefetch,
                 playbackIntended: self.playbackIntended
