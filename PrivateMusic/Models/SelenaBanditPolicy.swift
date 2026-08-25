@@ -152,7 +152,7 @@ enum SelenaBanditPolicy {
         let candidates = allowed.enumerated().map { index, track in
             let key = MixFeedbackPolicy.normalized(track.artist)
             let raw = famNorm * familiarity(
-                affinity: affinityByArtistKey[key] ?? 0
+                affinity: affinity(for: track, in: affinityByArtistKey)
             ) + novNorm * novelty(
                 impressions: exposure.impressions(forArtistKey: key)
             ) + moodNorm * moodBoost(moodScoresByTrackID[track.id] ?? 0)
@@ -164,6 +164,24 @@ enum SelenaBanditPolicy {
             )
         }
         return spacedOrder(candidates, artistSpacing: gap)
+    }
+
+    /// Affinity is stored per credit component ("A", "B"); tracks often carry
+    /// the joined VK string ("A, B"). Take the best component match so
+    /// collaborations are not scored as strangers.
+    private static func affinity(
+        for track: Track,
+        in affinityByArtistKey: [String: Double]
+    ) -> Double {
+        let components = ArtistCreditDisplay.components(track.artist)
+        let keys = components.isEmpty
+            ? [MixFeedbackPolicy.normalized(track.artist)]
+            : components.map(MixFeedbackPolicy.normalized)
+        return keys.compactMap { key -> Double? in
+            guard !key.isEmpty else { return nil }
+            return affinityByArtistKey[key]
+        }
+        .max() ?? 0
     }
 
     private struct Candidate {
