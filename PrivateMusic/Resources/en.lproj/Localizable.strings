@@ -618,6 +618,7 @@
 "includes_albums_from_recent_listening" = "Includes albums from recent listening";
 "matched_to_your_recent_taste" = "Matched to your recent taste";
 "listen_later" = "Listen Later";
+"mix_save_requires_playing" = "Save is available while this mix is playing";
 "d0_tracks_resume" = "%d tracks · resume";
 "resume" = "Resume";
 "mix_radio" = "Mix Radio";
