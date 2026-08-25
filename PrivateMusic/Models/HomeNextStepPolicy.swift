@@ -133,7 +133,9 @@ enum HomeNextStepPolicy {
 
         if case let .mix(id, title) = queueSource {
             mixIDs.insert(id)
-            if id == MusicMix.common.id {
+            // My Music shares Selena wave filters — occupy the personal
+            // station slot the same way catalog Selena does.
+            if id == MusicMix.common.id || id == MixQueueIdentity.myMusic {
                 kinds.insert(.personalStation)
             }
             let trimmed = title.trimmingCharacters(

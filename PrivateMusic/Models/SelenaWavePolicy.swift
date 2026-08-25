@@ -75,6 +75,27 @@ enum SelenaWavePolicy {
         return filtered.isEmpty ? tracks : filtered
     }
 
+    /// Seed the cooldown window from a newest-first list (listening history
+    /// order). Walking oldest-first and then trimming the front kept the
+    /// coldest artists and dropped the hottest — the opposite of Yandex's
+    /// "played < ~25 tracks ago" rule.
+    static func cooldownArtists(
+        fromNewestFirst tracks: [Track],
+        window: Int = artistCooldownWindow
+    ) -> [String] {
+        guard window > 0 else { return [] }
+        var keys: [String] = []
+        var seen = Set<String>()
+        keys.reserveCapacity(min(window, tracks.count))
+        for track in tracks {
+            let key = MixFeedbackPolicy.normalized(track.artist)
+            guard !key.isEmpty, seen.insert(key).inserted else { continue }
+            keys.append(key)
+            if keys.count >= window { break }
+        }
+        return keys
+    }
+
     static func appendCooldownArtists(
         _ keys: inout [String],
         from tracks: [Track],

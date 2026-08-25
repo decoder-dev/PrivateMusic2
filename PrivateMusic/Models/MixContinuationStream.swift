@@ -21,13 +21,17 @@ actor MixTrackContinuationCursor {
         musicService: any MusicService
     ) async throws -> [Track] {
         let offset = nextOffset
-        nextOffset += MixTrackRequestPolicy.continuationPages
-            * MixTrackRequestPolicy.pageSize
-        return try await musicService.mixTracksContinuation(
+        let tracks = try await musicService.mixTracksContinuation(
             mix,
             accessToken: accessToken,
             startingOffset: offset
         )
+        // Commit only after success — advancing first skipped a page when
+        // withAuthorizedToken retried after a token refresh.
+        nextOffset = offset
+            + MixTrackRequestPolicy.continuationPages
+            * MixTrackRequestPolicy.pageSize
+        return tracks
     }
 }
 
@@ -194,9 +198,10 @@ actor SelenaRecommendationCursor {
             loaded: []
         )
         self.knownIDs = Set(knownTracks.map(\.id))
-        SelenaWavePolicy.appendCooldownArtists(
-            &self.recentArtistKeys,
-            from: knownTracks
+        // Call sites pass newest-first history (and session queues with the
+        // hottest material first). Seed by recency, not append-then-trim.
+        self.recentArtistKeys = SelenaWavePolicy.cooldownArtists(
+            fromNewestFirst: knownTracks
         )
     }
 
