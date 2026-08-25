@@ -376,6 +376,10 @@ final class HomeNextStepPolicyTests: XCTestCase {
                     occupiedMixIDs: [MusicMix.common.id],
                     occupiedArtistKeys: []
                 ),
+                // Same shape as `.idle` occupancy, so pass the playing
+                // flag explicitly — otherwise the helper treats it as idle
+                // and mood falls under the qualifying bar.
+                hasCurrentTrack: true,
                 hasListeningHistory: true,
                 hasRecommendations: true
             )
