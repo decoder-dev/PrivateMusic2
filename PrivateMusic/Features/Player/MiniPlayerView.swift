@@ -268,9 +268,25 @@ struct MiniPlayerView: View {
                         .fill(.tint)
                         .frame(width: proxy.size.width * progressFraction)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(height: MiniPlayerLayoutMetrics.progressHeight)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                // Visual bar stays 2pt; hit target expands upward into the
+                // row without raising the dock (negative padding restores
+                // layout size after contentShape/gesture use the taller area).
+                .padding(
+                    .top,
+                    MiniPlayerLayoutMetrics.tapTarget
+                        - MiniPlayerLayoutMetrics.progressHeight
+                )
                 .contentShape(Rectangle())
                 .highPriorityGesture(progressSeekGesture(width: proxy.size.width))
+                .padding(
+                    .top,
+                    -(
+                        MiniPlayerLayoutMetrics.tapTarget
+                            - MiniPlayerLayoutMetrics.progressHeight
+                    )
+                )
         }
         .frame(height: MiniPlayerLayoutMetrics.progressHeight)
         .padding(.horizontal, MiniPlayerLayoutMetrics.progressSideInset)

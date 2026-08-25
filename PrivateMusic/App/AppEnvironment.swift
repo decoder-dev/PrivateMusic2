@@ -31,9 +31,9 @@ final class AppEnvironment {
 
     func resetSelenaExposure() {
         selenaExposure.reset()
-        selenaSourceBandit = SelenaSourceBandit()
-        // Keep selenaTrackSources so an Explore-composed opening queue
-        // can still reward arms after play() resets exposure/spacing.
+        // Keep source-bandit posteriors across relaunches of the same
+        // station — only spacing impressions reset. Wiping the bandit here
+        // threw away every listen/skip reward the moment play() started.
     }
 
     func recordSelenaExposure(_ tracks: [Track]) {
