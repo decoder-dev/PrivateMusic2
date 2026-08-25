@@ -283,12 +283,13 @@ if not mix_stream_source_path.is_file():
 mix_stream_source = mix_stream_source_path.read_text(encoding="utf-8")
 for required_mix_stream_symbol in (
     "actor MixTrackContinuationCursor",
-    "nextOffset += MixTrackRequestPolicy.continuationPages",
+    # Offset advances after a successful fetch so token-retry cannot skip a page.
+    "MixTrackRequestPolicy.continuationPages",
     "actor SelenaRecommendationCursor",
     "seededBy: seed",
     "withThrowingTaskGroup(of: [Track].self)",
     "knownIDs.insert(track.id).inserted",
-    "commonMixOffset += MixTrackRequestPolicy.pageSize",
+    "MixTrackRequestPolicy.pageSize",
     "rotatingSeeds(",
     "sessionPersonal",
     "diversity:",
@@ -298,6 +299,16 @@ for required_mix_stream_symbol in (
             "infinite mix/Selena continuation invariant is missing: "
             f"{required_mix_stream_symbol}"
         )
+if "nextOffset =" not in mix_stream_source and "nextOffset +=" not in mix_stream_source:
+    fail(
+        "infinite mix/Selena continuation invariant is missing: "
+        "nextOffset advancement"
+    )
+if "commonMixOffset =" not in mix_stream_source and "commonMixOffset +=" not in mix_stream_source:
+    fail(
+        "infinite mix/Selena continuation invariant is missing: "
+        "commonMixOffset advancement"
+    )
 for required_mix_hub_stream_symbol in (
     "mixContinuationProvider(",
     "SelenaRecommendationCursor(",
