@@ -41,6 +41,24 @@ final class SelenaSourceBanditTests: XCTestCase {
         XCTAssertEqual(composed.tracks.count, composed.sources.count)
     }
 
+    func testComposeInsertsSeedsOnPlacementCadenceNotResultCount() {
+        let seeds = (0..<6).map { track(10 + $0, "Seed\($0)") }
+        let personal = (0..<20).map { track(100 + $0, "P\($0)") }
+        let similar = (0..<20).map { track(200 + $0, "S\($0)") }
+        let composed = SelenaRecommendationComposer.compose(
+            seedTracks: seeds,
+            personalRecommendations: personal,
+            similarRecommendations: similar,
+            diversity: .default,
+            limit: 16
+        )
+        let seedCount = composed.tracks.filter {
+            composed.sources[$0.id] == .seed
+        }.count
+        // seedEvery=4 with steady personal+similar fills → more than one seed.
+        XCTAssertGreaterThanOrEqual(seedCount, 2)
+    }
+
     func testArtistCapBlocksSameArtistBeyondLimit() {
         let personal = (0..<8).map { track(100 + $0, "Same") }
         let similar = (0..<8).map { track(200 + $0, "Other\($0)") }

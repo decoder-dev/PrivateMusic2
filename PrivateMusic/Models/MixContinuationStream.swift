@@ -112,6 +112,11 @@ enum SelenaRecommendationComposer {
         var similarIndex = 0
         var fallbackIndex = 0
         var stalled = 0
+        /// Non-seed placements since the last seed. Gating on `result.count`
+        /// made each seed shift the modulo so default bias inserted one seed
+        /// and then almost never another while pools were still full.
+        var sinceSeed = 0
+        let seedEvery = max(resolvedBias.seedEvery, 1)
 
         while result.count < limit,
               seedIndex < seeds.count
@@ -120,31 +125,41 @@ enum SelenaRecommendationComposer {
                 || fallbackIndex < fallback.count {
             let before = result.count
             for _ in 0..<resolvedBias.personal where personalIndex < personal.count {
-                _ = append(personal[personalIndex], source: .personal)
+                if append(personal[personalIndex], source: .personal) {
+                    sinceSeed += 1
+                }
                 personalIndex += 1
                 if result.count >= limit { break }
             }
             for _ in 0..<resolvedBias.similar where similarIndex < similar.count {
-                _ = append(similar[similarIndex], source: .similar)
+                if append(similar[similarIndex], source: .similar) {
+                    sinceSeed += 1
+                }
                 similarIndex += 1
                 if result.count >= limit { break }
             }
-            if result.count % max(resolvedBias.seedEvery, 1) == 0,
+            if sinceSeed >= seedEvery,
                seedIndex < seeds.count {
-                _ = append(seeds[seedIndex], source: .seed)
+                if append(seeds[seedIndex], source: .seed) {
+                    sinceSeed = 0
+                }
                 seedIndex += 1
             }
             if personalIndex >= personal.count,
                similarIndex >= similar.count,
                fallbackIndex < fallback.count {
-                _ = append(fallback[fallbackIndex], source: .fallback)
+                if append(fallback[fallbackIndex], source: .fallback) {
+                    sinceSeed += 1
+                }
                 fallbackIndex += 1
             }
             if personalIndex >= personal.count,
                similarIndex >= similar.count,
                fallbackIndex >= fallback.count,
                seedIndex < seeds.count {
-                _ = append(seeds[seedIndex], source: .seed)
+                if append(seeds[seedIndex], source: .seed) {
+                    sinceSeed = 0
+                }
                 seedIndex += 1
             }
             if result.count == before {
@@ -347,13 +362,14 @@ actor SelenaRecommendationCursor {
         musicService: any MusicService
     ) async throws -> [Track] {
         let offset = commonMixOffset
-        commonMixOffset += MixTrackRequestPolicy.pageSize
-        return try await musicService.mixTracks(
+        let tracks = try await musicService.mixTracks(
             .common,
             accessToken: accessToken,
             startingOffset: offset,
             pages: 1
         )
+        commonMixOffset = offset + MixTrackRequestPolicy.pageSize
+        return tracks
     }
 
     private func nextSeeds(count: Int) -> [Track] {

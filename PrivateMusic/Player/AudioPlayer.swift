@@ -1928,6 +1928,12 @@ final class AudioPlayer {
 
     func jump(to index: Int) {
         guard queue.indices.contains(index) else { return }
+        if queueSource?.usesSelenaWaveFilters == true,
+           let track = currentTrack,
+           listenedTrackID != track.id,
+           index != currentIndex {
+            selenaSourceFeedback?(track.id, false)
+        }
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         playbackIntended = true

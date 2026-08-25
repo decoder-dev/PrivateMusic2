@@ -56,8 +56,11 @@ final class AppEnvironment {
             }
         }
         if selenaTrackSources.count > 500 {
+            let protected = Set(player.queue.map(\.id))
             let overflow = selenaTrackSources.count - 400
-            let doomed = Array(selenaTrackSources.keys.prefix(overflow))
+            let doomed = selenaTrackSources.keys
+                .filter { !protected.contains($0) }
+                .prefix(overflow)
             for key in doomed {
                 selenaTrackSources.removeValue(forKey: key)
             }
@@ -65,7 +68,11 @@ final class AppEnvironment {
     }
 
     func rewardSelenaSource(trackID: String, success: Bool) {
-        guard let source = selenaTrackSources[trackID] else { return }
+        // One terminal outcome per track — remove so a second Next while
+        // continuation is pending, or a later listen mark, cannot double-count.
+        guard let source = selenaTrackSources.removeValue(forKey: trackID) else {
+            return
+        }
         selenaSourceBandit.reward(source.arm, success: success)
     }
 

@@ -212,6 +212,17 @@ final class SelenaBanditPolicyTests: XCTestCase {
         XCTAssertEqual(result.first?.id, calm.id)
     }
 
+    func testJoinedCreditUsesComponentAffinity() {
+        let collab = track(1, artist: "Alpha, Beta")
+        let stranger = track(2, artist: "Gamma")
+        let result = rerank(
+            [stranger, collab],
+            affinity: [key("Alpha"): 6],
+            exposure: SelenaExposure()
+        )
+        XCTAssertEqual(result.first?.artist, "Alpha, Beta")
+    }
+
     // MARK: - Spacing
 
     /// The point of the whole thing: favourites recur, but never back to
