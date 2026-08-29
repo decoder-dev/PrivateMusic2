@@ -114,6 +114,7 @@ enum DeveloperDiagnosticsBuilder {
         )
     }
 
+    @MainActor
     static func settingsSnapshot(from settings: AppSettings) -> DeveloperSettingsSnapshot {
         DeveloperSettingsSnapshot(
             appearance: settings.appearance.rawValue,

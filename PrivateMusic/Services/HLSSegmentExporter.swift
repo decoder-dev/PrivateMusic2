@@ -230,7 +230,7 @@ actor HLSSegmentExporter {
             let elementarySize = (try? demuxed.url
                 .resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             hlsLogInfo(
-                "HLS export: demuxed MPEG-TS to \(demuxed.kind.fileExtension, privacy: .public), \(elementarySize) bytes"
+                "HLS export: demuxed MPEG-TS to \(demuxed.kind.fileExtension), \(elementarySize) bytes"
             )
             transcodeURL = demuxed.url
         } else {
@@ -491,7 +491,7 @@ actor HLSSegmentExporter {
             )
         } catch let error as NSError {
             hlsLogError(
-                "stage=creatingWriter domain=\(error.domain, privacy: .public) code=\(error.code)"
+                "stage=creatingWriter domain=\(error.domain) code=\(error.code)"
             )
             throw HLSDiagnosticError(
                 stage: .creatingWriter,
@@ -1577,7 +1577,7 @@ actor HLSSegmentExporter {
             } catch {
                 lastError = error
                 hlsLogError(
-                    "stage=openingLinearSource attempt=\(attempt) error=\(String(describing: error), privacy: .public)"
+                    "stage=openingLinearSource attempt=\(attempt) error=\(String(describing: error))"
                 )
             }
             if attempt == 0 {
@@ -1609,7 +1609,7 @@ actor HLSSegmentExporter {
             throw error
         } catch let error as NSError {
             hlsLogError(
-                "stage=openingLinearSource domain=\(error.domain, privacy: .public) code=\(error.code)"
+                "stage=openingLinearSource domain=\(error.domain) code=\(error.code)"
             )
             throw HLSDiagnosticError(
                 stage: .openingLinearSource,
@@ -1652,7 +1652,7 @@ actor HLSSegmentExporter {
             reader = try AVAssetReader(asset: source)
         } catch let error as NSError {
             hlsLogError(
-                "stage=creatingReader domain=\(error.domain, privacy: .public) code=\(error.code)"
+                "stage=creatingReader domain=\(error.domain) code=\(error.code)"
             )
             throw HLSDiagnosticError(
                 stage: .creatingReader,
