@@ -102,6 +102,7 @@ struct SettingsView: View {
     @Environment(SessionStore.self) private var sessionStore
     @Environment(NetworkMonitor.self) private var networkMonitor
     @Environment(OfflineTrackStore.self) private var offlineStore
+    @State private var developerUnlockFlash = false
 
     var body: some View {
         ScrollView {
@@ -151,13 +152,22 @@ struct SettingsView: View {
                     ) { MixFeedbackManagerView() }
                 }
 
+                if DeveloperFeature.isUnlocked {
+                    AppGroupedSection(title: "developer.menu") {
+                        settingsDestination(
+                            title: "developer.menu",
+                            systemImage: "hammer"
+                        ) { DeveloperSettingsView() }
+                    }
+                }
+
                 AppGroupedSection(title: "about") {
                     labeledValueRow(
                         title: L10n.text("app"),
                         value: L10n.text("private_music")
                     )
                     Divider().padding(.leading, 54)
-                    labeledValueRow(title: L10n.text("version"), value: version)
+                    versionRow
                     Divider().padding(.leading, 54)
                     labeledValueRow(
                         title: L10n.text("developer"),
@@ -176,6 +186,42 @@ struct SettingsView: View {
         .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("tab.settings"))
+        .overlay(alignment: .bottom) {
+            if developerUnlockFlash {
+                Text(L10n.text("developer.menu_unlocked"))
+                    .font(.footnote.weight(.semibold))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.bottom, 24)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: developerUnlockFlash)
+    }
+
+    private var versionRow: some View {
+        Button {
+            guard DeveloperFeature.registerVersionTap() else { return }
+            Haptics.success()
+            developerUnlockFlash = true
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                developerUnlockFlash = false
+            }
+        } label: {
+            AppGroupedRow {
+                Text(L10n.text("version"))
+                    .font(.callout.weight(.semibold))
+            } trailing: {
+                Text(version)
+                    .font(BubbleType.metadata)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(DeveloperFeature.isUnlocked)
     }
 
     private var version: String {
