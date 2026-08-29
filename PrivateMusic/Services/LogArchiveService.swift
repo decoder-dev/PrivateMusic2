@@ -94,14 +94,14 @@ enum ZipArchiveWriter {
             [.year, .month, .day, .hour, .minute, .second],
             from: date
         )
-        let year = max(1980, (parts.year ?? 1980) - 1980)
-        let month = parts.month ?? 1
-        let day = parts.day ?? 1
-        let hour = parts.hour ?? 0
-        let minute = parts.minute ?? 0
-        let second = (parts.second ?? 0) / 2
-        let dosTime = UInt16(hour << 11 | minute << 5 | second)
-        let dosDate = UInt16(year << 9 | month << 5 | day)
+        let dosYear = UInt16(clamping: max(0, min(127, (parts.year ?? 1980) - 1980)))
+        let month = UInt16(clamping: max(1, min(12, parts.month ?? 1)))
+        let day = UInt16(clamping: max(1, min(31, parts.day ?? 1)))
+        let hour = UInt16(clamping: max(0, min(23, parts.hour ?? 0)))
+        let minute = UInt16(clamping: max(0, min(59, parts.minute ?? 0)))
+        let second = UInt16(clamping: max(0, min(59, (parts.second ?? 0) / 2)))
+        let dosTime = hour << 11 | minute << 5 | second
+        let dosDate = dosYear << 9 | month << 5 | day
         return (dosTime, dosDate)
     }
 
