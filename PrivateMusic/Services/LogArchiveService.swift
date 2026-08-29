@@ -217,6 +217,17 @@ actor LogArchiveService {
             )
         }
 
+        if let bootLog = try? await exportUnifiedLog(
+            timeIntervalSinceLatestBoot: 60 * 60 * 24 * 7
+        ) {
+            entries.append(
+                ZipArchiveWriter.Entry(
+                    path: "oslog/unified.boot-window.log.txt",
+                    data: bootLog
+                )
+            )
+        }
+
         let zipData = try ZipArchiveWriter.archive(entries: entries)
         let directory = fileManager.temporaryDirectory
             .appendingPathComponent("PrivateMusicLogs", isDirectory: true)
@@ -242,22 +253,29 @@ actor LogArchiveService {
         try? fileManager.removeItem(at: url)
     }
 
-    private func exportUnifiedLog() async throws -> Data {
+    private func exportUnifiedLog(
+        timeIntervalSinceLatestBoot: TimeInterval = 60 * 60 * 24
+    ) async throws -> Data {
         let store = try OSLogStore(scope: .currentProcessIdentifier)
-        let position = store.position(timeIntervalSinceLatestBoot: 60 * 60 * 24)
+        let position = store.position(
+            timeIntervalSinceLatestBoot: timeIntervalSinceLatestBoot
+        )
         let entries = try store.getEntries(at: position)
         var lines: [String] = []
-        lines.reserveCapacity(256)
+        lines.reserveCapacity(1024)
         for entry in entries {
             guard let log = entry as? OSLogEntryLog else { continue }
             guard log.subsystem == AppLog.subsystem else { continue }
             let stamp = ISO8601DateFormatter().string(from: log.date)
+            let level = log.level.rawValue
             lines.append(
-                "\(stamp) [\(log.category)] \(log.composedMessage)"
+                "\(stamp) [\(level)][\(log.category)] \(log.composedMessage)"
             )
         }
         if lines.isEmpty {
-            lines.append("No unified log entries for \(AppLog.subsystem) in the last boot window.")
+            lines.append(
+                "No unified log entries for \(AppLog.subsystem) in the requested boot window (\(Int(timeIntervalSinceLatestBoot))s)."
+            )
         }
         return Data(lines.joined(separator: "\n").utf8)
     }

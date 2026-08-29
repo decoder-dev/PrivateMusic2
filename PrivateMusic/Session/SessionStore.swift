@@ -33,8 +33,16 @@ final class SessionStore {
                 }
             }
             session = restored
+            AppLog.shared.info(
+                .session,
+                "Session restored userID=\(restored?.userID.map(String.init) ?? "nil") expired=\(restored?.isExpired ?? false) canRefresh=\(restored?.canRefresh ?? false)"
+            )
         } catch {
             errorMessage = error.localizedDescription
+            AppLog.shared.error(
+                .session,
+                "Session restore failed: \(AppLogRedaction.redact(error.localizedDescription))"
+            )
         }
     }
 
@@ -83,6 +91,10 @@ final class SessionStore {
         self.profile = profile
         sessionRevision &+= 1
         errorMessage = nil
+        AppLog.shared.info(
+            .session,
+            "Session connected userID=\(profile.id) expiresAt=\(expiresAt?.description ?? "nil") canRefresh=\(value.canRefresh)"
+        )
     }
 
     func updateWebSession(
@@ -145,5 +157,6 @@ final class SessionStore {
         profile = nil
         sessionRevision &+= 1
         errorMessage = deletionError
+        AppLog.shared.info(.session, "Session logged out")
     }
 }

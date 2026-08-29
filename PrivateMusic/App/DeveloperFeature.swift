@@ -25,6 +25,7 @@ enum DeveloperFeature {
         if next >= requiredVersionTaps {
             defaults.set(true, forKey: Keys.unlocked)
             AppLog.shared.setFileLoggingEnabled(true)
+            AppLog.shared.setVerbose(true)
             AppLog.shared.info(.app, "Developer menu unlocked")
             return true
         }
