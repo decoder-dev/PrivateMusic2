@@ -254,7 +254,10 @@
 "developer.diagnostics" = "Diagnostics";
 "developer.logging" = "Logging";
 "developer.file_logging" = "Save logs to device";
-"developer.logging_footer" = "Build a ZIP with app logs, a diagnostics snapshot and recent unified logging, then save or share it from the sheet.";
+"developer.verbose_logging" = "Verbose logging";
+"developer.logging_footer" = "Verbose mode records debug lines, per-category log files and full API/player/session traces. Build a ZIP with app logs, diagnostics, settings and unified logging, then save or share it from the sheet.";
+"developer.log_files" = "Saved log files";
+"developer.log_files_value" = "%1$d files · %2$@";
 "developer.build_log_archive" = "Build log archive";
 "developer.build_log_archive_again" = "Build again";
 "developer.building_log_archive" = "Building archive…";

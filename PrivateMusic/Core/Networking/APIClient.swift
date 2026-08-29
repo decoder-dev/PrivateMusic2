@@ -127,11 +127,22 @@ actor APIClient {
             .data(using: .utf8)
 
         for attempt in 0..<retryPolicy.maximumAttempts {
+            let started = Date()
+            AppLog.shared.debug(
+                .api,
+                "POST \(path) attempt=\(attempt + 1)/\(retryPolicy.maximumAttempts) body=\(AppLogRedaction.describeForm(form))"
+            )
             do {
                 let (data, response) = try await session.data(for: request)
+                let elapsedMs = Date().timeIntervalSince(started) * 1000
                 guard let http = response as? HTTPURLResponse else {
+                    AppLog.shared.error(.api, "POST \(path) invalid response")
                     throw APIError.invalidResponse
                 }
+                AppLog.shared.debug(
+                    .api,
+                    "POST \(path) status=\(http.statusCode) bytes=\(data.count) duration=\(String(format: "%.0fms", elapsedMs))"
+                )
                 if retryPolicy.shouldRetry(
                     statusCode: http.statusCode
                 ),
@@ -150,9 +161,14 @@ actor APIClient {
                 )
                 let vkError = vkEnvelope?.error
                 if http.statusCode == 401 || vkError?.errorCode == 5 {
+                    AppLog.shared.error(.api, "POST \(path) unauthorized")
                     throw APIError.unauthorized
                 }
                 guard (200..<300).contains(http.statusCode) else {
+                    AppLog.shared.error(
+                        .api,
+                        "POST \(path) http=\(http.statusCode)"
+                    )
                     throw APIError.httpStatus(http.statusCode)
                 }
 
@@ -160,12 +176,20 @@ actor APIClient {
                     if retryPolicy == .transient,
                        [6, 10].contains(error.errorCode),
                        attempt + 1 < retryPolicy.maximumAttempts {
+                        AppLog.shared.info(
+                            .api,
+                            "POST \(path) vk=\(error.errorCode) retrying: \(AppLogRedaction.redact(error.errorMsg))"
+                        )
                         try await retryDelay(
                             attempt: attempt,
                             retryAfter: nil
                         )
                         continue
                     }
+                    AppLog.shared.error(
+                        .api,
+                        "POST \(path) vk=\(error.errorCode) \(AppLogRedaction.redact(error.errorMsg))"
+                    )
                     throw APIError.server(
                         code: error.errorCode,
                         message: error.errorMsg
@@ -175,15 +199,29 @@ actor APIClient {
                 do {
                     return try decoder.decode(Response.self, from: data)
                 } catch {
+                    AppLog.shared.error(
+                        .api,
+                        "POST \(path) decode failed: \(AppLogRedaction.redact(error.localizedDescription))"
+                    )
                     throw APIError.decoding(error.localizedDescription)
                 }
             } catch let error as APIError {
+                AppLog.shared.error(
+                    .api,
+                    "POST \(path) apiError=\(AppLogRedaction.redact(error.localizedDescription))"
+                )
                 throw error
             } catch is CancellationError {
+                AppLog.shared.debug(.api, "POST \(path) cancelled")
                 throw CancellationError()
             } catch let error as URLError where error.code == .cancelled {
+                AppLog.shared.debug(.api, "POST \(path) url cancelled")
                 throw CancellationError()
             } catch let error as URLError {
+                AppLog.shared.error(
+                    .api,
+                    "POST \(path) url=\(error.code.rawValue) \(AppLogRedaction.redact(error.localizedDescription))"
+                )
                 if retryPolicy.shouldRetry(error.code),
                    attempt + 1 < retryPolicy.maximumAttempts {
                     try await retryDelay(attempt: attempt, retryAfter: nil)
@@ -191,6 +229,10 @@ actor APIClient {
                 }
                 throw Self.apiError(for: error)
             } catch {
+                AppLog.shared.error(
+                    .api,
+                    "POST \(path) transport \(AppLogRedaction.redact(error.localizedDescription))"
+                )
                 throw APIError.transport(error.localizedDescription)
             }
         }

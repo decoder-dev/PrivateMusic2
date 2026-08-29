@@ -798,9 +798,14 @@ final class AppEnvironment {
         guard let baselineSession = sessionStore.session,
               let cookie = baselineSession.refreshCookie,
               let webUserAgent = baselineSession.webUserAgent else {
+            AppLog.shared.error(.session, "Session recovery missing refresh material")
             throw APIError.unauthorized
         }
         let baselineRevision = sessionStore.sessionRevision
+        AppLog.shared.info(
+            .session,
+            "Session recovery started revision=\(baselineRevision)"
+        )
 
         let recoveryID = UUID()
         isRecoveringSession = true
@@ -851,8 +856,16 @@ final class AppEnvironment {
                 }
 
                 try sessionStore.updateWebSession(result, profile: profile)
+                AppLog.shared.info(
+                    .session,
+                    "Session recovery succeeded userID=\(profile.id)"
+                )
                 return result.accessToken
             } catch {
+                AppLog.shared.error(
+                    .session,
+                    "Session recovery failed: \(AppLogRedaction.redact(error.localizedDescription))"
+                )
                 let retainedUserAgent = sessionStore.session?.userAgent
                 await musicService.configure(userAgent: retainedUserAgent)
                 player.configureNetwork(userAgent: retainedUserAgent)

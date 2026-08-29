@@ -1,12 +1,13 @@
 import AVFoundation
 import Foundation
-import OSLog
 
-private let logger = Logger(
-    subsystem: Bundle.main.bundleIdentifier
-        ?? "com.dec.privatemusic2",
-    category: "HLSExporter"
-)
+private func hlsLogInfo(_ message: String) {
+    AppLog.shared.info(.hls, message)
+}
+
+private func hlsLogError(_ message: String) {
+    AppLog.shared.error(.hls, message)
+}
 
 /// Builds a single M4A file from an HLS (m3u8) source without relying on
 /// `AVAssetExportSession`. AVFoundation refuses to export many VK HLS
@@ -74,7 +75,7 @@ actor HLSSegmentExporter {
             throw HLSExportError.emptyPlaylist
         }
         let totalSegments = parsed.segments.count
-        logger.info(
+        hlsLogInfo(
             "HLS export: \(totalSegments) segments, mediaSequence \(parsed.mediaSequence), map \(parsed.segments.first?.initialization != nil)"
         )
 
@@ -96,7 +97,7 @@ actor HLSSegmentExporter {
                 keyCache: &keyCache,
                 cache: &initializationCache
             )
-            logger.info(
+            hlsLogInfo(
                 "HLS export: init fetched, \(initializationData?.count ?? 0) bytes"
             )
         } else {
@@ -115,7 +116,7 @@ actor HLSSegmentExporter {
             initializationData: initializationData,
             firstSegmentData: firstSegmentData
         )
-        logger.info(
+        hlsLogInfo(
             "HLS export: container \(container.rawValue), magic \(Self.magicPrefix(firstSegmentData))"
         )
 
@@ -228,7 +229,7 @@ actor HLSSegmentExporter {
            ) {
             let elementarySize = (try? demuxed.url
                 .resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            logger.info(
+            hlsLogInfo(
                 "HLS export: demuxed MPEG-TS to \(demuxed.kind.fileExtension, privacy: .public), \(elementarySize) bytes"
             )
             transcodeURL = demuxed.url
@@ -295,7 +296,7 @@ actor HLSSegmentExporter {
         do {
             initialization = try demuxer.parseInitialization(initializationData)
         } catch let error as CMAFAudioDemuxer.CMAFError {
-            logger.info(
+            hlsLogInfo(
                 "HLS CMAF export: init parse failed \(String(describing: error))"
             )
             throw HLSDiagnosticError(
@@ -366,7 +367,7 @@ actor HLSSegmentExporter {
                         decodeTime: &nextDecodeTime
                     )
                 } catch let error as CMAFAudioDemuxer.CMAFError {
-                    logger.info(
+                    hlsLogInfo(
                         "HLS CMAF export: fragment \(index) parse failed \(String(describing: error))"
                     )
                     throw HLSDiagnosticError(
@@ -387,7 +388,7 @@ actor HLSSegmentExporter {
                         decodeTime: &nextDecodeTime
                     )
                 } catch let error as CMAFAudioDemuxer.CMAFError {
-                    logger.info(
+                    hlsLogInfo(
                         "HLS CMAF export: fragment \(index) parse failed \(String(describing: error))"
                     )
                     throw HLSDiagnosticError(
@@ -489,7 +490,7 @@ actor HLSSegmentExporter {
                 fileType: .m4a
             )
         } catch let error as NSError {
-            logger.error(
+            hlsLogError(
                 "stage=creatingWriter domain=\(error.domain, privacy: .public) code=\(error.code)"
             )
             throw HLSDiagnosticError(
@@ -512,7 +513,7 @@ actor HLSSegmentExporter {
         writer.add(writerInput)
         guard writer.startWriting() else {
             let code = writer.error?._code
-            logger.error(
+            hlsLogError(
                 "stage=startingWriter code=\(code ?? -1)"
             )
             throw HLSDiagnosticError(
@@ -606,7 +607,7 @@ actor HLSSegmentExporter {
             }
             guard writerInput.append(sampleBuffer) else {
                 let code = writer.error?._code
-                logger.error(
+                hlsLogError(
                     "stage=appendingSample sample=\(index) code=\(code ?? -1)"
                 )
                 throw HLSDiagnosticError(
@@ -632,7 +633,7 @@ actor HLSSegmentExporter {
         }
         guard writer.status == .completed else {
             let code = writer.error?._code
-            logger.error("stage=finishingWriter code=\(code ?? -1)")
+            hlsLogError("stage=finishingWriter code=\(code ?? -1)")
             throw HLSDiagnosticError(
                 stage: .finishingWriter,
                 publicCode: "HLS-WRITER-FINISH-\(code.map { abs($0) } ?? -1)",
@@ -789,7 +790,7 @@ actor HLSSegmentExporter {
         guard let chosen else {
             throw HLSExportError.noAudioVariant
         }
-        logger.info(
+        hlsLogInfo(
             "HLS export: chosen variant \(chosen.lastPathComponent) on \(chosen.host ?? "unknown-host")"
         )
 
@@ -1284,7 +1285,7 @@ actor HLSSegmentExporter {
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-                logger.info(
+                hlsLogInfo(
                     "HLS fetch \(kind.rawValue): http \(code), host \(self.safeHost(url)), ext \(url.pathExtension)"
                 )
                 lastError = HLSExportError.httpFailure(
@@ -1298,7 +1299,7 @@ actor HLSSegmentExporter {
                 }
                 throw lastError!
             }
-            logger.info(
+            hlsLogInfo(
                 "HLS fetch \(kind.rawValue): \(data.count) bytes, host \(self.safeHost(url)), ext \(url.pathExtension), mime \(http.mimeType ?? "unknown"), magic \(Self.magicPrefix(data))"
             )
             guard !data.isEmpty else {
@@ -1575,7 +1576,7 @@ actor HLSSegmentExporter {
                 return []
             } catch {
                 lastError = error
-                logger.error(
+                hlsLogError(
                     "stage=openingLinearSource attempt=\(attempt) error=\(String(describing: error), privacy: .public)"
                 )
             }
@@ -1607,7 +1608,7 @@ actor HLSSegmentExporter {
         } catch let error as HLSDiagnosticError {
             throw error
         } catch let error as NSError {
-            logger.error(
+            hlsLogError(
                 "stage=openingLinearSource domain=\(error.domain, privacy: .public) code=\(error.code)"
             )
             throw HLSDiagnosticError(
@@ -1619,7 +1620,7 @@ actor HLSSegmentExporter {
             )
         }
         guard let track = tracks.first else {
-            logger.info("HLS transcode: no audio track in source")
+            hlsLogInfo("HLS transcode: no audio track in source")
             throw HLSExportError.noAudioTrack
         }
 
@@ -1650,7 +1651,7 @@ actor HLSSegmentExporter {
         do {
             reader = try AVAssetReader(asset: source)
         } catch let error as NSError {
-            logger.error(
+            hlsLogError(
                 "stage=creatingReader domain=\(error.domain, privacy: .public) code=\(error.code)"
             )
             throw HLSDiagnosticError(
@@ -1667,7 +1668,7 @@ actor HLSSegmentExporter {
         )
         readerOutput.alwaysCopiesSampleData = false
         guard reader.canAdd(readerOutput) else {
-            logger.info("HLS transcode: reader cannot add output")
+            hlsLogInfo("HLS transcode: reader cannot add output")
             throw HLSExportError.readerCannotAddOutput
         }
         reader.add(readerOutput)
@@ -1689,14 +1690,14 @@ actor HLSSegmentExporter {
         )
         writerInput.expectsMediaDataInRealTime = false
         guard writer.canAdd(writerInput) else {
-            logger.info("HLS transcode: writer cannot add input")
+            hlsLogInfo("HLS transcode: writer cannot add input")
             throw HLSExportError.writerCannotAddInput
         }
         writer.add(writerInput)
 
         guard reader.startReading() else {
             let code = reader.error?._code
-            logger.error(
+            hlsLogError(
                 "stage=startingReader code=\(code ?? -1)"
             )
             throw HLSDiagnosticError(
@@ -1709,7 +1710,7 @@ actor HLSSegmentExporter {
         }
         guard writer.startWriting() else {
             let code = writer.error?._code
-            logger.error(
+            hlsLogError(
                 "stage=startingWriter code=\(code ?? -1)"
             )
             throw HLSDiagnosticError(

@@ -11,10 +11,12 @@ struct DeveloperSettingsView: View {
     @Environment(SessionStore.self) private var sessionStore
     @Environment(NetworkMonitor.self) private var networkMonitor
     @Environment(AudioPlayer.self) private var player
+    @Environment(AppSettings.self) private var settings
 
     @State private var exportPhase: DeveloperLogExportPhase = .idle
     @State private var archiveURL: URL?
     @State private var fileLoggingEnabled = AppLog.shared.isFileLoggingEnabled
+    @State private var verboseLoggingEnabled = AppLog.shared.isVerbose
 
     var body: some View {
         Form {
@@ -47,6 +49,14 @@ struct DeveloperSettingsView: View {
                         value: track
                     )
                 }
+                LabeledContent(
+                    L10n.text("developer.log_files"),
+                    value: L10n.format(
+                        "developer.log_files_value",
+                        AppLog.shared.listLogFiles().count,
+                        formattedBytes(AppLog.shared.totalLogBytes())
+                    )
+                )
             }
 
             Section {
@@ -59,6 +69,18 @@ struct DeveloperSettingsView: View {
                     AppLog.shared.info(
                         .app,
                         "File logging \(enabled ? "enabled" : "disabled")"
+                    )
+                }
+
+                Toggle(
+                    L10n.text("developer.verbose_logging"),
+                    isOn: $verboseLoggingEnabled
+                )
+                .onChange(of: verboseLoggingEnabled) { _, enabled in
+                    AppLog.shared.setVerbose(enabled)
+                    AppLog.shared.info(
+                        .app,
+                        "Verbose logging \(enabled ? "enabled" : "disabled")"
                     )
                 }
 
@@ -158,14 +180,25 @@ struct DeveloperSettingsView: View {
         exportPhase = .preparing
         let diagnostics = DeveloperDiagnosticsBuilder.make(
             networkStatus: networkTitle,
+            networkState: String(describing: networkMonitor.state),
+            networkTransport: String(describing: networkMonitor.transport),
             sessionActive: sessionStore.session != nil,
             sessionExpiresAt: sessionStore.session?.expiresAt,
+            sessionCanRefresh: sessionStore.session?.canRefresh ?? false,
+            currentTrackID: player.currentTrack?.id,
             currentTrackTitle: player.currentTrack?.title,
+            currentTrackArtist: player.currentTrack?.artist,
             isPlaying: player.isPlaying,
+            isBuffering: player.isBuffering,
+            queueLength: player.queue.count,
+            queueIndex: player.currentIndex,
+            shuffleEnabled: player.shuffleEnabled,
             fileLogCount: AppLog.shared.listLogFiles().count,
             totalLogBytes: AppLog.shared.totalLogBytes(),
             developerMenuUnlocked: DeveloperFeature.isUnlocked,
-            fileLoggingEnabled: AppLog.shared.isFileLoggingEnabled
+            fileLoggingEnabled: AppLog.shared.isFileLoggingEnabled,
+            verboseLoggingEnabled: AppLog.shared.isVerbose,
+            settings: DeveloperDiagnosticsBuilder.settingsSnapshot(from: settings)
         )
         Task {
             do {
@@ -204,5 +237,9 @@ struct DeveloperSettingsView: View {
         if case .ready = exportPhase {
             exportPhase = .idle
         }
+    }
+
+    private func formattedBytes(_ value: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: value, countStyle: .file)
     }
 }

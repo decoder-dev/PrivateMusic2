@@ -52,6 +52,10 @@ final class NetworkMonitor {
                 self.state = newState
                 self.transport = newTransport
                 self.revision += 1
+                AppLog.shared.info(
+                    .network,
+                    "Network state=\(newState) transport=\(newTransport) revision=\(self.revision)"
+                )
             }
         }
         monitor.start(queue: queue)
