@@ -1811,6 +1811,9 @@ final class AudioPlayer {
         resetProgressForTrackTransition()
         persistPlayback()
         continuationPrefetchInThreshold = false
+        logPlayback(
+            "play trackID=\(track.id) title=\"\(track.title)\" artist=\"\(track.artist)\" queue=\(queue.count) index=\(currentIndex ?? -1) source=\(String(describing: source)) shuffle=\(shuffleEnabled)"
+        )
         loadCurrentAndPlay()
         maybeStartContinuationPrefetch()
     }
@@ -2128,6 +2131,7 @@ final class AudioPlayer {
         // the timer still fires with captured `autoplay: true` and starts the
         // track the user just stopped.
         cancelStreamRefresh()
+        logPlayback("pause trackID=\(currentTrack?.id ?? "nil") elapsed=\(String(format: "%.1f", elapsedTime))")
         pausePreservingIntent()
     }
 
@@ -4068,6 +4072,20 @@ final class AudioPlayer {
         }
     }
 
+    private func logPlayback(
+        _ message: String,
+        level: AppLogLevel = .info
+    ) {
+        switch level {
+        case .debug:
+            AppLog.shared.debug(.player, message)
+        case .info:
+            AppLog.shared.info(.player, message)
+        case .error:
+            AppLog.shared.error(.player, message)
+        }
+    }
+
     private func publishPlaybackState(force: Bool = false) {
         let second = Int(elapsedTime.rounded(.down))
         guard NowPlayingDriftPolicy.shouldPublish(
@@ -4092,6 +4110,10 @@ final class AudioPlayer {
     }
 
     private func handleItemFailure(_ error: Error?) {
+        logPlayback(
+            "item failure trackID=\(currentTrack?.id ?? "nil") attempts=\(streamRecoveryAttempts) error=\(error?.localizedDescription ?? "nil")",
+            level: .error
+        )
         publishPlaybackState(force: true)
         if let track = currentTrack,
            let sourceURL = track.streamURL,
@@ -4190,6 +4212,9 @@ final class AudioPlayer {
             for: trigger,
             attempt: streamRecoveryAttempts,
             condition: currentNetworkCondition
+        )
+        logPlayback(
+            "schedule same-track recovery attempt=\(streamRecoveryAttempts) delay=\(String(format: "%.2f", delay))s autoplay=\(autoplay) automatic=\(automatic)"
         )
         let generation = playbackGeneration
         let trackID = currentTrack?.id

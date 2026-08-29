@@ -254,7 +254,10 @@
 "developer.diagnostics" = "Диагностика";
 "developer.logging" = "Логирование";
 "developer.file_logging" = "Сохранять логи на устройстве";
-"developer.logging_footer" = "Соберите ZIP с логами приложения, снимком диагностики и недавними записями unified logging, затем сохраните или отправьте архив из системного листа.";
+"developer.verbose_logging" = "Подробное логирование";
+"developer.logging_footer" = "В подробном режиме пишутся debug-строки, отдельные файлы по категориям и полные следы API/плеера/сессии. Соберите ZIP с логами, диагностикой, настройками и unified logging, затем сохраните или отправьте архив из системного листа.";
+"developer.log_files" = "Сохранённые логи";
+"developer.log_files_value" = "%1$d файлов · %2$@";
 "developer.build_log_archive" = "Собрать архив логов";
 "developer.build_log_archive_again" = "Собрать снова";
 "developer.building_log_archive" = "Собираем архив…";

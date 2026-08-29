@@ -5,11 +5,14 @@ enum AppLogCategory: String, CaseIterable, Sendable {
     case app
     case session
     case network
+    case api
     case player
     case hls
+    case downloads
+    case mix
 }
 
-enum AppLogLevel: String, Sendable {
+enum AppLogLevel: String, Sendable, Comparable {
     case debug
     case info
     case error
@@ -19,6 +22,18 @@ enum AppLogLevel: String, Sendable {
         case .debug: .debug
         case .info: .info
         case .error: .error
+        }
+    }
+
+    static func < (lhs: AppLogLevel, rhs: AppLogLevel) -> Bool {
+        lhs.rank < rhs.rank
+    }
+
+    private var rank: Int {
+        switch self {
+        case .debug: 0
+        case .info: 1
+        case .error: 2
         }
     }
 }
@@ -37,6 +52,7 @@ final class AppLog: @unchecked Sendable {
     private var loggers: [AppLogCategory: Logger] = [:]
 
     private(set) var isFileLoggingEnabled: Bool
+    private(set) var isVerbose: Bool
 
     private init(
         fileManager: FileManager = .default,
@@ -47,6 +63,9 @@ final class AppLog: @unchecked Sendable {
         self.isFileLoggingEnabled = defaults.object(
             forKey: Keys.fileLoggingEnabled
         ) as? Bool ?? DeveloperFeature.isUnlocked
+        self.isVerbose = defaults.object(
+            forKey: Keys.verboseLogging
+        ) as? Bool ?? true
         for category in AppLogCategory.allCases {
             loggers[category] = Logger(
                 subsystem: Self.subsystem,
@@ -59,7 +78,7 @@ final class AppLog: @unchecked Sendable {
         queue.sync {
             try? ensureLogsDirectory()
         }
-        info(.app, "App launched")
+        info(.app, Self.launchSummary())
     }
 
     func setFileLoggingEnabled(_ enabled: Bool) {
@@ -69,6 +88,13 @@ final class AppLog: @unchecked Sendable {
             if enabled {
                 try? ensureLogsDirectory()
             }
+        }
+    }
+
+    func setVerbose(_ enabled: Bool) {
+        queue.sync {
+            isVerbose = enabled
+            defaults.set(enabled, forKey: Keys.verboseLogging)
         }
     }
 
@@ -133,17 +159,23 @@ final class AppLog: @unchecked Sendable {
         level: AppLogLevel,
         message: String
     ) {
+        guard shouldPersist(level: level) else {
+            loggers[category]?.log(level: level.osLogType, "\(message, privacy: .public)")
+            return
+        }
+        let redacted = AppLogRedaction.redact(message)
         let line = Self.formatLine(
             category: category,
             level: level,
-            message: message,
-            date: Date()
+            message: redacted,
+            date: Date(),
+            verbose: isVerbose
         )
-        loggers[category]?.log(level: level.osLogType, "\(message, privacy: .public)")
+        loggers[category]?.log(level: level.osLogType, "\(redacted, privacy: .public)")
         queue.async { [self] in
             guard isFileLoggingEnabled else { return }
             do {
-                try append(line)
+                try append(line, category: category)
             } catch {
                 loggers[.app]?.error(
                     "AppLog file write failed: \(error.localizedDescription, privacy: .public)"
@@ -152,9 +184,28 @@ final class AppLog: @unchecked Sendable {
         }
     }
 
-    private func append(_ line: String) throws {
+    private func shouldPersist(level: AppLogLevel) -> Bool {
+        if level == .error { return true }
+        if level == .info { return true }
+        return isVerbose
+    }
+
+    private func append(_ line: String, category: AppLogCategory) throws {
         try ensureLogsDirectory()
-        let url = try activeLogFileURL()
+        let unified = try activeLogFileURL()
+        try appendLine(line, to: unified)
+        try rotateIfNeeded(activeLog: unified)
+
+        if isVerbose {
+            let categoryURL = try logsDirectoryURL().appendingPathComponent(
+                "\(category.rawValue).log"
+            )
+            try appendLine(line, to: categoryURL)
+            try rotateIfNeeded(activeLog: categoryURL, prefix: category.rawValue)
+        }
+    }
+
+    private func appendLine(_ line: String, to url: URL) throws {
         let payload = Data((line + "\n").utf8)
         if fileManager.fileExists(atPath: url.path) {
             let handle = try FileHandle(forWritingTo: url)
@@ -164,22 +215,24 @@ final class AppLog: @unchecked Sendable {
         } else {
             try payload.write(to: url, options: .atomic)
         }
-        try rotateIfNeeded(activeLog: url)
     }
 
-    private func rotateIfNeeded(activeLog url: URL) throws {
+    private func rotateIfNeeded(
+        activeLog url: URL,
+        prefix: String = "PrivateMusic"
+    ) throws {
         let values = try url.resourceValues(forKeys: [.fileSizeKey])
         guard let size = values.fileSize, size > Self.maxActiveLogBytes else {
             return
         }
         let rotated = try logsDirectoryURL().appendingPathComponent(
-            "PrivateMusic-\(Self.timestamp(Date())).log"
+            "\(prefix)-\(Self.timestamp(Date())).log"
         )
         try fileManager.moveItem(at: url, to: rotated)
-        try pruneOldLogs()
+        try pruneOldLogs(prefix: prefix)
     }
 
-    private func pruneOldLogs() throws {
+    private func pruneOldLogs(prefix: String) throws {
         let directory = try logsDirectoryURL()
         let files = try fileManager.contentsOfDirectory(
             at: directory,
@@ -187,7 +240,7 @@ final class AppLog: @unchecked Sendable {
             options: [.skipsHiddenFiles]
         )
         let rotated = files
-            .filter { $0.lastPathComponent.hasPrefix("PrivateMusic-") }
+            .filter { $0.lastPathComponent.hasPrefix("\(prefix)-") }
             .sorted {
                 let left = (try? $0.resourceValues(
                     forKeys: [.contentModificationDateKey]
@@ -230,10 +283,32 @@ final class AppLog: @unchecked Sendable {
         category: AppLogCategory,
         level: AppLogLevel,
         message: String,
-        date: Date
+        date: Date,
+        verbose: Bool
     ) -> String {
         let stamp = ISO8601DateFormatter().string(from: date)
+        if verbose {
+            let thread = Thread.isMainThread ? "main" : "bg"
+            return "\(stamp) [\(level.rawValue.uppercased())][\(category.rawValue)][\(thread)] \(message)"
+        }
         return "\(stamp) [\(level.rawValue.uppercased())][\(category.rawValue)] \(message)"
+    }
+
+    private static func launchSummary() -> String {
+        let version = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "—"
+        let build = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleVersion"
+        ) as? String ?? "—"
+        let memory = ProcessInfo.processInfo.physicalMemory / 1_000_000
+        return """
+        App launched version=\(version) build=\(build) \
+        os=\(ProcessInfo.processInfo.operatingSystemVersionString) \
+        locale=\(Locale.current.identifier) \
+        memoryMB=\(memory) \
+        verbose=\(shared.isVerbose) fileLogging=\(shared.isFileLoggingEnabled)
+        """
     }
 
     private static func timestamp(_ date: Date) -> String {
@@ -254,11 +329,12 @@ final class AppLog: @unchecked Sendable {
         )
     }
 
-    private static let maxActiveLogBytes = 2_000_000
-    private static let maxRotatedLogFiles = 8
+    private static let maxActiveLogBytes = 10_000_000
+    private static let maxRotatedLogFiles = 24
 
     private enum Keys {
         static let fileLoggingEnabled = "developer.log.fileLoggingEnabled"
+        static let verboseLogging = "developer.log.verboseLogging"
     }
 }
 
