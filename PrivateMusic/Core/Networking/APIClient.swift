@@ -56,11 +56,33 @@ enum RequestRetryPolicy: Sendable, Equatable {
     }
 }
 
+/// Some VK methods are simply not there for a given token. `audio
+/// .getAlbumsByArtist` answers `error_code 3, "Unknown method passed"` on
+/// the accounts this app signs in with, and the artist screen falls back
+/// to `catalog.getAudioArtist`, which works — so nothing is broken, but
+/// every artist page opened begins with a request that cannot succeed.
+///
+/// The answer will not change while the app is running, so it is worth
+/// remembering. Only for the session: a new launch may hold a different
+/// token, and the memo is not worth persisting to be wrong across one.
+enum VKMethodAvailabilityPolicy {
+    /// VK's "Unknown method passed". Not a rate limit and not an outage —
+    /// asking again with the same token gets the same answer.
+    static let unknownMethodCode = 3
+
+    static func isPermanentlyUnavailable(code: Int) -> Bool {
+        code == unknownMethodCode
+    }
+}
+
 actor APIClient {
     private let baseURL: URL
     private let session: URLSession
     private let decoder: JSONDecoder
     private var userAgent: String?
+    /// Paths VK has already answered with "Unknown method passed".
+    /// See `VKMethodAvailabilityPolicy`.
+    private var unavailableMethods = Set<String>()
 
     init(
         baseURL: URL,
@@ -102,6 +124,15 @@ actor APIClient {
     ) async throws -> Response {
         guard let url = URL(string: path, relativeTo: baseURL) else {
             throw APIError.invalidRequest
+        }
+        // Already asked this session and told the method does not exist.
+        // Callers all have a fallback — throwing the same error they would
+        // have got sends them straight to it.
+        if unavailableMethods.contains(path) {
+            throw APIError.server(
+                code: VKMethodAvailabilityPolicy.unknownMethodCode,
+                message: "Unknown method passed"
+            )
         }
 
         var request = URLRequest(
@@ -185,6 +216,11 @@ actor APIClient {
                             retryAfter: nil
                         )
                         continue
+                    }
+                    if VKMethodAvailabilityPolicy.isPermanentlyUnavailable(
+                        code: error.errorCode
+                    ) {
+                        unavailableMethods.insert(path)
                     }
                     AppLog.shared.error(
                         .api,
