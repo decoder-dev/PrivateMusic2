@@ -1107,6 +1107,33 @@ enum StreamURLLoadPolicy {
     }
 }
 
+/// VK binds a stream URL to the session that minted it, so rotating the
+/// token kills every URL already sitting in the queue — not eventually, at
+/// once. The player used to find that out one track at a time: play, 404,
+/// re-resolve, play. A queue of 186 tracks means 186 failures and 186
+/// extra round trips, and on a constrained cellular link the listener
+/// hears every one of them as a stall between tracks.
+///
+/// Nothing about such a URL looks wrong, so it cannot be spotted by
+/// inspecting it — the only thing that marks it is which session it came
+/// from.
+enum StreamCredentialPolicy {
+    static func shouldRefreshBeforePlay(
+        isStale: Bool,
+        hasOfflineURL: Bool,
+        hasRemoteURL: Bool,
+        canRefresh: Bool
+    ) -> Bool {
+        // A downloaded file has no credentials to go stale, and refusing
+        // to play it because the token moved would break offline playback
+        // exactly when the network is worst.
+        guard isStale, !hasOfflineURL, hasRemoteURL, canRefresh else {
+            return false
+        }
+        return true
+    }
+}
+
 /// A refresh whose index no longer matches (shuffle / play-next) used to
 /// return without nilling `streamRefreshTask`, so every later play, restore
 /// and network-return no-op'd on `guard streamRefreshTask == nil`.
@@ -1375,6 +1402,10 @@ final class AudioPlayer {
     private var streamRefreshGeneration = 0
     private var requiresStreamRefresh = false
     private var didAttemptStreamRefresh = false
+    /// Queued tracks whose stream URL was minted under a session that has
+    /// since been replaced. See `StreamCredentialPolicy`.
+    private var staleCredentialTrackIDs = Set<String>()
+    private var streamCredentialRevision: Int?
     private var audioSessionConfigured = false
     private var restoredTrackIDs = Set<String>()
     private var loadedTrackID: String?
@@ -1605,6 +1636,20 @@ final class AudioPlayer {
         streamRefreshProvider = provider
     }
 
+    /// Tells the player the VK session was replaced, so every stream URL
+    /// already in the queue was minted against a session that is gone.
+    ///
+    /// The first revision seen is only recorded: URLs fetched under the
+    /// session the app started with are not stale, and marking them so
+    /// would put a refresh in front of the very first track for no reason.
+    func noteSessionRotated(revision: Int) {
+        defer { streamCredentialRevision = revision }
+        guard let known = streamCredentialRevision, known != revision else {
+            return
+        }
+        staleCredentialTrackIDs = Set(queue.map(\.id))
+    }
+
     func configurePreloading(
         isAllowed: @escaping () -> Bool,
         artworkPrefetch: @escaping ([Track]) async -> Void
@@ -1748,6 +1793,7 @@ final class AudioPlayer {
         streamRecoveryAttempts = 0
         stallStartedAt = nil
         restoredTrackIDs.removeAll()
+        staleCredentialTrackIDs.removeAll()
         attemptedPreloadRefreshes.removeAll()
         activeContinuationProvider =
             continuation ?? defaultContinuationProvider
@@ -2349,6 +2395,20 @@ final class AudioPlayer {
             StreamURLLoadPolicy.isPlayableRemoteURL(url) ? url : nil
         }
         let remoteURL = sourceRemoteURL.map { resolvePlaybackURL(from: $0) }
+        if !didAttemptStreamRefresh,
+           StreamCredentialPolicy.shouldRefreshBeforePlay(
+            isStale: staleCredentialTrackIDs.contains(track.id),
+            hasOfflineURL: offlineURL != nil,
+            hasRemoteURL: sourceRemoteURL != nil,
+            canRefresh: streamRefreshProvider != nil
+           ) {
+            requiresStreamRefresh = true
+            refreshCurrentStream(
+                autoplay: autoplay,
+                automatic: automatic
+            )
+            return
+        }
         if offlineURL == nil,
            StreamQualityPolicy.shouldRefreshHLSBeforePlay(
             sourceURL: sourceRemoteURL,
@@ -2805,6 +2865,7 @@ final class AudioPlayer {
                 }
                 self.queue[nextIndex] = refreshed
                 self.restoredTrackIDs.remove(trackID)
+                self.staleCredentialTrackIDs.remove(trackID)
                 self.persistPlayback()
                 self.scheduleNeighborPreloads()
             } catch is CancellationError {
@@ -4396,6 +4457,7 @@ final class AudioPlayer {
                 }
                 self.queue[currentIndex] = refreshed
                 self.restoredTrackIDs.remove(track.id)
+                self.staleCredentialTrackIDs.remove(track.id)
                 self.requiresStreamRefresh = false
                 self.loadCurrent(
                     autoplay: autoplay && self.playbackIntended,
