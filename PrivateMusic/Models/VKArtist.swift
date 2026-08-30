@@ -19,6 +19,35 @@ struct VKArtist: Hashable, Identifiable, Sendable {
     }
 }
 
+/// Which of the ids scattered through a `catalog.getAudio` response can
+/// actually be handed back to `catalog.getSection`.
+///
+/// The response is a deep tree, and the scanner that pulls sections out of
+/// it has to guess from shape — there is no field saying "this is a
+/// section". Its loosest rule accepts any titled object carrying a url,
+/// and playlists, albums and artists all match that: they have a title and
+/// a url too. Each one wrongly taken for a section costs a request that
+/// can only ever come back `vk=104 Not found`, and on a device log two of
+/// five hydration requests were exactly that.
+///
+/// What separates them is the id. VK's section ids are opaque strings —
+/// `PUldVA8FR0RzSVNUR1UPDyk...` — while a playlist or an album is numbered.
+/// A bare number is therefore an object id that wandered in, never a
+/// section.
+enum CatalogSectionIDPolicy {
+    static func isSectionID(_ id: String) -> Bool {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        // `-2000123456` is an owner-negated object id, so allow a single
+        // leading minus before deciding it is "just a number".
+        let digits = trimmed.hasPrefix("-")
+            ? String(trimmed.dropFirst())
+            : trimmed
+        guard !digits.isEmpty else { return false }
+        return !digits.allSatisfy(\.isNumber)
+    }
+}
+
 struct CatalogSectionRef: Hashable, Sendable {
     let id: String
     let title: String
