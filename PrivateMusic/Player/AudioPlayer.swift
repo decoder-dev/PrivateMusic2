@@ -1704,9 +1704,8 @@ final class AudioPlayer {
     /// player pinned to the wifi numbers.
     ///
     /// - Parameter throughputHint: reserved for a future C-computed
-    ///   buffer-health estimate (see `BufferHealthEstimator`, Agent D).
-    ///   Unused today and safe to leave `nil` indefinitely — this is
-    ///   the hook D's estimator will feed once it lands.
+    ///   buffer-health estimate (see `BufferHealthEstimator`). Unused today
+    ///   and safe to leave `nil` indefinitely.
     func updateNetworkCondition(
         _ condition: NetworkCondition,
         throughputHint: Double? = nil

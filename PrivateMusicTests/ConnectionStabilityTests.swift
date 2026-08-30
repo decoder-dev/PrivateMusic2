@@ -2259,24 +2259,19 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
-    // MARK: - Cross-cutting: "call-during-3G" (Agent E / KEYSTONE)
+    // MARK: - Cross-cutting: call-during-3G
     //
-    // STABILITY_OFFICE_BRIEF.md assigns the call-during-3G interaction to
-    // Agent E because it spans policies owned by Agents A, B, C and D, none
-    // of whom may touch each other's region. These tests exercise the parts
-    // of that interaction that are already expressible against `main`'s
-    // current policies (`StreamFailureRetryPolicy`, `AudioInterruptionPolicy`,
+    // These tests cover the call-during-3G interaction across playback
+    // stability policies (`StreamFailureRetryPolicy`, `AudioInterruptionPolicy`,
     // `MediaServicesResetPolicy`) as a baseline that must keep holding once
-    // A-D land, and document — without referencing symbols that do not exist
-    // on this branch yet — the additional assertions Agent E will add once
-    // each branch has actually merged. This file is tests + docs only; no
-    // production Swift/C source is edited here.
+    // the related hardening policies land. This file is tests + docs only;
+    // no production Swift/C source is edited here.
 
     // A connectivity failure that happens to line up with a call must not
     // let a fixed same-track attempt cap force an auto-advance: connectivity
     // failures always use the larger `maximumConnectivityAttempts` budget
     // and never advance regardless of `advanceOnPlaybackError`. This is the
-    // pre-existing half of the call-during-3G guarantee that Agent B's
+    // pre-existing half of the call-during-3G guarantee that
     // `NetworkAdaptiveBufferPolicy` must not weaken.
     func testCallDuringConnectivityCollapseNeverAdvancesTheTrack() {
         XCTAssertTrue(
@@ -2300,10 +2295,10 @@ final class ConnectionStabilityTests: XCTestCase {
 
     // Once the call ends, resume must still be permitted purely from the
     // interruption/session side, independent of whatever the network did
-    // mid-call. This is the pre-existing half of the guarantee that Agent
-    // A's `PostCallResumePolicy` extends (foreground fallback, missing
-    // `.shouldResume`, suspended app) and Agent C's
-    // `SessionActivationRetryPolicy` extends (bounded `setActive` retry).
+    // mid-call. This is the pre-existing half of the guarantee that
+    // `PostCallResumePolicy` extends (foreground fallback, missing
+    // `.shouldResume`, suspended app) and `SessionActivationRetryPolicy`
+    // extends (bounded `setActive` retry).
     func testResumeAfterCallIsPermittedRegardlessOfNetworkState() {
         XCTAssertTrue(
             AudioInterruptionPolicy.shouldResume(
@@ -2320,9 +2315,9 @@ final class ConnectionStabilityTests: XCTestCase {
     }
 
     // The ear-off deliberate-pause discriminator is a release invariant
-    // (3.28.75) that predates A-D and must survive every one of their
-    // merges into `AudioPlayer.swift`, including Agent A's `.ended`-branch
-    // and foreground-fallback changes. A call (`otherAudioWasPlaying: true`)
+    // (3.28.75) that predates the post-call resume work and must survive
+    // every merge into `AudioPlayer.swift`, including `.ended`-branch and
+    // foreground-fallback changes. A call (`otherAudioWasPlaying: true`)
     // must keep resuming; ear detection on an unchanged worn route
     // (`otherAudioWasPlaying: false`) must keep NOT resuming — even while a
     // connectivity retry budget is live, so the two families can never leak
@@ -2352,10 +2347,9 @@ final class ConnectionStabilityTests: XCTestCase {
     }
 
     // A media-services reset mid-call-recovery must keep the same autoplay
-    // intent semantics that Agent C's `SessionActivationRetryPolicy` and
-    // Agent A's resume flow both depend on: only resume automatically if
-    // the user actually intended playback and it was active before the
-    // reset landed.
+    // intent semantics that `SessionActivationRetryPolicy` and the post-call
+    // resume flow both depend on: only resume automatically if the user
+    // actually intended playback and it was active before the reset landed.
     func testMediaServicesResetDuringRecoveryPreservesAutoplayIntent() {
         XCTAssertTrue(
             MediaServicesResetPolicy.shouldAutoplayAfterReset(
@@ -2373,27 +2367,22 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 
-    // PENDING — Agent E enables these once the parent has actually merged
-    // A-D onto `main` (this branch does not merge their production code
-    // per the isolation rule; only the pins in `scripts/validate_project.py`
-    // may reference their symbols ahead of the merge, and only softly).
+    // PENDING — enable the end-to-end assertions below once every related
+    // policy has landed on `main`. Only the pins in
+    // `scripts/validate_project.py` may reference their symbols ahead of the
+    // merge, and only softly.
     //
-    // All four branches below were confirmed pushed to origin — via
-    // `git fetch origin <branch>` + `git diff origin/main origin/<branch>`,
-    // never merged into this branch — while this file was being written, so
-    // the signatures here are the real ones, not speculative:
+    // Expected coverage once all policies are present:
     //
-    // - Agent A (cursor/post-call-resume-bc40):
-    //     `PostCallResumePolicy.shouldResumeWithoutOption(wasPlayingBeforeInterruption:playbackIntended:otherAudioWasPlaying:routeDisconnectPending:beganAsRouteDisconnect:)`
-    //     ⇒ true for a call ended without `.shouldResume`; false for ear
-    //     detection (`otherAudioWasPlaying: false`, deferring to
+    // - `PostCallResumePolicy.shouldResumeWithoutOption(...)` ⇒ true for a
+    //     call ended without `.shouldResume`; false for ear detection
+    //     (`otherAudioWasPlaying: false`, deferring to
     //     `shouldTreatEndAsDeliberatePause` above), a pending/named route
     //     disconnect, or no prior playback intent.
-    //     `PostCallResumePolicy.shouldResumeOnForeground(playbackIntended:isPlaying:isAudioInterrupted:hasPendingInterruptionResume:routeDisconnectPending:)`
-    //     ⇒ true only once none of the other four flags are already
-    //     covering the resume (suspended-app / missed-notification case).
-    // - Agent B (cursor/network-aware-buffer-bc40):
-    //     `NetworkAdaptiveBufferPolicy.preferredForwardBuffer(for: .nominal)`
+    //     `PostCallResumePolicy.shouldResumeOnForeground(...)` ⇒ true only
+    //     once none of the other four flags are already covering the resume
+    //     (suspended-app / missed-notification case).
+    // - `NetworkAdaptiveBufferPolicy.preferredForwardBuffer(for: .nominal)`
     //     == `StreamFailureRetryPolicy.preferredForwardBufferDuration` (30,
     //     pins the existing wifi value byte-for-byte);
     //     `.degraded` ⇒ `+ degradedBufferBonus` (currently 15, so >= 45).
@@ -2402,8 +2391,7 @@ final class ConnectionStabilityTests: XCTestCase {
     //     `NetworkAdaptiveBufferPolicy.retryDelay(base:condition:)` ⇒
     //     `.degraded` backoff stays capped (`degradedRetryDelayCap`, 12s),
     //     never unbounded.
-    // - Agent C (cursor/avplayer-failure-hardening-bc40):
-    //     `SessionActivationRetryPolicy.shouldRetry(attempt:)` ⇒ false once
+    // - `SessionActivationRetryPolicy.shouldRetry(attempt:)` ⇒ false once
     //     `attempt >= maximumAttempts` (currently 3); `retryDelay(forAttempt:)`
     //     stays capped at `maximumRetryDelay` (currently 2s). Exhausting the
     //     budget must surface an error, not crash.
@@ -2411,11 +2399,10 @@ final class ConnectionStabilityTests: XCTestCase {
     //     once a recovery/refresh task has blocked past `orphanThreshold`
     //     (currently 20s), letting `recoverFromExtendedStall` proceed
     //     instead of wedging shut forever.
-    // - Agent D (cursor/c-buffer-health-estimator-bc40):
-    //     `pm_buffer_health_*` throughput/underrun estimation is unit-tested
+    // - `pm_buffer_health_*` throughput/underrun estimation is unit-tested
     //     in `PrivateMusicCoreTests.swift`; referenced here only for the
-    //     end-to-end call-during-3G narrative once B wires the estimator
-    //     into the adaptive buffer target.
+    //     end-to-end call-during-3G narrative once the adaptive buffer target
+    //     wires in the estimator.
     //
     // Meta-test to add once all land: assert that every one of
     // PostCallResumePolicy / NetworkAdaptiveBufferPolicy /
