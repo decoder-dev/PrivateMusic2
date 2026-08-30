@@ -23,4 +23,19 @@ enum MiniPlayerProgressPolicy {
         let fraction = min(max(Double(x / width), 0), 1)
         return fraction * duration
     }
+
+    /// Drag distance before a scrub counts as seek rather than a tap meant
+    /// for the open-player button above the progress strip.
+    static let seekDragMinimumDistance: CGFloat = 10
+
+    /// The iOS 26 tab accessory slot is too short for an interactive scrubber
+    /// stacked over the open zone — show progress, seek in the full player.
+    static func isInteractive(fillsAccessorySlot: Bool) -> Bool {
+        !fillsAccessorySlot
+    }
+
+    static func shouldCommitSeek(translation: CGSize) -> Bool {
+        hypot(translation.width, translation.height)
+            >= seekDragMinimumDistance
+    }
 }
