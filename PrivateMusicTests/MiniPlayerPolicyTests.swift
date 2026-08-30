@@ -53,6 +53,31 @@ final class MiniPlayerProgressPolicyTests: XCTestCase {
             MiniPlayerProgressPolicy.seekTime(x: 50, width: 100, duration: 0)
         )
     }
+
+    func testProgressIsNotInteractiveInAccessorySlot() {
+        XCTAssertFalse(
+            MiniPlayerProgressPolicy.isInteractive(fillsAccessorySlot: true)
+        )
+        XCTAssertTrue(
+            MiniPlayerProgressPolicy.isInteractive(fillsAccessorySlot: false)
+        )
+    }
+
+    func testTapDoesNotCommitSeek() {
+        XCTAssertFalse(
+            MiniPlayerProgressPolicy.shouldCommitSeek(
+                translation: CGSize(width: 2, height: 1)
+            )
+        )
+    }
+
+    func testDragCommitsSeek() {
+        XCTAssertTrue(
+            MiniPlayerProgressPolicy.shouldCommitSeek(
+                translation: CGSize(width: 0, height: -12)
+            )
+        )
+    }
 }
 
 final class MiniPlayerGesturePolicyTests: XCTestCase {

@@ -279,7 +279,9 @@ struct MiniPlayerView: View {
                         - MiniPlayerLayoutMetrics.progressHeight
                 )
                 .contentShape(Rectangle())
-                .highPriorityGesture(progressSeekGesture(width: proxy.size.width))
+                .simultaneousGesture(
+                    progressSeekGesture(width: proxy.size.width)
+                )
                 .padding(
                     .top,
                     -(
@@ -307,13 +309,25 @@ struct MiniPlayerView: View {
                 break
             }
         }
+        .allowsHitTesting(
+            MiniPlayerProgressPolicy.isInteractive(
+                fillsAccessorySlot: fillsAccessorySlot
+            )
+        )
     }
 
     private func progressSeekGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onEnded { value in
-                seekFromProgress(x: value.location.x, width: width)
+        DragGesture(
+            minimumDistance: MiniPlayerProgressPolicy.seekDragMinimumDistance
+        )
+        .onEnded { value in
+            guard MiniPlayerProgressPolicy.shouldCommitSeek(
+                translation: value.translation
+            ) else {
+                return
             }
+            seekFromProgress(x: value.location.x, width: width)
+        }
     }
 
     private func seekFromProgress(x: CGFloat, width: CGFloat) {
