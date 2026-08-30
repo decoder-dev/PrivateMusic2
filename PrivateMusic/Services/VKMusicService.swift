@@ -1233,6 +1233,16 @@ struct VKMusicService: MusicService {
                         )
                         return extract(payload, section)
                     } catch {
+                        // Swallowing the failure is right — one bad section
+                        // must not empty the rest of Home — but swallowing
+                        // it silently left no way to tell afterwards which
+                        // section was lost or why, and a log with only
+                        // "vk=104 Not found" cannot say which id asked.
+                        AppLog.shared.debug(
+                            .api,
+                            "catalog.getSection dropped id=\(section.id) "
+                                + "title=\(section.title)"
+                        )
                         return []
                     }
                 }

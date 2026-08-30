@@ -461,7 +461,14 @@ enum JSONValue: Codable, Sendable {
             || type.localizedCaseInsensitiveContains("section")
             || object["blocks"] != nil
             || object["next_from"] != nil
-        guard looksLikeSection || (object["title"] != nil && url != nil) else {
+        // The last clause is the loose one — a title and a url describe a
+        // playlist or an album just as well as a section — so there it is
+        // the id that has to look like a section's. An object carrying a
+        // real marker above is trusted whatever its id looks like.
+        let looksLikeTitledLink = object["title"] != nil
+            && url != nil
+            && CatalogSectionIDPolicy.isSectionID(id)
+        guard looksLikeSection || looksLikeTitledLink else {
             return nil
         }
         return CatalogSectionRef(
