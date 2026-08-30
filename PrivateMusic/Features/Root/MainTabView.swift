@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Mix is not a root destination. Home holds now-playing plus one next
 /// step; the full hub (VK catalog, Selena controls, moods) is Explore,
@@ -60,6 +61,11 @@ struct MainTabView: View {
     @Environment(AudioPlayer.self) private var player
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Read once per body rather than stored: the idiom cannot change
+    /// while the app runs, and `UIDevice` is main-actor state.
+    private var isPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+    }
     @State private var selectedTab: MainTab = .home
     @State private var scrollCoordinator = MainTabScrollCoordinator()
     @State private var dockHeight: CGFloat = 0
@@ -67,7 +73,10 @@ struct MainTabView: View {
 
     var body: some View {
         Group {
-            if horizontalSizeClass == .regular {
+            if RootLayoutPolicy.usesSidebar(
+                isPad: isPad,
+                horizontalSizeClass: horizontalSizeClass
+            ) {
                 regularWidthSplitView
             } else if #available(iOS 26.0, *), !settings.classicChrome {
                 SystemLiquidGlassTabView(
@@ -92,8 +101,10 @@ struct MainTabView: View {
         }
     }
 
-    /// iPad / regular-width sidebar. Used on iOS 26 as well — compact
-    /// widths keep `SystemLiquidGlassTabView`.
+    /// iPad sidebar. Used on iOS 26 as well — compact widths, and every
+    /// iPhone whatever way it is turned, keep the tab layout. See
+    /// `RootLayoutPolicy` for why the idiom and not the size class alone
+    /// decides this.
     ///
     /// `List(selection:content:)` is macOS-only; iOS needs the collection
     /// initializer with an optional `Binding<SelectionValue?>`.
