@@ -276,6 +276,7 @@ final class AppEnvironment {
                 )
             }
         }
+        player.noteSessionRotated(revision: sessionStore.sessionRevision)
         player.configureOfflinePlayback(
             lookup: { [weak offlineStore] track in
                 offlineStore?.localURL(for: track)
@@ -760,8 +761,29 @@ final class AppEnvironment {
         _ operation: (String) async throws -> Value
     ) async throws -> Value {
         try Task.checkCancellation()
-        guard let attemptedToken = sessionStore.accessToken else {
+        guard var attemptedToken = sessionStore.accessToken else {
             throw APIError.unauthorized
+        }
+
+        // Refresh a token we already know is dead rather than spending a
+        // round trip proving it. On a cold launch four callers start at
+        // once — Home's catalog, recommendations, playlists and the
+        // library — so the reactive path below costs four rejected
+        // requests before the first useful one. `recoverSession` is
+        // deduplicated, so all four wait on the single exchange instead.
+        //
+        // Best effort only: if the exchange fails, the old token still
+        // gets its turn. `expiresAt` is VK's claim, not proof, and a
+        // token that outlives it must not be thrown away on our say-so.
+        if let session = sessionStore.session,
+           session.shouldRefreshProactively,
+           session.canRefresh {
+            if let refreshed = try? await recoverSession() {
+                attemptedToken = refreshed
+            }
+            // `try?` above also swallows cancellation, so ask again rather
+            // than starting a request for work nobody is waiting on.
+            try Task.checkCancellation()
         }
 
         do {
@@ -856,6 +878,13 @@ final class AppEnvironment {
                 }
 
                 try sessionStore.updateWebSession(result, profile: profile)
+                // Every stream URL already queued was signed by the token
+                // this exchange just replaced, so they are all dead. Say so
+                // now rather than letting the player discover it one 404 at
+                // a time, track by track.
+                player.noteSessionRotated(
+                    revision: sessionStore.sessionRevision
+                )
                 AppLog.shared.info(
                     .session,
                     "Session recovery succeeded userID=\(profile.id)"
