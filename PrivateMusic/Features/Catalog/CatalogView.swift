@@ -449,15 +449,18 @@ struct CatalogView: View {
         } label: {
             ZStack {
                 Text(L10n.text(candidate.actionKey))
+                    .font(.caption.weight(.semibold))
                     .opacity(isNextStepLaunching ? 0 : 1)
                 if isNextStepLaunching {
                     ProgressView()
-                        .controlSize(.small)
+                        .controlSize(.mini)
                 }
             }
-            .frame(minWidth: 92, minHeight: 44)
+            .padding(.horizontal, BubbleSpacing.m)
+            .padding(.vertical, BubbleSpacing.xs)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
         .disabled(isNextStepLaunching)
     }
 
