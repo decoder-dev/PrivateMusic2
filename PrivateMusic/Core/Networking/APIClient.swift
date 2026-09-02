@@ -75,6 +75,42 @@ enum VKMethodAvailabilityPolicy {
     }
 }
 
+/// Whether two requests in flight at the same moment may share one answer.
+///
+/// From a launch on constrained cellular: `audio.get&offset=0` sent four
+/// times inside one minute at ~250 KB a piece, `audio.getRecommendations`
+/// seven times at ~270 KB, `users.get` three or four times — every launch,
+/// same path, same parameters, same token. Several screens each decided
+/// they needed the library and none of them could see the others, so a cold
+/// start cost 2.7 MB, most of it the same bytes fetched again.
+///
+/// Only reads may share an answer. Two `audio.add` calls with identical
+/// parameters are two intents and must stay two requests, so the line is
+/// drawn on the method name rather than on a list that would fall behind
+/// VK's API — anything that is not recognisably a read keeps its own
+/// request.
+enum RequestCoalescingPolicy {
+    static func sharesAnswer(path: String) -> Bool {
+        guard let method = path.split(separator: ".").last?.lowercased(),
+              !method.isEmpty else {
+            return false
+        }
+        return method.hasPrefix("get") || method.hasPrefix("search")
+    }
+
+    /// Identical down to the token: a request signed by a different session
+    /// is a different request, and coalescing across a rotation would hand
+    /// back an answer fetched with a token that has since been replaced.
+    static func key(
+        path: String,
+        body: Data?,
+        retryPolicy: RequestRetryPolicy
+    ) -> String? {
+        guard sharesAnswer(path: path), let body else { return nil }
+        return "\(retryPolicy)\n\(path)\n\(String(decoding: body, as: UTF8.self))"
+    }
+}
+
 actor APIClient {
     private let baseURL: URL
     private let session: URLSession
@@ -83,6 +119,8 @@ actor APIClient {
     /// Paths VK has already answered with "Unknown method passed".
     /// See `VKMethodAvailabilityPolicy`.
     private var unavailableMethods = Set<String>()
+    /// Reads currently on the wire, by `RequestCoalescingPolicy.key`.
+    private var inFlightReads: [String: Task<Data, Error>] = [:]
 
     init(
         baseURL: URL,
@@ -122,6 +160,28 @@ actor APIClient {
         retryPolicy: RequestRetryPolicy = .transient,
         responseType: Response.Type
     ) async throws -> Response {
+        let data = try await responseData(
+            path: path,
+            form: form,
+            retryPolicy: retryPolicy
+        )
+        do {
+            return try decoder.decode(Response.self, from: data)
+        } catch {
+            AppLog.shared.error(
+                .api,
+                "POST \(path) decode failed: \(AppLogRedaction.redact(error.localizedDescription))"
+            )
+            throw APIError.decoding(error.localizedDescription)
+        }
+    }
+
+    /// The raw answer, shared with any identical read already on the wire.
+    private func responseData(
+        path: String,
+        form: [String: String],
+        retryPolicy: RequestRetryPolicy
+    ) async throws -> Data {
         guard let url = URL(string: path, relativeTo: baseURL) else {
             throw APIError.invalidRequest
         }
@@ -157,6 +217,44 @@ actor APIClient {
             .joined(separator: "&")
             .data(using: .utf8)
 
+        guard let key = RequestCoalescingPolicy.key(
+            path: path,
+            body: request.httpBody,
+            retryPolicy: retryPolicy
+        ) else {
+            return try await send(
+                request,
+                path: path,
+                form: form,
+                retryPolicy: retryPolicy
+            )
+        }
+        if let existing = inFlightReads[key] {
+            AppLog.shared.debug(
+                .api,
+                "POST \(path) shared with an identical request already in flight"
+            )
+            return try await existing.value
+        }
+        let shared = Task { [self] in
+            try await send(
+                request,
+                path: path,
+                form: form,
+                retryPolicy: retryPolicy
+            )
+        }
+        inFlightReads[key] = shared
+        defer { inFlightReads[key] = nil }
+        return try await shared.value
+    }
+
+    private func send(
+        _ request: URLRequest,
+        path: String,
+        form: [String: String],
+        retryPolicy: RequestRetryPolicy
+    ) async throws -> Data {
         for attempt in 0..<retryPolicy.maximumAttempts {
             let started = Date()
             AppLog.shared.debug(
@@ -232,15 +330,7 @@ actor APIClient {
                     )
                 }
 
-                do {
-                    return try decoder.decode(Response.self, from: data)
-                } catch {
-                    AppLog.shared.error(
-                        .api,
-                        "POST \(path) decode failed: \(AppLogRedaction.redact(error.localizedDescription))"
-                    )
-                    throw APIError.decoding(error.localizedDescription)
-                }
+                return data
             } catch let error as APIError {
                 AppLog.shared.error(
                     .api,
