@@ -1417,6 +1417,13 @@ final class AudioPlayer {
     /// After a progressive MP3 upgrade fails, replay the original HLS URL once.
     private var playbackURLStrategy: PlaybackURLStrategy = .automatic
     private var playbackURLStrategyTrackID: String?
+    /// CDNs that answered the `…/HASH.mp3` rewrite with 404. The refusal is
+    /// a property of the host, not of one track, so it is remembered for the
+    /// session instead of being rediscovered on every load.
+    private var cdnsRefusingProgressiveUpgrade = Set<String>()
+    /// Consecutive stream refreshes that came back HLS after being asked for
+    /// a progressive file. Past `hlsRefreshPatience` the hunt is called off.
+    private var hlsOnlyStreamRefreshes = 0
     private var activePlaybackURL: URL?
     private var incomingPlayer: AVPlayer?
     private var crossfadeTask: Task<Void, Never>?
@@ -2409,6 +2416,9 @@ final class AudioPlayer {
             return
         }
         if offlineURL == nil,
+           ProgressiveUpgradePolicy.shouldKeepHuntingForProgressive(
+            hlsOnlyRefreshes: hlsOnlyStreamRefreshes
+           ),
            StreamQualityPolicy.shouldRefreshHLSBeforePlay(
             sourceURL: sourceRemoteURL,
             playbackURL: remoteURL,
@@ -2588,6 +2598,10 @@ final class AudioPlayer {
             preferHighQuality: preferHighQuality,
             requiresAudioProcessing: requiresAudioProcessing,
             allowProgressiveUpgrade: playbackURLStrategy == .automatic
+                && ProgressiveUpgradePolicy.allowsUpgrade(
+                    from: url,
+                    refusedCDNs: cdnsRefusingProgressiveUpgrade
+                )
                 && PlaybackResourcePolicy.allowProgressiveStreamUpgrade(
                     preferHighQuality: preferHighQuality,
                     requiresAudioProcessing: requiresAudioProcessing
@@ -2683,6 +2697,9 @@ final class AudioPlayer {
         }
         let url = offlineURL ?? resolvePlaybackURL(from: sourceURL)
         if offlineURL == nil,
+           ProgressiveUpgradePolicy.shouldKeepHuntingForProgressive(
+            hlsOnlyRefreshes: hlsOnlyStreamRefreshes
+           ),
            StreamQualityPolicy.shouldRefreshHLSBeforePlay(
             sourceURL: track.streamURL,
             playbackURL: url,
@@ -2815,6 +2832,26 @@ final class AudioPlayer {
         startPreloadStreamRefresh(track: track, playlistURL: failedURL)
     }
 
+    /// Whether asking VK for a fresh payload actually produced a progressive
+    /// file. Only a refresh that started from an HLS URL was a hunt at all —
+    /// a stale-credential refresh says nothing about what this account's CDN
+    /// is willing to serve.
+    private func noteStreamRefreshOutcome(previous: Track, refreshed: Track) {
+        guard let previousURL = previous.streamURL,
+              StreamQualityPolicy.isHLSStream(previousURL) else { return }
+        let updated = ProgressiveUpgradePolicy.hlsRefreshAttemptsAfter(
+            previous: hlsOnlyStreamRefreshes,
+            refreshedURL: refreshed.streamURL
+        )
+        if updated == ProgressiveUpgradePolicy.hlsRefreshPatience,
+           updated != hlsOnlyStreamRefreshes {
+            logPlayback(
+                "vk keeps answering with HLS; no longer refreshing streams to hunt for progressive audio"
+            )
+        }
+        hlsOnlyStreamRefreshes = updated
+    }
+
     private static func preloadRefreshKey(trackID: String, url: URL) -> String {
         "\(trackID)#\(url.absoluteString)"
     }
@@ -2862,6 +2899,10 @@ final class AudioPlayer {
                       self.queue[nextIndex].id == trackID else {
                     return
                 }
+                self.noteStreamRefreshOutcome(
+                    previous: self.queue[nextIndex],
+                    refreshed: refreshed
+                )
                 self.queue[nextIndex] = refreshed
                 self.restoredTrackIDs.remove(trackID)
                 self.staleCredentialTrackIDs.remove(trackID)
@@ -4183,6 +4224,13 @@ final class AudioPlayer {
                original: sourceURL,
                playback: playbackURL
            ) {
+            if ProgressiveUpgradePolicy.refusalIsConclusive(error),
+               let cdn = ProgressiveUpgradePolicy.cdnKey(for: playbackURL),
+               cdnsRefusingProgressiveUpgrade.insert(cdn).inserted {
+                logPlayback(
+                    "progressive upgrade refused by cdn=\(cdn); playing HLS for the rest of the session"
+                )
+            }
             playbackURLStrategy = .originalOnly
             streamRecoveryAttempts = 0
             didAttemptStreamRefresh = false
@@ -4454,6 +4502,10 @@ final class AudioPlayer {
                       self.queue[currentIndex].id == track.id else {
                     return
                 }
+                self.noteStreamRefreshOutcome(
+                    previous: self.queue[currentIndex],
+                    refreshed: refreshed
+                )
                 self.queue[currentIndex] = refreshed
                 self.restoredTrackIDs.remove(track.id)
                 self.staleCredentialTrackIDs.remove(track.id)

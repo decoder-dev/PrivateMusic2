@@ -105,3 +105,84 @@ enum StreamQualityPolicy {
         return URL.secureRemoteURL(mp3)
     }
 }
+
+/// Whether the `…/HASH/index.m3u8` → `…/HASH.mp3` rewrite is still worth
+/// trying, and whether asking VK for a fresh payload is still worth a
+/// request.
+///
+/// Both are guesses, and a device log showed what they cost when the answer
+/// is always no. Over three days and 52 tracks, every single load went out
+/// against a rewritten URL that answered 404, fell back to the original
+/// playlist, and played — one dead request per track on a metered cellular
+/// link, followed by one `audio.getById` per track that came back HLS again.
+/// Fifty-two error lines for a fallback that always worked.
+///
+/// `AudioPlayer` already drew the right conclusion, but only for the track
+/// in hand: `playbackURLStrategy` is keyed to a track id and resets on the
+/// next one, so the same lesson was relearned from scratch all night. These
+/// two questions keep it for the session instead.
+enum ProgressiveUpgradePolicy {
+    /// How many times in a row a refresh may answer "still HLS" before the
+    /// hunt for a progressive URL is called off. Three is enough to tell a
+    /// CDN that does not serve MP3 from one that happened to be asked at a
+    /// bad moment.
+    static let hlsRefreshPatience = 3
+
+    /// The CDN a stream URL belongs to, ignoring the shard. VK spreads
+    /// audio across `cs9-4v4`, `psv4` and dozens more names under the same
+    /// two domains, and they all answer the rewrite alike — keying on the
+    /// full host would relearn the same 404 on every shard.
+    static func cdnKey(for url: URL) -> String? {
+        guard let host = url.host()?.lowercased(), !host.isEmpty else {
+            return nil
+        }
+        let labels = host.split(separator: ".")
+        guard labels.count > 2 else { return host }
+        return labels.suffix(2).joined(separator: ".")
+    }
+
+    static func allowsUpgrade(from url: URL, refusedCDNs: Set<String>) -> Bool {
+        guard let key = cdnKey(for: url) else { return true }
+        return !refusedCDNs.contains(key)
+    }
+
+    /// Only a missing file teaches anything. A timeout, a lost connection or
+    /// a roaming block say nothing about whether the CDN keeps an MP3 beside
+    /// the playlist, and remembering one would disable the upgrade for the
+    /// rest of the session over a bad minute in a tunnel.
+    static func refusalIsConclusive(_ error: Error?) -> Bool {
+        // AVFoundation usually surfaces the URL error as-is, but wraps it
+        // when the failure arrives through an asset load.
+        var candidate = error
+        for _ in 0...maximumUnderlyingErrorDepth {
+            guard let current = candidate else { return false }
+            if let urlError = current as? URLError {
+                return urlError.code == .fileDoesNotExist
+            }
+            candidate = (current as NSError)
+                .userInfo[NSUnderlyingErrorKey] as? Error
+        }
+        return false
+    }
+
+    private static let maximumUnderlyingErrorDepth = 4
+
+    /// A refresh that came back with the same kind of URL it was asked to
+    /// replace taught nothing; one that produced a progressive file means
+    /// the hunt works here and the budget starts over.
+    static func hlsRefreshAttemptsAfter(
+        previous: Int,
+        refreshedURL: URL?
+    ) -> Int {
+        guard let refreshedURL else { return previous }
+        return StreamQualityPolicy.isHLSStream(refreshedURL)
+            ? previous + 1
+            : 0
+    }
+
+    static func shouldKeepHuntingForProgressive(
+        hlsOnlyRefreshes: Int
+    ) -> Bool {
+        hlsOnlyRefreshes < hlsRefreshPatience
+    }
+}
