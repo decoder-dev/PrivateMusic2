@@ -1,0 +1,11 @@
+# Keeps pinned GitHub Actions up to date. Actions are pinned by commit SHA
+# in ios-build.yml so a compromised major tag cannot ride along silently;
+# Dependabot proposes the SHA bumps as pull requests instead.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
