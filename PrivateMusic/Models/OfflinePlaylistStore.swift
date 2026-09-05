@@ -958,6 +958,11 @@ final class OfflinePlaylistStore {
                   ) else {
                 continue
             }
+            // Manifests written by older builds may lack file protection;
+            // upgrade them on sight so the at-rest policy holds for
+            // pre-existing indexes too.
+            protect(manifestURL)
+            protect(OfflineManifestWriteQueue.backupURL(for: manifestURL))
             var result: [String: OfflinePlaylistRecord] = [:]
             for record in decoded {
                 if let existing = result[record.id],

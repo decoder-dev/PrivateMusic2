@@ -39,10 +39,18 @@ final class OfflineManifestWriteQueue: @unchecked Sendable {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(records)
-        try data.write(to: url, options: .atomic)
+        // Manifests persist track metadata (including stream access keys).
+        // Until-first-unlock keeps offline playback working while the
+        // device is locked but denies access before the first unlock and
+        // to other-user data on shared devices.
+        let options: Data.WritingOptions = [
+            .atomic,
+            .completeFileProtectionUntilFirstUserAuthentication,
+        ]
+        try data.write(to: url, options: options)
         // The backup contains a complete known-good snapshot rather than the
         // previous main file, which may itself have been truncated.
-        try data.write(to: backupURL(for: url), options: .atomic)
+        try data.write(to: backupURL(for: url), options: options)
     }
 
     static func backupURL(for url: URL) -> URL {
@@ -758,6 +766,13 @@ final class OfflineTrackStore {
                   ) else {
                 continue
             }
+            // Manifests written by older builds may lack file protection;
+            // upgrade them on sight so the at-rest policy holds for
+            // pre-existing indexes too.
+            try? setFileAttributes(manifestURL)
+            try? setFileAttributes(
+                OfflineManifestWriteQueue.backupURL(for: manifestURL)
+            )
             var result: [String: OfflineTrackRecord] = [:]
             for record in values {
                 if let existing = result[record.id],

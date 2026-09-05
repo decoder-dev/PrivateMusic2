@@ -112,9 +112,22 @@ for relative in (
         fail(f"missing Watch release file: {relative}")
 
 all_source = "\n".join(path.read_text(encoding="utf-8") for path in swift_files)
-audio_player_source = (
-    SOURCE / "Player" / "AudioPlayer.swift"
-).read_text(encoding="utf-8")
+
+
+def player_domain_source() -> str:
+    """The player is one domain split across files.
+
+    `AudioPlayer.swift` holds the player class itself; the playback
+    policies around it live in their own files next to it. Pins check
+    the whole domain, not one file, so the split can evolve.
+    """
+    return "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((SOURCE / "Player").glob("*.swift"))
+    )
+
+
+audio_player_source = player_domain_source()
 equalizer_source = (
     SOURCE / "Player" / "EqualizerDSP.swift"
 ).read_text(encoding="utf-8")
@@ -1444,9 +1457,7 @@ for required_route_symbol in (
 ):
     if required_route_symbol not in all_source:
         fail(f"headphone route pause is missing: {required_route_symbol}")
-audio_player_source = (SOURCE / "Player/AudioPlayer.swift").read_text(
-    encoding="utf-8"
-)
+audio_player_source = player_domain_source()
 for required_autoplay_gate_symbol in (
     "automatic: true",
     "guard allowsAutomaticPlayback else {",
@@ -1687,9 +1698,7 @@ if open_braces != close_braces:
 
 
 def require_stability_office_symbols() -> None:
-    audio_player_text = (
-        SOURCE / "Player" / "AudioPlayer.swift"
-    ).read_text(encoding="utf-8")
+    audio_player_text = player_domain_source()
     app_delegate_path = SOURCE / "App" / "AppDelegate.swift"
     root_view_path = SOURCE / "Features" / "Root" / "RootView.swift"
     scene_hook_text = audio_player_text
@@ -2115,9 +2124,7 @@ def require_ranking_lives_in_a_tested_policy() -> None:
         fail("Selena must own the rich wave card")
     if "startConfiguredSelena" not in hub:
         fail("Selena start must stay on the personal station")
-    audio = swift_code(
-        (SOURCE / "Player" / "AudioPlayer.swift").read_text(encoding="utf-8")
-    )
+    audio = swift_code(player_domain_source())
     if "usesSelenaWaveFilters" not in audio:
         fail("QueueSource must flag Selena-flavored queues")
     if "usesSelenaWaveFilters" not in audio or "usesSelenaWaveFilters != true" not in audio:
