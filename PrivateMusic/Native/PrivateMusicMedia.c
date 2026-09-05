@@ -2202,10 +2202,12 @@ int32_t pm_vk_unmask(
     memcpy(out, url_bytes, (size_t)url_decoded);
     const int32_t character_length = url_decoded;
     int32_t state = (int32_t)parsed_key ^ user_id;
-    int32_t indexes[4096];
+    // Reject oversized URLs before the fixed-size scratch buffer exists so
+    // the allocation never sits ahead of its own bounds check.
     if (character_length > 4096) {
         return PM_VK_UNMASK_OVERFLOW;
     }
+    int32_t indexes[4096];
     for (int32_t position = character_length - 1; position >= 0; position--) {
         state = ((character_length * (position + 1)) ^ (state + position))
             % character_length;
