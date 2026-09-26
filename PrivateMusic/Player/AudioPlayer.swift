@@ -408,6 +408,7 @@ final class AudioPlayer {
         defaults: UserDefaults = .standard
     ) {
         self.defaults = defaults
+        cdnsRefusingProgressiveUpgrade = ProgressiveUpgradePolicy.rememberedRefusals(defaults: defaults)
         self.historyStore = historyStore
         self.settings = settings
         self.streamUserAgent = userAgent
@@ -3101,6 +3102,7 @@ final class AudioPlayer {
             if ProgressiveUpgradePolicy.refusalIsConclusive(error),
                let cdn = ProgressiveUpgradePolicy.cdnKey(for: playbackURL),
                cdnsRefusingProgressiveUpgrade.insert(cdn).inserted {
+                ProgressiveUpgradePolicy.rememberRefusal(cdn: cdn, defaults: defaults)
                 logPlayback(
                     "progressive upgrade refused by cdn=\(cdn); playing HLS for the rest of the session"
                 )

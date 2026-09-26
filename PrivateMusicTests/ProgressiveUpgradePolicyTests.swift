@@ -7,6 +7,22 @@ import XCTest
 /// entries, each one the `…/HASH/index.m3u8` → `…/HASH.mp3` rewrite being
 /// tried again against a CDN that had already refused it 51 times.
 final class ProgressiveUpgradePolicyTests: XCTestCase {
+    func testCDNRefusalSurvivesRestartButExpires() throws {
+        let suite = "ProgressiveUpgradePolicyTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        ProgressiveUpgradePolicy.rememberRefusal(cdn: "vkuseraudio.ru", defaults: defaults, now: now)
+        let reopened = try XCTUnwrap(UserDefaults(suiteName: suite))
+        XCTAssertEqual(
+            ProgressiveUpgradePolicy.rememberedRefusals(defaults: reopened, now: now.addingTimeInterval(60)),
+            Set(["vkuseraudio.ru"])
+        )
+        XCTAssertTrue(ProgressiveUpgradePolicy.rememberedRefusals(
+            defaults: reopened, now: now.addingTimeInterval(ProgressiveUpgradePolicy.refusalLifetime)
+        ).isEmpty)
+    }
+
     private func url(_ string: String) -> URL {
         guard let url = URL(string: string) else {
             preconditionFailure("bad test URL \(string)")

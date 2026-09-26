@@ -122,6 +122,30 @@ enum StreamQualityPolicy {
 /// next one, so the same lesson was relearned from scratch all night. These
 /// two questions keep it for the session instead.
 enum ProgressiveUpgradePolicy {
+    private static let refusalCacheKey = "player.progressiveRefusals.v1"
+    static let refusalLifetime: TimeInterval = 24 * 60 * 60
+
+    static func rememberedRefusals(defaults: UserDefaults, now: Date = Date()) -> Set<String> {
+        let entries = defaults.dictionary(forKey: refusalCacheKey) ?? [:]
+        return Set(entries.compactMap { key, value in
+            guard let expiry = value as? Double,
+                  expiry > now.timeIntervalSince1970,
+                  expiry <= now.timeIntervalSince1970 + refusalLifetime else { return nil }
+            return key
+        })
+    }
+
+    static func rememberRefusal(cdn: String, defaults: UserDefaults, now: Date = Date()) {
+        let entries = defaults.dictionary(forKey: refusalCacheKey) ?? [:]
+        var valid = entries.filter { _, value in
+            guard let expiry = value as? Double else { return false }
+            return expiry > now.timeIntervalSince1970
+                && expiry <= now.timeIntervalSince1970 + refusalLifetime
+        }
+        valid[cdn] = now.addingTimeInterval(refusalLifetime).timeIntervalSince1970
+        defaults.set(valid, forKey: refusalCacheKey)
+    }
+
     /// How many times in a row a refresh may answer "still HLS" before the
     /// hunt for a progressive URL is called off. Three is enough to tell a
     /// CDN that does not serve MP3 from one that happened to be asked at a
