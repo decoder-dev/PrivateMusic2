@@ -3,6 +3,8 @@ import Foundation
 enum AppLogRedaction {
     private static let sensitiveFormKeys: Set<String> = [
         "access_token",
+        "access_key",
+        "audios", // VK embeds access keys in owner_id_audio_id_access_key values.
         "token",
         "refresh_token",
         "client_" + "secret",
@@ -31,9 +33,11 @@ enum AppLogRedaction {
         .joined(separator: "&")
     }
 
-    static func redact(_ value: String) -> String {
+    static func redact(_ value: String, truncate: Bool = true) -> String {
         var sanitized = value
         let patterns: [(String, String)] = [
+            (#"(?i)((?:access_key|audios)=)[^&\s]+"#, "$1<redacted>"),
+            (#"(?i)(HLS fetch encryptionKey:[^\r\n]*?magic\s+)[0-9a-f]+"#, "$1<redacted>"),
             (#"(?i)(access_token=)[^&\s]+"#, "$1<redacted>"),
             (#"(?i)(refresh_token=)[^&\s]+"#, "$1<redacted>"),
             (#"(?i)(token=)[^&\s]+"#, "$1<redacted>"),
@@ -48,11 +52,16 @@ enum AppLogRedaction {
                 options: .regularExpression
             )
         }
-        if sanitized.count > 512 {
+        if truncate && sanitized.count > 512 {
             let index = sanitized.index(sanitized.startIndex, offsetBy: 512)
             sanitized = String(sanitized[..<index]) + "…"
         }
         return sanitized
+    }
+
+    /// Re-sanitize historical logs without truncating multi-line archives.
+    static func redactArchiveData(_ data: Data) -> Data {
+        Data(redact(String(decoding: data, as: UTF8.self), truncate: false).utf8)
     }
 
     static func redactURL(_ url: URL) -> String {

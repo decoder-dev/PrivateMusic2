@@ -1299,8 +1299,9 @@ actor HLSSegmentExporter {
                 }
                 throw lastError!
             }
+            let prefix = kind == .encryptionKey ? "<redacted>" : Self.magicPrefix(data)
             hlsLogInfo(
-                "HLS fetch \(kind.rawValue): \(data.count) bytes, host \(self.safeHost(url)), ext \(url.pathExtension), mime \(http.mimeType ?? "unknown"), magic \(Self.magicPrefix(data))"
+                "HLS fetch \(kind.rawValue): \(data.count) bytes, host \(self.safeHost(url)), ext \(url.pathExtension), mime \(http.mimeType ?? "unknown"), magic \(prefix)"
             )
             guard !data.isEmpty else {
                 lastError = HLSExportError.emptyResponse(kind: kind.exportErrorKind)

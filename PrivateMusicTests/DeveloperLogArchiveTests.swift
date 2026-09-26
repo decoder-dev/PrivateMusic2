@@ -90,6 +90,32 @@ final class AppLogFormattingTests: XCTestCase {
 }
 
 final class AppLogRedactionTests: XCTestCase {
+    func testRedactsAudioAccessKeysIncludingCompoundIdentifiers() {
+        let description = AppLogRedaction.describeForm([
+            "access_key": "private-key",
+            "audios": "1_2_private-key,3_4_another-key",
+            "audio_id": "2"
+        ])
+        XCTAssertFalse(description.contains("private-key"))
+        XCTAssertFalse(description.contains("another-key"))
+        XCTAssertTrue(description.contains("audio_id=2"))
+    }
+
+    func testHistoricalArchiveIsSanitizedWithoutTruncation() {
+        let input = "access_key=private-key&audios=1_2_compound-key\n"
+            + "HLS fetch encryptionKey: 16 bytes, host example.com, magic aabbccddeeff\n"
+            + "HLS fetch mediaSegment: magic 474000\n"
+            + String(repeating: "normal log line\n", count: 100)
+            + "END"
+        let output = String(decoding: AppLogRedaction.redactArchiveData(Data(input.utf8)), as: UTF8.self)
+        XCTAssertFalse(output.contains("private-key"))
+        XCTAssertFalse(output.contains("compound-key"))
+        XCTAssertFalse(output.contains("aabbccddeeff"))
+        XCTAssertTrue(output.contains("mediaSegment: magic 474000"))
+        XCTAssertTrue(output.hasSuffix("END"))
+        XCTAssertEqual(output.split(separator: "\n").count, input.split(separator: "\n").count)
+    }
+
     func testRedactsSensitiveFormKeys() {
         let description = AppLogRedaction.describeForm([
             "access_token": "secret-token-value",
