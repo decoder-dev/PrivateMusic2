@@ -1,7 +1,13 @@
 import Foundation
 import Security
 
-struct KeychainStore: Sendable {
+protocol KeychainStoring {
+    func save<Value: Codable>(_ value: Value, account: String) throws
+    func load<Value: Codable>(_ type: Value.Type, account: String) throws -> Value?
+    func delete(account: String) throws
+}
+
+struct KeychainStore: KeychainStoring, Sendable {
     enum KeychainError: LocalizedError {
         case unexpectedStatus(OSStatus)
         case invalidData

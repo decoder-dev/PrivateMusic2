@@ -4,7 +4,7 @@ import XCTest
 @MainActor
 final class AccountIsolationTests: XCTestCase {
     private func store() -> SessionStore {
-        SessionStore(keychain: KeychainStore(service: "AccountIsolationTests.\(UUID().uuidString)"))
+        SessionStore(keychain: MemoryKeychainStore())
     }
 
     private func connect(_ store: SessionStore, user: Int, token: String) throws {
@@ -13,6 +13,21 @@ final class AccountIsolationTests: XCTestCase {
             userAgent: nil,
             profile: UserProfile(id: user, firstName: "Test", lastName: "", photoURL: nil)
         )
+    }
+
+    func testSessionRestoresFromInjectedStorageAndLogoutRemovesIt() throws {
+        let storage = MemoryKeychainStore()
+        let session = SessionStore(keychain: storage)
+        try connect(session, user: 1, token: "aaaaaaaaaaaaaaaa")
+
+        let restored = SessionStore(keychain: storage)
+        XCTAssertEqual(restored.accessToken, "aaaaaaaaaaaaaaaa")
+        XCTAssertEqual(restored.resolvedOfflineAccountID, 1)
+        restored.logout()
+
+        let afterLogout = SessionStore(keychain: storage)
+        XCTAssertNil(afterLogout.session)
+        XCTAssertNil(afterLogout.profile)
     }
 
     func testTokenRotationKeepsAccountGenerationButLogoutDoesNot() throws {
@@ -123,5 +138,23 @@ final class AccountIsolationTests: XCTestCase {
         await context.setUserID(1, accessToken: "A")
         let afterLateResponse = await context.userID(for: "B")
         XCTAssertNil(afterLateResponse)
+    }
+}
+
+/// Each test owns its storage; unsigned simulator tests never touch Keychain.
+private final class MemoryKeychainStore: KeychainStoring {
+    private var values: [String: Data] = [:]
+
+    func save<Value: Codable>(_ value: Value, account: String) throws {
+        values[account] = try JSONEncoder().encode(value)
+    }
+
+    func load<Value: Codable>(_ type: Value.Type, account: String) throws -> Value? {
+        guard let data = values[account] else { return nil }
+        return try JSONDecoder().decode(type, from: data)
+    }
+
+    func delete(account: String) throws {
+        values.removeValue(forKey: account)
     }
 }
