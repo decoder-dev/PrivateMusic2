@@ -11,11 +11,11 @@ final class SessionStore {
     private(set) var accountRevision = 0
     @ObservationIgnored var onAccountChange: (() -> Void)?
 
-    private let keychain: KeychainStore
+    private let keychain: any KeychainStoring
     private let sessionAccount = "vk-session-v2"
     private let profileAccount = "vk-profile-v1"
 
-    init(keychain: KeychainStore) {
+    init(keychain: any KeychainStoring) {
         self.keychain = keychain
         do {
             let saved = try keychain.load(Session.self, account: sessionAccount)
