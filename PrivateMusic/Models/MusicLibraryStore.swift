@@ -6,10 +6,22 @@ final class MusicLibraryStore {
     private(set) var signatures = Set<String>()
     private var tracksBySignature: [String: Track] = [:]
     private var refreshGeneration = 0
+    private var accountID: Int?
+    private var isSynchronized = false
     /// Tracks the user unliked since the last full walk. VK keeps serving
     /// them for a moment, so a page that folds in afterwards must not put
     /// the heart back.
     private var removedSignatures = Set<String>()
+
+    func prepare(accountID: Int?) {
+        guard self.accountID != accountID else { return }
+        self.accountID = accountID
+        refreshGeneration += 1
+        signatures = []
+        tracksBySignature = [:]
+        removedSignatures = []
+        isSynchronized = false
+    }
 
     /// Callers that fetch a full remote library page must obtain this ID and
     /// pass it back to `replace(with:refreshID:)`. Local add/remove and newer
@@ -22,6 +34,7 @@ final class MusicLibraryStore {
 
     func replace(with tracks: [Track], refreshID: Int) {
         guard refreshID == refreshGeneration else { return }
+        isSynchronized = true
         signatures = Set(tracks.map(Self.signature))
         tracksBySignature = Dictionary(
             tracks.map { (Self.signature($0), $0) },
@@ -62,8 +75,9 @@ final class MusicLibraryStore {
     }
 
     func isLiked(_ track: Track, currentUserID: Int?) -> Bool {
-        contains(track)
-            || (currentUserID != nil && track.ownerID == currentUserID)
+        guard !removedSignatures.contains(Self.signature(track)) else { return false }
+        return contains(track)
+            || (!isSynchronized && currentUserID != nil && track.ownerID == currentUserID)
     }
 
     func markAdded(source: Track, stored: Track) {

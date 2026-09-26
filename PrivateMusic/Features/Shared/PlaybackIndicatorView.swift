@@ -4,6 +4,7 @@ struct PlaybackIndicatorView: View {
     let isPlaying: Bool
     var color: Color?
     @Environment(AppSettings.self) private var settings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var resolvedColor: Color {
         color ?? settings.theme.accent
@@ -16,7 +17,8 @@ struct PlaybackIndicatorView: View {
                     Image(systemName: "waveform")
                         .symbolEffect(
                             .variableColor.iterative,
-                            options: .repeating
+                            options: .repeating,
+                            isActive: !reduceMotion
                         )
                 } else {
                     Image(systemName: "waveform")

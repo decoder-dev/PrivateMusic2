@@ -97,6 +97,8 @@ struct PlayerView: View {
             isUpdatingLibrary = false
             if isActionSheetPresented {
                 presentedSheet = nil
+            } else if case .lyrics = presentedSheet {
+                presentedSheet = nil
             }
         }
         .task(id: player.currentTrack?.id) {
@@ -1175,8 +1177,10 @@ struct PlayerView: View {
             isInLibrary = false
             return
         }
-        isInLibrary = libraryStore.contains(track)
-            || track.ownerID == sessionStore.session?.userID
+        isInLibrary = libraryStore.isLiked(
+            track,
+            currentUserID: sessionStore.resolvedOfflineAccountID
+        )
     }
 
     private func toggleOffline(_ track: Track) {

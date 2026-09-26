@@ -3,7 +3,6 @@ import SwiftUI
 struct PlaylistArtworkView: View {
     private let offlinePlaylists =
         OfflinePlaylistStore.shared
-    @Environment(AppSettings.self) private var settings
     let playlist: Playlist
     var size: CGFloat
     var showsSource = true
@@ -96,7 +95,8 @@ struct PlaylistArtworkView: View {
         .padding(.horizontal, size >= 100 ? 8 : 6)
         .frame(height: size >= 100 ? 22 : 18)
         .background(
-            BubbleGamut.accent(for: settings.theme).color.opacity(0.96),
+            // White lettering needs the darker accent in either theme.
+            BubbleGamut.accentLight.color.opacity(0.96),
             in: Capsule()
         )
         .overlay {

@@ -5,6 +5,8 @@ struct QueueView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(ListeningHistoryStore.self) private var history
     @Environment(\.dismiss) private var dismiss
+    @State private var editMode: EditMode = .inactive
+    @State private var confirmsClear = false
 
     private var showsCatalogMixRadio: Bool {
         if case .mix = player.queueSource {
@@ -36,16 +38,45 @@ struct QueueView: View {
             .background(ThemeBackground())
             .navigationTitle(L10n.text("player.queue"))
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if editMode.isEditing {
+                        Button(L10n.text("done")) { editMode = .inactive }
+                    } else {
+                        Menu {
+                            Button(L10n.text("queue.reorder"), systemImage: "arrow.up.arrow.down") {
+                                editMode = .active
+                            }
+                            .disabled(upcomingOffsets.count < 2)
+                            Button(L10n.text("queue.clear_upcoming"), role: .destructive) {
+                                confirmsClear = true
+                            }
+                            .disabled(upcomingOffsets.isEmpty)
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .accessibilityLabel(L10n.text("player.queue"))
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L10n.text("done")) { dismiss() }
                 }
             }
         }
+        .confirmationDialog(L10n.text("queue.clear_upcoming"), isPresented: $confirmsClear) {
+            Button(L10n.text("queue.clear_upcoming"), role: .destructive) {
+                player.clearUpcoming()
+                editMode = .inactive
+            }
+            Button(L10n.text("action.cancel"), role: .cancel) {}
+        } message: {
+            Text(L10n.text("queue.clear_upcoming_detail"))
+        }
         .presentationDragIndicator(.visible)
     }
 
     private var queueList: some View {
-        List {
+        let expectedTrackID = player.currentTrack?.id
+        return List {
             if showsCatalogMixRadio {
                 Section {
                     Picker(
@@ -95,9 +126,7 @@ struct QueueView: View {
             if !upcomingOffsets.isEmpty {
                 Section(L10n.text("player.up_next")) {
                     ForEach(
-                        Array(player.queue.enumerated()).filter {
-                            upcomingOffsets.contains($0.offset)
-                        },
+                        upcomingOffsets.map { (offset: $0, element: player.queue[$0]) },
                         id: \.element.id
                     ) { index, track in
                         queueRow(
@@ -106,12 +135,24 @@ struct QueueView: View {
                             isCurrent: false
                         )
                     }
+                    .onMove { offsets, destination in
+                        player.moveUpcoming(
+                            from: offsets, to: destination, after: expectedTrackID
+                        )
+                    }
+                }
+            } else {
+                Section(L10n.text("player.up_next")) {
+                    Text(L10n.text("queue.no_upcoming"))
+                        .foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
                 }
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .environment(\.defaultMinListRowHeight, QueueRowMetrics.minRowHeight)
+        .environment(\.editMode, $editMode)
     }
 
     private func queueRow(
@@ -120,6 +161,7 @@ struct QueueView: View {
         isCurrent: Bool
     ) -> some View {
         Button {
+            guard !editMode.isEditing else { return }
             player.jump(to: index)
             dismiss()
         } label: {

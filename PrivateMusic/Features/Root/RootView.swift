@@ -22,6 +22,7 @@ struct RootView: View {
                 ConnectView()
             } else {
                 MainTabView(playerNamespace: playerNamespace)
+                    .id(sessionStore.accountRevision)
                     .fullScreenCover(isPresented: $player.isPlayerPresented) {
                         PlayerView()
                             .playerPresentationBackground()

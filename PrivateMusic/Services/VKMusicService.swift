@@ -52,11 +52,12 @@ struct VKMusicService: MusicService {
     init(
         client: APIClient,
         apiVersion: String,
-        initialUserID: Int? = nil
+        initialUserID: Int? = nil,
+        initialAccessToken: String? = nil
     ) {
         self.client = client
         self.apiVersion = apiVersion
-        self.context = VKMusicContext(userID: initialUserID)
+        self.context = VKMusicContext(userID: initialUserID, accessToken: initialAccessToken)
     }
 
     func configure(userAgent: String?) async {
@@ -74,7 +75,7 @@ struct VKMusicService: MusicService {
         guard let profile = envelope.response.first else {
             throw APIError.invalidResponse
         }
-        await context.setUserID(profile.id)
+        await context.setUserID(profile.id, accessToken: accessToken)
         return profile
     }
 
@@ -1187,7 +1188,7 @@ struct VKMusicService: MusicService {
 
     /// Ensures stream URL unmasking has a user id (from context or users.get).
     private func resolvedUserID(accessToken: String) async throws -> Int? {
-        if let userID = await context.userID {
+        if let userID = await context.userID(for: accessToken) {
             return userID
         }
         do {
@@ -1198,7 +1199,7 @@ struct VKMusicService: MusicService {
         } catch let error as APIError where error == .unauthorized {
             throw error
         } catch {
-            return await context.userID
+            return await context.userID(for: accessToken)
         }
     }
 
@@ -1383,14 +1384,21 @@ struct VKItems<Item: Decodable & Sendable>: Decodable, Sendable {
     let items: [Item]
 }
 
-private actor VKMusicContext {
-    private(set) var userID: Int?
+actor VKMusicContext {
+    private var cachedUserID: Int?
+    private var cachedAccessToken: String?
 
-    init(userID: Int?) {
-        self.userID = userID
+    init(userID: Int?, accessToken: String? = nil) {
+        cachedUserID = userID
+        cachedAccessToken = accessToken
     }
 
-    func setUserID(_ value: Int) {
-        userID = value
+    func userID(for accessToken: String) -> Int? {
+        cachedAccessToken == accessToken ? cachedUserID : nil
+    }
+
+    func setUserID(_ value: Int, accessToken: String) {
+        cachedUserID = value
+        cachedAccessToken = accessToken
     }
 }

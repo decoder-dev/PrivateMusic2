@@ -7,12 +7,14 @@ struct LyricsView: View {
     @Environment(AudioPlayer.self) private var player
     @Environment(PlaybackProgressModel.self) private var progress
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dismiss) private var dismiss
     let track: Track
     @State private var lyrics: Lyrics?
     @State private var errorMessage: String?
     @State private var isLoading = true
     @State private var copiedLineID: String?
     @State private var activeLineIndex = 0
+    @State private var followsPlayback = true
 
     var body: some View {
         NavigationStack {
@@ -45,6 +47,12 @@ struct LyricsView: View {
                             descriptionIsLocalizedKey: errorMessage == nil
                         )
                         geniusLink(title: "find_lyrics_on_genius")
+                        if errorMessage != nil {
+                            Button(L10n.text("action.retry")) {
+                                Task { await load() }
+                            }
+                            .buttonStyle(.bordered)
+                        }
                     }
                 }
             }
@@ -52,6 +60,23 @@ struct LyricsView: View {
             .background(ThemeBackground())
             .navigationTitle(track.title)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if let lyrics, !lyrics.lines.isEmpty {
+                        Button {
+                            followsPlayback.toggle()
+                        } label: {
+                            Label(
+                                L10n.text(followsPlayback ? "lyrics.pause_follow" : "lyrics.resume_follow"),
+                                systemImage: followsPlayback ? "pause.circle" : "location.circle"
+                            )
+                        }
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.text("done")) { dismiss() }
+                }
+            }
         }
         .task { await load() }
         .presentationDragIndicator(.visible)
@@ -65,6 +90,7 @@ struct LyricsView: View {
                         index, line in
                         let isActive = index == activeLineIndex
                         Button {
+                            guard player.currentTrack?.id == track.id else { return }
                             player.seek(to: line.time)
                         } label: {
                             HStack(alignment: .top, spacing: 10) {
@@ -85,6 +111,7 @@ struct LyricsView: View {
                                         .accessibilityHidden(true)
                                 }
                             }
+                            .frame(minHeight: 44, alignment: .leading)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -109,27 +136,37 @@ struct LyricsView: View {
             }
             .onAppear {
                 activeLineIndex = resolvedActiveLineIndex(in: lyrics)
+                scrollToActiveLine(in: lyrics, proxy: proxy)
             }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 10).onChanged { _ in
+                    followsPlayback = false
+                }
+            )
             .onChange(of: progress.elapsedTime) { _ in
                 let next = resolvedActiveLineIndex(in: lyrics)
                 guard next != activeLineIndex else { return }
                 activeLineIndex = next
             }
-            .onChange(of: activeLineIndex) { index in
-                guard lyrics.lines.indices.contains(index) else { return }
-                if reduceMotion {
-                    proxy.scrollTo(
-                        lyrics.lines[index].id,
-                        anchor: .center
-                    )
-                } else {
-                    withAnimation(.easeInOut(duration: 0.35)) {
-                        proxy.scrollTo(
-                            lyrics.lines[index].id,
-                            anchor: .center
-                        )
-                    }
-                }
+            .onChange(of: activeLineIndex) { _ in
+                guard followsPlayback else { return }
+                scrollToActiveLine(in: lyrics, proxy: proxy)
+            }
+            .onChange(of: followsPlayback) { follows in
+                guard follows else { return }
+                scrollToActiveLine(in: lyrics, proxy: proxy)
+            }
+        }
+    }
+
+    private func scrollToActiveLine(in lyrics: Lyrics, proxy: ScrollViewProxy) {
+        guard lyrics.lines.indices.contains(activeLineIndex) else { return }
+        let id = lyrics.lines[activeLineIndex].id
+        if reduceMotion {
+            proxy.scrollTo(id, anchor: .center)
+        } else {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                proxy.scrollTo(id, anchor: .center)
             }
         }
     }
@@ -164,7 +201,7 @@ struct LyricsView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.black)
                 .padding(.horizontal, 14)
-                .frame(height: 40)
+                .frame(minHeight: 44)
                 .background(
                     Color(red: 1, green: 0.98, blue: 0.18),
                     in: Capsule()
@@ -191,6 +228,8 @@ struct LyricsView: View {
     }
 
     private func load() async {
+        isLoading = true
+        errorMessage = nil
         guard sessionStore.accessToken != nil else {
             isLoading = false
             return

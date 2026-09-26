@@ -92,14 +92,17 @@ struct LibraryView: View {
                             .buttonStyle(.borderedProminent)
                         }
                         .frame(minHeight: 260)
-                    } else if tracks.tracks.isEmpty {
+                    } else if tracks.tracks.isEmpty && !isSearchingLibrary {
                         EmptyStateView(
                             title: "your_library_is_empty",
                             systemImage: "music.note",
                             description: "tracks_added_to_your_vk_library_will_appear_here"
                         )
                         .frame(minHeight: 260)
-                    } else if filteredTracks.isEmpty {
+                    } else if filteredTracks.isEmpty && isSearchingLibrary {
+                        ProgressView(L10n.text("searching"))
+                            .frame(maxWidth: .infinity, minHeight: 220)
+                    } else if filteredTracks.isEmpty && tracks.errorMessage == nil {
                         EmptyStateView(
                             title: "no_results",
                             systemImage: "magnifyingglass",
@@ -123,6 +126,32 @@ struct LibraryView: View {
                                 Divider().padding(.leading, 66)
                             }
                         }
+                    }
+                    if let error = tracks.errorMessage, !tracks.tracks.isEmpty {
+                        VStack(spacing: 10) {
+                            Text(error)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Button(L10n.text("action.retry")) {
+                                Task {
+                                    if tracks.nextPageOffset == nil {
+                                        await loadTracks(force: true)
+                                    }
+                                    if normalizedTrackQuery.isEmpty {
+                                        await loadNextTrackPage()
+                                    } else {
+                                        await searchRemainingLibrary()
+                                    }
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                    } else if !filteredTracks.isEmpty && isSearchingLibrary {
+                        ProgressView(L10n.text("searching"))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
                     }
                 }
                 .id(MainTabScrollDestination.library)
@@ -258,7 +287,18 @@ struct LibraryView: View {
         .task(id: sessionStore.accessToken) {
             await load(force: true)
         }
+        .task(id: LibrarySearchRequest(query: normalizedTrackQuery, revision: tracks.revision)) {
+            guard !normalizedTrackQuery.isEmpty else { return }
+            do { try await Task.sleep(for: .milliseconds(300)) }
+            catch { return }
+            await searchRemainingLibrary()
+        }
         .refreshable { await load(force: true) }
+        .onDisappear {
+            paginationTask?.cancel()
+            playlistPaginationTask?.cancel()
+            addedTrackReloadTask?.cancel()
+        }
         .onReceive(
             NotificationCenter.default.publisher(
                 for: MusicLibraryEvents.didAddTrack
@@ -470,16 +510,23 @@ struct LibraryView: View {
             in: queue,
             continuation: continuation?.advance,
             prefetchContinuation: continuation?.prefetch,
-            source: .library
+            source: .library,
+            allowsContinuation: LibrarySearchPolicy.allowsContinuation(query: trackSearchQuery)
         )
     }
 
-    /// Filters the loaded tracks list only — playlist and album shelves stay
-    /// untouched so they remain usable while searching.
+    private var normalizedTrackQuery: String {
+        LibrarySearchPolicy.normalized(trackSearchQuery)
+    }
+
+    private var isSearchingLibrary: Bool {
+        !normalizedTrackQuery.isEmpty && tracks.errorMessage == nil
+            && (tracks.isLoading || tracks.isLoadingMore || tracks.nextPageOffset != nil)
+    }
+
+    /// Remaining pages are searched independently of the visible rows.
     private var filteredTracks: [Track] {
-        let normalized = trackSearchQuery.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
+        let normalized = normalizedTrackQuery
         guard !normalized.isEmpty else { return tracks.tracks }
         return tracks.tracks.filter {
             $0.title.localizedCaseInsensitiveContains(normalized)
@@ -1102,7 +1149,8 @@ struct LibraryView: View {
             in: queue,
             continuation: continuation?.advance,
             prefetchContinuation: continuation?.prefetch,
-            source: .library
+            source: .library,
+            allowsContinuation: LibrarySearchPolicy.allowsContinuation(query: trackSearchQuery)
         )
     }
 
@@ -1115,7 +1163,8 @@ struct LibraryView: View {
         advance: () async throws -> [Track],
         prefetch: () async throws -> [Track]
     )? {
-        guard queue.count == tracks.tracks.count,
+        guard LibrarySearchPolicy.allowsContinuation(query: trackSearchQuery),
+              queue.count == tracks.tracks.count,
               let offset = tracks.nextPageOffset else {
             return nil
         }
@@ -1331,26 +1380,36 @@ struct LibraryView: View {
     }
 
     private func loadMoreIfNeeded(after track: Track) {
-        guard track.id == tracks.tracks.last?.id,
+        guard normalizedTrackQuery.isEmpty,
+              track.id == tracks.tracks.last?.id,
               sessionStore.accessToken != nil,
               paginationTask == nil else {
             return
         }
         paginationTask = Task {
             defer { paginationTask = nil }
-            let loaded = await tracks.loadMore { offset in
-                try await environment.withAuthorizedToken { token in
-                    try await environment.musicService.library(
-                        accessToken: token,
-                        offset: offset,
-                        count: 100
-                    )
-                }
-            }
-            if loaded {
-                libraryStore.include(tracks.tracks)
-            }
+            await loadNextTrackPage()
         }
+    }
+
+    private func trackPage(offset: Int) async throws -> MusicPage<Track> {
+        try await environment.withAuthorizedToken { token in
+            try await environment.musicService.library(
+                accessToken: token, offset: offset, count: 100
+            )
+        }
+    }
+
+    private func loadNextTrackPage() async {
+        if await tracks.loadMore(operation: trackPage) {
+            libraryStore.include(tracks.tracks)
+        }
+    }
+
+    private func searchRemainingLibrary() async {
+        await tracks.loadAllForSearch(operation: trackPage)
+        guard !Task.isCancelled else { return }
+        libraryStore.include(tracks.tracks)
     }
 
     private func loadMorePlaylistsIfNeeded() {

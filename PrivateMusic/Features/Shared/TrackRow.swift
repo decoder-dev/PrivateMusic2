@@ -195,6 +195,7 @@ struct TrackRow: View {
 }
 
 struct TrackRowContent: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let artworkURL: URL?
     let title: String?
     let artist: String?
@@ -210,7 +211,10 @@ struct TrackRowContent: View {
     var playbackIndicatorColor: Color = .primary
 
     var body: some View {
-        HStack(spacing: BubbleSpacing.m) {
+        HStack(
+            alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center,
+            spacing: BubbleSpacing.m
+        ) {
             AsyncArtwork(url: artworkURL, size: 48)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -218,56 +222,66 @@ struct TrackRowContent: View {
                     Text(title)
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(titleColor)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                 }
                 if let artist {
                     Text(artist)
                         .font(BubbleType.metadata)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                }
+                if dynamicTypeSize.isAccessibilitySize {
+                    statusIndicators
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .layoutPriority(1)
 
-            HStack(spacing: BubbleSpacing.s) {
-                if showsOfflineState {
-                    if isOffline {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel(L10n.text("available_offline"))
-                    } else if isDownloading {
-                        ProgressView()
-                            .controlSize(.small)
-                            .accessibilityLabel(L10n.text("downloading"))
-                    }
-                }
-
-                if showsLikedBadge, let likedTrack {
-                    LikedTrackBadge(track: likedTrack)
-                }
-
-                if let durationText {
-                    Text(durationText)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(minWidth: 36, alignment: .trailing)
-                }
-
-                if showsPlaybackIndicator {
-                    PlaybackIndicatorView(
-                        isPlaying: isPlaying,
-                        color: playbackIndicatorColor
-                    )
-                    .font(.caption)
-                    .foregroundStyle(playbackIndicatorColor)
-                    .frame(width: 14, alignment: .center)
-                }
+            if !dynamicTypeSize.isAccessibilitySize {
+                statusIndicators
             }
-            .fixedSize(horizontal: true, vertical: false)
         }
         .contentShape(Rectangle())
+    }
+
+    private var statusIndicators: some View {
+        HStack(spacing: BubbleSpacing.s) {
+            if showsOfflineState {
+                if isOffline {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(L10n.text("available_offline"))
+                } else if isDownloading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel(L10n.text("downloading"))
+                }
+            }
+
+            if showsLikedBadge, let likedTrack {
+                LikedTrackBadge(track: likedTrack)
+            }
+
+            if let durationText {
+                Text(durationText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 36, alignment: .trailing)
+            }
+
+            if showsPlaybackIndicator {
+                PlaybackIndicatorView(
+                    isPlaying: isPlaying,
+                    color: playbackIndicatorColor
+                )
+                .font(.caption)
+                .foregroundStyle(playbackIndicatorColor)
+                .frame(width: 14, alignment: .center)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
