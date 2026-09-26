@@ -2,6 +2,21 @@ import XCTest
 @testable import PrivateMusic
 
 final class VKMusicServiceTests: XCTestCase {
+    func testAudioAddRejectsInvalidIdentifiers() {
+        for json in ["0", "-1", "\"0\"", "\"-1\"", "null", "true", "{}"] {
+            XCTAssertThrowsError(try JSONDecoder().decode(
+                VKAudioAddResult.self, from: Data(json.utf8)
+            ), "Must not create a library track from \(json)")
+        }
+    }
+
+    func testAudioAddAcceptsNumericAndStringIdentifiers() throws {
+        for json in ["456239537", "\"456239537\""] {
+            let result = try JSONDecoder().decode(VKAudioAddResult.self, from: Data(json.utf8))
+            XCTAssertEqual(result.id, 456239537)
+        }
+    }
+
     private func makeService() -> VKMusicService {
         VKMusicService(
             client: APIClient(

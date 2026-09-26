@@ -1009,6 +1009,9 @@ struct VKMusicService: MusicService {
         _ track: Track,
         accessToken: String
     ) async throws -> Track {
+        guard track.trackID > 0, track.ownerID != 0 else {
+            throw APIError.invalidRequest
+        }
         var parameters = [
             "audio_id": String(track.trackID),
             "owner_id": String(track.ownerID)
@@ -1043,6 +1046,9 @@ struct VKMusicService: MusicService {
         _ track: Track,
         accessToken: String
     ) async throws {
+        guard track.trackID > 0, track.ownerID != 0 else {
+            throw APIError.invalidRequest
+        }
         let _: VKResponse<VKIgnored> = try await client.post(
             path: "/method/audio.delete",
             form: common(accessToken).merging([
@@ -1350,17 +1356,17 @@ private struct VKLyrics: Decodable, Sendable {
     let text: String
 }
 
-private struct VKAudioAddResult: Decodable, Sendable {
+struct VKAudioAddResult: Decodable, Sendable {
     let id: Int
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        if let value = try? container.decode(Int.self) {
+        if let value = try? container.decode(Int.self), value > 0 {
             id = value
             return
         }
         if let value = try? container.decode(String.self),
-           let parsed = Int(value) {
+           let parsed = Int(value), parsed > 0 {
             id = parsed
             return
         }
