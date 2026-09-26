@@ -163,6 +163,10 @@ final class AudioPlayer {
     /// The queue as its source handed it over, before shuffle reordered it.
     /// Turning shuffle off replays this order (see `PlaybackShuffleOrder`).
     private var sourceOrderedQueue: [Track] = []
+    private var continuationSuppressedByUser = false
+    var hasAutomaticContinuation: Bool {
+        activeContinuationProvider != nil || activeContinuationPrefetchProvider != nil
+    }
 
     /// What the player's shuffle control is set to, which is not the same
     /// thing as `shuffleEnabled`: per-collection «Перемешать» shuffles the
@@ -436,7 +440,7 @@ final class AudioPlayer {
     ) {
         cancelContinuation()
         defaultContinuationProvider = provider
-        activeContinuationProvider = provider
+        activeContinuationProvider = continuationSuppressedByUser ? nil : provider
         activeContinuationPrefetchProvider = nil
     }
 
@@ -605,6 +609,7 @@ final class AudioPlayer {
         continuation: (() async throws -> [Track])? = nil,
         prefetchContinuation: (() async throws -> [Track])? = nil,
         source: QueueSource? = nil,
+        allowsContinuation: Bool = true,
         shuffle intent: PlaybackShuffleIntent = .followPreference
     ) {
         resumeAfterRouteTransfer = false
@@ -622,9 +627,11 @@ final class AudioPlayer {
         restoredTrackIDs.removeAll()
         staleCredentialTrackIDs.removeAll()
         attemptedPreloadRefreshes.removeAll()
-        activeContinuationProvider =
-            continuation ?? defaultContinuationProvider
-        activeContinuationPrefetchProvider = prefetchContinuation
+        continuationSuppressedByUser = !allowsContinuation
+        defaults.set(!allowsContinuation, forKey: "player.continuationSuppressed")
+        activeContinuationProvider = allowsContinuation
+            ? (continuation ?? defaultContinuationProvider) : nil
+        activeContinuationPrefetchProvider = allowsContinuation ? prefetchContinuation : nil
         queueSource = source
         queueSeedTrackTitle = track.title
         // A fresh queue arrives in source order, so a previous radio
@@ -703,7 +710,8 @@ final class AudioPlayer {
         in tracks: [Track],
         continuation: (() async throws -> [Track])? = nil,
         prefetchContinuation: (() async throws -> [Track])? = nil,
-        source: QueueSource? = nil
+        source: QueueSource? = nil,
+        allowsContinuation: Bool = true
     ) {
         guard let seed = tracks.randomElement() ?? tracks.first else {
             return
@@ -714,6 +722,7 @@ final class AudioPlayer {
             continuation: continuation,
             prefetchContinuation: prefetchContinuation,
             source: source,
+            allowsContinuation: allowsContinuation,
             shuffle: .shuffleCollection
         )
     }
@@ -800,6 +809,48 @@ final class AudioPlayer {
             publishNowPlayingQueue()
             scheduleNeighborPreloads()
         }
+    }
+
+    func moveUpcoming(
+        from offsets: IndexSet,
+        to destination: Int,
+        after expectedTrackID: String?
+    ) {
+        guard currentTrack?.id == expectedTrackID else { return }
+        let reordered = PlaybackQueueEditing.movingUpcoming(
+            in: queue, currentIndex: currentIndex, from: offsets, to: destination
+        )
+        guard reordered.map(\.id) != queue.map(\.id) else { return }
+        cancelContinuation()
+        cancelMixRadioRefill()
+        queue = reordered
+        sourceOrderedQueue = reordered
+        shuffleEnabled = false
+        if let currentIndex {
+            pinnedPlayNextIDs.formUnion(queue.dropFirst(currentIndex + 1).map(\.id))
+        }
+        invalidatePreloadedPlayback()
+        persistPlayback()
+        publishNowPlayingQueue()
+        scheduleNeighborPreloads()
+    }
+
+    func clearUpcoming() {
+        guard let currentIndex, queue.indices.contains(currentIndex) else { return }
+        cancelContinuation()
+        cancelMixRadioRefill()
+        activeContinuationProvider = nil
+        activeContinuationPrefetchProvider = nil
+        continuationSuppressedByUser = true
+        defaults.set(true, forKey: "player.continuationSuppressed")
+        queue = Array(queue.prefix(currentIndex + 1))
+        sourceOrderedQueue = queue
+        restoredTrackIDs.formIntersection(Set(queue.map(\.id)))
+        pinnedPlayNextIDs.removeAll()
+        invalidatePreloadedPlayback()
+        persistPlayback()
+        publishNowPlayingQueue()
+        scheduleNeighborPreloads()
     }
 
     func jump(to index: Int) {
@@ -1148,6 +1199,8 @@ final class AudioPlayer {
         lastFailedItemIdentifier = nil
         queue = []
         sourceOrderedQueue = []
+        continuationSuppressedByUser = false
+        defaults.set(false, forKey: "player.continuationSuppressed")
         currentIndex = nil
         queueSource = nil
         queueSeedTrackTitle = nil
@@ -3944,6 +3997,7 @@ final class AudioPlayer {
     }
 
     private func restorePlayback() {
+        continuationSuppressedByUser = defaults.bool(forKey: "player.continuationSuppressed")
         let data = defaults.data(forKey: PlaybackSnapshot.key)
             ?? defaults.data(forKey: PlaybackSnapshot.legacyKey)
         guard let data,

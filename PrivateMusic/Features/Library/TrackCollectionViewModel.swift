@@ -18,6 +18,7 @@ final class TrackCollectionViewModel {
     /// playback continuation that keeps a queue going in list order past the
     /// loaded window.
     var nextPageOffset: Int? { nextOffset }
+    var revision: Int { loadGeneration }
 
     private let source: Source
     private var service: (any MusicService)?
@@ -58,7 +59,7 @@ final class TrackCollectionViewModel {
 
         do {
             let page = try await operation()
-            guard generation == loadGeneration else { return false }
+            guard generation == loadGeneration, !Task.isCancelled else { return false }
             let missingOptimisticCount = missingOptimisticAdditions(
                 from: page.items
             )
@@ -70,7 +71,7 @@ final class TrackCollectionViewModel {
         } catch is CancellationError {
             return false
         } catch {
-            guard generation == loadGeneration else { return false }
+            guard generation == loadGeneration, !Task.isCancelled else { return false }
             errorMessage = error.localizedDescription
             return false
         }
@@ -94,10 +95,10 @@ final class TrackCollectionViewModel {
             // in flight shifted every server offset under it. Appending the
             // stale window would interleave it with the fresh list, which
             // reads as a scrambled Медиатека.
-            guard generation == loadGeneration else { return false }
+            guard generation == loadGeneration, !Task.isCancelled else { return false }
             appendUnique(page.items)
             totalCount = page.totalCount
-            nextOffset = page.nextOffset
+            nextOffset = page.nextOffset.flatMap { $0 > offset ? $0 : nil }
             errorMessage = nil
             return true
         } catch is CancellationError {
@@ -163,6 +164,26 @@ final class TrackCollectionViewModel {
     private func invalidateLoadsForLocalMutation() {
         loadGeneration += 1
         isLoading = false
+        // Server offsets have shifted. Rewalk from the start, deduplicating
+        // against visible tracks, instead of skipping the boundary item.
+        if nextOffset != nil { nextOffset = 0 }
+    }
+
+    /// Search cannot depend on an onAppear belonging to a filtered-out row.
+    /// Keep useful matches visible while the remaining pages are searched.
+    func loadAllForSearch(
+        operation: (Int) async throws -> MusicPage<Track>
+    ) async {
+        let generation = loadGeneration
+        while !Task.isCancelled, generation == loadGeneration {
+            if isLoading || isLoadingMore {
+                do { try await Task.sleep(for: .milliseconds(50)) }
+                catch { return }
+                continue
+            }
+            guard nextOffset != nil else { return }
+            guard await loadMore(operation: operation) else { return }
+        }
     }
 
     private func mergedFirstPage(_ pageItems: [Track]) -> [Track] {

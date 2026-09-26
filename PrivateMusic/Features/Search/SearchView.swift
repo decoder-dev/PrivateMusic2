@@ -27,6 +27,7 @@ struct SearchView: View {
     @Environment(LikedAlbumsStore.self) private var likedAlbumsStore
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var model = SearchViewModel()
     @State private var scope: Scope = .tracks
     @State private var pendingLibraryTrackIDs = Set<String>()
@@ -330,12 +331,7 @@ struct SearchView: View {
     private var searchResults: some View {
         VStack(spacing: 0) {
             AppGroupedSurface {
-                Picker(L10n.text("search_type"), selection: $scope) {
-                    ForEach(Scope.allCases, id: \.self) {
-                        Text($0.compactTitle).tag($0)
-                    }
-                }
-                .pickerStyle(.segmented)
+                scopePicker
                 .padding(.horizontal, BubbleSpacing.xs)
                 .padding(.vertical, BubbleSpacing.xs)
             }
@@ -414,6 +410,26 @@ struct SearchView: View {
                     playlistResults
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var scopePicker: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            Picker(L10n.text("search_type"), selection: $scope) {
+                ForEach(Scope.allCases, id: \.self) {
+                    Text($0.title).tag($0)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        } else {
+            Picker(L10n.text("search_type"), selection: $scope) {
+                ForEach(Scope.allCases, id: \.self) {
+                    Text($0.compactTitle).tag($0)
+                }
+            }
+            .pickerStyle(.segmented)
         }
     }
 

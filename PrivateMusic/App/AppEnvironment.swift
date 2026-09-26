@@ -171,7 +171,11 @@ final class AppEnvironment {
         case libraryIndex
         case likedAlbums
     }
-    private var refreshTasks: [RefreshSlot: Task<Void, Never>] = [:]
+    private struct RefreshKey: Hashable {
+        let slot: RefreshSlot
+        let accountRevision: Int
+    }
+    private var refreshTasks: [RefreshKey: Task<Void, Never>] = [:]
     private var settingsObservation: ObservationLoop.Token?
 
     init(
@@ -234,7 +238,8 @@ final class AppEnvironment {
         let service = VKMusicService(
             client: client,
             apiVersion: configuration.apiVersion,
-            initialUserID: sessionStore.resolvedOfflineAccountID
+            initialUserID: sessionStore.resolvedOfflineAccountID,
+            initialAccessToken: sessionStore.accessToken
         )
         self.musicService = service
         // One answer for "what belongs in a mix queue": bans + language +
@@ -394,11 +399,23 @@ final class AppEnvironment {
                 }
             }
         )
+        sessionStore.onAccountChange = { [weak self] in
+            guard let self else { return }
+            for task in self.refreshTasks.values { task.cancel() }
+            self.refreshTasks.removeAll()
+            self.cancelSessionRecovery()
+            self.player.stop()
+            self.configureOfflineAccount()
+        }
+        configureOfflineAccount()
         watchRemoteCoordinator.start()
     }
 
     func configureOfflineAccount() {
         let accountID = sessionStore.resolvedOfflineAccountID
+        libraryStore.prepare(accountID: accountID)
+        likedAlbumsStore.prepare(accountID: accountID)
+        homeCatalogStore.prepare(accountID: accountID)
         offlineStore.configure(accountID: accountID)
         OfflinePlaylistStore.shared.configure(accountID: accountID)
         pinnedMixStore.configure(accountID: accountID)
@@ -419,7 +436,7 @@ final class AppEnvironment {
             var collected: [Track] = []
             var offset = 0
             do {
-                for _ in 0..<10 {
+                while !Task.isCancelled {
                     let page = try await withAuthorizedToken { token in
                         try await musicService.library(
                             accessToken: token,
@@ -433,6 +450,7 @@ final class AppEnvironment {
                     }
                     offset = next
                 }
+                try Task.checkCancellation()
                 libraryStore.replace(with: collected, refreshID: refreshID)
             } catch {
                 return
@@ -452,7 +470,7 @@ final class AppEnvironment {
             var collected: [Album] = []
             var offset = 0
             do {
-                for _ in 0..<10 {
+                while !Task.isCancelled {
                     let page = try await withAuthorizedToken { token in
                         try await musicService.likedAlbums(
                             accessToken: token,
@@ -466,6 +484,7 @@ final class AppEnvironment {
                     }
                     offset = next
                 }
+                try Task.checkCancellation()
                 likedAlbumsStore.replace(with: collected, refreshID: refreshID)
             } catch {
                 return
@@ -481,15 +500,20 @@ final class AppEnvironment {
         _ slot: RefreshSlot,
         _ operation: @escaping @MainActor () async -> Void
     ) async {
-        if let inFlight = refreshTasks[slot] {
+        let key = RefreshKey(slot: slot, accountRevision: sessionStore.accountRevision)
+        if let inFlight = refreshTasks[key] {
             await inFlight.value
             return
         }
-        let task = Task { @MainActor in await operation() }
-        refreshTasks[slot] = task
+        let task = Task { @MainActor in
+            guard !Task.isCancelled,
+                  sessionStore.accountRevision == key.accountRevision else { return }
+            await operation()
+        }
+        refreshTasks[key] = task
         await task.value
-        if refreshTasks[slot] == task {
-            refreshTasks[slot] = nil
+        if refreshTasks[key] == task {
+            refreshTasks[key] = nil
         }
     }
 
@@ -760,57 +784,10 @@ final class AppEnvironment {
     func withAuthorizedToken<Value>(
         _ operation: (String) async throws -> Value
     ) async throws -> Value {
-        try Task.checkCancellation()
-        guard var attemptedToken = sessionStore.accessToken else {
-            throw APIError.unauthorized
-        }
-
-        // Refresh a token we already know is dead rather than spending a
-        // round trip proving it. On a cold launch four callers start at
-        // once — Home's catalog, recommendations, playlists and the
-        // library — so the reactive path below costs four rejected
-        // requests before the first useful one. `recoverSession` is
-        // deduplicated, so all four wait on the single exchange instead.
-        //
-        // Best effort only: if the exchange fails, the old token still
-        // gets its turn. `expiresAt` is VK's claim, not proof, and a
-        // token that outlives it must not be thrown away on our say-so.
-        if let session = sessionStore.session,
-           session.shouldRefreshProactively,
-           session.canRefresh {
-            if let refreshed = try? await recoverSession() {
-                attemptedToken = refreshed
-            }
-            // `try?` above also swallows cancellation, so ask again rather
-            // than starting a request for work nobody is waiting on.
-            try Task.checkCancellation()
-        }
-
-        do {
-            return try await operation(attemptedToken)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch let error as APIError where error == .unauthorized {
-            try Task.checkCancellation()
-        }
-
-        if let latestToken = sessionStore.accessToken,
-           latestToken != attemptedToken {
-            do {
-                return try await operation(latestToken)
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch let error as APIError where error == .unauthorized {
-                try Task.checkCancellation()
-            }
-        }
-
-        let refreshedToken = try await recoverSession()
-        try Task.checkCancellation()
-
-        // A web exchange may legitimately return the same token with refreshed
-        // cookies. The rejected operation still gets one clean retry.
-        return try await operation(refreshedToken)
+        try await sessionStore.withAuthorizedToken(
+            recoverSession: { try await self.recoverSession() },
+            operation: operation
+        )
     }
 
     func recoverSession() async throws -> String {

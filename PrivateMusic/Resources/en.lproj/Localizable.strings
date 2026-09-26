@@ -98,6 +98,12 @@
 "find_tracks_and_artists_in_one_search" = "Find tracks and artists in one search";
 "search.recent" = "Recent Searches";
 "clear" = "Clear";
+"queue.reorder" = "Reorder tracks";
+"queue.clear_upcoming" = "Clear upcoming tracks";
+"queue.clear_upcoming_detail" = "The current track keeps playing. Automatic additions stop until you start a new queue.";
+"queue.no_upcoming" = "No upcoming tracks";
+"lyrics.pause_follow" = "Pause auto-scroll";
+"lyrics.resume_follow" = "Back to current line";
 "clear_recent_searches" = "Clear Recent Searches";
 "remove_search_0" = "Remove search “%@”";
 "loading_search_results" = "Loading Search Results";

@@ -142,20 +142,36 @@ struct MainTabView: View {
         )
     }
 
-    @ViewBuilder
+    // Keep each NavigationStack mounted when switching sidebar destinations.
+    // A switch destroyed its search query, scroll position and pushed detail.
     private var regularTabDetail: some View {
-        switch selectedTab {
-        case .home:
-            NavigationStack { CatalogView() }
-        case .library:
-            NavigationStack { LibraryView() }
-        case .search:
-            NavigationStack {
-                SearchView(isActive: selectedTab == .search)
+        ZStack {
+            regularScreen(.home) {
+                NavigationStack { CatalogView() }
             }
-        case .profile:
-            NavigationStack { ProfileView() }
+            regularScreen(.library) {
+                NavigationStack { LibraryView() }
+            }
+            regularScreen(.search) {
+                NavigationStack {
+                    SearchView(isActive: selectedTab == .search)
+                }
+            }
+            regularScreen(.profile) {
+                NavigationStack { ProfileView() }
+            }
         }
+    }
+
+    private func regularScreen<Content: View>(
+        _ tab: MainTab,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .opacity(selectedTab == tab ? 1 : 0)
+            .allowsHitTesting(selectedTab == tab)
+            .accessibilityHidden(selectedTab != tab)
+            .zIndex(selectedTab == tab ? 1 : 0)
     }
 
     private var sidebarTabs: [MainTab] {

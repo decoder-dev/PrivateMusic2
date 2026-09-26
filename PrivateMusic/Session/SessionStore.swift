@@ -7,6 +7,9 @@ final class SessionStore {
     private(set) var profile: UserProfile?
     var errorMessage: String?
     private(set) var sessionRevision = 0
+    /// Token rotation keeps this generation; logout/login never does.
+    private(set) var accountRevision = 0
+    @ObservationIgnored var onAccountChange: (() -> Void)?
 
     private let keychain: KeychainStore
     private let sessionAccount = "vk-session-v2"
@@ -87,9 +90,11 @@ final class SessionStore {
         )
         try keychain.save(value, account: sessionAccount)
         try? keychain.save(profile, account: profileAccount)
+        let changesAccount = session == nil || resolvedOfflineAccountID != profile.id
         session = value
         self.profile = profile
         sessionRevision &+= 1
+        if changesAccount { accountDidChange() }
         errorMessage = nil
         AppLog.shared.info(
             .session,
@@ -120,6 +125,7 @@ final class SessionStore {
               currentSession.accessToken == expectedAccessToken else {
             return false
         }
+        let changesAccount = resolvedOfflineAccountID != profile.id
         var persistenceError: Error?
         do {
             try keychain.save(profile, account: profileAccount)
@@ -137,6 +143,7 @@ final class SessionStore {
             }
         }
         self.profile = profile
+        if changesAccount { accountDidChange() }
         errorMessage = persistenceError?.localizedDescription
         return true
     }
@@ -156,7 +163,13 @@ final class SessionStore {
         session = nil
         profile = nil
         sessionRevision &+= 1
+        accountDidChange()
         errorMessage = deletionError
         AppLog.shared.info(.session, "Session logged out")
+    }
+
+    private func accountDidChange() {
+        accountRevision &+= 1
+        onAccountChange?()
     }
 }

@@ -1973,7 +1973,7 @@ def require_text_scales_with_dynamic_type() -> None:
     }
     offenders = []
     for path in swift_files:
-        relative = str(path.relative_to(ROOT))
+        relative = path.relative_to(ROOT).as_posix()
         if relative in allowed:
             continue
         lines = path.read_text(encoding="utf-8").split("\n")
@@ -2013,7 +2013,7 @@ def require_motion_respects_reduce_motion() -> None:
     home = "PrivateMusic/UI/Bubble/BubbleFoundation.swift"
     offenders = []
     for path in swift_files:
-        relative = str(path.relative_to(ROOT))
+        relative = path.relative_to(ROOT).as_posix()
         if relative == home:
             continue
         lines = path.read_text(encoding="utf-8").split("\n")
@@ -2156,9 +2156,9 @@ def require_one_artist_identity_key() -> None:
     """
     home = "PrivateMusic/Models/MixFeedbackStore.swift"
     offenders = [
-        str(path.relative_to(ROOT))
+        path.relative_to(ROOT).as_posix()
         for path in swift_files
-        if str(path.relative_to(ROOT)) != home
+        if path.relative_to(ROOT).as_posix() != home
         and 'Locale(identifier: "en_US_POSIX")'
         in swift_code(path.read_text(encoding="utf-8"))
     ]

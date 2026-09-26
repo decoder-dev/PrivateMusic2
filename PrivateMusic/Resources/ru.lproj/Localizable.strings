@@ -98,6 +98,12 @@
 "find_tracks_and_artists_in_one_search" = "Треки и исполнители в одном поиске";
 "search.recent" = "Недавние запросы";
 "clear" = "Очистить";
+"queue.reorder" = "Изменить порядок";
+"queue.clear_upcoming" = "Очистить следующие треки";
+"queue.clear_upcoming_detail" = "Текущий трек продолжит играть. Автодобавление остановится до запуска новой очереди.";
+"queue.no_upcoming" = "Следующих треков нет";
+"lyrics.pause_follow" = "Отключить автопрокрутку";
+"lyrics.resume_follow" = "К текущей строке";
 "clear_recent_searches" = "Очистить недавние запросы";
 "remove_search_0" = "Удалить запрос «%@»";
 "loading_search_results" = "Загрузка результатов поиска";
