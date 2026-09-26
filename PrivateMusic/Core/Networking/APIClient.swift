@@ -1,4 +1,19 @@
 import Foundation
+import CryptoKit
+
+struct VKMethodAvailabilityKey: Hashable {
+    let path: String
+    private let credentialDigest: Data
+    private let version: String?
+    private let userAgent: String?
+
+    init(path: String, form: [String: String], userAgent: String?) {
+        self.path = path
+        credentialDigest = Data(SHA256.hash(data: Data((form["access_token"] ?? "").utf8)))
+        version = form["v"]
+        self.userAgent = userAgent
+    }
+}
 
 enum RequestRetryPolicy: Sendable, Equatable {
     case transient
@@ -118,7 +133,7 @@ actor APIClient {
     private var userAgent: String?
     /// Paths VK has already answered with "Unknown method passed".
     /// See `VKMethodAvailabilityPolicy`.
-    private var unavailableMethods = Set<String>()
+    private var unavailableMethods = Set<VKMethodAvailabilityKey>()
     /// Reads currently on the wire, by `RequestCoalescingPolicy.key`.
     private var inFlightReads: [String: Task<Data, Error>] = [:]
 
@@ -188,7 +203,7 @@ actor APIClient {
         // Already asked this session and told the method does not exist.
         // Callers all have a fallback — throwing the same error they would
         // have got sends them straight to it.
-        if unavailableMethods.contains(path) {
+        if unavailableMethods.contains(VKMethodAvailabilityKey(path: path, form: form, userAgent: userAgent)) {
             throw APIError.server(
                 code: VKMethodAvailabilityPolicy.unknownMethodCode,
                 message: "Unknown method passed"
@@ -318,7 +333,10 @@ actor APIClient {
                     if VKMethodAvailabilityPolicy.isPermanentlyUnavailable(
                         code: error.errorCode
                     ) {
-                        unavailableMethods.insert(path)
+                        unavailableMethods.insert(VKMethodAvailabilityKey(
+                            path: path, form: form,
+                            userAgent: request.value(forHTTPHeaderField: "User-Agent")
+                        ))
                     }
                     AppLog.shared.error(
                         .api,

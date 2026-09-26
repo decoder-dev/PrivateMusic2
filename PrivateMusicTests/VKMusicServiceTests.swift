@@ -2,6 +2,25 @@ import XCTest
 @testable import PrivateMusic
 
 final class VKMusicServiceTests: XCTestCase {
+    func testArtistAlbumPageDoesNotApplyOffsetTwice() {
+        let albums = (100..<120).map { Album(id: $0, ownerID: 1, title: "Album", count: 10) }
+        let result = makeService().artistAlbumPage(
+            list: VKItems(count: 140, items: albums), catalog: [], offset: 100, count: 20
+        )
+        XCTAssertEqual(result.items.map(\.id), albums.map(\.id))
+        XCTAssertEqual(result.nextOffset, 120)
+        XCTAssertEqual(result.totalCount, 140)
+    }
+
+    func testArtistCatalogFallbackUsesLocalOffset() {
+        let albums = (0..<40).map { Album(id: $0, ownerID: 1, title: "Album", count: 10) }
+        let result = makeService().artistAlbumPage(
+            list: VKItems(count: nil, items: []), catalog: albums, offset: 20, count: 20
+        )
+        XCTAssertEqual(result.items.map(\.id), Array(albums.suffix(20)).map(\.id))
+        XCTAssertNil(result.nextOffset)
+    }
+
     func testAudioAddRejectsInvalidIdentifiers() {
         for json in ["0", "-1", "\"0\"", "\"-1\"", "null", "true", "{}"] {
             XCTAssertThrowsError(try JSONDecoder().decode(

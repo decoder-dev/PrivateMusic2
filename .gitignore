@@ -8,3 +8,5 @@ job-*.log
 .vkpymusic-venv/
 config_vk.ini
 logs/
+__pycache__/
+*.pyc

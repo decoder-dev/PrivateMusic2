@@ -448,6 +448,7 @@ struct VKMusicService: MusicService {
         count: Int
     ) async throws -> MusicPage<Album> {
         var listItems: [Album] = []
+        var listTotal: Int?
         do {
             let envelope: VKResponse<VKItems<Album>> = try await client.post(
                 path: "/method/audio.getAlbumsByArtist",
@@ -459,6 +460,7 @@ struct VKMusicService: MusicService {
                 responseType: VKResponse<VKItems<Album>>.self
             )
             listItems = envelope.response.items
+            listTotal = envelope.response.count
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as APIError where error == .unauthorized {
@@ -490,26 +492,28 @@ struct VKMusicService: MusicService {
             catalogAlbums = []
         }
 
-        let merged: [Album]
-        if listItems.isEmpty {
-            merged = catalogAlbums
-        } else if ArtistAlbumShelfPolicy.shouldPreferCatalog(over: listItems) {
-            // Sparse getAlbumsByArtist stubs used to short-circuit the
-            // catalog path and paint every card as «0 треков» with no art.
-            merged = catalogAlbums.isEmpty ? listItems : catalogAlbums
-        } else {
-            merged = ArtistAlbumShelfPolicy.merging(
-                list: listItems,
-                catalog: catalogAlbums
-            )
+        return artistAlbumPage(list: VKItems(count: listTotal, items: listItems),
+                               catalog: catalogAlbums, offset: offset, count: count)
+    }
+
+    func artistAlbumPage(list: VKItems<Album>, catalog: [Album], offset: Int, count: Int) -> MusicPage<Album> {
+        if !list.items.isEmpty && (catalog.isEmpty || !ArtistAlbumShelfPolicy.shouldPreferCatalog(over: list.items)) {
+            // The API has already applied offset. Enrich this page without
+            // appending unrelated catalog entries or applying offset twice.
+            let enriched = list.items.map { album in
+                guard let metadata = catalog.first(where: { $0.id == album.id }) else { return album }
+                return album.mergingAccessMetadata(from: metadata)
+            }
+            let total = list.count ?? (offset + list.items.count + (list.items.count >= count ? 1 : 0))
+            return page(VKItems(count: total, items: enriched), offset: offset, requested: count)
         }
 
-        let sliced = Array(merged.dropFirst(offset).prefix(count))
+        let sliced = Array(catalog.dropFirst(offset).prefix(count))
         let consumed = offset + sliced.count
         return MusicPage(
             items: sliced,
-            totalCount: merged.count,
-            nextOffset: consumed < merged.count ? consumed : nil
+            totalCount: catalog.count,
+            nextOffset: consumed < catalog.count ? consumed : nil
         )
     }
 

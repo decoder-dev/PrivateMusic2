@@ -28,6 +28,7 @@ jobs:
         run: |
           python3 scripts/validate_project.py
           python3 scripts/validate_localizations.py
+          python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -119,6 +120,13 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             archive 2>&1 | tee release-build.log
 
+      - name: Validate and package dSYMs
+        run: |
+          python3 scripts/package_debug_symbols.py \
+            "$PWD/build/PrivateMusic.xcarchive" \
+            "$PWD/artifacts/PrivateMusic-$VERSION-$GITHUB_SHA-dSYMs.zip" \
+            --commit "$GITHUB_SHA"
+
       - name: Report compiler errors
         if: failure()
         run: |
@@ -162,8 +170,8 @@ jobs:
       # the .ipa directly.
       - name: Publish GitHub release
         if: >-
-          github.event_name == 'push' && (github.ref == 'refs/heads/main' ||
-          startsWith(github.ref, 'refs/tags/v'))
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -184,6 +192,7 @@ jobs:
           ASSETS=(
             "$PWD/artifacts/PrivateMusic-$VERSION-iphone-unsigned.ipa"
             "$PWD/artifacts/PrivateMusic-$VERSION-unsigned.ipa"
+            "$PWD/artifacts/PrivateMusic-$VERSION-$GITHUB_SHA-dSYMs.zip"
           )
           TAG="v$VERSION"
           if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$TAG" ]; then
@@ -192,26 +201,32 @@ jobs:
           fi
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.28.89 (pre-release)
+          # Private Music 3.28.90 (pre-release)
 
-          Правки по аудиту безопасности и поддерживаемости.
+          Исправления медиатеки, воспроизведения и диагностики.
 
           ## Безопасность
-          - Офлайн-манифесты пишутся с файловой защитой до первой разблокировки;
-            старые манифесты апгрейдятся при загрузке
-          - В `pm_vk_unmask` длина URL проверяется до выделения стекового буфера
+          - Логи скрывают ключи доступа к аудио и байты ключей HLS,
+            включая старые записи при экспорте.
+          - Кэш недоступных методов VK разделён по токенам и клиентам.
 
           ## CI
-          - GitHub Actions закреплены по commit SHA; добавлен Dependabot
+          - Release включает dSYM для iPhone и Watch; UUID проверяются
+            по бинарникам архива перед публикацией.
+          - ZIP символов содержит SHA коммита и UUID для расшифровки крэшей.
 
-          ## Архитектура
-          - Политики плеера вынесены из `AudioPlayer.swift` в отдельные файлы
-            домена Player — сам класс стал короче, поведение не менялось
+          ## Исправления
+          - Исправлена пагинация альбомов исполнителя.
+          - Нулевой ID от VK больше не создаёт ложный добавленный трек.
+          - Отказ CDN отдавать MP3 запоминается между запусками на сутки.
+          - Полный поиск по медиатеке, редактирование очереди и управление
+            автопрокруткой текста песни.
 
           ## Установка
           IPA не подписан.
           - **`…-iphone-unsigned.ipa`** — без Watch
           - `…-unsigned.ipa` — полная сборка с Watch
+          - `…-dSYMs.zip` — символы отладки, не устанавливаются на устройство
           EOF
           # Heredoc is quoted so backticks in the notes stay literal;
           # patch the version into the title afterwards.
@@ -241,5 +256,6 @@ jobs:
           path: |
             artifacts/PrivateMusic-${{ env.VERSION }}-iphone-unsigned.ipa
             artifacts/PrivateMusic-${{ env.VERSION }}-unsigned.ipa
+            artifacts/PrivateMusic-${{ env.VERSION }}-${{ github.sha }}-dSYMs.zip
           if-no-files-found: error
           retention-days: 14
