@@ -162,10 +162,10 @@ jobs:
 
       # Publishes straight off main once tests + archive pass: the tag is
       # created by `gh release create` on this commit, so no separate tag
-      # push is needed. A version that already has a release only gets its
-      # assets refreshed — the tag keeps pointing at the commit that first
-      # shipped it, and existing download links stay valid. Bump
-      # MARKETING_VERSION to cut a new one. An Actions artifact is a zip
+      # push is needed. Published versions are immutable: a rerun must not
+      # replace IPA/dSYM files or demote a stable release to pre-release.
+      # Bump MARKETING_VERSION to publish different application binaries.
+      # An Actions artifact is a zip
       # that only a signed-in browser can fetch; a pre-release hands over
       # the .ipa directly.
       - name: Publish GitHub release
@@ -232,13 +232,7 @@ jobs:
           # patch the version into the title afterwards.
           sed -i '' "1s|.*|# Private Music $VERSION (pre-release)|" "$NOTES"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG exists — refreshing assets and notes"
-            retry gh release upload "$TAG" "${ASSETS[@]}" --clobber
-            retry gh release edit "$TAG" \
-              --title "Private Music $VERSION" \
-              --notes-file "$NOTES" \
-              --draft=false \
-              --prerelease
+            echo "::notice::Release $TAG already exists; preserving its assets, notes and release status. New outputs are available as Actions artifacts. Bump MARKETING_VERSION for a new release."
           else
             echo "Creating release $TAG on $GITHUB_SHA"
             retry gh release create "$TAG" "${ASSETS[@]}" \
