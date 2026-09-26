@@ -199,7 +199,7 @@ actor LogArchiveService {
                 entries.append(
                     ZipArchiveWriter.Entry(
                         path: "logs/\(url.lastPathComponent)",
-                        data: data,
+                        data: AppLogRedaction.redactArchiveData(data),
                         modifiedAt: (try? url.resourceValues(
                             forKeys: [.contentModificationDateKey]
                         ).contentModificationDate) ?? Date()
@@ -277,6 +277,6 @@ actor LogArchiveService {
                 "No unified log entries for \(AppLog.subsystem) in the requested boot window (\(Int(timeIntervalSinceLatestBoot))s)."
             )
         }
-        return Data(lines.joined(separator: "\n").utf8)
+        return AppLogRedaction.redactArchiveData(Data(lines.joined(separator: "\n").utf8))
     }
 }
