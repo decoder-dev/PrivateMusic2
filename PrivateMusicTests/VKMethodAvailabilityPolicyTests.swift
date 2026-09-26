@@ -7,6 +7,19 @@ import XCTest
 /// so the only cost is a request that could never succeed — on every
 /// artist page, on a metered connection.
 final class VKMethodAvailabilityPolicyTests: XCTestCase {
+    func testUnavailableMethodDoesNotLeakBetweenCredentialsOrClientVersions() {
+        let original = VKMethodAvailabilityKey(path: "/method/audio.get", form: ["access_token": "A", "v": "5.199"], userAgent: "client")
+        let refused: Set<VKMethodAvailabilityKey> = [original]
+        for form in [
+            ["access_token": "B", "v": "5.199"],
+            ["access_token": "A", "v": "5.200"]
+        ] {
+            XCTAssertFalse(refused.contains(VKMethodAvailabilityKey(path: original.path, form: form, userAgent: "client")))
+        }
+        XCTAssertFalse(refused.contains(VKMethodAvailabilityKey(path: original.path, form: ["access_token": "A", "v": "5.199"], userAgent: "other")))
+        XCTAssertTrue(refused.contains(VKMethodAvailabilityKey(path: original.path, form: ["access_token": "A", "v": "5.199", "offset": "100"], userAgent: "client")))
+    }
+
     func testUnknownMethodIsTakenAsPermanent() {
         XCTAssertTrue(
             VKMethodAvailabilityPolicy.isPermanentlyUnavailable(
