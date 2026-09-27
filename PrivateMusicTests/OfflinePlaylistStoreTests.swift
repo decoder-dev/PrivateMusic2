@@ -63,7 +63,7 @@ final class OfflinePlaylistStoreTests: XCTestCase {
                 MusicPage(items: tracks, totalCount: 4, nextOffset: nil)
             },
             downloadTrack: { track in
-                if track.trackID == 2 {
+                if track.trackID == 1002 {
                     throw URLError(.cannotConnectToHost)
                 }
             }
