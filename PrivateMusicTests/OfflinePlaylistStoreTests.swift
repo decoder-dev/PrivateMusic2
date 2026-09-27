@@ -544,7 +544,7 @@ final class OfflinePlaylistStoreTests: XCTestCase {
 
     private func makeTrack(_ id: Int) -> Track {
         Track(
-            trackID: id,
+            trackID: id + 1000,
             ownerID: 1,
             title: "Track \(id)",
             artist: "Artist",
