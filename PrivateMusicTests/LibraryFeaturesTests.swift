@@ -67,6 +67,30 @@ final class LibraryFeaturesTests: XCTestCase {
         try await service.broadcast(track: nil, accessToken: "test")
     }
 
+    func testPlaybackEventWireTypesAndNoAutomaticRetry() async throws {
+        var calls = 0
+        let service = service { request in
+            calls += 1
+            XCTAssertEqual(request.url?.path, "/method/stats.trackEvents")
+            let raw = try XCTUnwrap(Self.form(request)["events"])
+            let events = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [[String: Any]])
+            let event = try XCTUnwrap(events.first)
+            XCTAssertEqual(event["e"] as? String, "music_stop_playback")
+            XCTAssertEqual(event["uuid"] as? Int, 42)
+            XCTAssertEqual(event["shuffle"] as? Bool, false)
+            XCTAssertEqual(event["duration"] as? Int, 15)
+            XCTAssertNil(event["position"])
+            return #"{"error":{"error_code":3,"error_msg":"Unknown method passed"}}"#
+        }
+        let event = VKListeningEvent(event: "music_stop_playback", audioID: "1_2", uuid: 42,
+            startTime: 100, playbackStartedAt: 100, duration: 15, trackCode: "code",
+            streamingType: "online", shuffle: false, repeatMode: "none", reason: "user", state: "app")
+        do {
+            try await service.reportPlayback(events: [event], accessToken: "test")
+            XCTFail("Expected server refusal")
+        } catch { XCTAssertEqual(calls, 1) }
+    }
+
     func testVKRefusalIsSurfaced() async throws {
         let service = service { _ in #"{"error":{"error_code":15,"error_msg":"Access denied"}}"# }
         do {
@@ -82,6 +106,18 @@ final class LibraryFeaturesTests: XCTestCase {
         }
         XCTAssertTrue(VKUploadPolicy.accepts(URL(string: "https://pu.vk.com/upload")!))
         XCTAssertTrue(VKUploadPolicy.accepts(URL(string: "https://psv.userapi.com/upload")!))
+    }
+
+    func testCoverBindingUsesOpaquePhotoAndUploadHash() throws {
+        let playlist = Playlist(id: 12, ownerID: 7, title: "P", count: 0)
+        let upload = JSONValue.object(["photo": .string("opaque-photo"), "hash": .string("upload-hash")])
+        let fields = try VKPlaylistCoverParameters.make(playlist: playlist, uploaded: upload)
+        XCTAssertEqual(fields["playlist_owner_id"], "7")
+        XCTAssertEqual(fields["playlist_id"], "12")
+        XCTAssertEqual(fields["photo"], "opaque-photo")
+        XCTAssertEqual(fields["hash"], "upload-hash")
+        XCTAssertNil(fields["photo_id"])
+        XCTAssertThrowsError(try VKPlaylistCoverParameters.make(playlist: playlist, uploaded: .object([:])))
     }
 
     func testTrackCodeSurvivesURLResolutionAndCoding() throws {
