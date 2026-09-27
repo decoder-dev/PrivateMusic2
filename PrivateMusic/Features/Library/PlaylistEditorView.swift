@@ -121,8 +121,13 @@ struct PlaylistEditorView: View {
                         kCGImageSourceCreateThumbnailFromImageAlways: true,
                         kCGImageSourceCreateThumbnailWithTransform: true,
                         kCGImageSourceThumbnailMaxPixelSize: 1200
-                      ] as CFDictionary),
-                      let jpeg = UIImage(cgImage: image).jpegData(compressionQuality: 0.88) else {
+                      ] as CFDictionary) else {
+                    throw APIError.invalidResponse
+                }
+                let side = min(image.width, image.height)
+                guard let square = image.cropping(to: CGRect(x: CGFloat(image.width - side) / 2,
+                    y: CGFloat(image.height - side) / 2, width: CGFloat(side), height: CGFloat(side))),
+                      let jpeg = UIImage(cgImage: square).jpegData(compressionQuality: 0.88) else {
                     throw APIError.invalidResponse
                 }
                 return jpeg

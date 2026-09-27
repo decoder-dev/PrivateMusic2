@@ -106,6 +106,10 @@ final class LibraryDownloadJob {
     private func persist() throws {
         guard let file else { throw APIError.unauthorized }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var excludedDirectory = directory
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try excludedDirectory.setResourceValues(values)
         try JSONEncoder().encode(snapshot).write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 }
