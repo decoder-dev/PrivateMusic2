@@ -1529,8 +1529,6 @@ final class AudioPlayer {
     }
 
     private func attachAudioProcessing(to item: AVPlayerItem) {
-        let emptyMix = AVMutableAudioMix()
-        item.audioMix = emptyMix
         guard equalizer.requiresAudioTap,
               let tap = equalizer.makeTap() else {
             return
