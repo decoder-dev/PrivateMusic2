@@ -201,7 +201,7 @@ jobs:
           fi
           NOTES="$(mktemp)"
           cat > "$NOTES" <<'EOF'
-          # Private Music 3.29.0 (pre-release)
+          # Private Music 3.29.1 (pre-release)
 
           ## Новые возможности
           - Музыка друзей: треки и плейлисты с пагинацией.

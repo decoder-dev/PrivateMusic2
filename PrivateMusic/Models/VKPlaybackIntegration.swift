@@ -30,6 +30,7 @@ final class VKPlaybackIntegration {
     private(set) var reportingError: String?
     @ObservationIgnored private var observation: ObservationLoop.Token?
     @ObservationIgnored private var worker: Task<Void, Never>?
+    @ObservationIgnored private var workerID = UUID()
     @ObservationIgnored private var commands: [Command] = []
     @ObservationIgnored private var credential: String?
     @ObservationIgnored private var accountID: Int?
@@ -77,7 +78,7 @@ final class VKPlaybackIntegration {
         let reportingEnabled = settings.vkReportingEnabled
         if credential != token || accountID != owner {
             let changedAccount = accountID != nil && accountID != owner
-            worker?.cancel(); worker = nil; commands.removeAll(); active = nil
+            worker?.cancel(); worker = nil; workerID = UUID(); commands.removeAll(); active = nil
             credential = token; accountID = owner
             lastBroadcastID = nil; lastBroadcastEnabled = false
             broadcastError = nil; reportingError = nil
@@ -132,9 +133,11 @@ final class VKPlaybackIntegration {
 
     private func drain(_ environment: AppEnvironment) {
         guard worker == nil, !commands.isEmpty, let token = credential else { return }
+        let request = UUID()
+        workerID = request
         worker = Task { [weak self, weak environment] in
             guard let self, let environment else { return }
-            defer { if self.credential == token { self.worker = nil } }
+            defer { if self.workerID == request { self.worker = nil } }
             while !Task.isCancelled, self.credential == token, !self.commands.isEmpty {
                 let command = self.commands.removeFirst()
                 do {
