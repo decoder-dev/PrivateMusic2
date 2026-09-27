@@ -5,6 +5,13 @@ import Foundation
 /// not fill `ArtworkImageCache` with 1200² bitmaps for 48–150 pt tiles.
 enum ArtworkDecodePolicy {
     static let minimumPixelSize: CGFloat = 128
+    static let maximumPixelSize: CGFloat = 4_096
+
+    static func pixelBucket(_ requested: CGFloat) -> Int {
+        let finite = requested.isFinite ? requested : 1_200
+        let bounded = min(max(finite, minimumPixelSize), maximumPixelSize)
+        return Int((bounded / 128).rounded(.up)) * 128
+    }
 
     static func maxPixelSize(
         displayPoints: CGFloat,

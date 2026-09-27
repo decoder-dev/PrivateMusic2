@@ -24,6 +24,7 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
     let count: Int
     let artworkURL: URL?
     let accessKey: String?
+    let isHidden: Bool
 
     /// VK playlist ids are only unique per owner: `audio.getPlaylists`
     /// with `filters=owned,followed` returns other people's playlists whose
@@ -46,7 +47,8 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
             description: description,
             count: newCount,
             artworkURL: artworkURL,
-            accessKey: accessKey
+            accessKey: accessKey,
+            isHidden: isHidden
         )
     }
 
@@ -60,7 +62,8 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
         description: String? = nil,
         count: Int,
         artworkURL: URL? = nil,
-        accessKey: String? = nil
+        accessKey: String? = nil,
+        isHidden: Bool = false
     ) {
         self.playlistID = id
         self.ownerID = ownerID
@@ -69,6 +72,7 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
         self.count = count
         self.artworkURL = artworkURL
         self.accessKey = accessKey
+        self.isHidden = isHidden
     }
 
     enum CodingKeys: String, CodingKey {
@@ -85,6 +89,7 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
         case thumb
         case thumbs
         case accessKey = "access_key"
+        case isHidden = "no_discover"
     }
 
     private struct Thumb: Decodable {
@@ -144,6 +149,8 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
             String.self,
             forKey: .description
         )
+        isHidden = (try? container.decode(Bool.self, forKey: .isHidden))
+            ?? (Self.integer(in: container, forKey: .isHidden) == 1)
         count = Self.integer(in: container, forKey: .count) ?? 0
         accessKey = try container.decodeIfPresent(
             String.self,
@@ -185,6 +192,7 @@ struct Playlist: Codable, Hashable, Identifiable, Sendable {
         try container.encode(title, forKey: .title)
         try container.encodeIfPresent(description, forKey: .description)
         try container.encode(count, forKey: .count)
+        try container.encode(isHidden, forKey: .isHidden)
         try container.encodeIfPresent(
             artworkURL?.absoluteString,
             forKey: .photo600

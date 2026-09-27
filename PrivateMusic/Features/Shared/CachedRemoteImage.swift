@@ -34,21 +34,16 @@ struct CachedRemoteImage<
     }
 
     private var loadIdentity: LoadIdentity {
-        let requestedSize = maxPixelSize.isFinite ? maxPixelSize : 1_200
-        let bucket = max(
-            Int((requestedSize / 128).rounded(.up)) * 128,
-            128
-        )
+        let bucket = ArtworkDecodePolicy.pixelBucket(maxPixelSize)
         return LoadIdentity(url: url, pixelSize: bucket)
     }
 
     @MainActor
     private func load(_ identity: LoadIdentity) async {
         if loadedIdentity != identity {
-            // Keep the last settled bitmap visible while the replacement loads,
-            // but only for that load's lifetime — a failed request must still
-            // end on the placeholder instead of leaving the wrong artwork up.
-            fallbackImage = image
+            // Preserve a same-URL bitmap while its resolution changes. A new
+            // track must never display the previous track's cover.
+            fallbackImage = loadedIdentity?.url == identity.url ? image : nil
             image = nil
             loadedIdentity = nil
         }
@@ -59,6 +54,12 @@ struct CachedRemoteImage<
             return
         }
         loadingIdentity = identity
+        defer {
+            if loadingIdentity == identity {
+                loadingIdentity = nil
+                fallbackImage = nil
+            }
+        }
         let pixelSize = CGFloat(identity.pixelSize)
         if let cached = ArtworkImageCache.shared.image(
             for: url,
@@ -111,11 +112,13 @@ struct CachedRemoteImage<
         } catch is CancellationError {
             if loadingIdentity == identity {
                 loadingIdentity = nil
+                fallbackImage = nil
             }
             return
         } catch {
             guard loadIdentity == identity else { return }
             image = nil
+            fallbackImage = nil
             loadedIdentity = nil
             if loadingIdentity == identity {
                 loadingIdentity = nil
@@ -145,10 +148,7 @@ private actor ArtworkPrefetchRegistry {
         url: URL,
         maxPixelSize: CGFloat
     ) async {
-        let bucket = max(
-            Int((maxPixelSize / 128).rounded(.up)) * 128,
-            128
-        )
+        let bucket = ArtworkDecodePolicy.pixelBucket(maxPixelSize)
         let key = "\(url.absoluteString)#\(bucket)"
         let waiterID = UUID()
         let entryID: UUID
@@ -314,7 +314,7 @@ final class ArtworkImageCache: @unchecked Sendable {
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceShouldCacheImmediately: true,
-                kCGImageSourceThumbnailMaxPixelSize: Int(maxPixelSize.rounded(.up))
+                kCGImageSourceThumbnailMaxPixelSize: ArtworkDecodePolicy.pixelBucket(maxPixelSize)
             ]
             guard let image = CGImageSourceCreateThumbnailAtIndex(
                 source,
@@ -328,7 +328,7 @@ final class ArtworkImageCache: @unchecked Sendable {
     }
 
     private func key(for url: URL, maxPixelSize: CGFloat) -> NSString {
-        let bucket = Int((maxPixelSize / 128).rounded(.up)) * 128
+        let bucket = ArtworkDecodePolicy.pixelBucket(maxPixelSize)
         return "\(url.absoluteString)#\(bucket)" as NSString
     }
 }

@@ -24,6 +24,7 @@ struct CuratorMixesView: View {
     let onPlay: (MusicMix) -> Void
 
     @State private var sortOption: SortOption = .default
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         List {
@@ -50,18 +51,23 @@ struct CuratorMixesView: View {
             }
 
             Section {
-                Picker(L10n.text("sort"), selection: $sortOption) {
-                    ForEach(SortOption.allCases) { option in
-                        Text(option.title).tag(option)
-                    }
+                if dynamicTypeSize.isAccessibilitySize {
+                    sortPicker.pickerStyle(.menu)
+                        .frame(minHeight: PremiumLayout.minimumTapTarget)
+                } else {
+                    sortPicker.pickerStyle(.segmented)
                 }
-                .pickerStyle(.segmented)
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets())
-                .padding(.vertical, 4)
             }
 
             Section(L10n.text("listen_together")) {
+                if mixes.isEmpty {
+                    EmptyStateView(
+                        title: "audit.curator.empty.title",
+                        systemImage: "music.note.list",
+                        description: "audit.curator.empty.description"
+                    )
+                    .listRowBackground(Color.clear)
+                }
                 ForEach(sortedMixes) { mix in
                     Button {
                         onPlay(mix)
@@ -104,7 +110,7 @@ struct CuratorMixesView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PremiumPressStyle())
                 }
             }
         }
@@ -113,6 +119,17 @@ struct CuratorMixesView: View {
         .background(ThemeBackground())
         .navigationTitle(curator.displayName)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var sortPicker: some View {
+        Picker(L10n.text("sort"), selection: $sortOption) {
+            ForEach(SortOption.allCases) { option in
+                Text(option.title).tag(option)
+            }
+        }
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets())
+        .padding(.vertical, BubbleSpacing.xs)
     }
 
     private var sortedMixes: [MusicMix] {

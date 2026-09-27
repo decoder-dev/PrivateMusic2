@@ -4,6 +4,8 @@ import Foundation
 @Observable
 final class AppEnvironment {
     let configuration: AppConfiguration
+    let vkIntegration = VKPlaybackIntegration()
+    let libraryDownloadJob = LibraryDownloadJob()
     let settings: AppSettings
     let sessionStore: SessionStore
     let networkMonitor: NetworkMonitor
@@ -186,7 +188,7 @@ final class AppEnvironment {
         self.settings = AppSettings()
         self.sessionStore = SessionStore(keychain: keychain)
         self.networkMonitor = NetworkMonitor()
-        self.historyStore = ListeningHistoryStore()
+        self.historyStore = ListeningHistoryStore(accountID: sessionStore.resolvedOfflineAccountID)
         self.libraryStore = MusicLibraryStore()
         self.homeCatalogStore = HomeCatalogStore()
         self.likedAlbumsStore = LikedAlbumsStore()
@@ -409,10 +411,13 @@ final class AppEnvironment {
         }
         configureOfflineAccount()
         watchRemoteCoordinator.start()
+        vkIntegration.start(environment: self)
     }
 
     func configureOfflineAccount() {
         let accountID = sessionStore.resolvedOfflineAccountID
+        historyStore.configure(accountID: accountID)
+        libraryDownloadJob.configure(accountID: accountID)
         libraryStore.prepare(accountID: accountID)
         likedAlbumsStore.prepare(accountID: accountID)
         homeCatalogStore.prepare(accountID: accountID)

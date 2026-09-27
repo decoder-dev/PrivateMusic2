@@ -1,6 +1,17 @@
 import Foundation
 
 protocol MusicService: Sendable {
+    func createPlaylist(title: String, description: String, ownerID: Int, hidden: Bool, accessToken: String) async throws -> Playlist
+    func playlistDetails(_ playlist: Playlist, accessToken: String) async throws -> Playlist
+    func friends(accessToken: String, offset: Int, count: Int) async throws -> MusicPage<UserProfile>
+    func friendTracks(ownerID: Int, accessToken: String, offset: Int, count: Int) async throws -> MusicPage<Track>
+    func friendPlaylists(ownerID: Int, accessToken: String, offset: Int, count: Int) async throws -> MusicPage<Playlist>
+    func setPlaylistHidden(_ playlist: Playlist, hidden: Bool, accessToken: String) async throws
+    func setPlaylistCover(_ playlist: Playlist, jpeg: Data, accessToken: String) async throws
+    func uploadAudio(file: URL, artist: String, title: String, accessToken: String) async throws -> Track
+    func broadcast(track: Track?, accessToken: String) async throws
+    func reportPlayback(events: [VKListeningEvent], accessToken: String) async throws
+
     func configure(userAgent: String?) async
     func profile(accessToken: String) async throws -> UserProfile
     func library(
@@ -128,6 +139,21 @@ protocol MusicService: Sendable {
 }
 
 extension MusicService {
+    func playlistDetails(_ playlist: Playlist, accessToken: String) async throws -> Playlist { playlist }
+    func createPlaylist(title: String, description: String, ownerID: Int, hidden: Bool, accessToken: String) async throws -> Playlist {
+        guard !hidden else { throw APIError.invalidRequest }
+        return try await createPlaylist(title: title, description: description, ownerID: ownerID, accessToken: accessToken)
+    }
+
+    func friends(accessToken: String, offset: Int, count: Int) async throws -> MusicPage<UserProfile> { throw APIError.invalidRequest }
+    func friendTracks(ownerID: Int, accessToken: String, offset: Int, count: Int) async throws -> MusicPage<Track> { throw APIError.invalidRequest }
+    func friendPlaylists(ownerID: Int, accessToken: String, offset: Int, count: Int) async throws -> MusicPage<Playlist> { throw APIError.invalidRequest }
+    func setPlaylistHidden(_ playlist: Playlist, hidden: Bool, accessToken: String) async throws { throw APIError.invalidRequest }
+    func setPlaylistCover(_ playlist: Playlist, jpeg: Data, accessToken: String) async throws { throw APIError.invalidRequest }
+    func uploadAudio(file: URL, artist: String, title: String, accessToken: String) async throws -> Track { throw APIError.invalidRequest }
+    func broadcast(track: Track?, accessToken: String) async throws { throw APIError.invalidRequest }
+    func reportPlayback(events: [VKListeningEvent], accessToken: String) async throws { throw APIError.invalidRequest }
+
     /// Personal recommendations — optional `targetAudio` seeds «микс по треку».
     func recommendations(accessToken: String) async throws -> [Track] {
         try await recommendations(

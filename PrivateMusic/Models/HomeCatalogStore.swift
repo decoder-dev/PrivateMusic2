@@ -4,6 +4,7 @@ import Foundation
 @Observable
 final class HomeCatalogStore {
     static let staleInterval: TimeInterval = 15 * 60
+    static let failedRefreshCooldown: TimeInterval = 30
 
     private(set) var recommendations: [Track] = []
     private(set) var mixes: [MusicMix] = []
@@ -16,7 +17,7 @@ final class HomeCatalogStore {
     private var refreshGeneration = 0
 
     var isEmpty: Bool {
-        recommendations.isEmpty && mixes.isEmpty
+        recommendations.isEmpty && mixes.isEmpty && newReleases.isEmpty
     }
 
     func prepare(accountID: Int?) {
@@ -35,6 +36,10 @@ final class HomeCatalogStore {
     func shouldRefresh(force: Bool, now: Date = Date()) -> Bool {
         guard !isRefreshing else { return false }
         guard !force else { return true }
+        if errorMessage != nil, let lastAttemptedAt,
+           now.timeIntervalSince(lastAttemptedAt) < Self.failedRefreshCooldown {
+            return false
+        }
         guard !isEmpty,
               let freshnessDate = lastRefreshedAt ?? lastAttemptedAt else {
             return true

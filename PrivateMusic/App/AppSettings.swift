@@ -199,6 +199,19 @@ final class AppSettings {
             defaults.set(preferHighQuality, forKey: Keys.preferHighQuality)
         }
     }
+    var crossfadeDuration: Double {
+        didSet {
+            let normalized = PlaybackTransitionPolicy.normalizedDuration(crossfadeDuration)
+            if normalized != crossfadeDuration { crossfadeDuration = normalized }
+            defaults.set(normalized, forKey: "audio.crossfadeDuration")
+        }
+    }
+    var vkBroadcastEnabled: Bool {
+        didSet { defaults.set(vkBroadcastEnabled, forKey: "vk.broadcastEnabled") }
+    }
+    var vkReportingEnabled: Bool {
+        didSet { defaults.set(vkReportingEnabled, forKey: "vk.reportingEnabled") }
+    }
     var crossfadeEnabled: Bool {
         didSet {
             defaults.set(crossfadeEnabled, forKey: Keys.crossfadeEnabled)
@@ -388,6 +401,10 @@ final class AppSettings {
         preferHighQuality = defaults.object(
             forKey: Keys.preferHighQuality
         ) as? Bool ?? true
+        crossfadeDuration = PlaybackTransitionPolicy.normalizedDuration(
+            (defaults.object(forKey: "audio.crossfadeDuration") as? Double) ?? 0.55)
+        vkBroadcastEnabled = defaults.bool(forKey: "vk.broadcastEnabled")
+        vkReportingEnabled = defaults.bool(forKey: "vk.reportingEnabled")
         crossfadeEnabled = defaults.object(
             forKey: Keys.crossfadeEnabled
         ) as? Bool ?? true
