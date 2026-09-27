@@ -279,7 +279,7 @@ struct TrackShareFlowView: View {
                     )
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PremiumProminentButtonStyle())
 
                 Button(L10n.text("action.close"), role: .cancel) {
                     model.cancel(environment: environment)
@@ -381,7 +381,7 @@ struct TrackShareFlowView: View {
                 Button(L10n.text("action.retry")) {
                     model.retry(track: track, environment: environment)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PremiumProminentButtonStyle())
 
                 Button(L10n.text("action.close"), role: .cancel) {
                     model.cancel(environment: environment)

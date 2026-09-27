@@ -91,7 +91,7 @@ struct LibraryView: View {
                             Button(L10n.text("action.retry")) {
                                 Task { await loadTracks(force: true) }
                             }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(PremiumProminentButtonStyle())
                         }
                         .frame(minHeight: 260)
                     } else if tracks.tracks.isEmpty && !isSearchingLibrary {

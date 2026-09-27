@@ -3,6 +3,22 @@ import Foundation
 /// Power- and thermal-aware playback decisions so HQ progressive streams and
 /// realtime DSP stay off the hot path when the device is already constrained.
 enum PlaybackResourcePolicy {
+    /// Full-file caching is optional work, so stop even at moderate heat.
+    static func allowAutomaticCaching(
+        enabled: Bool,
+        sharing: Bool,
+        unmeteredNetwork: Bool,
+        lowPowerMode: Bool = ProcessInfo.processInfo.isLowPowerModeEnabled,
+        thermalState: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState
+    ) -> Bool {
+        enabled && !sharing && unmeteredNetwork && !lowPowerMode && thermalState == .nominal
+    }
+
+    @MainActor static func automaticCacheSizeEstimate(duration: Double) -> Int64 {
+        guard duration.isFinite, duration >= 0 else { return OfflineTrackStore.maximumTrackSize }
+        return Int64(min(Double(OfflineTrackStore.maximumTrackSize), max(5_000_000, duration * 40_000)))
+    }
+
     /// Rewrite VK HLS to progressive MP3 only when the device can afford the
     /// extra decode/buffer work. MP3 is still lighter than HPS segment churn
     /// for AVPlayer, but skipping the rewrite on low power keeps the ladder

@@ -297,7 +297,7 @@ struct PlaylistDetailView: View {
             Button(action: toggleListen) {
                 listenButtonLabel
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(PremiumProminentButtonStyle())
             .tint(settings.theme.accent)
             .disabled(model.tracks.isEmpty)
         }

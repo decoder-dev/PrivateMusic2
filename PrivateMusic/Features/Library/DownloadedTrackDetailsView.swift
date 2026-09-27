@@ -101,7 +101,7 @@ struct DownloadedTrackDetailsView: View {
                             )
                             .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(PremiumProminentButtonStyle())
                         .disabled(localURL == nil)
 
                         Button {

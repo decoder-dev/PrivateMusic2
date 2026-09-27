@@ -166,8 +166,12 @@ final class AppEnvironment {
     }
     private var sessionRecovery: SessionRecovery?
     private var shareSessionDepth = 0
-    private var automaticCacheTask: Task<Void, Never>?
-    private var pendingAutomaticCacheTrack: Track?
+    @ObservationIgnored private var automaticCacheTask: Task<Void, Never>?
+    @ObservationIgnored private var automaticCacheID = UUID()
+    @ObservationIgnored private var automaticCacheTrackID: String?
+    @ObservationIgnored private var automaticCacheSessionRevision: Int?
+    @ObservationIgnored private let cacheNotifications = CacheNotificationRegistrations()
+    @ObservationIgnored private var cacheObservation: ObservationLoop.Token?
     /// The library-wide walks that more than one screen can ask for.
     private enum RefreshSlot: Hashable {
         case libraryIndex
@@ -319,15 +323,11 @@ final class AppEnvironment {
             guard OfflineDownloadsFeature.isEnabled else { return }
             guard !isOffline else { return }
             self?.scheduleAutomaticCache(for: track)
-            self?.schedulePredictivePreDownload()
         }
         settingsObservation = ObservationLoop.start { [weak self] in
             guard let self else { return }
             let limitGB = self.settings.offlineStorageLimitGB
             self.offlineStore.configureStorage(limitGB: limitGB)
-            if !self.settings.automaticOfflineCacheEnabled {
-                self.pendingAutomaticCacheTrack = nil
-            }
             let state = self.networkMonitor.state
             if state != .offline {
                 self.player.resumePreloading()
@@ -336,6 +336,29 @@ final class AppEnvironment {
             }
             _ = self.networkMonitor.revision
             self.player.updateNetworkCondition(self.networkMonitor.condition)
+        }
+
+        cacheObservation = ObservationLoop.start { [weak self] in
+            guard let self else { return }
+            let allowed = self.allowsAutomaticCache
+            let playing = self.player.isPlaying
+            let trackID = self.player.currentTrack?.id
+            let revision = self.sessionStore.sessionRevision
+            if !allowed || !playing || trackID != self.automaticCacheTrackID
+                || revision != self.automaticCacheSessionRevision {
+                self.cancelAutomaticCache()
+            }
+        }
+        for name in [Notification.Name.NSProcessInfoPowerStateDidChange,
+                     ProcessInfo.thermalStateDidChangeNotification] {
+            cacheNotifications.tokens.append(NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self, !self.allowsAutomaticCache else { return }
+                    self.cancelAutomaticCache()
+                }
+            })
         }
 
         Task {
@@ -348,11 +371,7 @@ final class AppEnvironment {
             DownloadCoordinator.shared.cancelAll()
             OfflinePlaylistStore.shared.cancelAllDownloads()
             DownloadCoordinator.shared.unblockQueue()
-            pendingAutomaticCacheTrack = nil
-            automaticCacheTask?.cancel()
-            automaticCacheTask = nil
-            predictivePreDownloadTask?.cancel()
-            predictivePreDownloadTask = nil
+            cancelAutomaticCache()
         }
         watchRemoteCoordinator.configureControlGate { [weak self] in
             self?.isShareSessionActive == false
@@ -599,11 +618,7 @@ final class AppEnvironment {
         shareSessionDepth += 1
         guard shareSessionDepth == 1 else { return }
         isShareSessionActive = true
-        pendingAutomaticCacheTrack = nil
-        automaticCacheTask?.cancel()
-        automaticCacheTask = nil
-        predictivePreDownloadTask?.cancel()
-        predictivePreDownloadTask = nil
+        cancelAutomaticCache()
         DownloadCoordinator.shared.cancelAll()
         player.cancelPreloading()
         // Free media services for HLS demux / AVAssetReader. Without this,
@@ -692,95 +707,59 @@ final class AppEnvironment {
         )
     }
 
-    private func scheduleAutomaticCache(for track: Track) {
-        guard OfflineDownloadsFeature.isEnabled,
-              !isShareSessionActive,
-              settings.automaticOfflineCacheEnabled,
-              networkMonitor.state == .online,
-              networkMonitor.transport == .wifi
-                || networkMonitor.transport == .wired,
-              !ProcessInfo.processInfo.isLowPowerModeEnabled,
-              !offlineStore.contains(track) else {
-            return
-        }
-        let estimatedSize = min(
-            OfflineTrackStore.maximumTrackSize,
-            max(5_000_000, Int64(track.duration * 40_000))
+    private var allowsAutomaticCache: Bool {
+        PlaybackResourcePolicy.allowAutomaticCaching(
+            enabled: OfflineDownloadsFeature.isEnabled && settings.automaticOfflineCacheEnabled,
+            sharing: isShareSessionActive,
+            unmeteredNetwork: networkMonitor.state == .online
+                && (networkMonitor.transport == .wifi || networkMonitor.transport == .wired)
         )
-        let remainingSpace = offlineStore.storageLimitBytes
-            - offlineStore.totalByteCount
-        guard estimatedSize <= remainingSpace else { return }
-        pendingAutomaticCacheTrack = track
-        guard automaticCacheTask == nil else { return }
-        automaticCacheTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            while !Task.isCancelled,
-                  let next = pendingAutomaticCacheTrack {
-                pendingAutomaticCacheTrack = nil
-                guard !isShareSessionActive,
-                      settings.automaticOfflineCacheEnabled,
-                      networkMonitor.state == .online,
-                      networkMonitor.transport == .wifi
-                        || networkMonitor.transport == .wired,
-                      !ProcessInfo.processInfo.isLowPowerModeEnabled else {
-                    continue
-                }
-                do {
-                    try await downloadForOffline(
-                        next,
-                        retention: .automaticCache
-                    )
-                } catch is CancellationError {
-                    break
-                } catch {
-                    // Automatic caching is opportunistic and must never
-                    // interrupt playback with an error.
-                }
-            }
-            automaticCacheTask = nil
-        }
     }
 
-    private var predictivePreDownloadTask: Task<Void, Never>?
+    private func cancelAutomaticCache() {
+        automaticCacheID = UUID()
+        automaticCacheTask?.cancel()
+        automaticCacheTask = nil
+        automaticCacheTrackID = nil
+        automaticCacheSessionRevision = nil
+    }
 
-    private func schedulePredictivePreDownload() {
-        guard OfflineDownloadsFeature.isEnabled,
-              !isShareSessionActive,
-              settings.automaticOfflineCacheEnabled,
-              networkMonitor.state == .online,
-              (networkMonitor.transport == .wifi
-                || networkMonitor.transport == .wired),
-              !ProcessInfo.processInfo.isLowPowerModeEnabled
-        else { return }
-        guard let currentIndex = player.currentIndex,
-              player.queue.count > 1 else { return }
-        predictivePreDownloadTask?.cancel()
-        predictivePreDownloadTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(1))
-            guard !Task.isCancelled else { return }
+    private func scheduleAutomaticCache(for track: Track) {
+        // A skip replaces speculative work. Current and next track share one
+        // worker instead of competing with playback through two download loops.
+        cancelAutomaticCache()
+        guard allowsAutomaticCache else { return }
+        let request = automaticCacheID
+        let revision = sessionStore.sessionRevision
+        automaticCacheTrackID = track.id
+        automaticCacheSessionRevision = revision
+        automaticCacheTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(5)) }
+            catch { return }
             guard let self else { return }
-            let upcoming = player.queue
-                .suffix(from: currentIndex + 1)
-                .prefix(5)
-            for track in upcoming {
-                guard !Task.isCancelled else { break }
-                guard !offlineStore.contains(track) else { continue }
-                let remaining = offlineStore.storageLimitBytes
-                    - offlineStore.totalByteCount
-                let est = min(
-                    OfflineTrackStore.maximumTrackSize,
-                    max(5_000_000, Int64(track.duration * 40_000))
-                )
-                guard est <= remaining else { break }
+            defer {
+                if automaticCacheID == request { automaticCacheTask = nil }
+            }
+            guard player.currentTrack?.id == track.id else { return }
+            var candidates = [track]
+            if let index = player.currentIndex, player.queue.indices.contains(index + 1) {
+                let next = player.queue[index + 1]
+                if next.id != track.id { candidates.append(next) }
+            }
+            for candidate in candidates {
+                guard !Task.isCancelled, automaticCacheID == request,
+                      sessionStore.sessionRevision == revision,
+                      allowsAutomaticCache, player.isPlaying,
+                      player.currentTrack?.id == track.id else { return }
+                guard !offlineStore.contains(candidate) else { continue }
+                let estimate = PlaybackResourcePolicy.automaticCacheSizeEstimate(duration: candidate.duration)
+                guard estimate <= offlineStore.storageLimitBytes - offlineStore.totalByteCount else { return }
                 do {
-                    try await downloadForOffline(
-                        track,
-                        retention: .automaticCache
-                    )
+                    try await downloadForOffline(candidate, retention: .automaticCache)
                 } catch is CancellationError {
-                    break
+                    return
                 } catch {
-                    // Opportunistic — never interrupt playback.
+                    // Opportunistic failures must never interrupt playback.
                 }
             }
         }
@@ -1484,5 +1463,13 @@ enum SessionRecoveryDisposition: Equatable {
             }
         }
         return .retry
+    }
+}
+
+/// Main-actor owned; releases process-wide observers when the environment dies.
+private final class CacheNotificationRegistrations: @unchecked Sendable {
+    var tokens: [NSObjectProtocol] = []
+    deinit {
+        for token in tokens { NotificationCenter.default.removeObserver(token) }
     }
 }

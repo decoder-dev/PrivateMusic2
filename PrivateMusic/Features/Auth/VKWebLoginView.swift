@@ -40,7 +40,7 @@ struct VKWebLoginView: View {
                             Button(L10n.text("action.retry")) {
                                 model.reload()
                             }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(PremiumProminentButtonStyle())
                         }
                         .padding(24)
                     }
@@ -156,7 +156,7 @@ struct VKWebLoginView: View {
                         .frame(width: 32, height: 32)
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(PremiumProminentButtonStyle())
             .disabled(isCompleting || model.isLoading)
             .accessibilityLabel(L10n.text("complete_sign_in"))
         }
