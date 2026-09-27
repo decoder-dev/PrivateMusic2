@@ -72,26 +72,10 @@ extension VKMusicService {
         defer { try? FileManager.default.removeItem(at: file) }
         let uploaded = try await client.uploadMultipart(to: server.response.uploadURL, file: file,
             field: "photo", filename: "cover.jpg", mimeType: "image/jpeg", maximumBytes: 10_000_000)
-        var form = common(accessToken)
-        for key in ["server", "hash", "photo"] {
-            guard let value = uploaded.uploadScalar(key), !value.isEmpty else { throw APIError.invalidResponse }
-            form[key] = value
-        }
-        form["owner_id"] = String(playlist.ownerID)
-        form["playlist_id"] = String(playlist.playlistID)
-        let saved: VKResponse<JSONValue> = try await client.post(path: "/method/photos.saveAudioPlaylistCover",
-            form: form, retryPolicy: .never, responseType: VKResponse<JSONValue>.self)
-        let photo: JSONValue
-        if case let .array(items) = saved.response, let first = items.first { photo = first }
-        else { photo = saved.response }
-        guard let photoID = photo.uploadScalar("id"), let ownerID = photo.uploadScalar("owner_id") else {
-            throw APIError.invalidResponse
-        }
+        // This endpoint binds the opaque upload result, not a saved photos.get ID.
         let _: VKResponse<JSONValue> = try await client.post(path: "/method/audio.setPlaylistCoverPhoto",
-            form: common(accessToken).merging([
-                "owner_id": String(playlist.ownerID), "playlist_id": String(playlist.playlistID),
-                "photo_id": "\(ownerID)_\(photoID)"
-            ]) { _, new in new }, retryPolicy: .never, responseType: VKResponse<JSONValue>.self)
+            form: common(accessToken).merging(try VKPlaylistCoverParameters.make(playlist: playlist, uploaded: uploaded)) { _, new in new },
+            retryPolicy: .never, responseType: VKResponse<JSONValue>.self)
     }
 
     func uploadAudio(file: URL, artist: String, title: String, accessToken: String) async throws -> Track {
@@ -133,6 +117,15 @@ enum VKLibraryPagePolicy {
         guard offset >= 0, received > 0, offset <= Int.max - received else { return nil }
         let next = offset + received
         return next < total ? next : nil
+    }
+}
+
+enum VKPlaylistCoverParameters {
+    static func make(playlist: Playlist, uploaded: JSONValue) throws -> [String: String] {
+        guard let photo = uploaded.uploadScalar("photo"), !photo.isEmpty,
+              let hash = uploaded.uploadScalar("hash"), !hash.isEmpty else { throw APIError.invalidResponse }
+        return ["playlist_owner_id": String(playlist.ownerID), "playlist_id": String(playlist.playlistID),
+                "photo": photo, "hash": hash]
     }
 }
 

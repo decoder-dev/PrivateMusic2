@@ -4,20 +4,19 @@ import Observation
 struct VKListeningEvent: Codable, Sendable {
     let event: String
     let audioID: String
-    let uuid: String
-    let startTime: Double
-    let playbackStartedAt: Double
-    let position: Double
-    let duration: Double
-    let trackCode: String?
+    let uuid: Int
+    let startTime: Int
+    let playbackStartedAt: Int
+    let duration: Int
+    let trackCode: String
     let streamingType: String
-    let shuffle: Int
+    let shuffle: Bool
     let repeatMode: String
     let reason: String
     let state: String
 
     enum CodingKeys: String, CodingKey {
-        case event = "e", audioID = "audio_id", uuid, position, duration, shuffle, reason, state
+        case event = "e", audioID = "audio_id", uuid, duration, shuffle, reason, state
         case startTime = "start_time", playbackStartedAt = "playback_started_at"
         case trackCode = "track_code", streamingType = "streaming_type", repeatMode = "repeat"
     }
@@ -36,12 +35,11 @@ final class VKPlaybackIntegration {
     @ObservationIgnored private var accountID: Int?
     @ObservationIgnored private var lastBroadcastID: String?
     @ObservationIgnored private var lastBroadcastEnabled = false
-    @ObservationIgnored private var lastReportingEnabled = false
     @ObservationIgnored private var active: Listening?
 
     private struct Listening {
         let track: Track
-        let uuid = UUID().uuidString
+        let uuid = Int.random(in: 1...Int(Int32.max))
         let started = Date()
         let position: Double
     }
@@ -118,7 +116,6 @@ final class VKPlaybackIntegration {
                     environment: environment)]))
             }
         }
-        lastReportingEnabled = reportingEnabled
         if commands.count > 32 { commands.removeFirst(commands.count - 32) }
         drain(environment)
     }
@@ -126,10 +123,10 @@ final class VKPlaybackIntegration {
     private func event(_ listening: Listening, name: String, duration: Double,
                        environment: AppEnvironment) -> VKListeningEvent {
         VKListeningEvent(event: name, audioID: listening.track.id, uuid: listening.uuid,
-            startTime: listening.position, playbackStartedAt: listening.started.timeIntervalSince1970,
-            position: listening.position + duration, duration: duration, trackCode: listening.track.trackCode,
+            startTime: Int(listening.started.timeIntervalSince1970), playbackStartedAt: Int(listening.started.timeIntervalSince1970),
+            duration: Int(duration), trackCode: listening.track.trackCode ?? "",
             streamingType: environment.offlineStore.contains(listening.track) ? "offline" : "online",
-            shuffle: environment.player.shuffleEnabled ? 1 : 0,
+            shuffle: environment.player.shuffleEnabled,
             repeatMode: String(describing: environment.player.repeatMode), reason: "user", state: "app")
     }
 
