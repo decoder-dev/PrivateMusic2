@@ -82,6 +82,13 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         trackID = try container.decode(Int.self, forKey: .id)
         ownerID = try container.decode(Int.self, forKey: .ownerID)
+        guard trackID > 0, ownerID != 0 else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .id,
+                in: container,
+                debugDescription: "Invalid track identifiers."
+            )
+        }
         title = try container.decode(String.self, forKey: .title)
         artist = try container.decode(String.self, forKey: .artist)
         albumTitle = try container.decodeIfPresent(

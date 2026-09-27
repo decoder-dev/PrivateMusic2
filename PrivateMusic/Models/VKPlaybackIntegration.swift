@@ -72,8 +72,6 @@ final class VKPlaybackIntegration {
         let player = environment.player
         let token = environment.sessionStore.accessToken
         let owner = environment.sessionStore.resolvedOfflineAccountID
-        let track = player.currentTrack
-        let playing = player.isPlaying && !player.isBuffering && !environment.isShareSessionActive
         let broadcastEnabled = settings.vkBroadcastEnabled
         let reportingEnabled = settings.vkReportingEnabled
         if credential != token || accountID != owner {
@@ -95,6 +93,10 @@ final class VKPlaybackIntegration {
             active = nil
             commands.removeAll { if case .events = $0 { return true }; return false }
         }
+        // Opted-out integrations must not subscribe to every playback change.
+        let track = broadcastEnabled || reportingEnabled ? player.currentTrack : nil
+        let playing = (broadcastEnabled || reportingEnabled)
+            && player.isPlaying && !player.isBuffering && !environment.isShareSessionActive
         let desiredTrack = broadcastEnabled && playing ? track : nil
         if broadcastError == nil,
            desiredTrack?.id != lastBroadcastID || (lastBroadcastEnabled && !broadcastEnabled) {

@@ -134,7 +134,28 @@ final class AudioPlayer {
     private(set) var isPlaying = false {
         didSet { syncHighlight() }
     }
-    private(set) var isBuffering = false
+    private var playbackBackgroundTask: UIBackgroundTaskIdentifier = .invalid
+
+    private(set) var isBuffering = false {
+        didSet {
+            if isBuffering {
+                if playbackBackgroundTask == .invalid {
+                    playbackBackgroundTask = UIApplication.shared.beginBackgroundTask(withName: "AudioPlaybackBuffering") { [weak self] in
+                        guard let self else { return }
+                        if self.playbackBackgroundTask != .invalid {
+                            UIApplication.shared.endBackgroundTask(self.playbackBackgroundTask)
+                            self.playbackBackgroundTask = .invalid
+                        }
+                    }
+                }
+            } else {
+                if playbackBackgroundTask != .invalid {
+                    UIApplication.shared.endBackgroundTask(playbackBackgroundTask)
+                    playbackBackgroundTask = .invalid
+                }
+            }
+        }
+    }
     /// Exact transport clock. Not observed by list rows — UI reads
     /// `progress` instead so catalog/library surfaces are not invalidated
     /// at ~4 Hz.
@@ -1360,8 +1381,8 @@ final class AudioPlayer {
             .allowsExternalPlayback(requiresAudioTap: wantsAudioTap)
         // Defer mix attach until tracks exist (readyToPlay). Premature
         // AVAudioMix on remote progressive / empty-track assets fails the
-        // item — especially after CarKit media-services resets.
-        item.audioMix = nil
+        // item - especially after CarKit media-services resets.
+        item.audioMix = AVMutableAudioMix()
         itemStatusObservation?.invalidate()
         lastFailedItemIdentifier = nil
         itemStatusObservation = item.observe(
@@ -1508,7 +1529,8 @@ final class AudioPlayer {
     }
 
     private func attachAudioProcessing(to item: AVPlayerItem) {
-        item.audioMix = nil
+        let emptyMix = AVMutableAudioMix()
+        item.audioMix = emptyMix
         guard equalizer.requiresAudioTap,
               let tap = equalizer.makeTap() else {
             return
@@ -2753,7 +2775,9 @@ final class AudioPlayer {
         ) {
             attachAudioProcessing(to: item)
         } else {
-            item.audioMix = nil
+            // Setting `audioMix = nil` on a playing item mutes it permanently on iOS.
+            // We must reload the item to safely remove the tap.
+            reloadCurrentItemForAudioProcessing()
         }
     }
 
@@ -3089,9 +3113,18 @@ final class AudioPlayer {
     }
 
     private func handleItemFailure(_ error: Error?) {
+        let isProgressiveRefusal = currentTrack != nil &&
+            currentTrack?.streamURL != nil &&
+            playbackURLStrategy == .automatic &&
+            activePlaybackURL != nil &&
+            StreamQualityPolicy.usedProgressiveUpgrade(
+                original: currentTrack!.streamURL!,
+                playback: activePlaybackURL!
+            )
+        
         logPlayback(
             "item failure trackID=\(currentTrack?.id ?? "nil") attempts=\(streamRecoveryAttempts) error=\(error?.localizedDescription ?? "nil")",
-            level: .error
+            level: isProgressiveRefusal ? .info : .error
         )
         publishPlaybackState(force: true)
         if let track = currentTrack,

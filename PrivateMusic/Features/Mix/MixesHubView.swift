@@ -288,7 +288,7 @@ struct MixesHubView: View {
                 .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(PremiumProminentButtonStyle())
             .tint(settings.theme.accent)
             .disabled(loadingMixID != nil)
             .accessibilityHint(L10n.text("configure_selena_accessibility_hint"))
@@ -752,7 +752,7 @@ struct MixesHubView: View {
                         .labelStyle(.iconOnly)
                         .minimumHitTarget(visualSize: 28)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PremiumProminentButtonStyle())
 
                 Button {
                     selectVKMix(mix)
@@ -1993,7 +1993,7 @@ struct MixesHubView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PremiumProminentButtonStyle())
                 Button {
                     Task { await load(force: true) }
                 } label: {

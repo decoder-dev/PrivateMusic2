@@ -905,7 +905,7 @@ private struct ArtistMessageView: View {
                 .frame(maxWidth: 320)
             if let retry {
                 Button(L10n.text("action.retry"), action: retry)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PremiumProminentButtonStyle())
                     .padding(.top, 4)
             }
         }

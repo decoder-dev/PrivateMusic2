@@ -80,6 +80,38 @@ struct PremiumPressStyle: ButtonStyle {
     }
 }
 
+struct PremiumProminentButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(AppSettings.self) private var settings
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
+            .foregroundStyle(.white)
+            .background {
+                RoundedRectangle(cornerRadius: PremiumLayout.controlRadius, style: .continuous)
+                    .fill(settings.theme.accent)
+                    .shadow(
+                        color: settings.theme.accent.opacity(configuration.isPressed ? 0.3 : 0.6),
+                        radius: configuration.isPressed ? 8 : 16,
+                        y: configuration.isPressed ? 4 : 8
+                    )
+            }
+            .scaleEffect(
+                reduceMotion || !configuration.isPressed ? 1 : 0.96
+            )
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(
+                reduceMotion
+                    ? nil
+                    : .spring(response: 0.22, dampingFraction: 0.82),
+                value: configuration.isPressed
+            )
+    }
+}
+
 struct PremiumAppearModifier: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
@@ -321,7 +353,7 @@ struct AppStatusPanel: View {
                     action: action
                 )
                     .font(.subheadline.weight(.semibold))
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PremiumProminentButtonStyle())
             }
         }
         .padding(BubbleSpacing.xxl)

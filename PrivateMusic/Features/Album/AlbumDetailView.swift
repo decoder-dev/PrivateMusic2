@@ -34,7 +34,7 @@ struct AlbumDetailView: View {
                     Button(L10n.text("action.retry")) {
                         Task { await load(force: true) }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PremiumProminentButtonStyle())
                     .padding(.bottom, 32)
                 }
             } else {
@@ -223,7 +223,7 @@ struct AlbumDetailView: View {
             Button(action: toggleListen) {
                 listenButtonLabel
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(PremiumProminentButtonStyle())
             .tint(settings.theme.accent)
             .disabled(model.tracks.isEmpty)
         }
