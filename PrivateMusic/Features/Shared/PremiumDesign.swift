@@ -128,6 +128,7 @@ struct PremiumSectionHeader: View {
             // section names wrap on narrow phones and at larger text sizes.
             Text(L10n.text(title))
                 .font(BubbleType.section)
+                .accessibilityAddTraits(.isHeader)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             if let subtitle {
@@ -144,6 +145,7 @@ struct PremiumSectionHeader: View {
 }
 
 struct AppGroupedSection<Content: View, Trailing: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let title: String
     var subtitle: String?
     @ViewBuilder var trailing: () -> Trailing
@@ -162,10 +164,13 @@ struct AppGroupedSection<Content: View, Trailing: View>: View {
     }
 
     var body: some View {
+        let headerLayout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: BubbleSpacing.s))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: BubbleSpacing.m))
         VStack(alignment: .leading, spacing: BubbleSpacing.m) {
-            HStack(alignment: .firstTextBaseline, spacing: BubbleSpacing.m) {
+            headerLayout {
                 PremiumSectionHeader(title, subtitle: subtitle)
-                Spacer(minLength: 0)
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
                 trailing()
             }
             AppGroupedSurface {

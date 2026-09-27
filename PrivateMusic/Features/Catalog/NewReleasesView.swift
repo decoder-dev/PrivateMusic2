@@ -4,17 +4,28 @@ struct NewReleasesView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SessionStore.self) private var sessionStore
     @Environment(PlaybackHighlightModel.self) private var highlight
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let albums: [Album]
 
     @State private var loadingPlayAlbumID: String?
     @State private var actionErrorMessage: String?
+    @State private var playbackTask: Task<Void, Never>?
 
-    private let columns = [
-        GridItem(.adaptive(minimum: 150), spacing: 14)
-    ]
+    private var columns: [GridItem] {
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.adaptive(minimum: 150), spacing: BubbleSpacing.m)]
+    }
 
     var body: some View {
         ScrollView {
+            if albums.isEmpty {
+                EmptyStateView(
+                    title: "audit.releases.empty.title",
+                    systemImage: "square.stack",
+                    description: "audit.releases.empty.description"
+                )
+            }
             LazyVGrid(columns: columns, spacing: 20) {
                 ForEach(albums) { album in
                     VStack(alignment: .leading, spacing: 8) {
@@ -25,6 +36,7 @@ struct NewReleasesView: View {
                                 AsyncArtwork(url: album.artworkURL, size: 150)
                             }
                             .buttonStyle(PremiumPressStyle())
+                            .accessibilityLabel(album.title)
 
                             let playbackAction = playbackAction(for: album)
                             Button {
@@ -54,7 +66,6 @@ struct NewReleasesView: View {
                             .padding(8)
                             .disabled(
                                 loadingPlayAlbumID != nil
-                                    && loadingPlayAlbumID != album.id
                             )
                             .accessibilityLabel(
                                 L10n.text(
@@ -98,6 +109,7 @@ struct NewReleasesView: View {
         .background(ThemeBackground())
         .navigationTitle(L10n.text("new_releases"))
         .navigationBarTitleDisplayMode(.inline)
+        .onDisappear { playbackTask?.cancel() }
         .alert(L10n.text("could_not_play_album"),
             isPresented: Binding(
                 get: { actionErrorMessage != nil },
@@ -141,9 +153,9 @@ struct NewReleasesView: View {
     }
 
     private func playAlbum(_ album: Album) {
-        guard sessionStore.accessToken != nil else { return }
+        guard sessionStore.accessToken != nil, loadingPlayAlbumID == nil else { return }
         loadingPlayAlbumID = album.id
-        Task {
+        playbackTask = Task {
             defer { loadingPlayAlbumID = nil }
             do {
                 let page = try await environment.withAuthorizedToken { token in

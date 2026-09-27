@@ -6,6 +6,8 @@ struct EmptyStateView: View {
     let description: String
     var titleIsLocalizedKey = true
     var descriptionIsLocalizedKey = true
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
 
     var body: some View {
         AppStatusPanel(
@@ -13,8 +15,10 @@ struct EmptyStateView: View {
             systemImage: systemImage,
             description: description,
             titleIsLocalizedKey: titleIsLocalizedKey,
-            descriptionIsLocalizedKey: descriptionIsLocalizedKey
+            descriptionIsLocalizedKey: descriptionIsLocalizedKey,
+            actionTitle: actionTitle,
+            action: action
         )
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }

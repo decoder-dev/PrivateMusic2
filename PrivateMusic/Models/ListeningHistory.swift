@@ -12,15 +12,34 @@ struct ListeningHistoryEntry: Codable, Hashable, Identifiable, Sendable {
 final class ListeningHistoryStore {
     static let maximumEntries = 250
 
-    private(set) var entries: [ListeningHistoryEntry]
+    private(set) var entries: [ListeningHistoryEntry] = []
 
     private let defaults: UserDefaults
-    private let key = "listening.history.v1"
+    private var accountID: Int?
+    private var key: String? {
+        accountID.map { "listening.history.v2.\($0)" }
+    }
     private static let saveDebounceNanoseconds: UInt64 = 350_000_000
     private var saveTask: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, accountID: Int? = nil) {
         self.defaults = defaults
+        configure(accountID: accountID)
+    }
+
+    func configure(accountID: Int?) {
+        guard self.accountID != accountID else { return }
+        saveTask?.cancel()
+        saveTask = nil
+        // Flush the outgoing account before changing its storage key.
+        if let key, let data = try? JSONEncoder().encode(entries) {
+            defaults.set(data, forKey: key)
+        }
+        self.accountID = accountID
+        entries = []
+        // The legacy global history has no reliable owner. Keep it on disk
+        // rather than assigning another user's listening data to this account.
+        guard let key else { return }
         let storedEntries = (defaults.data(forKey: key))
             .flatMap { try? JSONDecoder().decode(
                 [ListeningHistoryEntry].self,
@@ -59,10 +78,11 @@ final class ListeningHistoryStore {
         entries = []
         saveTask?.cancel()
         saveTask = nil
-        defaults.removeObject(forKey: key)
+        if let key { defaults.removeObject(forKey: key) }
     }
 
     private func schedulePersist() {
+        guard let key else { return }
         let snapshot = entries
         saveTask?.cancel()
         saveTask = Task { [weak self, snapshot] in
@@ -72,8 +92,8 @@ final class ListeningHistoryStore {
                 return
             }
             let data = await Self.encodedData(for: snapshot)
-            guard !Task.isCancelled, let data, let self else { return }
-            self.defaults.set(data, forKey: self.key)
+            guard !Task.isCancelled, let data, let self, self.key == key else { return }
+            self.defaults.set(data, forKey: key)
         }
     }
 

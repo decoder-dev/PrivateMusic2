@@ -141,6 +141,10 @@ struct SettingsView: View {
                         systemImage: "network"
                     ) { ConnectionSettingsView() }
                     Divider().padding(.leading, 54)
+                    settingsDestination(title: "features.vk.settings", systemImage: "antenna.radiowaves.left.and.right") {
+                        VKIntegrationSettingsView()
+                    }
+                    Divider().padding(.leading, 54)
                     settingsDestination(
                         title: "mix_filters",
                         systemImage: "line.3.horizontal.decrease.circle"
@@ -447,6 +451,13 @@ private struct PlayerAudioSettingsView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
+                if settings.crossfadeEnabled {
+                    VStack(alignment: .leading) {
+                        Text(L10n.format("features.crossfade.seconds", settings.crossfadeDuration))
+                        Slider(value: $settings.crossfadeDuration, in: 0.5...10, step: 0.5)
+                            .accessibilityLabel(L10n.text("features.crossfade.duration"))
+                    }
+                }
                 Toggle(
                     isOn: $settings.loudnessNormalization
                 ) {

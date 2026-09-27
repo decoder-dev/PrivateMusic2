@@ -8,7 +8,9 @@ struct PlaylistDetailView: View {
     @Environment(\.dismiss) private var dismiss
     private let offlinePlaylists =
         OfflinePlaylistStore.shared
-    let playlist: Playlist
+    @State private var playlist: Playlist
+    @State private var showingEditor = false
+    init(playlist: Playlist) { _playlist = State(initialValue: playlist) }
     @State private var model = PlaylistDetailViewModel()
     @State private var showsNavTitle = false
     @State private var showsDeleteConfirmation = false
@@ -25,7 +27,9 @@ struct PlaylistDetailView: View {
                     title: "could_not_open_playlist",
                     systemImage: "wifi.exclamationmark",
                     description: error,
-                    descriptionIsLocalizedKey: false
+                    descriptionIsLocalizedKey: false,
+                    actionTitle: "action.retry",
+                    action: { Task { await load(force: true) } }
                 )
             } else if model.hasLoaded && model.tracks.isEmpty {
                 EmptyStateView(
@@ -53,6 +57,11 @@ struct PlaylistDetailView: View {
                 }
                 if canManagePlaylist {
                     Menu {
+                        if isOwnedPlaylist {
+                            Button { showingEditor = true } label: {
+                                Label(L10n.text("edit_playlist"), systemImage: "pencil")
+                            }
+                        }
                         Button(
                             role: .destructive,
                             action: { showsDeleteConfirmation = true }
@@ -69,6 +78,9 @@ struct PlaylistDetailView: View {
                     .accessibilityLabel(L10n.text("playlist_actions"))
                 }
             }
+        }
+        .sheet(isPresented: $showingEditor) {
+            PlaylistEditorView(playlist: playlist) { Task { await refreshMetadata() } }
         }
         .confirmationDialog(
             deleteConfirmationTitle,
@@ -100,6 +112,19 @@ struct PlaylistDetailView: View {
             )
         }
         .refreshable { await load(force: true) }
+    }
+
+    private func refreshMetadata() async {
+        do {
+            let updated = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.playlistDetails(playlist, accessToken: token)
+            }
+            try Task.checkCancellation()
+            playlist = updated
+            await load(force: true)
+        } catch {
+            deleteErrorMessage = error.localizedDescription
+        }
     }
 
     private var isOwnedPlaylist: Bool {

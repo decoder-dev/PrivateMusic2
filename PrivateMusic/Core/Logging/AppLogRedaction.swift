@@ -4,6 +4,10 @@ enum AppLogRedaction {
     private static let sensitiveFormKeys: Set<String> = [
         "access_token",
         "access_key",
+        "track_code",
+        "events",
+        "audio",
+        "photo",
         "audios", // VK embeds access keys in owner_id_audio_id_access_key values.
         "token",
         "refresh_token",

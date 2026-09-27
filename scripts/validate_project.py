@@ -1546,8 +1546,13 @@ if privacy.get("NSPrivacyTracking") is not False:
     fail("privacy manifest must disable tracking")
 if privacy.get("NSPrivacyTrackingDomains") != []:
     fail("privacy manifest must not declare tracking domains")
-if privacy.get("NSPrivacyCollectedDataTypes") != []:
-    fail("privacy manifest must not declare collected analytics data")
+collected = privacy.get("NSPrivacyCollectedDataTypes", [])
+expected_collected = {"NSPrivacyCollectedDataType" + name for name in (
+    "UserID", "PhotosorVideos", "AudioData", "ProductInteraction")}
+if {entry.get("NSPrivacyCollectedDataType") for entry in collected} != expected_collected:
+    fail("privacy manifest must describe user-requested VK uploads and listening integration")
+if any(entry.get("NSPrivacyCollectedDataTypeTracking") is not False for entry in collected):
+    fail("VK integration must not declare cross-app advertising tracking")
 accessed_api_types = privacy.get("NSPrivacyAccessedAPITypes")
 if not isinstance(accessed_api_types, list):
     fail("privacy manifest must declare NSPrivacyAccessedAPITypes")
@@ -1562,6 +1567,7 @@ required_privacy_reasons = {
     "NSPrivacyAccessedAPICategoryUserDefaults": {"CA92.1"},
     "NSPrivacyAccessedAPICategoryFileTimestamp": {"DDA9.1"},
     "NSPrivacyAccessedAPICategoryDiskSpace": {"E174.1"},
+    "NSPrivacyAccessedAPICategorySystemBootTime": {"35F9.1"},
 }
 for category, reasons in required_privacy_reasons.items():
     declared = accessed_by_category.get(category, set())
@@ -1643,8 +1649,8 @@ for required_setting in (
     'iOS: "17.0"',
     'watchOS: "10.0"',
     'SWIFT_VERSION: "5.10"',
-    "CURRENT_PROJECT_VERSION: 162",
-    "MARKETING_VERSION: 3.28.90",
+    "CURRENT_PROJECT_VERSION: 163",
+    "MARKETING_VERSION: 3.29.0",
     "DEBUG_INFORMATION_FORMAT: dwarf-with-dsym",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2.watchkitapp",

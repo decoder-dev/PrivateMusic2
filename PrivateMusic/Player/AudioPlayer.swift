@@ -2856,7 +2856,8 @@ final class AudioPlayer {
             duration: duration,
             hasNextTrack: true,
             isRepeatOne: false,
-            isAlreadyTransitioning: incomingPlayer != nil
+            isAlreadyTransitioning: incomingPlayer != nil,
+            fadeSeconds: settings.crossfadeDuration
         ) {
             prepareIncomingPlayback(upcoming)
         }
@@ -2864,7 +2865,8 @@ final class AudioPlayer {
         guard PlaybackTransitionPolicy.shouldStartFade(
             remaining: remaining,
             incomingIsReady: incomingReady,
-            isAlreadyFading: isCrossfading
+            isAlreadyFading: isCrossfading,
+            fadeSeconds: settings.crossfadeDuration
         ) else {
             return
         }
@@ -2907,8 +2909,9 @@ final class AudioPlayer {
         guard let incoming = incomingPlayer else { return }
         isCrossfading = true
         incoming.play()
-        let steps = 8
-        let stepDuration = PlaybackTransitionPolicy.fadeDuration
+        let fadeDuration = min(settings.crossfadeDuration, max(0.1, duration - elapsedTime))
+        let steps = max(8, Int(fadeDuration * 30))
+        let stepDuration = fadeDuration
             / Double(steps)
         crossfadeTask?.cancel()
         crossfadeTask = Task { @MainActor [weak self] in

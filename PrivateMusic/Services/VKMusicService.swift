@@ -43,7 +43,7 @@ enum AlbumTrackRequestPolicy {
 }
 
 struct VKMusicService: MusicService {
-    private let client: APIClient
+    let client: APIClient
     private let apiVersion: String
     private let context: VKMusicContext
     private let lyricsService = LRCLyricsService()
@@ -1187,7 +1187,7 @@ struct VKMusicService: MusicService {
         )
     }
 
-    private func common(_ token: String) -> [String: String] {
+    func common(_ token: String) -> [String: String] {
         [
             "access_token": token,
             "v": apiVersion,
@@ -1197,7 +1197,7 @@ struct VKMusicService: MusicService {
     }
 
     /// Ensures stream URL unmasking has a user id (from context or users.get).
-    private func resolvedUserID(accessToken: String) async throws -> Int? {
+    func resolvedUserID(accessToken: String) async throws -> Int? {
         if let userID = await context.userID(for: accessToken) {
             return userID
         }
@@ -1385,7 +1385,7 @@ private struct VKIgnored: Decodable, Sendable {
     init(from decoder: Decoder) throws {}
 }
 
-private struct VKResponse<Value: Decodable & Sendable>: Decodable, Sendable {
+struct VKResponse<Value: Decodable & Sendable>: Decodable, Sendable {
     let response: Value
 }
 

@@ -24,9 +24,11 @@ struct PinnedMixSnapshot: Codable, Equatable, Sendable, Identifiable {
         self.mixTitle = mix.title
         self.mixSubtitle = mix.subtitle
         self.artworkURL = mix.artworkURL ?? tracks.first?.artworkURL
-        self.tracks = Array(tracks.prefix(MixTrackRequestPolicy.queueLimit))
-        self.currentIndex = min(max(currentIndex, 0), max(tracks.count - 1, 0))
-        self.elapsed = max(0, elapsed)
+        let boundedIndex = min(max(currentIndex, 0), max(tracks.count - 1, 0))
+        let start = min(boundedIndex, max(0, tracks.count - MixTrackRequestPolicy.queueLimit))
+        self.tracks = Array(tracks.dropFirst(start).prefix(MixTrackRequestPolicy.queueLimit))
+        self.currentIndex = boundedIndex - start
+        self.elapsed = elapsed.isFinite ? max(0, elapsed) : 0
         self.pinnedAt = pinnedAt
         self.radioMode = radioMode?.rawValue
     }

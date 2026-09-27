@@ -169,6 +169,47 @@ actor APIClient {
         userAgent = cleaned?.isEmpty == false ? cleaned : nil
     }
 
+    /// File-backed body keeps a large MP3 out of memory. Only upload URLs returned
+    /// by VK are accepted; no token is sent to the upload host.
+    func uploadMultipart(to url: URL, file: URL, field: String, filename: String,
+                         mimeType: String, maximumBytes: Int64) async throws -> JSONValue {
+        guard VKUploadPolicy.accepts(url), file.isFileURL else { throw APIError.invalidRequest }
+        let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+        guard let size = attributes[.size] as? NSNumber, size.int64Value > 0,
+              size.int64Value <= maximumBytes else {
+            throw APIError.server(code: 0, message: L10n.text("features.upload.size"))
+        }
+        let boundary = "PrivateMusic-" + UUID().uuidString
+        let bodyURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        guard FileManager.default.createFile(atPath: bodyURL.path, contents: nil) else { throw APIError.invalidRequest }
+        defer { try? FileManager.default.removeItem(at: bodyURL) }
+        let output = try FileHandle(forWritingTo: bodyURL)
+        let input = try FileHandle(forReadingFrom: file)
+        defer { try? output.close(); try? input.close() }
+        try output.write(contentsOf: Data(("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(field)\"; filename=\"\(filename)\"\r\nContent-Type: \(mimeType)\r\n\r\n").utf8))
+        var copied: Int64 = 0
+        while let chunk = try input.read(upToCount: 262_144), !chunk.isEmpty {
+            try Task.checkCancellation()
+            copied += Int64(chunk.count)
+            guard copied <= maximumBytes else { throw APIError.invalidRequest }
+            try output.write(contentsOf: chunk)
+        }
+        try output.write(contentsOf: Data("\r\n--\(boundary)--\r\n".utf8))
+        try output.synchronize()
+        var request = URLRequest(url: url, timeoutInterval: 300)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let userAgent { request.setValue(userAgent, forHTTPHeaderField: "User-Agent") }
+        let uploadSession = URLSession(configuration: .ephemeral, delegate: VKUploadRedirectPolicy(), delegateQueue: nil)
+        defer { uploadSession.invalidateAndCancel() }
+        let (data, response) = try await uploadSession.upload(for: request, fromFile: bodyURL)
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard (200...299).contains(http.statusCode) else { throw APIError.httpStatus(http.statusCode) }
+        let value = try JSONDecoder().decode(JSONValue.self, from: data)
+        if case let .object(fields) = value, fields["error"] != nil { throw APIError.invalidResponse }
+        return value
+    }
+
     func post<Response: Decodable>(
         path: String,
         form: [String: String],

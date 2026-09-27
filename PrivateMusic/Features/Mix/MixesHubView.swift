@@ -36,6 +36,7 @@ struct MixesHubView: View {
     @Environment(MixFeedbackStore.self) private var mixFeedbackStore
     @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var hubTab: HubTab = .selena
     @State private var mixes: [MusicMix] = []
@@ -596,8 +597,11 @@ struct MixesHubView: View {
                     .lineLimit(1)
                 }
                 .frame(width: metrics.cardWidth, alignment: .leading)
+                .frame(minHeight: PremiumLayout.minimumTapTarget, alignment: .topLeading)
             }
             .buttonStyle(.plain)
+            .disabled(loadingMixID != nil)
+            .modifier(SelectedTraitModifier(isSelected: isSelected))
         }
         .contextMenu {
             Button {
@@ -709,6 +713,8 @@ struct MixesHubView: View {
             }
             .buttonStyle(PremiumPressStyle())
             .disabled(loadingMixID != nil)
+            .accessibilityLabel(mix.title)
+            .accessibilityHint(L10n.text("open_here"))
 
             Text(mix.title)
                 .font(.subheadline.weight(.semibold))
@@ -1334,7 +1340,7 @@ struct MixesHubView: View {
                             )
                         )
                         Spacer(minLength: 12)
-                        if isExpanded {
+                        if isExpanded && !dynamicTypeSize.isAccessibilitySize {
                             trackLayoutToggle
                         }
                         Button {
@@ -1351,7 +1357,7 @@ struct MixesHubView: View {
                     }
 
                     if isExpanded {
-                        switch trackListLayout {
+                        switch dynamicTypeSize.isAccessibilitySize ? TrackListLayout.list : trackListLayout {
                         case .list:
                             // Flat, like every other long track list in the
                             // app (Library's own list has no enclosing

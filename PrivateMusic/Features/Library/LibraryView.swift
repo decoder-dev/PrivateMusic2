@@ -23,10 +23,12 @@ struct LibraryView: View {
     @State private var playlists = PlaylistLibraryViewModel()
     @State private var trackSearchQuery = ""
     @State private var showingEditor = false
+    @State private var showingUpload = false
     @State private var pendingCellularDownload: Track?
     @State private var sharingTrack: Track?
     @State private var loadingPlayAlbumID: String?
     @State private var loadingPlayPlaylistID: Playlist.ID?
+    @State private var shelfPlaybackTask: Task<Void, Never>?
     @State private var playbackErrorMessage: String?
     @State private var playlistPendingDeletion: Playlist?
     @State private var playlistDeleteErrorMessage: String?
@@ -238,15 +240,31 @@ struct LibraryView: View {
                         Image(systemName: "clock.arrow.circlepath")
                     }
                     .accessibilityLabel(L10n.text("listening_history"))
-                    Button {
-                        showingEditor = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .accessibilityLabel(L10n.text("new_playlist"))
+                    Menu {
+                        Button { showingEditor = true } label: {
+                            Label(L10n.text("new_playlist"), systemImage: "plus")
+                        }
+                        NavigationLink { FriendsMusicView() } label: {
+                            Label(L10n.text("features.friends"), systemImage: "person.2")
+                        }
+                        if !environment.isShareSessionActive {
+                            Button { showingUpload = true } label: {
+                                Label(L10n.text("features.upload.title"), systemImage: "square.and.arrow.up")
+                            }
+                            if OfflineDownloadsFeature.isEnabled {
+                                NavigationLink { LibraryDownloadView() } label: {
+                                    Label(L10n.text("features.download.title"), systemImage: "arrow.down.to.line")
+                                }
+                            }
+                        }
+                    } label: { Image(systemName: "plus.circle") }
+                    .accessibilityLabel(L10n.text("features.library.actions"))
                 }
                 .tint(.primary)
             }
+        }
+        .sheet(isPresented: $showingUpload) {
+            AudioUploadView { Task { await load(force: true) } }
         }
         .sheet(isPresented: $showingEditor) {
             PlaylistEditorView(playlist: nil) {
@@ -295,6 +313,7 @@ struct LibraryView: View {
         }
         .refreshable { await load(force: true) }
         .onDisappear {
+            shelfPlaybackTask?.cancel()
             paginationTask?.cancel()
             playlistPaginationTask?.cancel()
             addedTrackReloadTask?.cancel()
@@ -576,9 +595,10 @@ struct LibraryView: View {
     }
 
     private func playAlbum(_ album: Album) {
-        guard sessionStore.accessToken != nil else { return }
+        guard sessionStore.accessToken != nil,
+              loadingPlayAlbumID == nil, loadingPlayPlaylistID == nil else { return }
         loadingPlayAlbumID = album.id
-        Task {
+        shelfPlaybackTask = Task {
             defer { loadingPlayAlbumID = nil }
             do {
                 let page = try await environment.withAuthorizedToken { token in
@@ -632,9 +652,10 @@ struct LibraryView: View {
     }
 
     private func playPlaylist(_ playlist: Playlist) {
-        guard sessionStore.accessToken != nil else { return }
+        guard sessionStore.accessToken != nil,
+              loadingPlayAlbumID == nil, loadingPlayPlaylistID == nil else { return }
         loadingPlayPlaylistID = playlist.id
-        Task {
+        shelfPlaybackTask = Task {
             defer { loadingPlayPlaylistID = nil }
             do {
                 let page = try await environment.withAuthorizedToken { token in
@@ -889,8 +910,7 @@ struct LibraryView: View {
         .buttonStyle(PremiumPressStyle())
         .padding(8)
         .disabled(
-            loadingPlayPlaylistID != nil
-                && loadingPlayPlaylistID != playlist.id
+            loadingPlayPlaylistID != nil || loadingPlayAlbumID != nil
         )
         .accessibilityLabel(
             L10n.text(
@@ -998,7 +1018,7 @@ struct LibraryView: View {
         .buttonStyle(PremiumPressStyle())
         .padding(8)
         .disabled(
-            loadingPlayAlbumID != nil && loadingPlayAlbumID != album.id
+            loadingPlayAlbumID != nil || loadingPlayPlaylistID != nil
         )
         .accessibilityLabel(
             L10n.text(
