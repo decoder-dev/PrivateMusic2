@@ -1944,7 +1944,7 @@ def require_minimum_hit_targets() -> None:
             # except `.controlSize(.small|.mini)`, which shrinks the target
             # back under 44pt. Those still need an explicit hit expansion.
             if re.search(
-                r"\.buttonStyle\(\.(bordered|borderedProminent|glass)",
+                r"\.buttonStyle\(\.(bordered|borderedProminent|glass)|PremiumProminentButtonStyle",
                 body,
             ) and not re.search(
                 r"\.controlSize\(\.(small|mini)\)",
