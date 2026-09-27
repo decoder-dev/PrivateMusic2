@@ -18,6 +18,7 @@ final class LibraryDownloadJob {
     private(set) var hasJob = false
     @ObservationIgnored private var accountID: Int?
     @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private var networkObservation: ObservationLoop.Token?
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private let directory: URL
 
@@ -39,6 +40,8 @@ final class LibraryDownloadJob {
 
     func pause() {
         generation = UUID()
+        networkObservation?.isCancelled = true
+        networkObservation = nil
         task?.cancel(); task = nil; running = false
     }
 
@@ -58,7 +61,13 @@ final class LibraryDownloadJob {
         let request = UUID(); generation = request
         task = Task { [weak self, weak environment] in
             guard let self, let environment else { return }
-            defer { if self.generation == request { self.running = false; self.task = nil } }
+            defer {
+                if self.generation == request {
+                    self.networkObservation?.isCancelled = true
+                    self.networkObservation = nil
+                    self.running = false; self.task = nil
+                }
+            }
             do {
                 while !self.snapshot.finished {
                     try Task.checkCancellation()
@@ -98,6 +107,21 @@ final class LibraryDownloadJob {
             } catch is CancellationError {
             } catch {
                 if self.generation == request { self.error = error.localizedDescription }
+            }
+        }
+        networkObservation = ObservationLoop.start { [weak self, weak environment] in
+            guard let self, let environment else { return }
+            let transport = environment.networkMonitor.transport
+            let state = environment.networkMonitor.state
+            guard self.running else { return }
+            if state == .offline {
+                self.pause()
+                self.error = APIError.offline.localizedDescription
+            } else if self.snapshot.wifiOnly && transport != .wifi && transport != .wired {
+                // Cancelling detaches this subscriber from DownloadCoordinator;
+                // it cancels the transfer when no other user action needs it.
+                self.pause()
+                self.error = L10n.text("features.download.need_wifi")
             }
         }
     }
