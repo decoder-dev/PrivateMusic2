@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="#181A22"/><stop offset="1" stop-color="#050507"/></linearGradient>
+<radialGradient id="glow" cx="0.5" cy="0.34" r="0.62"><stop offset="0" stop-color="#3385FA" stop-opacity="0.24"/><stop offset="1" stop-color="#3385FA" stop-opacity="0"/></radialGradient>
+<linearGradient id="bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8CBBFF"/><stop offset="1" stop-color="#3385FA"/></linearGradient>
+</defs>
+<rect width="1024" height="1024" fill="url(#bg)"/>
+<rect width="1024" height="1024" fill="url(#glow)"/>
+<g transform="translate(0 14)">
+<path fill="#FFFFFF" fill-rule="evenodd" d="M285.0 818 V177.0 H566.0 A173.0 173.0 0 0 1 566.0 523.0 H285.0 Z M351.0 243.0 H566.0 A107.0 107.0 0 0 1 566.0 457.0 H351.0 Z"/>
+<rect x="285.0" y="490" width="66" height="86" fill="#FFFFFF"/>
+<path fill="#FFFFFF" d="M351.00 818.00 L351.00 658.00 L512.00 808.00 L673.00 658.00 L673.00 818.00 L739.00 818.00 L739.00 574.00 L673.00 574.00 L512.00 724.00 L351.00 574.00 L285.00 574.00 L285.00 818.00 Z"/>
+<rect x="403.00" y="320.00" width="22" height="60" rx="11" fill="url(#bar)"/>
+<rect x="449.00" y="294.00" width="22" height="112" rx="11" fill="url(#bar)"/>
+<rect x="495.00" y="268.00" width="22" height="164" rx="11" fill="url(#bar)"/>
+<rect x="541.00" y="294.00" width="22" height="112" rx="11" fill="url(#bar)"/>
+<rect x="587.00" y="320.00" width="22" height="60" rx="11" fill="url(#bar)"/>
+</g>
+</svg>
