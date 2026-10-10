@@ -22,6 +22,7 @@ final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
     private var failure: Error?
 
     static func fetch(_ url: URL, kind: Kind) async throws -> Data {
+        try Task.checkCancellation()
         let fetcher = GeniusWebFetcher()
         return try await fetcher.load(url, kind: kind)
     }
@@ -68,6 +69,7 @@ final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
         case .json:
             return text.trimmingCharacters(in: .whitespacesAndNewlines)
                 .hasPrefix(String(UnicodeScalar(123)))
+                && text.contains("\"response\"")
         case .html:
             let lower = text.lowercased()
             return !lower.contains("cloudflare_error.challenge")
@@ -77,8 +79,21 @@ final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
         }
     }
 
+    func webView(
+        _ webView: WKWebView,
+        didStartProvisionalNavigation navigation: WKNavigation!
+    ) {
+        // A challenge redirect starts a new navigation; wait for that one.
+        didFinish = false
+        failure = nil
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         didFinish = true
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        failure = APIError.invalidResponse
     }
 
     func webView(
@@ -86,6 +101,8 @@ final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
         didFail navigation: WKNavigation!,
         withError error: Error
     ) {
+        // Challenge pages cancel their own navigation while redirecting.
+        if (error as NSError).code == NSURLErrorCancelled { return }
         failure = error
     }
 
@@ -94,6 +111,8 @@ final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
         didFailProvisionalNavigation navigation: WKNavigation!,
         withError error: Error
     ) {
+        // Challenge pages cancel their own navigation while redirecting.
+        if (error as NSError).code == NSURLErrorCancelled { return }
         failure = error
     }
 }
