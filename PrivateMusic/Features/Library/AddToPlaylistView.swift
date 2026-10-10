@@ -22,7 +22,17 @@ struct AddToPlaylistView: View {
                         systemImage: "rectangle.stack.badge.plus",
                         description: errorMessage
                             ?? "create_a_playlist_in_your_library",
-                        descriptionIsLocalizedKey: errorMessage == nil
+                        descriptionIsLocalizedKey: errorMessage == nil,
+                        // A network failure is not "no playlists": say so
+                        // and let the listener try again.
+                        actionTitle: errorMessage == nil ? nil : "action.retry",
+                        action: errorMessage == nil ? nil : {
+                            Task {
+                                errorMessage = nil
+                                isLoading = true
+                                await load()
+                            }
+                        }
                     )
                 } else {
                     List(playlists) { playlist in
@@ -120,6 +130,9 @@ struct AddToPlaylistView: View {
                     accessToken: token
                 )
             }
+            Haptics.success()
+            // The shelf and the playlist screen show a track count.
+            MusicLibraryEvents.postPlaylistsChanged()
             dismiss()
         } catch is CancellationError {
             return

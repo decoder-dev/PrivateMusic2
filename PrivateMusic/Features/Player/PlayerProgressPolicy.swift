@@ -5,6 +5,9 @@ enum PlayerProgressPolicy {
     static let timeLabelFontSize: CGFloat = 11
     static let timeRowHeight: CGFloat = 16
     static let sliderTrackHeight: CGFloat = 20
+    /// What the finger can grab: the slider is drawn 20pt tall but its
+    /// touch area is the full 44pt, centred on the same line.
+    static let sliderTouchHeight: CGFloat = 44
     static let thumbDiameter: CGFloat = 12
 
     static func displayedElapsed(

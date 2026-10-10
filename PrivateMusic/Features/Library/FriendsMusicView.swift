@@ -100,7 +100,15 @@ struct FriendsMusicView: View {
         }
         .navigationTitle(L10n.text("features.friends"))
         .clearsMiniPlayer()
-        .task(id: sessionStore.accessToken) { model.reset(); await model.load(environment: environment) }
+        // Keyed on the account, not the access token: the token rotates every
+        // few minutes, and a list that reloads from scratch under the
+        // listener's thumb (or when they come back from a friend) loses its
+        // place for nothing.
+        .task(id: sessionStore.accountRevision) {
+            guard model.friends.isEmpty else { return }
+            model.reset()
+            await model.load(environment: environment)
+        }
         .refreshable { model.reset(); await model.load(environment: environment) }
     }
 }

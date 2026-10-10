@@ -14,6 +14,7 @@ struct LibraryView: View {
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(PinnedMixStore.self) private var pinnedMixStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Default 40pt is two caption lines at the standard text size.
     /// Accessibility sizes grow the shelf instead of clipping the titles.
     @ScaledMetric(relativeTo: .subheadline) private var shelfCaptionHeight: CGFloat = 40
@@ -1064,13 +1065,16 @@ struct LibraryView: View {
                                         ? currentTrackColor
                                         : Color.primary
                                 )
-                                .lineLimit(1)
+                                // Two lines at accessibility sizes: with one
+                                // the title column collapsed to a few letters
+                                // and tracks could not be told apart.
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                         }
                         if let artist = libraryUsableMetadata(track.artist) {
                             Text(artist)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1078,10 +1082,12 @@ struct LibraryView: View {
 
                     HStack(spacing: 8) {
                         LikedTrackBadge(track: track)
-                        Text(track.duration.formattedDuration)
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .frame(minWidth: 36, alignment: .trailing)
+                        if !dynamicTypeSize.isAccessibilitySize {
+                            Text(track.duration.formattedDuration)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(minWidth: 36, alignment: .trailing)
+                        }
                         if isCurrent(track) {
                             Image(
                                 systemName: highlight.isPlaying
@@ -1153,7 +1159,7 @@ struct LibraryView: View {
                 Image(systemName: "ellipsis")
                     .font(.body.weight(.medium))
                     .foregroundStyle(.secondary)
-                    .frame(width: 32, height: 44)
+                    .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
             .accessibilityLabel(L10n.text("more"))

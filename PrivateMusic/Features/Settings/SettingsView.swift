@@ -1050,11 +1050,23 @@ private struct OfflineStorageSettingsView: View {
                         }
                     }
                     .frame(height: 8)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(L10n.text("storage_2"))
+                    .accessibilityValue(
+                        L10n.format(
+                            "n_0_d1_gb",
+                            formattedBytes(usage.totalBytes),
+                            settings.offlineStorageLimitGB
+                        )
+                    )
 
                     HStack(spacing: 16) {
                         if usage.manualCount > 0 {
                             Label {
-                                Text(L10n.trackCount(usage.manualCount))
+                                Text(
+                                    L10n.text("downloaded") + " · "
+                                        + L10n.trackCount(usage.manualCount)
+                                )
                             } icon: {
                                 Circle()
                                     .fill(
@@ -1065,7 +1077,10 @@ private struct OfflineStorageSettingsView: View {
                         }
                         if usage.automaticCount > 0 {
                             Label {
-                                Text(L10n.trackCount(usage.automaticCount))
+                                Text(
+                                    L10n.text("auto_cache") + " · "
+                                        + L10n.trackCount(usage.automaticCount)
+                                )
                             } icon: {
                                 Circle()
                                     .fill(
