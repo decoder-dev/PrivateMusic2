@@ -291,18 +291,21 @@ struct MixesHubView: View {
             mixMetadataStrip(mix: mix, tracks: tracks)
                 .premiumAppear(delay: 0.04)
 
-            if !rationale.isEmpty {
-                rationaleBlock(rationale, title: rationaleTitle)
-                    .premiumAppear(delay: 0.08)
-            }
-
             controlsPanel(mix: mix, tracks: tracks)
-                .premiumAppear(delay: 0.12)
+                .premiumAppear(delay: 0.08)
+
+            // Browsing comes before the explanation: mood, other mixes,
+            // artists and shelves answer "what else?", while the rationale
+            // and the track list explain the mix that is already chosen.
+            picker()
 
             mixUtilityLinks(mix: mix, tracks: tracks)
-                .premiumAppear(delay: 0.13)
+                .premiumAppear(delay: 0.12)
 
-            picker()
+            if !rationale.isEmpty {
+                rationaleBlock(rationale, title: rationaleTitle)
+                    .premiumAppear(delay: 0.14)
+            }
 
             if !tracks.isEmpty {
                 tracksBlock(

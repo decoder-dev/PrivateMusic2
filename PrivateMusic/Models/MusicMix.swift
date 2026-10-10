@@ -10,6 +10,43 @@ struct MixCurator: Hashable, Sendable, Codable {
     }
 }
 
+/// What the listener sees. The data comes from VK's mixes, but the product
+/// presents them under one name, so VK's own wording never reaches the UI.
+enum MixBranding {
+    static let name = "Selena"
+
+    private static let vkWord = try? NSRegularExpression(
+        pattern: "(?<![\\p{L}\\d])(?:VK|ВК)(?![\\p{L}\\d])",
+        options: [.caseInsensitive]
+    )
+
+    /// VK's names for the personal mix, in every wording seen in catalogs.
+    private static let personalNames: Set<String> = [
+        "мой микс", "my mix", "vk микс", "вк микс", "vk mix",
+        "микс vk", "микс вк", "mix vk"
+    ]
+
+    static func isPersonalName(_ raw: String) -> Bool {
+        personalNames.contains(
+            raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        )
+    }
+
+    /// Replaces the bare word «VK» / «ВК» with the brand; leaves
+    /// «ВКонтакте» and everything else alone.
+    static func display(_ raw: String) -> String {
+        if isPersonalName(raw) { return name }
+        guard let vkWord else { return raw }
+        let range = NSRange(raw.startIndex..., in: raw)
+        return vkWord.stringByReplacingMatches(
+            in: raw,
+            options: [],
+            range: range,
+            withTemplate: name
+        )
+    }
+}
+
 struct MusicMix: Hashable, Identifiable, Sendable {
     let id: String
     let title: String
@@ -98,7 +135,7 @@ struct MusicMix: Hashable, Identifiable, Sendable {
             artworkURL: artworkURL,
             matchPercent: matchPercent,
             isSocial: isSocial,
-            sectionTitle: trimmed,
+            sectionTitle: MixBranding.display(trimmed),
             curator: curator,
             streamOptions: streamOptions
         )

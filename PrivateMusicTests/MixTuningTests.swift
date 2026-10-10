@@ -75,4 +75,39 @@ final class MixTuningTests: XCTestCase {
         XCTAssertEqual(restored.streamOptions, #"{"mood":["sad"]}"#)
         XCTAssertNil(MusicMix.common.streamOptions)
     }
+
+    func testVKWordingNeverReachesTheTitles() throws {
+        let payload = try json("""
+        {"blocks":[
+          {"mix_id":"common","title":"VK Микс","subtitle":"Персональная подборка VK"},
+          {"mix_id":"daily","title":"Микс дня","subtitle":"Собрано в ВК для вас"},
+          {"mix_id":"x1","title":"Подборка ВКонтакте"}
+        ]}
+        """)
+        let mixes = payload.musicMixes
+        let personal = try XCTUnwrap(mixes.first { $0.id == "common" })
+        XCTAssertEqual(personal.title, L10n.text("mix.personal_title"))
+        XCTAssertEqual(personal.subtitle, "Персональная подборка Selena")
+        XCTAssertEqual(
+            mixes.first { $0.id == "daily" }?.subtitle,
+            "Собрано в Selena для вас"
+        )
+        XCTAssertEqual(
+            mixes.first { $0.id == "x1" }?.title,
+            "Подборка ВКонтакте"
+        )
+    }
+
+    func testTunedMixTitleNamesTheChosenMood() {
+        let tuning = MixTuning(categories: [
+            MixTuningCategory(
+                id: "mood",
+                title: "Настроение",
+                allowsMultiple: false,
+                options: [MixTuningOption(id: "sad", title: "Грустное", isSelected: false)]
+            )
+        ])
+        let tuned = tuning.mix(applying: ["mood": ["sad"]], to: .common)
+        XCTAssertTrue(tuned.title.hasSuffix(" · Грустное"))
+    }
 }
