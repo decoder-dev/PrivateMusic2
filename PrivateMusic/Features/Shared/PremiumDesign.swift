@@ -428,6 +428,14 @@ enum DownloadNotifications {
 }
 
 extension View {
+    /// For a horizontal `ScrollView` inside a card that has `inset` padding:
+    /// lets the content scroll to the card's edges instead of being clipped
+    /// at the padding, while it still starts aligned with the card's text.
+    func scrollsToCardEdges(inset: CGFloat = 14) -> some View {
+        contentMargins(.horizontal, inset, for: .scrollContent)
+            .padding(.horizontal, -inset)
+    }
+
     func premiumCard(interactive: Bool = false) -> some View {
         modifier(PremiumCardModifier(interactive: interactive))
     }
