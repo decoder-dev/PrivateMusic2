@@ -173,7 +173,11 @@ struct CatalogView: View {
             Task { await load(force: true) }
         }
         .alert(
-            L10n.text("playback_error"),
+            // The relaxed-filters message is informational, not a failure —
+            // titling it "Playback Error" made a working queue look broken.
+            actionErrorMessage == L10n.text("mix_filters_relaxed_to_keep_queue")
+                ? L10n.text("mix_filters")
+                : L10n.text("playback_error"),
             isPresented: Binding(
                 get: { actionErrorMessage != nil },
                 set: { if !$0 { actionErrorMessage = nil } }
