@@ -893,3 +893,5 @@
 "mix.tuning_hint" = "Открывает настройки микса из VK Музыки";
 "mix.mood_title" = "Настроение";
 "mix.mood_subtitle" = "Один тап — и микс под нужное состояние";
+"mix.artists_title" = "Миксы по артистам";
+"mix.artists_subtitle" = "Те, кого вы слушаете чаще всего";

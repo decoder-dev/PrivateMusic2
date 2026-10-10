@@ -19,6 +19,7 @@ struct MixesHubView: View {
     @Environment(ListeningHistoryStore.self) private var history
     @Environment(PinnedMixStore.self) private var pinnedMixStore
     @Environment(MixFeedbackStore.self) private var mixFeedbackStore
+    @Environment(MusicLibraryStore.self) private var libraryStore
     @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -241,6 +242,7 @@ struct MixesHubView: View {
                 metrics: metrics,
                 picker: {
                     moodStrip(metrics: metrics)
+                    artistMixStrip
                     if orderedVKMixes.count > 1 {
                         vkMixPicker(selected: mix, metrics: metrics)
                     }
@@ -1184,6 +1186,67 @@ struct MixesHubView: View {
     private func addTunedMix(_ tuned: MusicMix) {
         guard !mixes.contains(where: { $0.id == tuned.id }) else { return }
         mixes.insert(tuned, at: 0)
+    }
+
+    /// «Микс по артисту» for the people the listener actually plays.
+    private var artistMixCandidates: [ArtistAffinityCandidate] {
+        Array(
+            ArtistAffinityPolicy.candidates(
+                history: history.entries,
+                isLiked: { libraryStore.contains($0) },
+                bannedArtistKeys: mixFeedbackStore.bannedArtists,
+                bannedTrackIDs: mixFeedbackStore.bannedTrackIDs
+            )
+            .prefix(8)
+        )
+    }
+
+    @ViewBuilder
+    private var artistMixStrip: some View {
+        let artists = artistMixCandidates
+        if !artists.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                PremiumSectionHeader(
+                    "mix.artists_title",
+                    subtitle: "mix.artists_subtitle"
+                )
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(artists) { artist in
+                            Button {
+                                Haptics.selection()
+                                Task {
+                                    await environment.startMixFromArtist(
+                                        named: artist.displayName,
+                                        seed: nil
+                                    )
+                                }
+                            } label: {
+                                Label(
+                                    artist.displayName,
+                                    systemImage: "person.wave.2.fill"
+                                )
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                                .padding(.horizontal, 14)
+                                .frame(
+                                    minHeight: PremiumLayout.minimumTapTarget
+                                )
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(Color.primary.opacity(0.07))
+                                )
+                                .contentShape(Capsule(style: .continuous))
+                            }
+                            .buttonStyle(PremiumPressStyle())
+                            .foregroundStyle(.primary)
+                        }
+                    }
+                }
+                .scrollsToCardEdges()
+            }
+            .premiumAppear(delay: 0.11)
+        }
     }
 
     /// One-tap moods, like the mood tiles in the official app.

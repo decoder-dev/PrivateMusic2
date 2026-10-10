@@ -893,3 +893,5 @@
 "mix.tuning_hint" = "Opens the mix settings from VK Music";
 "mix.mood_title" = "Mood";
 "mix.mood_subtitle" = "One tap for a mix that fits how you feel";
+"mix.artists_title" = "Artist mixes";
+"mix.artists_subtitle" = "The artists you play most";
