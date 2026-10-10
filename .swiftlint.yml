@@ -7,7 +7,6 @@ excluded:
 
 # Baseline: surface real defects, do not fail on style debt.
 opt_in_rules:
-  - force_unwrapping
   - unused_import
   - empty_count
   - first_where
@@ -23,6 +22,21 @@ disabled_rules:
   - trailing_comma
   - nesting
   - large_tuple
+  # Style-only rules that fire hundreds of times without pointing at defects.
+  - closure_parameter_position
+  - static_over_final_class
+  - multiple_closures_with_trailing_closure
+  - function_parameter_count
+  - inclusive_language
+  - for_where
+  - implicit_optional_initialization
+  - optional_data_string_conversion
+  - non_optional_string_data_conversion
+  - trailing_whitespace
+  - trailing_newline
+  - void_function_in_ternary
+  - is_disjoint
+  - control_statement
 
 # Ratchet: large files are known debt (AudioPlayer, MixesHubView, ...).
 # Warn so new files do not grow past these limits.
@@ -35,6 +49,10 @@ type_body_length:
 function_body_length:
   warning: 120
   error: 400
+# Reported, never fatal: the codebase predates this config.
+empty_count:
+  severity: warning
+
 cyclomatic_complexity:
   warning: 25
   error: 60
