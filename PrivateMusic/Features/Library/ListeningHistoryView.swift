@@ -32,6 +32,14 @@ struct ListeningHistoryView: View {
                 )
             } else {
                 ScrollView {
+                    if filtered.isEmpty {
+                        EmptyStateView(
+                            title: "no_results",
+                            systemImage: "magnifyingglass",
+                            description: "try_a_different_search_query"
+                        )
+                        .padding(.top, BubbleSpacing.section)
+                    }
                     AppGroupedSurface {
                         ForEach(Array(filtered.enumerated()), id: \.element.id) {
                             index, entry in
@@ -81,47 +89,16 @@ struct ListeningHistoryView: View {
                                         systemImage: "rectangle.stack.badge.plus"
                                     )
                                 }
-                            }
-                            .swipeActions(edge: .leading) {
-                                Button {
-                                    environment.player.playNext(entry.track)
-                                } label: {
-                                    Label(L10n.text("play_next"),
-                                        systemImage: "text.badge.plus"
-                                    )
-                                }
-                                .tint(settings.accent)
-                                Button {
-                                    environment.player.playLast(entry.track)
-                                } label: {
-                                    Label(L10n.text("play_last"),
-                                        systemImage:
-                                            "text.line.last.and.arrowtriangle.forward"
-                                    )
-                                }
-                                .tint(BubbleGamut.mix.color)
-                                Button {
-                                    playlistTarget = entry.track
-                                } label: {
-                                    Label(L10n.text("add_to_playlist"),
-                                        systemImage: "rectangle.stack.badge.plus"
-                                    )
-                                }
-                                .tint(BubbleGamut.mix.color)
-                            }
-                            .swipeActions {
-                                Button {
-                                    sharingTrack = entry.track
-                                } label: {
-                                    Label(L10n.text("share_audio_file"),
-                                        systemImage: "square.and.arrow.up"
-                                    )
-                                }
-                                .tint(BubbleGamut.warning.color)
+                                // Swipe actions only work inside a List; this
+                                // screen is a ScrollView, so removal lives here.
                                 Button(role: .destructive) {
+                                    Haptics.selection()
                                     history.remove(entry)
                                 } label: {
-                                    Label(L10n.text("action.delete"), systemImage: "trash")
+                                    Label(
+                                        L10n.text("action.delete"),
+                                        systemImage: "trash"
+                                    )
                                 }
                             }
                             if index < filtered.count - 1 {

@@ -102,6 +102,15 @@ struct OfflineDownloadsView: View {
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(selection != nil)
+        // Selection belongs to the rows on screen: switching the section or
+        // searching would otherwise leave hidden tracks selected, and the
+        // delete button would remove them.
+        .onChange(of: section) { _, _ in
+            if selection != nil { exitSelection() }
+        }
+        .onChange(of: searchText) { _, _ in
+            if selection != nil { exitSelection() }
+        }
         .searchable(
             text: $searchText,
             placement: .navigationBarDrawer(displayMode: .always),
@@ -950,8 +959,9 @@ private struct DownloadedTrackRow: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .frame(width: 40, height: 44)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
+                        .accessibilityLabel(L10n.text("more"))
                 }
             }
         }
@@ -963,7 +973,8 @@ private struct DownloadedTrackRow: View {
                 .tint(BubbleGamut.warning.color)
             }
         }
-        .swipeActions(edge: .trailing) {
+        // No full swipe: removing a download means fetching it again.
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !isSelectionMode {
                 Button(role: .destructive, action: onDelete) {
                     Label(L10n.text("action.delete"), systemImage: "trash")

@@ -220,7 +220,8 @@ struct QueueView: View {
                 .tint(settings.accent)
             }
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        // A full swipe on the playing row would skip the song by accident.
+        .swipeActions(edge: .trailing, allowsFullSwipe: !isCurrent) {
             Button(role: .destructive) {
                 removeFromQueue(at: index)
             } label: {

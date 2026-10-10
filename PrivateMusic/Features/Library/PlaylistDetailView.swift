@@ -196,7 +196,15 @@ struct PlaylistDetailView: View {
             }
             if !model.tracks.isEmpty, let error = model.errorMessage {
                 Button {
-                    Task { await loadMore() }
+                    // A failed refresh or removal leaves no page to continue
+                    // from — reload instead of calling a no-op.
+                    Task {
+                        if model.hasMorePages {
+                            await loadMore()
+                        } else {
+                            await load(force: true)
+                        }
+                    }
                 } label: {
                     Label(error, systemImage: "arrow.clockwise")
                         .font(.subheadline)
@@ -502,6 +510,7 @@ private final class PlaylistDetailViewModel {
     private(set) var hasLoaded = false
     var errorMessage: String?
     private var nextOffset: Int?
+    var hasMorePages: Bool { nextOffset != nil }
 
     func load(
         force: Bool = false,
@@ -536,17 +545,15 @@ private final class PlaylistDetailViewModel {
         defer { isLoadingMore = false }
         do {
             let page = try await operation(offset)
-            // Defect 17: the offset must strictly advance, otherwise a
-            // server quirk would loop the same page forever.
-            guard let next = page.nextOffset, next > offset else {
-                nextOffset = nil
-                return
-            }
+            // The last page has no `nextOffset` but still carries items:
+            // append first, then decide whether to keep paging.
             var known = Set(tracks.map(\.id))
             tracks.append(contentsOf: page.items.filter {
                 known.insert($0.id).inserted
             })
-            nextOffset = next
+            // Defect 17: the offset must strictly advance, otherwise a
+            // server quirk would loop the same page forever.
+            nextOffset = page.nextOffset.flatMap { $0 > offset ? $0 : nil }
             errorMessage = nil
         } catch is CancellationError {
             return
