@@ -7,7 +7,7 @@ struct GeniusLyricsService: Sendable {
 
     func lyrics(for track: Track) async throws -> Lyrics {
         let songURL = try await findSong(for: track)
-        let html = try await request(songURL, accept: "text/html")
+        let html = try await request(songURL, accept: "text/html", kind: .html)
         guard let text = Self.extractLyrics(from: html),
               !text.isEmpty else {
             throw APIError.server(
@@ -76,7 +76,11 @@ struct GeniusLyricsService: Sendable {
         guard let url = components?.url else {
             throw APIError.invalidRequest
         }
-        let data = try await requestData(url, accept: "application/json")
+        let data = try await requestData(
+            url,
+            accept: "application/json",
+            kind: .json
+        )
         let response = try JSONDecoder().decode(
             GeniusSearchResponse.self,
             from: data
@@ -104,8 +108,12 @@ struct GeniusLyricsService: Sendable {
             }
     }
 
-    private func request(_ url: URL, accept: String) async throws -> String {
-        let data = try await requestData(url, accept: accept)
+    private func request(
+        _ url: URL,
+        accept: String,
+        kind: GeniusWebFetcher.Kind
+    ) async throws -> String {
+        let data = try await requestData(url, accept: accept, kind: kind)
         guard let value = String(data: data, encoding: .utf8) else {
             throw APIError.invalidResponse
         }
@@ -113,6 +121,22 @@ struct GeniusLyricsService: Sendable {
     }
 
     private func requestData(
+        _ url: URL,
+        accept: String,
+        kind: GeniusWebFetcher.Kind
+    ) async throws -> Data {
+        do {
+            return try await directData(url, accept: accept)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Cloudflare answers plain HTTP clients with 403; a browser
+            // engine passes the same check.
+            return try await GeniusWebFetcher.fetch(url, kind: kind)
+        }
+    }
+
+    private func directData(
         _ url: URL,
         accept: String
     ) async throws -> Data {
