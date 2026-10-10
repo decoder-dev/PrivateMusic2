@@ -158,13 +158,16 @@ final class AppPaletteTests: XCTestCase {
         }
     }
 
-    func testClassicPaletteKeepsTheOriginalAccentsUntouched() {
+    /// The original look stays: on the classic page an accent moves only if
+    /// it was short of 4.5:1, and then by a hair.
+    func testClassicPaletteBarelyMovesTheOriginalAccents() {
         for theme in AppTheme.allCases {
             for accent in AppAccent.allCases {
-                XCTAssertEqual(
-                    accent.components(for: theme, on: .classic),
-                    accent.components(for: theme)
-                )
+                let original = accent.components(for: theme)
+                let adjusted = accent.components(for: theme, on: .classic)
+                XCTAssertLessThanOrEqual(abs(adjusted.red - original.red), 0.03, "\(accent)")
+                XCTAssertLessThanOrEqual(abs(adjusted.green - original.green), 0.03, "\(accent)")
+                XCTAssertLessThanOrEqual(abs(adjusted.blue - original.blue), 0.03, "\(accent)")
             }
         }
     }

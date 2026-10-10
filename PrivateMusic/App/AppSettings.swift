@@ -105,15 +105,16 @@ enum AppAccent: String, CaseIterable, Identifiable {
         }
     }
 
-    /// The same accent on a palette's page: unchanged on the classic one,
-    /// nudged lighter / darker elsewhere so it still reads at 4.5:1 on that
-    /// palette's page and surface.
+    /// The same accent on a palette's page, nudged lighter / darker only as
+    /// far as needed to read at 4.5:1 on that palette's page and surface.
     func components(
         for theme: AppTheme,
         on palette: AppPalette
     ) -> BubbleColorComponents {
         let base = components(for: theme)
-        guard palette != .classic else { return base }
+        // Applied on the classic page too: a colour that already reads is
+        // returned untouched, and the original blue is only a hair short of
+        // 4.5:1 on the light page, so it moves by about two percent.
         return base.ensuringContrast(
             against: palette.luminances(for: theme),
             towardWhite: theme == .dark

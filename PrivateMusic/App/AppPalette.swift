@@ -125,12 +125,13 @@ extension BubbleColorComponents {
         towardWhite: Bool
     ) -> BubbleColorComponents {
         var result = self
-        for _ in 0..<24 {
+        // Small steps: a colour that is nearly there should barely move.
+        for _ in 0..<120 {
             let worst = backgrounds
                 .map { ContrastRatio.between(result.relativeLuminance, $0) }
                 .min() ?? minimum
             if worst >= minimum { break }
-            result = result.mixed(towardWhite: towardWhite, amount: 0.07)
+            result = result.mixed(towardWhite: towardWhite, amount: 0.02)
         }
         return result
     }
