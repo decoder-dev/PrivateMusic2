@@ -54,6 +54,10 @@ final class AppEnvironment {
     @ObservationIgnored private let cacheNotifications = CacheNotificationRegistrations()
     @ObservationIgnored private var cacheObservation: ObservationLoop.Token?
     @ObservationIgnored private var likeObserver: NSObjectProtocol?
+    @ObservationIgnored private let energyMetrics = EnergyMetricsReporter()
+    /// The live environment, for App Intents that run inside the app process
+    /// (Siri / Shortcuts) and have no view hierarchy to read it from.
+    static weak var current: AppEnvironment?
     /// The library-wide walks that more than one screen can ask for.
     private enum RefreshSlot: Hashable {
         case libraryIndex
@@ -307,6 +311,8 @@ final class AppEnvironment {
         configureOfflineAccount()
         watchRemoteCoordinator.start()
         vkIntegration.start(environment: self)
+        energyMetrics.start()
+        Self.current = self
         likeObserver = NotificationCenter.default.addObserver(
             forName: MusicLibraryEvents.didAddTrack,
             object: nil,
