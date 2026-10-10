@@ -129,6 +129,10 @@ struct GeniusLyricsService: Sendable {
             return try await directData(url, accept: accept)
         } catch is CancellationError {
             throw CancellationError()
+        } catch let error as URLError
+            where [.cancelled, .notConnectedToInternet,
+                   .networkConnectionLost].contains(error.code) {
+            throw error
         } catch {
             // Cloudflare answers plain HTTP clients with 403; a browser
             // engine passes the same check.
@@ -146,6 +150,7 @@ struct GeniusLyricsService: Sendable {
         configuration.httpCookieStorage = nil
         configuration.urlCache = nil
         let session = URLSession(configuration: configuration)
+        defer { session.finishTasksAndInvalidate() }
         var request = URLRequest(url: url)
         request.setValue(accept, forHTTPHeaderField: "Accept")
         request.setValue(

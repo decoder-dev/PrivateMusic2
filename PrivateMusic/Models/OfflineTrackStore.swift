@@ -510,15 +510,34 @@ final class OfflineTrackStore {
 
         let trackDirectory = tracksDirectory
             .appendingPathComponent(track.id, isDirectory: true)
+        // The previous copy is parked, not deleted, until the new one is in
+        // place: a full disk must not cost the user the audio they had.
+        var parkedURL: URL?
         if fileManager.fileExists(atPath: trackDirectory.path) {
-            try fileManager.removeItem(at: trackDirectory)
+            let parked = tracksDirectory.appendingPathComponent(
+                ".replaced-\(UUID().uuidString)",
+                isDirectory: true
+            )
+            try fileManager.moveItem(at: trackDirectory, to: parked)
+            parkedURL = parked
         }
-        try createProtectedDirectory(trackDirectory)
         let destination = trackDirectory
             .appendingPathComponent("audio")
             .appendingPathExtension(temporaryURL.pathExtension)
-        try fileManager.moveItem(at: stagingURL, to: destination)
-        try setFileAttributes(destination)
+        do {
+            try createProtectedDirectory(trackDirectory)
+            try fileManager.moveItem(at: stagingURL, to: destination)
+            try setFileAttributes(destination)
+        } catch {
+            try? fileManager.removeItem(at: trackDirectory)
+            if let parkedURL {
+                try? fileManager.moveItem(at: parkedURL, to: trackDirectory)
+            }
+            throw error
+        }
+        if let parkedURL {
+            try? fileManager.removeItem(at: parkedURL)
+        }
 
         let storedTrack = Track(
             trackID: track.trackID,
@@ -743,6 +762,14 @@ final class OfflineTrackStore {
         accountDirectory?.appendingPathComponent("index.json")
     }
 
+    private struct LossyRecord: Decodable {
+        let value: OfflineTrackRecord?
+
+        init(from decoder: Decoder) throws {
+            value = try? OfflineTrackRecord(from: decoder)
+        }
+    }
+
     private struct ManifestLoadResult {
         let records: [String: OfflineTrackRecord]
         let isTrusted: Bool
@@ -760,12 +787,14 @@ final class OfflineTrackStore {
         ]
         for candidate in candidates {
             guard let data = try? Data(contentsOf: candidate),
-                  let values = try? decoder.decode(
-                    [OfflineTrackRecord].self,
+                  let wrapped = try? decoder.decode(
+                    [LossyRecord].self,
                     from: data
                   ) else {
                 continue
             }
+            // One undecodable record must not empty the whole library.
+            let values = wrapped.compactMap(\.value)
             // Manifests written by older builds may lack file protection;
             // upgrade them on sight so the at-rest policy holds for
             // pre-existing indexes too.
