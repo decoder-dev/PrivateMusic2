@@ -185,3 +185,27 @@ enum MediaServicesResetPolicy {
         return now < suppressUntil
     }
 }
+
+
+/// Two players contesting one output. Another app (a second music app, a
+/// video, a voice message) takes the session, hands it back, and the
+/// "should resume" the system attaches makes this app take it again — which
+/// the other app then answers the same way. The log showed fifteen rounds in
+/// four minutes, each a stall and a stop for the listener.
+///
+/// Calls, Siri and alarms do not repeat like that. Three interruptions that
+/// began with other audio playing inside a minute and a half are a contest,
+/// and the polite thing is to stay paused until the listener presses play.
+enum InterruptionContestPolicy {
+    static let window: TimeInterval = 90
+    static let maximumContestedEnds = 3
+
+    static func shouldStandDown(
+        contestedEnds: [Date],
+        now: Date
+    ) -> Bool {
+        contestedEnds.filter {
+            now.timeIntervalSince($0) <= window
+        }.count >= maximumContestedEnds
+    }
+}

@@ -310,6 +310,9 @@ final class AudioPlayer {
     /// Whether a call, Siri or another app owned the output when the
     /// interruption began — the one thing ear detection never looks like.
     private var otherAudioAtInterruptionBegan = false
+    /// When recent interruptions that began with other audio playing ended;
+    /// see `InterruptionContestPolicy`.
+    private var contestedInterruptionEnds: [Date] = []
     private var interruptionResumeTask: Task<Void, Never>?
     private var routeSettleTask: Task<Void, Never>?
     private var pendingRemoteCommand: RemoteCommandCoalescing.Command?
@@ -2374,6 +2377,34 @@ final class AudioPlayer {
             interruptionBeganAt = nil
             interruptionBeganAsRouteDisconnect = false
             otherAudioAtInterruptionBegan = false
+            if otherAudioWasPlaying {
+                let now = Date()
+                contestedInterruptionEnds = (contestedInterruptionEnds + [now])
+                    .filter {
+                        now.timeIntervalSince($0)
+                            <= InterruptionContestPolicy.window
+                    }
+                if wasPlayingBeforeInterruption || playbackIntended,
+                   InterruptionContestPolicy.shouldStandDown(
+                       contestedEnds: contestedInterruptionEnds,
+                       now: now
+                   ) {
+                    // Another app keeps taking the output back and every
+                    // resume here only restarts the tug of war.
+                    logPlayback(
+                        "interruption contest: another app keeps taking the output, staying paused"
+                    )
+                    contestedInterruptionEnds = []
+                    interruptionResumeTask?.cancel()
+                    interruptionResumeTask = nil
+                    wasPlayingBeforeInterruption = false
+                    outputsAtInterruptionBegan = []
+                    resumeAfterRouteTransfer = false
+                    playbackIntended = false
+                    pausePreservingIntent()
+                    return
+                }
+            }
             // Taking the headphones off is the user saying stop, exactly
             // like a pause from the buds themselves: the intent goes with
             // it, so nothing later — a reconnect, a call ending, a stream

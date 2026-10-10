@@ -2422,3 +2422,30 @@ final class ConnectionStabilityTests: XCTestCase {
         )
     }
 }
+
+final class InterruptionContestPolicyTests: XCTestCase {
+    func testThreeContestedEndsInsideTheWindowStandDown() {
+        let now = Date()
+        let ends = [now - 60, now - 30, now - 5]
+        XCTAssertTrue(
+            InterruptionContestPolicy.shouldStandDown(contestedEnds: ends, now: now)
+        )
+    }
+
+    func testTwoEndsOrSlowOnesDoNotCountAsAContest() {
+        let now = Date()
+        XCTAssertFalse(
+            InterruptionContestPolicy.shouldStandDown(
+                contestedEnds: [now - 30, now - 5],
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            InterruptionContestPolicy.shouldStandDown(
+                contestedEnds: [now - 400, now - 200, now - 5],
+                now: now
+            )
+        )
+    }
+}
+
