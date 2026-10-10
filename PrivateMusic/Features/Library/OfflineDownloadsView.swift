@@ -1126,8 +1126,11 @@ private struct DownloadStorageSummary: View {
         }
         .padding(16)
         .background(
-            Color(uiColor: .secondarySystemBackground),
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            settings.surfaceColor,
+            in: RoundedRectangle(
+                cornerRadius: PremiumLayout.cardRadius,
+                style: .continuous
+            )
         )
     }
 
