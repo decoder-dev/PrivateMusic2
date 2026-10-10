@@ -416,7 +416,10 @@ private struct RegularWidthPlaybackBar: View {
             reduceMotion
                 ? nil
                 : .spring(response: 0.34, dampingFraction: 0.86),
-            value: player.currentTrack?.id
+            // Presence only: keyed on the track id, every skip sprang the
+            // whole dock (title, artwork, controls) instead of just the
+            // mini player sliding in the first time.
+            value: player.currentTrack != nil
         )
     }
 }
@@ -473,7 +476,10 @@ private struct PlaybackTabDock: View {
             reduceMotion
                 ? nil
                 : .spring(response: 0.34, dampingFraction: 0.86),
-            value: player.currentTrack?.id
+            // Presence only: keyed on the track id, every skip sprang the
+            // whole dock (title, artwork, controls) instead of just the
+            // mini player sliding in the first time.
+            value: player.currentTrack != nil
         )
     }
 
