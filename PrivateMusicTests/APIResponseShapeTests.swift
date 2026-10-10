@@ -53,3 +53,20 @@ final class APIResponseShapeTests: XCTestCase {
         XCTAssertGreaterThan(AppLogRedaction.redact(line).count, 1_500)
     }
 }
+
+final class SourceInspectionTests: XCTestCase {
+    func testReadsRealSourceFiles() {
+        let source = SourceInspection.source(
+            "PrivateMusic/Core/Logging/APIResponseShape.swift"
+        )
+        XCTAssertTrue(source.contains("enum APIResponseShape"))
+    }
+
+    func testStripsCommentsButKeepsCode() {
+        let code = SourceInspection.stripComments(
+            from: "let a = 1 // role: .search\nlet b = 2\n"
+        )
+        XCTAssertFalse(code.contains("role"))
+        XCTAssertTrue(code.contains("let b = 2"))
+    }
+}

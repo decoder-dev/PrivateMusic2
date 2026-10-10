@@ -141,8 +141,10 @@ final class MixFeedbackStore {
             tracks: bannedTracks,
             artists: bannedArtistRecords
         )
-        if let data = try? JSONEncoder().encode(snapshot) {
-            defaults.set(data, forKey: storageKey)
+        do {
+            defaults.set(try JSONEncoder().encode(snapshot), forKey: storageKey)
+        } catch {
+            AppLog.shared.failure(.app, "Persist mix feedback", error)
         }
     }
 

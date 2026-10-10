@@ -1,4 +1,5 @@
 import Foundation
+import XCTest
 
 /// Reads app sources for conformance tests, with comments stripped so a
 /// leftover `role: .search` in a comment cannot satisfy a code assertion.
@@ -11,7 +12,14 @@ enum SourceInspection {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let url = root.appendingPathComponent(relativePath)
-        return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        // An unreadable file must fail loudly: an empty string would make
+        // every "does not contain" assertion pass without checking anything.
+        guard let text = try? String(contentsOf: url, encoding: .utf8),
+              !text.isEmpty else {
+            XCTFail("SourceInspection could not read \(relativePath)")
+            return ""
+        }
+        return text
     }
 
     static func code(

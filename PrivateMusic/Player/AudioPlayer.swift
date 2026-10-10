@@ -3945,7 +3945,13 @@ final class AudioPlayer {
             mixTitle: queueSource?.mixTitle,
             mixRadioMode: mixRadioMode.rawValue
         )
-        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        let data: Data
+        do {
+            data = try JSONEncoder().encode(snapshot)
+        } catch {
+            AppLog.shared.failure(.player, "Persist playback snapshot", error)
+            return
+        }
         defaults.set(data, forKey: PlaybackSnapshot.key)
         // Drop the legacy key once we have a v2 write so restore does not
         // prefer a stale title-less snapshot after an upgrade.

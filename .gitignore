@@ -10,3 +10,4 @@ config_vk.ini
 logs/
 __pycache__/
 *.pyc
+TestResults.xcresult/

@@ -10,6 +10,9 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
+    # Warnings only (Swift 5 mode): surfaces data-race diagnostics in CI logs
+    # without failing the build while the @unchecked Sendable debt is paid down.
+    SWIFT_STRICT_CONCURRENCY: targeted
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     CURRENT_PROJECT_VERSION: 166

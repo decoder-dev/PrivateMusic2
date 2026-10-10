@@ -96,11 +96,12 @@ final class PinnedMixStore {
     }
 
     private func persist(_ snapshot: PinnedMixSnapshot) {
-        guard let key = storageKey,
-              let data = try? JSONEncoder().encode(snapshot) else {
-            return
+        guard let key = storageKey else { return }
+        do {
+            defaults.set(try JSONEncoder().encode(snapshot), forKey: key)
+        } catch {
+            AppLog.shared.failure(.app, "Persist pinned mixes", error)
         }
-        defaults.set(data, forKey: key)
     }
 
     private var storageKey: String? {

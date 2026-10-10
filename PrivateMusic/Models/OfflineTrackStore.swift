@@ -926,17 +926,25 @@ final class OfflineTrackStore {
         values.isExcludedFromBackup = true
         var mutableURL = url
         try? mutableURL.setResourceValues(values)
-        try? fileManager.setAttributes(
-            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
-            ofItemAtPath: url.path
-        )
+        do {
+            try fileManager.setAttributes(
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: url.path
+            )
+        } catch {
+            AppLog.shared.failure(.app, "Apply file protection", error)
+        }
     }
 
     private func setFileAttributes(_ url: URL) throws {
-        try? fileManager.setAttributes(
-            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
-            ofItemAtPath: url.path
-        )
+        do {
+            try fileManager.setAttributes(
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: url.path
+            )
+        } catch {
+            AppLog.shared.failure(.app, "Apply file protection", error)
+        }
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
         var mutableURL = url
