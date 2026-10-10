@@ -51,6 +51,19 @@ enum JSONValue: Codable, Sendable {
         return String(data: data, encoding: .utf8)
     }
 
+    /// Non-empty object (re-encoded compactly) or non-empty string; nil for
+    /// anything else. Kept to plain `if` statements — a `switch` with
+    /// `where` over this optional crashed the Xcode 27 optimizer.
+    fileprivate var streamOptionsText: String? {
+        if case let .string(raw) = self {
+            return raw.isEmpty ? nil : raw
+        }
+        if case let .object(object) = self, !object.isEmpty {
+            return compactJSON
+        }
+        return nil
+    }
+
     var tracks: [Track] {
         var result: [Track] = []
         collectTracks(into: &result)
@@ -612,15 +625,11 @@ private extension Dictionary where Key == String, Value == JSONValue {
     /// `options` of a tunable stream-mix tile (mood / activity), as the
     /// compact JSON VK expects back in `mix_options`.
     var mixStreamOptions: String? {
-        for key in ["mix_options", "options"] {
-            switch self[key] {
-            case let .object(object)? where !object.isEmpty:
-                return JSONValue.object(object).compactJSON
-            case let .string(raw)? where !raw.isEmpty:
-                return raw
-            default:
-                continue
-            }
+        if let value = self["mix_options"], let text = value.streamOptionsText {
+            return text
+        }
+        if let value = self["options"], let text = value.streamOptionsText {
+            return text
         }
         return nil
     }
