@@ -17,6 +17,7 @@ struct DeveloperSettingsView: View {
     @State private var archiveURL: URL?
     @State private var fileLoggingEnabled = AppLog.shared.isFileLoggingEnabled
     @State private var verboseLoggingEnabled = AppLog.shared.isVerbose
+    @State private var captureShapesEnabled = AppLog.shared.capturesResponseShapes
 
     var body: some View {
         Form {
@@ -82,6 +83,14 @@ struct DeveloperSettingsView: View {
                         .app,
                         "Verbose logging \(enabled ? "enabled" : "disabled")"
                     )
+                }
+
+                Toggle(
+                    L10n.text("developer.capture_response_shapes"),
+                    isOn: $captureShapesEnabled
+                )
+                .onChange(of: captureShapesEnabled) { _, enabled in
+                    AppLog.shared.setCapturesResponseShapes(enabled)
                 }
 
                 exportControls

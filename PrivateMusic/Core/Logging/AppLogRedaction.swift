@@ -56,8 +56,13 @@ enum AppLogRedaction {
                 options: .regularExpression
             )
         }
-        if truncate && sanitized.count > 512 {
-            let index = sanitized.index(sanitized.startIndex, offsetBy: 512)
+        // Structure-only response skeletons carry no values and are already
+        // capped by APIResponseShape, so they get a larger budget.
+        let limit = sanitized.contains(" shape={") || sanitized.contains(" shape=[")
+            ? APIResponseShape.maximumLength + 256
+            : 512
+        if truncate && sanitized.count > limit {
+            let index = sanitized.index(sanitized.startIndex, offsetBy: limit)
             sanitized = String(sanitized[..<index]) + "…"
         }
         return sanitized

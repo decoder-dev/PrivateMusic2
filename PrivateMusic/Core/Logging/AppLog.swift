@@ -53,6 +53,8 @@ final class AppLog: @unchecked Sendable {
 
     private(set) var isFileLoggingEnabled: Bool
     private(set) var isVerbose: Bool
+    /// Opt-in: log the structure (never the values) of API responses.
+    private(set) var capturesResponseShapes: Bool
 
     private init(
         fileManager: FileManager = .default,
@@ -66,6 +68,9 @@ final class AppLog: @unchecked Sendable {
         self.isVerbose = defaults.object(
             forKey: Keys.verboseLogging
         ) as? Bool ?? true
+        self.capturesResponseShapes = defaults.bool(
+            forKey: Keys.captureResponseShapes
+        )
         for category in AppLogCategory.allCases {
             loggers[category] = Logger(
                 subsystem: Self.subsystem,
@@ -95,6 +100,13 @@ final class AppLog: @unchecked Sendable {
         queue.sync {
             isVerbose = enabled
             defaults.set(enabled, forKey: Keys.verboseLogging)
+        }
+    }
+
+    func setCapturesResponseShapes(_ enabled: Bool) {
+        queue.sync {
+            capturesResponseShapes = enabled
+            defaults.set(enabled, forKey: Keys.captureResponseShapes)
         }
     }
 
@@ -335,6 +347,7 @@ final class AppLog: @unchecked Sendable {
     private enum Keys {
         static let fileLoggingEnabled = "developer.log.fileLoggingEnabled"
         static let verboseLogging = "developer.log.verboseLogging"
+        static let captureResponseShapes = "developer.log.captureResponseShapes"
     }
 }
 

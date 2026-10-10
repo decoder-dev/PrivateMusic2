@@ -261,6 +261,7 @@
 "developer.logging" = "Логирование";
 "developer.file_logging" = "Сохранять логи на устройстве";
 "developer.verbose_logging" = "Подробное логирование";
+"developer.capture_response_shapes" = "Логировать структуру ответов API (без значений)";
 "developer.logging_footer" = "В подробном режиме пишутся debug-строки, отдельные файлы по категориям и полные следы API/плеера/сессии. Соберите ZIP с логами, диагностикой, настройками и unified logging, затем сохраните или отправьте архив из системного листа.";
 "developer.log_files" = "Сохранённые логи";
 "developer.log_files_value" = "%1$d файлов · %2$@";

@@ -328,6 +328,13 @@ actor APIClient {
                     .api,
                     "POST \(path) status=\(http.statusCode) bytes=\(data.count) duration=\(String(format: "%.0fms", elapsedMs))"
                 )
+                if AppLog.shared.capturesResponseShapes,
+                   let shape = APIResponseShape.skeleton(from: data) {
+                    AppLog.shared.debug(
+                        .api,
+                        "POST \(path) shape=\(shape)"
+                    )
+                }
                 if retryPolicy.shouldRetry(
                     statusCode: http.statusCode
                 ),

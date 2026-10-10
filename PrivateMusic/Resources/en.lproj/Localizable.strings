@@ -261,6 +261,7 @@
 "developer.logging" = "Logging";
 "developer.file_logging" = "Save logs to device";
 "developer.verbose_logging" = "Verbose logging";
+"developer.capture_response_shapes" = "Log API response structure (no values)";
 "developer.logging_footer" = "Verbose mode records debug lines, per-category log files and full API/player/session traces. Build a ZIP with app logs, diagnostics, settings and unified logging, then save or share it from the sheet.";
 "developer.log_files" = "Saved log files";
 "developer.log_files_value" = "%1$d files · %2$@";
