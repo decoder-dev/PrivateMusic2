@@ -268,7 +268,7 @@ struct MiniPlayerView: View {
                 .fill(.primary.opacity(0.12))
                 .overlay(alignment: .leading) {
                     Capsule()
-                        .fill(.tint)
+                        .fill(settings.accent)
                         .frame(width: proxy.size.width * progressFraction)
                 }
                 .frame(height: MiniPlayerLayoutMetrics.progressHeight)

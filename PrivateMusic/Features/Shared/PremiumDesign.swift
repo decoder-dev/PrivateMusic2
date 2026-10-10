@@ -428,12 +428,14 @@ enum DownloadNotifications {
 }
 
 extension View {
-    /// Content scrolling under the floating dock/mini player fades into it
-    /// instead of colliding with its glass at full contrast (iOS 26).
+    /// Content scrolling under the floating dock/mini player is blurred out
+    /// behind it instead of showing through the glass at full contrast
+    /// (iOS 26). `.soft` left headings readable under the mini player —
+    /// the text ghosting seen on Home — so the edge is `.hard`.
     @ViewBuilder
     func softBottomScrollEdge() -> some View {
         if #available(iOS 26.0, *) {
-            scrollEdgeEffectStyle(.soft, for: .bottom)
+            scrollEdgeEffectStyle(.hard, for: .bottom)
         } else {
             self
         }
