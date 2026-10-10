@@ -109,4 +109,106 @@ final class GeniusLyricsServiceTests: XCTestCase {
 
         XCTAssertGreaterThan(exact, wrongSong)
     }
+
+    // MARK: Matching
+
+    private func candidate(_ title: String, _ artist: String) -> GeniusMatcher.Candidate {
+        GeniusMatcher.Candidate(
+            title: title,
+            artist: artist,
+            url: "https://genius.com/x-lyrics"
+        )
+    }
+
+    func testAnotherSongBySameArtistIsRejected() {
+        let match = GeniusMatcher.best(
+            in: [candidate("Completely Different", "Artist")],
+            artist: "Artist",
+            title: "Wanted Song"
+        )
+        XCTAssertNil(match)
+    }
+
+    func testSameTitleByAnotherArtistIsRejected() {
+        XCTAssertNil(GeniusMatcher.best(
+            in: [candidate("Intro", "Somebody Else")],
+            artist: "Artist",
+            title: "Intro"
+        ))
+    }
+
+    func testFeaturingAndRemasterNoiseDoesNotBreakTheMatch() {
+        let match = GeniusMatcher.best(
+            in: [candidate("Wanted Song", "Artist")],
+            artist: "Artist feat. Guest",
+            title: "Wanted Song (feat. Guest) - Remastered 2011"
+        )
+        XCTAssertNotNil(match)
+    }
+
+    func testTranslationPagesAreNeverChosen() {
+        XCTAssertNil(GeniusMatcher.best(
+            in: [candidate(
+                "Wanted Song (Russian Translation)",
+                "Genius Russian Translations"
+            )],
+            artist: "Artist",
+            title: "Wanted Song"
+        ))
+    }
+
+    func testRemixIsNotTheOriginal() {
+        let original = candidate("Wanted Song", "Artist")
+        let remix = candidate("Wanted Song (Sped Up)", "Artist")
+        let best = GeniusMatcher.best(
+            in: [remix, original],
+            artist: "Artist",
+            title: "Wanted Song"
+        )
+        XCTAssertEqual(best, original)
+    }
+
+    func testCyrillicTrackMatchesLatinGeniusPage() {
+        XCTAssertNotNil(GeniusMatcher.best(
+            in: [candidate("Kosmos", "Skryptonite")],
+            artist: "Скриптонит",
+            title: "Космос"
+        ))
+    }
+
+    func testShortTitleDoesNotMatchInsideALongerOne() {
+        XCTAssertNil(GeniusMatcher.best(
+            in: [candidate("Love Yourself", "Artist")],
+            artist: "Artist",
+            title: "Love"
+        ))
+    }
+
+    func testQueryUsesLeadArtistAndCleanTitle() {
+        XCTAssertEqual(
+            GeniusMatcher.searchQuery(
+                artist: "Artist, Guest",
+                title: "Wanted Song (feat. Guest) [Deluxe]"
+            ),
+            "Artist Wanted Song"
+        )
+    }
+
+    func testLiveInsideAWordIsNotAVariant() {
+        XCTAssertNotNil(GeniusMatcher.best(
+            in: [candidate("Stayin' Alive", "Bee Gees")],
+            artist: "Bee Gees",
+            title: "Stayin' Alive"
+        ))
+        XCTAssertTrue(GeniusMatcher.variants(in: "Song (Live)").contains("live"))
+        XCTAssertTrue(GeniusMatcher.variants(in: "Alive").isEmpty)
+    }
+
+    func testLoneRemixDoesNotPassForTheOriginal() {
+        XCTAssertNil(GeniusMatcher.best(
+            in: [candidate("Wanted Song (Remix)", "Artist")],
+            artist: "Artist",
+            title: "Wanted Song"
+        ))
+    }
 }
