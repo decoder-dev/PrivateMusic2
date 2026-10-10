@@ -198,6 +198,13 @@ final class AudioPlayer {
 
     private var player = AVPlayer()
     private let nowPlaying = NowPlayingController()
+    /// Library actions behind the system Like button; the app environment
+    /// owns the VK session, so it wires these in.
+    @ObservationIgnored var remoteIsLiked: (@MainActor (Track) -> Bool)? {
+        didSet { nowPlaying.likedState = remoteIsLiked }
+    }
+    @ObservationIgnored var remoteSetLiked:
+        (@MainActor (Track, Bool) async -> Bool)?
     private let equalizer = EqualizerDSP()
     private let historyStore: ListeningHistoryStore
     @ObservationIgnored
@@ -661,6 +668,7 @@ final class AudioPlayer {
         // one «Перемешать» on an album left every later library tap
         // shuffled for the rest of the session.
         shuffleEnabled = intent == .shuffleCollection || shufflePreference
+        publishRemoteModes()
         // Snapshot the order the collection arrived in before anything
         // reorders it, so switching shuffle off restores «по очереди».
         sourceOrderedQueue = prepared
@@ -839,6 +847,7 @@ final class AudioPlayer {
         queue = reordered
         sourceOrderedQueue = reordered
         shuffleEnabled = false
+        publishRemoteModes()
         if let currentIndex {
             pinnedPlayNextIDs.formUnion(queue.dropFirst(currentIndex + 1).map(\.id))
         }
@@ -912,16 +921,23 @@ final class AudioPlayer {
         persistPlayback()
         publishNowPlayingQueue()
         scheduleNeighborPreloads()
+        publishRemoteModes()
     }
 
     func cycleRepeatMode() {
         switch repeatMode {
-        case .off: repeatMode = .all
-        case .all: repeatMode = .one
-        case .one: repeatMode = .off
+        case .off: setRepeatMode(.all)
+        case .all: setRepeatMode(.one)
+        case .one: setRepeatMode(.off)
         }
+    }
+
+    func setRepeatMode(_ mode: RepeatMode) {
+        guard repeatMode != mode else { return }
+        repeatMode = mode
         defaults.set(repeatMode.rawValue, forKey: "player.repeat")
         scheduleNeighborPreloads()
+        publishRemoteModes()
     }
 
     func scheduleSleepTimer(minutes: Int) {
@@ -1922,6 +1938,68 @@ final class AudioPlayer {
             }
             self?.enqueueRemoteCommand(.seek(event.positionTime))
             return .success
+        }
+
+        // Shuffle / repeat / like are what a car's Now Playing screen and
+        // the lock screen offer next to the transport buttons.
+        center.changeShuffleModeCommand.isEnabled = true
+        center.changeRepeatModeCommand.isEnabled = true
+        center.likeCommand.isEnabled = true
+        center.likeCommand.localizedTitle = L10n.text("track_is_in_your_library")
+        add(center.changeShuffleModeCommand) { [weak self] event in
+            guard let event = event as? MPChangeShuffleModeCommandEvent
+            else {
+                return .commandFailed
+            }
+            let wanted = event.shuffleType != .off
+            Task { @MainActor [weak self] in
+                guard let self, self.shuffleEnabled != wanted else { return }
+                self.toggleShuffle()
+            }
+            return .success
+        }
+        add(center.changeRepeatModeCommand) { [weak self] event in
+            guard let event = event as? MPChangeRepeatModeCommandEvent
+            else {
+                return .commandFailed
+            }
+            let wanted: RepeatMode
+            switch event.repeatType {
+            case .one: wanted = .one
+            case .all: wanted = .all
+            default: wanted = .off
+            }
+            Task { @MainActor [weak self] in
+                self?.setRepeatMode(wanted)
+            }
+            return .success
+        }
+        add(center.likeCommand) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      let track = self.currentTrack,
+                      let setLiked = self.remoteSetLiked else { return }
+                let isLiked = self.remoteIsLiked?(track) ?? false
+                if await setLiked(track, !isLiked) {
+                    MPRemoteCommandCenter.shared().likeCommand.isActive =
+                        !isLiked
+                }
+            }
+            return .success
+        }
+        publishRemoteModes()
+    }
+
+    /// Tells the system what shuffle and repeat are set to, so a car
+    /// display shows the real state rather than its own guess.
+    private func publishRemoteModes() {
+        let center = MPRemoteCommandCenter.shared()
+        center.changeShuffleModeCommand.currentShuffleType =
+            shuffleEnabled ? .items : .off
+        switch repeatMode {
+        case .off: center.changeRepeatModeCommand.currentRepeatType = .off
+        case .all: center.changeRepeatModeCommand.currentRepeatType = .all
+        case .one: center.changeRepeatModeCommand.currentRepeatType = .one
         }
     }
 
