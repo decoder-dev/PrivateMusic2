@@ -68,13 +68,13 @@ struct PremiumPressStyle: ButtonStyle {
         configuration.label
             .contentShape(Rectangle())
             .scaleEffect(
-                reduceMotion || !configuration.isPressed ? 1 : 0.975
+                reduceMotion || !configuration.isPressed ? 1 : 0.985
             )
-            .opacity(configuration.isPressed ? 0.82 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
             .animation(
                 reduceMotion
                     ? nil
-                    : .spring(response: 0.22, dampingFraction: 0.82),
+                    : .easeOut(duration: 0.12),
                 value: configuration.isPressed
             )
     }
@@ -89,7 +89,9 @@ struct PremiumProminentButtonStyle: ButtonStyle {
             .font(.subheadline.weight(.semibold))
             .padding(.horizontal, 24)
             .padding(.vertical, 14)
-            .foregroundStyle(.white)
+            // `onAccent`, not white: on a light accent (Banana, Orange…) a
+            // white label on the fill is unreadable.
+            .foregroundStyle(settings.onAccent)
             .background {
                 RoundedRectangle(cornerRadius: PremiumLayout.controlRadius, style: .continuous)
                     .fill(settings.accent)
@@ -112,6 +114,9 @@ struct PremiumProminentButtonStyle: ButtonStyle {
     }
 }
 
+/// A section's entrance: a short fade, nothing else. It used to scale and
+/// slide up with a spring and a stagger, and in lazy lists every row that
+/// scrolled back into view replayed it — the "twitching" while scrolling.
 struct PremiumAppearModifier: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
@@ -120,20 +125,12 @@ struct PremiumAppearModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(reduceMotion || appeared ? 1 : 0)
-            .scaleEffect(reduceMotion || appeared ? 1 : 0.97)
-            .offset(y: reduceMotion || appeared ? 0 : 8)
             .onAppear {
                 guard !appeared else { return }
                 if reduceMotion {
                     appeared = true
                 } else {
-                    withAnimation(
-                        .spring(
-                            response: 0.44,
-                            dampingFraction: 0.86
-                        )
-                        .delay(delay)
-                    ) {
+                    withAnimation(.easeOut(duration: 0.18)) {
                         appeared = true
                     }
                 }

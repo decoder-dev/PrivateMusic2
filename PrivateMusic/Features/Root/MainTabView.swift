@@ -461,7 +461,7 @@ private struct PlaybackTabDock: View {
                     interactive: true,
                     tint: settings.accent.opacity(0.06)
                 )
-                .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
+                .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
 
                 searchTabButton
             }
@@ -518,7 +518,7 @@ private struct PlaybackTabDock: View {
                 ? settings.accent.opacity(0.16)
                 : settings.accent.opacity(0.06)
         )
-        .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
+        .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
         .accessibilityLabel(MainTab.search.title)
         .accessibilityAddTraits(selection == .search ? .isSelected : [])
     }

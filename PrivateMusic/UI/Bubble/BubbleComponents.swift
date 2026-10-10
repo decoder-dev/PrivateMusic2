@@ -243,7 +243,7 @@ struct BubbleCallToAction: View {
             HStack(spacing: BubbleSpacing.s) {
                 if isBusy {
                     ProgressView()
-                        .tint(.white)
+                        .tint(settings.onAccent)
                 } else {
                     Image(systemName: systemImage)
                         .font(.system(size: 16, weight: .bold))
@@ -252,7 +252,7 @@ struct BubbleCallToAction: View {
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(settings.onAccent)
             .padding(.horizontal, BubbleSpacing.xxl)
             .frame(height: height)
             .frame(minWidth: 0)

@@ -248,7 +248,7 @@ struct LibraryView: View {
                                         )
                                         // dynamic-type-exempt: 9pt badge on a 28pt icon
                                         .font(.system(size: 9, weight: .bold))
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(settings.onAccent)
                                         .padding(.horizontal, 3)
                                         .padding(.vertical, 1)
                                         .background(
