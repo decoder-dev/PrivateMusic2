@@ -6,6 +6,7 @@ struct LyricsView: View {
     @Environment(SessionStore.self) private var sessionStore
     @Environment(AudioPlayer.self) private var player
     @Environment(PlaybackProgressModel.self) private var progress
+    @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     let track: Track
@@ -101,7 +102,9 @@ struct LyricsView: View {
                                             : .title3.weight(.semibold)
                                     )
                                     .foregroundStyle(
-                                        isActive ? .primary : .secondary
+                                        isActive
+                                            ? AnyShapeStyle(settings.accent)
+                                            : AnyShapeStyle(HierarchicalShapeStyle.secondary)
                                     )
                                     .multilineTextAlignment(.leading)
                                 Spacer(minLength: 0)

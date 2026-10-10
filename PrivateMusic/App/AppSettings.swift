@@ -42,6 +42,7 @@ enum AppAccent: String, CaseIterable, Identifiable {
     case orange
     case green
     case teal
+    case banana
 
     var id: String { rawValue }
 
@@ -55,6 +56,7 @@ enum AppAccent: String, CaseIterable, Identifiable {
         case .orange: L10n.text("accent.orange")
         case .green: L10n.text("accent.green")
         case .teal: L10n.text("accent.teal")
+        case .banana: L10n.text("accent.banana")
         }
     }
 
@@ -94,7 +96,28 @@ enum AppAccent: String, CaseIterable, Identifiable {
             return dark
                 ? BubbleColorComponents(red: 0.24, green: 0.80, blue: 0.80)
                 : BubbleColorComponents(red: 0.06, green: 0.47, blue: 0.48)
+        case .banana:
+            // BananaGram's own pair: a soft yellow on graphite, a deep
+            // gold on cream.
+            return dark
+                ? BubbleColorComponents(red: 0.957, green: 0.839, blue: 0.435)
+                : BubbleColorComponents(red: 0.502, green: 0.337, blue: 0.0)
         }
+    }
+
+    /// The same accent on a palette's page: unchanged on the classic one,
+    /// nudged lighter / darker elsewhere so it still reads at 4.5:1 on that
+    /// palette's page and surface.
+    func components(
+        for theme: AppTheme,
+        on palette: AppPalette
+    ) -> BubbleColorComponents {
+        let base = components(for: theme)
+        guard palette != .classic else { return base }
+        return base.ensuringContrast(
+            against: palette.luminances(for: theme),
+            towardWhite: theme == .dark
+        )
     }
 }
 
@@ -284,10 +307,21 @@ final class AppSettings {
     var accentChoice: AppAccent {
         didSet { defaults.set(accentChoice.rawValue, forKey: Keys.accentChoice) }
     }
+    var palette: AppPalette {
+        didSet { defaults.set(palette.rawValue, forKey: Keys.palette) }
+    }
+    /// Page gradient of the current palette and appearance.
+    var pageColors: [Color] {
+        palette.background(for: theme).map(\.color)
+    }
+    /// Card / field surface of the current palette and appearance.
+    var surfaceColor: Color {
+        palette.surface(for: theme).color
+    }
     /// What views tint with. Reading it (rather than `theme.accent`) is what
     /// makes a view redraw when the accent changes.
     var accentComponents: BubbleColorComponents {
-        accentChoice.components(for: theme)
+        accentChoice.components(for: theme, on: palette)
     }
     var accent: Color { accentComponents.color }
     /// Label colour for anything filled with the accent.
@@ -502,6 +536,9 @@ final class AppSettings {
         accentChoice = AppAccent(
             rawValue: defaults.string(forKey: Keys.accentChoice) ?? ""
         ) ?? .blue
+        palette = AppPalette(
+            rawValue: defaults.string(forKey: Keys.palette) ?? ""
+        ) ?? .classic
         if settingsVersion < 4 {
             defaults.removeObject(forKey: LegacyKeys.liquidGlass)
             defaults.set(4, forKey: Keys.version)
@@ -615,6 +652,7 @@ final class AppSettings {
         theme = .dark
         appearance = .dark
         accentChoice = .blue
+        palette = .classic
         textScale = .system
         classicChrome = false
     }
@@ -640,6 +678,7 @@ final class AppSettings {
         static let version = "settings.schema.version"
         static let theme = "appearance.theme"
         static let accentChoice = "appearance.accent"
+        static let palette = "appearance.palette"
         static let appearance = "appearance.mode"
         static let textScale = "appearance.textScale"
         static let classicChrome = "appearance.classicChrome"

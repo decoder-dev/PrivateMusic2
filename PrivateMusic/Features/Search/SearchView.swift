@@ -181,7 +181,7 @@ struct SearchView: View {
         .padding(.horizontal, BubbleSpacing.m)
         .frame(minHeight: 48)
         .background(
-            settings.theme.surface.opacity(0.82),
+            settings.surfaceColor.opacity(0.82),
             in: searchFieldShape
         )
         .overlay {

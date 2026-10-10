@@ -6,7 +6,7 @@ struct ThemeBackground: View {
 
     var body: some View {
         LinearGradient(
-            colors: settings.theme.colors,
+            colors: settings.pageColors,
             startPoint: .top,
             endPoint: .bottom
         )

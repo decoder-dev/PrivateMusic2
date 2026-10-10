@@ -897,3 +897,12 @@
 "mix.mood_fallback" = "Для «%@» пока нет отдельного микса — играет Selena.";
 "accent.preview_button" = "Слушать";
 "accent.preview_link" = "Ссылка и значки";
+"palette.section" = "Цветовая тема";
+"palette.footnote" = "Фон и поверхности. Каждая тема приходит со своим акцентом, его можно сменить ниже.";
+"palette.classic" = "Классика";
+"palette.banana" = "BananaGram";
+"palette.midnight" = "Полночь";
+"palette.forest" = "Лес";
+"palette.rose" = "Роза";
+"palette.mocha" = "Мокко";
+"accent.banana" = "Банан";

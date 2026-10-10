@@ -143,7 +143,7 @@ struct MixArtworkView: View {
         } placeholder: {
             LinearGradient(
                 colors: [
-                    settings.theme.surface,
+                    settings.surfaceColor,
                     settings.theme.secondaryAccent.opacity(0.42)
                 ],
                 startPoint: .topLeading,

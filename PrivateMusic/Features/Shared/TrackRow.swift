@@ -132,9 +132,7 @@ struct TrackRow: View {
     }
 
     private var currentTrackColor: Color {
-        settings.theme == .dark
-            ? settings.accent
-            : .black
+        settings.accent
     }
 
     private var accessibilityLabel: String {
