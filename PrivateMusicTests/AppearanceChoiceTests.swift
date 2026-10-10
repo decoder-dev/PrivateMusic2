@@ -136,3 +136,65 @@ final class EqualizerPresetCatalogTests: XCTestCase {
         XCTAssertEqual(curves.count, named.count)
     }
 }
+
+final class AppPaletteTests: XCTestCase {
+    func testEveryAccentReadsOnEveryPaletteAndAppearance() {
+        for palette in AppPalette.allCases {
+            for theme in AppTheme.allCases {
+                for accent in AppAccent.allCases {
+                    let color = accent.components(for: theme, on: palette)
+                    for background in palette.luminances(for: theme) {
+                        XCTAssertGreaterThanOrEqual(
+                            ContrastRatio.between(
+                                color.relativeLuminance,
+                                background
+                            ),
+                            4.5,
+                            "\(accent) on \(palette)/\(theme)"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    func testClassicPaletteKeepsTheOriginalAccentsUntouched() {
+        for theme in AppTheme.allCases {
+            for accent in AppAccent.allCases {
+                XCTAssertEqual(
+                    accent.components(for: theme, on: .classic),
+                    accent.components(for: theme)
+                )
+            }
+        }
+    }
+
+    func testBananaPaletteUsesTheBananaGramColors() {
+        let dark = AppPalette.banana.background(for: .dark)[0]
+        XCTAssertEqual(dark.red, Double(0x18) / 255, accuracy: 0.001)
+        XCTAssertEqual(dark.green, Double(0x1B) / 255, accuracy: 0.001)
+        XCTAssertEqual(dark.blue, Double(0x20) / 255, accuracy: 0.001)
+        let cream = AppPalette.banana.surface(for: .light)
+        XCTAssertEqual(cream.red, 1.0, accuracy: 0.001)
+        XCTAssertEqual(cream.blue, Double(0xF5) / 255, accuracy: 0.001)
+        XCTAssertEqual(AppPalette.banana.accent, .banana)
+    }
+
+    func testPalettesAreDistinctAndLabelsReadOnTheirAccent() {
+        XCTAssertEqual(
+            Set(AppPalette.allCases.map(\.rawValue)).count,
+            AppPalette.allCases.count
+        )
+        for palette in AppPalette.allCases {
+            for theme in AppTheme.allCases {
+                let fill = palette.accent.components(for: theme, on: palette)
+                let label = fill.prefersDarkForeground ? 0.0 : 1.0
+                XCTAssertGreaterThanOrEqual(
+                    ContrastRatio.between(fill.relativeLuminance, label),
+                    3.0,
+                    "\(palette)/\(theme)"
+                )
+            }
+        }
+    }
+}

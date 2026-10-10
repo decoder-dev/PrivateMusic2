@@ -897,3 +897,12 @@
 "mix.mood_fallback" = "There is no separate mix for “%@” yet — Selena is playing.";
 "accent.preview_button" = "Listen";
 "accent.preview_link" = "Links and icons";
+"palette.section" = "Color theme";
+"palette.footnote" = "Page and surfaces. Each theme comes with its own accent, which you can change below.";
+"palette.classic" = "Classic";
+"palette.banana" = "BananaGram";
+"palette.midnight" = "Midnight";
+"palette.forest" = "Forest";
+"palette.rose" = "Rose";
+"palette.mocha" = "Mocha";
+"accent.banana" = "Banana";

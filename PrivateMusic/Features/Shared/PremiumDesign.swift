@@ -455,3 +455,18 @@ extension View {
         modifier(PremiumAppearModifier(delay: delay))
     }
 }
+
+
+/// Settings-style rows: the icon wears the accent, the title stays plain.
+struct AccentIconLabelStyle: LabelStyle {
+    @Environment(AppSettings.self) private var settings
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: BubbleSpacing.m) {
+            configuration.icon
+                .foregroundStyle(settings.accent)
+                .frame(width: 26)
+            configuration.title
+        }
+    }
+}

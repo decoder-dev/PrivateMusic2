@@ -574,6 +574,7 @@ struct PlayerView: View {
             duration: player.duration,
             foreground: playerForeground,
             secondary: playerSecondary,
+            trackTint: settings.accent,
             onSeek: { player.seek(to: $0) }
         )
         .id(player.currentTrack?.id)
@@ -826,7 +827,7 @@ struct PlayerView: View {
             .buttonBorderShape(.circle)
             .tint(
                 active
-                    ? playerForeground
+                    ? settings.accent
                     : playerForeground.opacity(0.55)
             )
             .opacity(active ? 1 : 0.85)
@@ -838,7 +839,7 @@ struct PlayerView: View {
                     .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(
                         active
-                            ? playerForeground
+                            ? settings.accent
                             : playerForeground.opacity(0.58)
                     )
                     .frame(width: 44, height: 44)

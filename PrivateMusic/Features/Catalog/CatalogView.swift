@@ -933,7 +933,7 @@ private struct HomeTrackArtwork: View {
             ZStack {
                 LinearGradient(
                     colors: [
-                        settings.theme.surface,
+                        settings.surfaceColor,
                         settings.theme.secondaryAccent.opacity(0.48)
                     ],
                     startPoint: .topLeading,

@@ -8,6 +8,8 @@ struct PlayerProgressControls: View {
     let duration: TimeInterval
     let foreground: Color
     let secondary: Color
+    /// Fill and thumb of the scrubber; the labels keep `foreground`.
+    var trackTint: Color?
     let onSeek: (TimeInterval) -> Void
 
     @State private var scrubPosition: TimeInterval?
@@ -36,7 +38,7 @@ struct PlayerProgressControls: View {
                     set: { scrubPosition = $0 }
                 ),
                 range: PlayerProgressPolicy.sliderRange(duration: duration),
-                tintColor: UIColor(foreground),
+                tintColor: UIColor(trackTint ?? foreground),
                 onEditingBegan: {
                     scrubPosition = progress.elapsedTime
                 },

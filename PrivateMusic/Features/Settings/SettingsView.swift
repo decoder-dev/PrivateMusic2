@@ -284,6 +284,13 @@ private struct AppearanceSettingsView: View {
                 themePicker
             }
 
+            Section(L10n.text("palette.section")) {
+                palettePicker
+                Text(L10n.text("palette.footnote"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Section(L10n.text("accent_color")) {
                 accentPicker
                 accentPreview
@@ -370,6 +377,7 @@ private struct AppearanceSettingsView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .labelStyle(AccentIconLabelStyle())
         .background(ThemeBackground())
         .navigationTitle(L10n.text("appearance"))
     }
@@ -395,6 +403,75 @@ private struct AppearanceSettingsView: View {
         .accessibilityHidden(true)
     }
 
+    private var palettePicker: some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 96), spacing: 12)],
+            spacing: 14
+        ) {
+            ForEach(AppPalette.allCases) { palette in
+                Button {
+                    BubbleMotion.animate(.easeInOut(duration: 0.25)) {
+                        settings.palette = palette
+                        // A palette ships with its accent; the listener can
+                        // still choose another one below.
+                        settings.accentChoice = palette.accent
+                    }
+                    Haptics.selection()
+                } label: {
+                    VStack(spacing: 7) {
+                        palettePreview(palette)
+                        Text(palette.title)
+                            .font(.caption2)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(palette.title)
+                .accessibilityAddTraits(
+                    settings.palette == palette ? .isSelected : []
+                )
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// A miniature page: its gradient, a surface card and the accent.
+    private func palettePreview(_ palette: AppPalette) -> some View {
+        let theme = settings.theme
+        let accent = palette.accent
+            .components(for: theme, on: palette)
+            .color
+        let isSelected = settings.palette == palette
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return ZStack(alignment: .bottomLeading) {
+            LinearGradient(
+                colors: palette.background(for: theme).map(\.color),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(palette.surface(for: theme).color)
+                    .frame(height: 16)
+                HStack(spacing: 6) {
+                    Circle().fill(accent).frame(width: 12, height: 12)
+                    Capsule().fill(accent.opacity(0.4)).frame(height: 6)
+                }
+            }
+            .padding(9)
+        }
+        .frame(height: 66)
+        .clipShape(shape)
+        .overlay {
+            shape.strokeBorder(
+                isSelected ? settings.accent : Color.primary.opacity(0.12),
+                lineWidth: isSelected ? 2.5 : 1
+            )
+        }
+    }
+
     private var accentPicker: some View {
         LazyVGrid(
             columns: [
@@ -411,7 +488,7 @@ private struct AppearanceSettingsView: View {
                 } label: {
                     VStack(spacing: 7) {
                         Circle()
-                            .fill(accent.components(for: settings.theme).color)
+                            .fill(accent.components(for: settings.theme, on: settings.palette).color)
                             .frame(width: 40, height: 40)
                             .overlay {
                                 // A ring, not just a tick: the tick alone
@@ -427,7 +504,10 @@ private struct AppearanceSettingsView: View {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 14, weight: .bold))
                                         .foregroundStyle(
-                                            accent.components(for: settings.theme)
+                                            accent.components(
+                                                for: settings.theme,
+                                                on: settings.palette
+                                            )
                                                 .prefersDarkForeground
                                                 ? Color.black
                                                 : Color.white
@@ -483,7 +563,10 @@ private struct AppearanceSettingsView: View {
                                         .font(.system(size: 14, weight: .bold))
                                         .foregroundStyle(
                                             settings.accentChoice
-                                                .components(for: theme)
+                                                .components(
+                                                    for: theme,
+                                                    on: settings.palette
+                                                )
                                                 .color
                                         )
                                 }
@@ -649,6 +732,7 @@ private struct PlayerAudioSettingsView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .labelStyle(AccentIconLabelStyle())
         .background(ThemeBackground())
         .navigationTitle(L10n.text("player_audio"))
         .audioProcessingRouteHintOverlay(isPresented: $showRouteHint)
@@ -805,6 +889,7 @@ struct EqualizerSettingsView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .labelStyle(AccentIconLabelStyle())
         .background(ThemeBackground())
         .navigationTitle(L10n.text("equalizer"))
         .audioProcessingRouteHintOverlay(isPresented: $showRouteHint)
@@ -1131,6 +1216,7 @@ private struct OfflineStorageSettingsView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .labelStyle(AccentIconLabelStyle())
         .background(ThemeBackground())
         .navigationTitle(L10n.text("offline_storage"))
         .navigationBarTitleDisplayMode(.inline)
@@ -1305,6 +1391,7 @@ private struct SleepTimerSettingsView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .labelStyle(AccentIconLabelStyle())
         .background(ThemeBackground())
         .navigationTitle(L10n.text("sleep_timer"))
     }
@@ -1377,6 +1464,7 @@ private struct ConnectionSettingsView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .labelStyle(AccentIconLabelStyle())
         .background(ThemeBackground())
         .navigationTitle(L10n.text("connection"))
     }
