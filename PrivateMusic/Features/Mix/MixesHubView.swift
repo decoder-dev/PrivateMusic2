@@ -1629,6 +1629,7 @@ struct MixesHubView: View {
                         }
                     }
                 }
+                .scrollsToCardEdges()
             }
 
             if !seeds.isEmpty {
@@ -1695,6 +1696,7 @@ struct MixesHubView: View {
                             }
                         }
                     }
+                    .scrollsToCardEdges()
                 }
             }
         }
@@ -1780,6 +1782,7 @@ struct MixesHubView: View {
                     }
                 }
             }
+            .scrollsToCardEdges()
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
