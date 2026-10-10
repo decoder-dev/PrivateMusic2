@@ -128,7 +128,7 @@ struct ConnectView: View {
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: icon)
-                .foregroundStyle(settings.theme.accent)
+                .foregroundStyle(settings.accent)
                 .frame(width: 22)
         }
     }

@@ -1000,7 +1000,7 @@ for required_library_queue_symbol in (
             f"and above it: {required_library_queue_symbol}"
         )
 for required_dock_glass_symbol in (
-    "tint: settings.theme.accent.opacity(0.06)",
+    "tint: settings.accent.opacity(0.06)",
     "searchTabButton",
     "Capsule(style: .continuous)",
     ".safeAreaInset(edge: .bottom, spacing: 0)",

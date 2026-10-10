@@ -15,7 +15,7 @@ struct PrimaryButtonStyle: ButtonStyle {
             .padding(.vertical, 15)
             .padding(.horizontal, 18)
             .foregroundStyle(settings.theme.buttonForeground)
-            .background(settings.theme.accent)
+            .background(settings.accent)
             .clipShape(
                 RoundedRectangle(
                     cornerRadius: PremiumLayout.compactRadius,

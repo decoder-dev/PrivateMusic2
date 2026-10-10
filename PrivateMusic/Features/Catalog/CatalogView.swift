@@ -614,7 +614,7 @@ struct CatalogView: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(
                     highlight.isCurrent(track.id)
-                        ? settings.theme.accent
+                        ? settings.accent
                         : Color.primary
                 )
                 .lineLimit(2)
@@ -677,7 +677,7 @@ struct CatalogView: View {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(settings.theme.buttonForeground)
                 .frame(width: 32, height: 32)
-                .background(settings.theme.accent, in: Circle())
+                .background(settings.accent, in: Circle())
                 .minimumHitTarget(visualSize: 32)
             }
             .buttonStyle(PremiumPressStyle())

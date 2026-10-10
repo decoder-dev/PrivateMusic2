@@ -7,7 +7,7 @@ struct PlaybackIndicatorView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var resolvedColor: Color {
-        color ?? settings.theme.accent
+        color ?? settings.accent
     }
 
     var body: some View {

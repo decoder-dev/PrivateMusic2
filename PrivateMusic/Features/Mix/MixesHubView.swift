@@ -190,7 +190,7 @@ struct MixesHubView: View {
             HStack(spacing: 12) {
                 Image(systemName: "sparkles.rectangle.stack")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(settings.theme.accent)
+                    .foregroundStyle(settings.accent)
                     .frame(width: 28)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L10n.text("new_releases"))
@@ -359,7 +359,7 @@ struct MixesHubView: View {
                             )
                             .strokeBorder(
                                 isSelected
-                                    ? settings.theme.accent
+                                    ? settings.accent
                                     : .clear,
                                 lineWidth: 2.5
                             )
@@ -421,7 +421,7 @@ struct MixesHubView: View {
                     Text(mix.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(
-                            isSelected ? settings.theme.accent : .primary
+                            isSelected ? settings.accent : .primary
                         )
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -779,7 +779,7 @@ struct MixesHubView: View {
                         : "play.fill"
                 )
                 .font(.title3.weight(.bold))
-                .foregroundStyle(settings.theme.accent)
+                .foregroundStyle(settings.accent)
                 .frame(width: 52, height: 52)
                 .background(.white, in: Circle())
             }
@@ -910,12 +910,12 @@ struct MixesHubView: View {
             .lineLimit(1)
             .padding(.horizontal, compact ? 9 : 10)
             .padding(.vertical, compact ? 6 : 7)
-            .foregroundStyle(highlighted ? settings.theme.accent : .primary)
+            .foregroundStyle(highlighted ? settings.accent : .primary)
             .background(
                 Capsule(style: .continuous)
                     .fill(
                         highlighted
-                            ? settings.theme.accent.opacity(0.14)
+                            ? settings.accent.opacity(0.14)
                             : Color.primary.opacity(0.06)
                     )
             )

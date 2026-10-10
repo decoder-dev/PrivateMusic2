@@ -284,6 +284,10 @@ private struct AppearanceSettingsView: View {
                 themePicker
             }
 
+            Section(L10n.text("accent_color")) {
+                accentPicker
+            }
+
             // Below iOS 26 everything is already drawn this way, so the
             // switch would be a no-op control — it only shows up where
             // Liquid Glass actually applies.
@@ -367,6 +371,49 @@ private struct AppearanceSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("appearance"))
+    }
+
+    private var accentPicker: some View {
+        LazyVGrid(
+            columns: [
+                GridItem(.adaptive(minimum: 64), spacing: 12)
+            ],
+            spacing: 12
+        ) {
+            ForEach(AppAccent.allCases) { accent in
+                Button {
+                    BubbleMotion.animate(.easeInOut(duration: 0.2)) {
+                        settings.accentChoice = accent
+                    }
+                    Haptics.selection()
+                } label: {
+                    VStack(spacing: 7) {
+                        Circle()
+                            .fill(accent.components(for: settings.theme).color)
+                            .frame(width: 40, height: 40)
+                            .overlay {
+                                if settings.accentChoice == accent {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                        Text(accent.title)
+                            .font(.caption2)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+                    .frame(minHeight: PremiumLayout.minimumTapTarget)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(accent.title)
+                .accessibilityAddTraits(
+                    settings.accentChoice == accent ? .isSelected : []
+                )
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     private var themePicker: some View {

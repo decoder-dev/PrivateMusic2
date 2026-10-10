@@ -460,7 +460,7 @@ struct SearchView: View {
                                     : "plus"
                             )
                         }
-                        .tint(settings.theme.accent)
+                        .tint(settings.accent)
                         .disabled(
                             libraryStore.contains(track)
                                 || pendingLibraryTrackIDs.contains(track.id)
@@ -639,7 +639,7 @@ struct SearchView: View {
             HStack(spacing: BubbleSpacing.m) {
                 Image(systemName: "person.wave.2.fill")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(settings.theme.accent)
+                    .foregroundStyle(settings.accent)
                     .frame(width: 24)
                 Text(artist)
                     .font(.subheadline.weight(.semibold))
@@ -679,7 +679,7 @@ struct SearchView: View {
         } trailing: {
             if likedAlbumsStore.isFollowed(album) {
                 Image(systemName: "heart.fill")
-                    .foregroundStyle(settings.theme.accent)
+                    .foregroundStyle(settings.accent)
             }
         }
     }

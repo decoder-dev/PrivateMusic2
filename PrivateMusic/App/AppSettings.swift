@@ -31,6 +31,72 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 }
 
+/// The interactive colour (tint, play buttons, hearts, selection). The first
+/// case is the app's original blue and stays the default.
+enum AppAccent: String, CaseIterable, Identifiable {
+    case blue
+    case indigo
+    case violet
+    case pink
+    case red
+    case orange
+    case green
+    case teal
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .blue: L10n.text("accent.blue")
+        case .indigo: L10n.text("accent.indigo")
+        case .violet: L10n.text("accent.violet")
+        case .pink: L10n.text("accent.pink")
+        case .red: L10n.text("accent.red")
+        case .orange: L10n.text("accent.orange")
+        case .green: L10n.text("accent.green")
+        case .teal: L10n.text("accent.teal")
+        }
+    }
+
+    /// Dark surfaces take a lighter tone, light surfaces a deeper one, so
+    /// white labels and thin glyphs keep their contrast on either.
+    func components(for theme: AppTheme) -> BubbleColorComponents {
+        let dark = theme == .dark
+        switch self {
+        case .blue:
+            return BubbleGamut.accent(for: theme)
+        case .indigo:
+            return dark
+                ? BubbleColorComponents(red: 0.43, green: 0.45, blue: 0.98)
+                : BubbleColorComponents(red: 0.31, green: 0.32, blue: 0.86)
+        case .violet:
+            return dark
+                ? BubbleColorComponents(red: 0.70, green: 0.46, blue: 0.97)
+                : BubbleColorComponents(red: 0.56, green: 0.32, blue: 0.84)
+        case .pink:
+            return dark
+                ? BubbleColorComponents(red: 0.98, green: 0.40, blue: 0.64)
+                : BubbleColorComponents(red: 0.85, green: 0.24, blue: 0.50)
+        case .red:
+            return dark
+                ? BubbleColorComponents(red: 0.98, green: 0.38, blue: 0.38)
+                : BubbleColorComponents(red: 0.84, green: 0.22, blue: 0.24)
+        case .orange:
+            return dark
+                ? BubbleColorComponents(red: 1.00, green: 0.60, blue: 0.20)
+                : BubbleColorComponents(red: 0.88, green: 0.46, blue: 0.08)
+        case .green:
+            return dark
+                ? BubbleColorComponents(red: 0.30, green: 0.80, blue: 0.48)
+                : BubbleColorComponents(red: 0.14, green: 0.62, blue: 0.34)
+        case .teal:
+            return dark
+                ? BubbleColorComponents(red: 0.24, green: 0.80, blue: 0.80)
+                : BubbleColorComponents(red: 0.08, green: 0.60, blue: 0.62)
+        }
+    }
+}
+
 enum AppearanceMode: String, CaseIterable, Identifiable {
     case system
     case dark
@@ -124,9 +190,27 @@ enum AppTextScalePolicy {
 enum EqualizerPreset: String, CaseIterable, Identifiable {
     case flat
     case bass
+    case bassReduction
+    case trebleBoost
+    case trebleReduction
     case vocal
+    case vocalReduction
+    case speech
+    case acoustic
+    case classical
+    case piano
+    case jazz
+    case lounge
+    case pop
+    case rnb
+    case hipHop
+    case dance
     case electronic
     case rock
+    case metal
+    case loudness
+    case smallSpeakers
+    case headphones
     case custom
 
     var id: String { rawValue }
@@ -135,9 +219,27 @@ enum EqualizerPreset: String, CaseIterable, Identifiable {
         switch self {
         case .flat: L10n.text("flat")
         case .bass: L10n.text("bass_boost")
+        case .bassReduction: L10n.text("eq.preset.bass_reduction")
+        case .trebleBoost: L10n.text("eq.preset.treble_boost")
+        case .trebleReduction: L10n.text("eq.preset.treble_reduction")
         case .vocal: L10n.text("vocal")
+        case .vocalReduction: L10n.text("eq.preset.vocal_reduction")
+        case .speech: L10n.text("eq.preset.speech")
+        case .acoustic: L10n.text("eq.preset.acoustic")
+        case .classical: L10n.text("eq.preset.classical")
+        case .piano: L10n.text("eq.preset.piano")
+        case .jazz: L10n.text("eq.preset.jazz")
+        case .lounge: L10n.text("eq.preset.lounge")
+        case .pop: L10n.text("eq.preset.pop")
+        case .rnb: L10n.text("eq.preset.rnb")
+        case .hipHop: L10n.text("eq.preset.hip_hop")
+        case .dance: L10n.text("eq.preset.dance")
         case .electronic: L10n.text("electronic")
         case .rock: L10n.text("rock")
+        case .metal: L10n.text("eq.preset.metal")
+        case .loudness: L10n.text("eq.preset.loudness")
+        case .smallSpeakers: L10n.text("eq.preset.small_speakers")
+        case .headphones: L10n.text("eq.preset.headphones")
         case .custom: L10n.text("custom")
         }
     }
@@ -146,9 +248,27 @@ enum EqualizerPreset: String, CaseIterable, Identifiable {
         switch self {
         case .flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         case .bass: [6, 6, 5, 3, 1, 0, 0, 0, -1, -1]
+        case .bassReduction: [-6, -5, -4, -2, -1, 0, 0, 0, 0, 0]
+        case .trebleBoost: [0, 0, 0, 0, 0, 1, 2, 4, 5, 6]
+        case .trebleReduction: [0, 0, 0, 0, 0, -1, -2, -4, -5, -6]
         case .vocal: [-2, -2, -1, 0, 2, 4, 4, 3, 1, 0]
+        case .vocalReduction: [2, 2, 1, -1, -3, -4, -3, -1, 0, 1]
+        case .speech: [-4, -3, -1, 1, 4, 5, 5, 3, 0, -3]
+        case .acoustic: [4, 4, 3, 1, 1, 1, 2, 3, 3, 2]
+        case .classical: [0, 0, 0, 0, 0, 0, -3, -3, -3, -4]
+        case .piano: [2, 1, 0, 2, 3, 1, 3, 4, 3, 3]
+        case .jazz: [3, 2, 1, 2, -2, -2, 0, 1, 2, 3]
+        case .lounge: [-3, -2, 0, 2, 3, 1, -1, 0, 1, 2]
+        case .pop: [-1, 1, 3, 4, 3, 1, 0, -1, -1, -2]
+        case .rnb: [3, 6, 5, 1, -2, -1, 2, 2, 3, 3]
+        case .hipHop: [5, 4, 1, 3, -1, -1, 1, -1, 2, 3]
+        case .dance: [6, 5, 2, 0, 0, -3, -4, -4, 0, 0]
         case .electronic: [5, 4, 2, 0, -1, 0, 2, 3, 5, 5]
         case .rock: [4, 3, 2, 0, -1, 1, 3, 4, 4, 3]
+        case .metal: [4, 3, 0, -2, -4, -3, 0, 3, 5, 4]
+        case .loudness: [6, 4, 0, -1, -1, -1, 0, 1, 4, 5]
+        case .smallSpeakers: [5, 4, 3, 2, 1, 0, -1, -1, 0, 1]
+        case .headphones: [3, 5, 3, -1, -1, 0, 2, 4, 5, 4]
         case .custom: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         }
     }
@@ -160,6 +280,15 @@ final class AppSettings {
     var theme: AppTheme {
         didSet { defaults.set(theme.rawValue, forKey: Keys.theme) }
     }
+    var accentChoice: AppAccent {
+        didSet { defaults.set(accentChoice.rawValue, forKey: Keys.accentChoice) }
+    }
+    /// What views tint with. Reading it (rather than `theme.accent`) is what
+    /// makes a view redraw when the accent changes.
+    var accentComponents: BubbleColorComponents {
+        accentChoice.components(for: theme)
+    }
+    var accent: Color { accentComponents.color }
     var appearance: AppearanceMode {
         didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) }
     }
@@ -365,6 +494,9 @@ final class AppSettings {
                 rawValue: defaults.string(forKey: Keys.appearance) ?? ""
             ) ?? .system
         }
+        accentChoice = AppAccent(
+            rawValue: defaults.string(forKey: Keys.accentChoice) ?? ""
+        ) ?? .blue
         if settingsVersion < 4 {
             defaults.removeObject(forKey: LegacyKeys.liquidGlass)
             defaults.set(4, forKey: Keys.version)
@@ -477,6 +609,7 @@ final class AppSettings {
     func resetAppearance() {
         theme = .dark
         appearance = .dark
+        accentChoice = .blue
         textScale = .system
         classicChrome = false
     }
@@ -501,6 +634,7 @@ final class AppSettings {
     private enum Keys {
         static let version = "settings.schema.version"
         static let theme = "appearance.theme"
+        static let accentChoice = "appearance.accent"
         static let appearance = "appearance.mode"
         static let textScale = "appearance.textScale"
         static let classicChrome = "appearance.classicChrome"

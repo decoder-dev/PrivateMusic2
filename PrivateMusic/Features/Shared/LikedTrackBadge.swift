@@ -22,7 +22,7 @@ struct LikedTrackBadge: View {
                 .foregroundStyle(
                     style == .artwork
                         ? Color.white
-                        : BubbleGamut.liked(for: settings.theme)
+                        : settings.accent
                 )
                 .padding(style == .artwork ? 7 : 0)
                 .background {

@@ -116,7 +116,7 @@ struct MixConfigureContent: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(
-                            settings.theme.accent,
+                            settings.accent,
                             in: Capsule(style: .continuous)
                         )
                     }
@@ -289,7 +289,7 @@ private struct MixConfigureChip: View {
 
     private var fillColor: Color {
         if isSelected {
-            return settings.theme.accent
+            return settings.accent
         }
         let base = increaseContrast || reduceTransparency ? 0.10 : 0.06
         return Color.primary.opacity(base)

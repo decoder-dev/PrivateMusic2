@@ -291,14 +291,14 @@ struct PlaylistDetailView: View {
                 listenButtonLabel
             }
             .buttonStyle(.glassProminent)
-            .tint(settings.theme.accent)
+            .tint(settings.accent)
             .disabled(model.tracks.isEmpty)
         } else {
             Button(action: toggleListen) {
                 listenButtonLabel
             }
             .buttonStyle(PremiumProminentButtonStyle())
-            .tint(settings.theme.accent)
+            .tint(settings.accent)
             .disabled(model.tracks.isEmpty)
         }
     }
@@ -307,7 +307,7 @@ struct PlaylistDetailView: View {
         Button(action: shufflePlaylist) {
             Image(systemName: "shuffle")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(settings.theme.accent)
+                .foregroundStyle(settings.accent)
                 .frame(width: 46, height: 46)
                 .contentShape(Circle())
                 .adaptiveGlass(in: Circle(), interactive: true)

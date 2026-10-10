@@ -459,7 +459,7 @@ private struct PlaybackTabDock: View {
                 .adaptiveGlass(
                     in: Capsule(style: .continuous),
                     interactive: true,
-                    tint: settings.theme.accent.opacity(0.06)
+                    tint: settings.accent.opacity(0.06)
                 )
                 .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
 
@@ -515,8 +515,8 @@ private struct PlaybackTabDock: View {
             in: Circle(),
             interactive: true,
             tint: selection == .search
-                ? settings.theme.accent.opacity(0.16)
-                : settings.theme.accent.opacity(0.06)
+                ? settings.accent.opacity(0.16)
+                : settings.accent.opacity(0.06)
         )
         .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
         .accessibilityLabel(MainTab.search.title)
@@ -538,7 +538,7 @@ private struct PlaybackTabDock: View {
                         if selection == tab {
                             // Chrome is a capsule, per BubbleShapeLanguage.
                             BubbleShapeLanguage.chrome
-                                .fill(settings.theme.accent.opacity(0.18))
+                                .fill(settings.accent.opacity(0.18))
                         }
                     }
                 Text(tab.title)
@@ -589,6 +589,6 @@ private struct PlaybackTabDock: View {
     }
 
     private var selectedColor: Color {
-        settings.theme.accent
+        settings.accent
     }
 }

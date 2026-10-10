@@ -881,7 +881,7 @@ private struct DownloadedTrackRow: View {
                 .font(.title3)
                 .foregroundStyle(
                     isSelected
-                        ? settings.theme.accent
+                        ? settings.accent
                         : Color.secondary
                 )
             }
@@ -1049,7 +1049,7 @@ private struct DownloadStorageSummary: View {
                             .fill(
                                 clampedUsageRatio > 0.9
                                     ? BubbleGamut.destructive.color
-                                    : settings.theme.accent
+                                    : settings.accent
                             )
                             .frame(
                                 width: proxy.size.width * clampedUsageRatio
@@ -1156,7 +1156,7 @@ private struct AnimatedProgressView: View {
                         .fill(Color.secondary.opacity(0.2))
                         .frame(height: 4)
                     Capsule()
-                        .fill(settings.theme.accent)
+                        .fill(settings.accent)
                         .frame(
                             width: proxy.size.width
                                 * animatedProgress,

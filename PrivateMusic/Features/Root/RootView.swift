@@ -88,7 +88,7 @@ struct RootView: View {
             }
             Task { await recoverActiveSession() }
         }
-        .tint(settings.theme.accent)
+        .tint(settings.accent)
         // Set once at the root so the flat look is consistent everywhere,
         // including the full-screen player cover above and every surface
         // built from `adaptiveGlass`. A half-converted app — flat controls
@@ -132,7 +132,7 @@ struct RootView: View {
             ConnectionBanner(
                 icon: nil,
                 message: "refreshing_vk_connection",
-                tint: settings.theme.accent,
+                tint: settings.accent,
                 showsProgress: true
             )
         } else if let refreshError {
