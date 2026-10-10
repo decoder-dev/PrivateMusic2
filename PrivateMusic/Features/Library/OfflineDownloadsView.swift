@@ -31,6 +31,8 @@ struct OfflineDownloadsView: View {
     @State private var section: DownloadsSection = .tracks
     @State private var searchText = ""
     @State private var selection: Set<String>?
+    @State private var cachedValidRecords: [OfflineTrackRecord] = []
+    @State private var isValidCacheReady = false
     @State private var sharingTrack: Track?
     @State private var selectedRecord: OfflineTrackRecord?
     @State private var deferredShareTrack: Track?
@@ -105,6 +107,8 @@ struct OfflineDownloadsView: View {
         // Selection belongs to the rows on screen: switching the section or
         // searching would otherwise leave hidden tracks selected, and the
         // delete button would remove them.
+        .onAppear { refreshValidRecords() }
+        .onChange(of: recordsSignature) { _, _ in refreshValidRecords() }
         .onChange(of: section) { _, _ in
             if selection != nil { exitSelection() }
         }
@@ -245,10 +249,32 @@ struct OfflineDownloadsView: View {
         var record: OfflinePlaylistRecord
     }
 
+    /// Every read used to stat every file on disk, several times per body
+    /// pass (lists, toolbar, animation key), and the body re-runs on each
+    /// download progress tick. The answer is cached and refreshed when the
+    /// set of records changes.
     private var validRecords: [OfflineTrackRecord] {
+        isValidCacheReady ? cachedValidRecords : computeValidRecords()
+    }
+
+    private func computeValidRecords() -> [OfflineTrackRecord] {
         offlineStore.records.values
             .filter { offlineStore.localURL(for: $0.track) != nil }
             .sorted { $0.downloadedAt > $1.downloadedAt }
+    }
+
+    private func refreshValidRecords() {
+        cachedValidRecords = computeValidRecords()
+        isValidCacheReady = true
+    }
+
+    /// Cheap (no disk access): changes whenever records are added, removed
+    /// or move between manual and automatic.
+    private var recordsSignature: String {
+        let records = offlineStore.records.values
+        let manual = records.filter { $0.resolvedRetention == .manual }.count
+        let latest = records.map(\.downloadedAt).max()?.timeIntervalSince1970 ?? 0
+        return "\(records.count)-\(manual)-\(latest)"
     }
 
     private var manualRecords: [OfflineTrackRecord] {

@@ -59,6 +59,9 @@ struct MixesHubView: View {
     @State private var tuningBase: MusicMix?
     @State private var startingMood: MixMoodPreference?
     @State private var startingArtistKey: String?
+    /// Cached: the affinity pass walks the whole listening history, which is
+    /// too much to redo on every state change of this screen.
+    @State private var artistCandidates: [ArtistAffinityCandidate] = []
     /// The text of `actionError` that is information, not a failure.
     @State private var noticeText: String?
     /// Mixes the listener tuned this session; kept apart from `mixes` so a
@@ -150,6 +153,13 @@ struct MixesHubView: View {
         }
         .onAppear {
             ensureVKSelection()
+            artistCandidates = computeArtistMixCandidates()
+        }
+        .onChange(of: history.entries.first?.id) { _, _ in
+            artistCandidates = computeArtistMixCandidates()
+        }
+        .onChange(of: mixFeedbackStore.bannedArtists) { _, _ in
+            artistCandidates = computeArtistMixCandidates()
         }
         .onChange(of: environment.mixActionError) { _, error in
             guard let error else { return }
@@ -1168,7 +1178,7 @@ struct MixesHubView: View {
     }
 
     /// «Микс по артисту» for the people the listener actually plays.
-    private var artistMixCandidates: [ArtistAffinityCandidate] {
+    private func computeArtistMixCandidates() -> [ArtistAffinityCandidate] {
         Array(
             ArtistAffinityPolicy.candidates(
                 history: history.entries,
@@ -1182,7 +1192,7 @@ struct MixesHubView: View {
 
     @ViewBuilder
     private var artistMixStrip: some View {
-        let artists = artistMixCandidates
+        let artists = artistCandidates
         if !artists.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 PremiumSectionHeader(

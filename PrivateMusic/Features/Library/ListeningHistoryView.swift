@@ -40,7 +40,7 @@ struct ListeningHistoryView: View {
                         )
                         .padding(.top, BubbleSpacing.section)
                     }
-                    AppGroupedSurface {
+                    AppGroupedSurface(isLazy: true) {
                         ForEach(Array(filtered.enumerated()), id: \.element.id) {
                             index, entry in
                             Button {

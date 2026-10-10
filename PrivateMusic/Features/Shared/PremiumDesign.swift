@@ -223,11 +223,18 @@ extension AppGroupedSection where Trailing == EmptyView {
 }
 
 struct AppGroupedSurface<Content: View>: View {
+    /// Long lists (history keeps 250 entries) must not build every row up
+    /// front inside a scroll view.
+    var isLazy = false
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        VStack(spacing: 0) {
-            content()
+        Group {
+            if isLazy {
+                LazyVStack(spacing: 0) { content() }
+            } else {
+                VStack(spacing: 0) { content() }
+            }
         }
         .padding(.horizontal, BubbleSpacing.xs)
         .premiumCard()
