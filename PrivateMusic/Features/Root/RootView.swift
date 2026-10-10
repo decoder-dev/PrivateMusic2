@@ -69,6 +69,7 @@ struct RootView: View {
             }
         }
         .onChange(of: scenePhase) { phase in
+            player.setInterfaceActive(phase == .active)
             if phase == .background || phase == .inactive {
                 Task { @MainActor in
                     try? await environment.offlineStore.flushPendingSave()
