@@ -395,7 +395,12 @@ private struct AppearanceSettingsView: View {
                                 if settings.accentChoice == accent {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 14, weight: .bold))
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(
+                                            accent.components(for: settings.theme)
+                                                .prefersDarkForeground
+                                                ? Color.black
+                                                : Color.white
+                                        )
                                 }
                             }
                         Text(accent.title)

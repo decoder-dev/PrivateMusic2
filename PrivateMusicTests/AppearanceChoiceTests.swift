@@ -47,6 +47,44 @@ final class AppearanceChoiceTests: XCTestCase {
     }
 }
 
+final class AccentContrastTests: XCTestCase {
+    private func contrast(_ a: Double, _ b: Double) -> Double {
+        (max(a, b) + 0.05) / (min(a, b) + 0.05)
+    }
+
+    func testEveryAccentKeepsReadableLabelsOnBothSurfaces() {
+        for accent in AppAccent.allCases {
+            for theme in AppTheme.allCases {
+                let fill = accent.components(for: theme)
+                let label = fill.prefersDarkForeground ? 0.0 : 1.0
+                XCTAssertGreaterThanOrEqual(
+                    contrast(fill.relativeLuminance, label),
+                    3.0,
+                    "\(accent) on \(theme)"
+                )
+            }
+        }
+    }
+
+    func testTheOriginalBlueKeepsItsWhiteLabel() {
+        for theme in AppTheme.allCases {
+            XCTAssertFalse(
+                BubbleGamut.accent(for: theme).prefersDarkForeground,
+                "\(theme)"
+            )
+        }
+    }
+
+    func testBrightAccentsSwitchToDarkLabels() {
+        XCTAssertTrue(
+            AppAccent.orange.components(for: .dark).prefersDarkForeground
+        )
+        XCTAssertTrue(
+            AppAccent.green.components(for: .dark).prefersDarkForeground
+        )
+    }
+}
+
 final class EqualizerPresetCatalogTests: XCTestCase {
     func testEveryPresetCoversTenBandsInsideTheSliderRange() {
         for preset in EqualizerPreset.allCases {

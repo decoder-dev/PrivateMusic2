@@ -428,6 +428,17 @@ enum DownloadNotifications {
 }
 
 extension View {
+    /// Content scrolling under the floating dock/mini player fades into it
+    /// instead of colliding with its glass at full contrast (iOS 26).
+    @ViewBuilder
+    func softBottomScrollEdge() -> some View {
+        if #available(iOS 26.0, *) {
+            scrollEdgeEffectStyle(.soft, for: .bottom)
+        } else {
+            self
+        }
+    }
+
     /// For a horizontal `ScrollView` inside a card that has `inset` padding:
     /// lets the content scroll to the card's edges instead of being clipped
     /// at the padding, while it still starts aligned with the card's text.

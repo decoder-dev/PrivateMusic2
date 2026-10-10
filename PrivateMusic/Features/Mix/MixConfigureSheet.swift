@@ -112,7 +112,7 @@ struct MixConfigureContent: View {
                                 .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
                         }
-                        .foregroundStyle(settings.theme.buttonForeground)
+                        .foregroundStyle(settings.onAccent)
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
                         .background(
@@ -267,7 +267,7 @@ private struct MixConfigureChip: View {
             }
             .foregroundStyle(
                 isSelected
-                    ? settings.theme.buttonForeground
+                    ? settings.onAccent
                     : Color.primary
             )
             .padding(.horizontal, BubbleSpacing.m)

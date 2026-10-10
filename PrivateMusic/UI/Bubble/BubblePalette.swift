@@ -32,6 +32,26 @@ struct BubbleColorComponents: Equatable, Hashable, Sendable {
         0.2126 * red + 0.7152 * green + 0.0722 * blue
     }
 
+    /// WCAG relative luminance (linearised sRGB), the basis for contrast
+    /// ratios — unlike `luminance`, which is a quick gamma-space estimate.
+    var relativeLuminance: Double {
+        func linear(_ value: Double) -> Double {
+            value <= 0.03928
+                ? value / 12.92
+                : pow((value + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(red)
+            + 0.7152 * linear(green)
+            + 0.0722 * linear(blue)
+    }
+
+    /// White stays the label colour wherever it reaches 3:1 (the floor for
+    /// large text and UI glyphs); lighter fills switch to black instead of
+    /// carrying a washed-out white label.
+    var prefersDarkForeground: Bool {
+        relativeLuminance > 0.30
+    }
+
     var saturation: Double {
         let high = max(red, green, blue)
         let low = min(red, green, blue)

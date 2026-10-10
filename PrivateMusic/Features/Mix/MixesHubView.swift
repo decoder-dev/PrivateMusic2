@@ -79,6 +79,7 @@ struct MixesHubView: View {
                 .padding(.horizontal, metrics.horizontalPadding)
                 .padding(.top, 8)
             }
+            .softBottomScrollEdge()
             .clearsMiniPlayer(includingWhenDockReservesSpace: true)
             .background {
                 GeometryReader { geometry in
