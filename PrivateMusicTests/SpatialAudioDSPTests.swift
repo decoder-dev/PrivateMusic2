@@ -256,6 +256,34 @@ final class SpatialAudioDSPTests: XCTestCase {
         )
     }
 
+    func testBluetoothEarbudsGetTheHeadphoneProfileByName() {
+        XCTAssertEqual(
+            PlaybackOutputToneProfile.resolve(
+                outputs: [(.bluetoothA2DP, "Dec's AirPods Pro")]
+            ),
+            .intimate
+        )
+        XCTAssertEqual(
+            PlaybackOutputToneProfile.resolve(
+                outputs: [(.bluetoothA2DP, "JBL Flip 6")]
+            ),
+            .room
+        )
+        // A car head unit stays a cabin even if it is called "Headset".
+        XCTAssertEqual(
+            PlaybackOutputToneProfile.resolve(
+                outputs: [(.carAudio, "Car Headset")]
+            ),
+            .cabin
+        )
+        XCTAssertEqual(
+            PlaybackOutputToneProfile.resolve(
+                outputs: [(.builtInSpeaker, "Speaker")]
+            ),
+            .room
+        )
+    }
+
     func testProcessedSideKeepsMidEnergyCentered() {
         let left: Float = 0.4
         let right: Float = -0.1

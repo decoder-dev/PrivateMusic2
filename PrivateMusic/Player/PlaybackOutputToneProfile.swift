@@ -26,6 +26,35 @@ enum PlaybackOutputToneProfile: Equatable {
         return outputPortTypes.isEmpty ? .intimate : .cabin
     }
 
+    /// Same decision with the device names in hand. Bluetooth earbuds and
+    /// Bluetooth speakers arrive as the very same port type, so the name is
+    /// the only thing that tells a pair of AirPods (worn on the head: full
+    /// spatial width, no boom cut) from a party speaker (room profile).
+    /// Anything the name does not give away keeps the milder room profile.
+    static func resolve(
+        outputs: [(port: AVAudioSession.Port, name: String)]
+    ) -> PlaybackOutputToneProfile {
+        let ports = outputs.map(\.port)
+        if !ports.contains(where: isCabinPort),
+           outputs.contains(where: {
+               ($0.port == .bluetoothA2DP || $0.port == .bluetoothLE)
+                   && looksLikeHeadphones($0.name)
+           }) {
+            return .intimate
+        }
+        return resolve(outputPortTypes: ports)
+    }
+
+    static func looksLikeHeadphones(_ name: String) -> Bool {
+        let lowered = name.lowercased()
+        return headphoneNameMarkers.contains { lowered.contains($0) }
+    }
+
+    private static let headphoneNameMarkers = [
+        "airpods", "buds", "earbuds", "earphone", "headphone", "headset",
+        "beats", "powerbeats", "wh-1000", "wf-1000", "наушник"
+    ]
+
     /// Scale user spatial intensity so cabin mono-downmix stays tight.
     var spatialIntensityScale: Double {
         switch self {
