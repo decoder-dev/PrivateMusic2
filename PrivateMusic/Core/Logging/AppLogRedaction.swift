@@ -58,7 +58,7 @@ enum AppLogRedaction {
         }
         // Structure-only response skeletons carry no values and are already
         // capped by APIResponseShape, so they get a larger budget.
-        let limit = sanitized.contains(" shape={") || sanitized.contains(" shape=[")
+        let limit = sanitized.contains(" shape=")
             ? APIResponseShape.maximumLength + 256
             : 512
         if truncate && sanitized.count > limit {
