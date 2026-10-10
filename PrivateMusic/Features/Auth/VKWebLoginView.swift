@@ -7,7 +7,7 @@ struct VKWebLoginView: View {
     @State private var isCompleting = false
     @State private var errorMessage: String?
 
-    let onAuthenticated: @MainActor (VKWebAuthResult) -> Void
+    let onAuthenticated: @MainActor (VKWebAuthResult) async throws -> Void
 
     var body: some View {
         NavigationStack {
@@ -186,7 +186,15 @@ struct VKWebLoginView: View {
         defer { isCompleting = false }
         do {
             let result = try await model.exchangeSession()
-            onAuthenticated(result)
+            do {
+                try await onAuthenticated(result)
+            } catch {
+                // The VK login worked; only saving the profile failed.
+                // Keep the web session and the sheet so one more tap
+                // retries, instead of wiping cookies and starting over.
+                errorMessage = error.localizedDescription
+                return
+            }
             await model.clearWebData()
             dismiss()
         } catch {

@@ -276,6 +276,7 @@ struct SettingsView: View {
 
 private struct AppearanceSettingsView: View {
     @Environment(AppSettings.self) private var settings
+    @State private var confirmsReset = false
 
     var body: some View {
         @Bindable var settings = settings
@@ -345,10 +346,8 @@ private struct AppearanceSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Button(L10n.text("reset_appearance")) {
-                    BubbleMotion.animate(.easeInOut(duration: 0.25)) {
-                        settings.resetAppearance()
-                    }
+                Button(L10n.text("reset_appearance"), role: .destructive) {
+                    confirmsReset = true
                 }
             }
 
@@ -380,6 +379,20 @@ private struct AppearanceSettingsView: View {
         .labelStyle(AccentIconLabelStyle())
         .background(ThemeBackground())
         .navigationTitle(L10n.text("appearance"))
+        .confirmationDialog(
+            L10n.text("reset_appearance"),
+            isPresented: $confirmsReset,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.text("reset_appearance"), role: .destructive) {
+                BubbleMotion.animate(.easeInOut(duration: 0.25)) {
+                    settings.resetAppearance()
+                }
+            }
+            Button(L10n.text("action.cancel"), role: .cancel) {}
+        } message: {
+            Text(L10n.text("reset_appearance.message"))
+        }
     }
 
     /// What the choice looks like in use: a filled button, accent text and a
@@ -578,6 +591,9 @@ private struct AppearanceSettingsView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(theme.title)
+                .accessibilityAddTraits(
+                    settings.theme == theme ? .isSelected : []
+                )
             }
         }
         .padding(.vertical, 4)
@@ -958,6 +974,7 @@ private struct OfflineStorageSettingsView: View {
         OfflinePlaylistStore.shared
     @State private var deleteAllPhase: OfflineDeleteAllPhase = .idle
     @State private var showsDeleteAllConfirmation = false
+    @State private var confirmsClearCache = false
 
     var body: some View {
         @Bindable var settings = settings
@@ -1168,7 +1185,7 @@ private struct OfflineStorageSettingsView: View {
             Section(L10n.text("manage")) {
                 if offlineStore.automaticCacheByteCount > 0 {
                     Button(L10n.text("clear_automatic_cache"), role: .destructive) {
-                        offlineStore.removeAutomaticCache()
+                        confirmsClearCache = true
                     }
                 }
 
@@ -1220,6 +1237,24 @@ private struct OfflineStorageSettingsView: View {
         .background(ThemeBackground())
         .navigationTitle(L10n.text("offline_storage"))
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            L10n.text("clear_automatic_cache"),
+            isPresented: $confirmsClearCache,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.text("clear_automatic_cache"), role: .destructive) {
+                offlineStore.removeAutomaticCache()
+                Haptics.success()
+            }
+            Button(L10n.text("action.cancel"), role: .cancel) {}
+        } message: {
+            Text(
+                L10n.format(
+                    "clear_automatic_cache.message",
+                    formattedBytes(offlineStore.automaticCacheByteCount)
+                )
+            )
+        }
         .confirmationDialog(
             L10n.text("remove_all_saved_files_2"),
             isPresented: $showsDeleteAllConfirmation,
@@ -1450,7 +1485,7 @@ private struct ConnectionSettingsView: View {
                         }
                     }
                 }
-                .disabled(isRefreshing)
+                .disabled(isRefreshing || sessionStore.session?.canRefresh != true)
                 if let refreshError {
                     Text(refreshError)
                         .font(.footnote)

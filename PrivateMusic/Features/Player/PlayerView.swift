@@ -671,16 +671,25 @@ struct PlayerView: View {
     private var playPauseLabel: some View {
         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
             .font(.system(size: 29, weight: .bold))
+            .opacity(player.isBuffering ? 0.3 : 1)
+            .overlay {
+                // A stalled stream used to look like a paused one.
+                if player.isBuffering {
+                    ProgressView()
+                }
+            }
             .frame(width: 64, height: 64)
             .contentShape(Circle())
     }
 
     private var playPauseAccessibilityLabel: String {
-        L10n.text(
-            player.isPlaying
-                ? "pause"
-                : "resume_playback"
-        )
+        player.isBuffering
+            ? L10n.text("buffering")
+            : L10n.text(
+                player.isPlaying
+                    ? "pause"
+                    : "resume_playback"
+            )
     }
 
     private func quickActions(_ track: Track) -> some View {
