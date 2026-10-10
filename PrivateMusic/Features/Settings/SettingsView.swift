@@ -980,6 +980,16 @@ private struct OfflineStorageSettingsView: View {
                     )
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+
+                    Toggle(isOn: $settings.autoDownloadLikes) {
+                        Label(L10n.text("auto_download_likes"),
+                            systemImage: "heart.circle"
+                        )
+                    }
+
+                    Text(L10n.text("auto_download_likes_footnote"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
 

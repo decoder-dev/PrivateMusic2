@@ -106,6 +106,11 @@ protocol MusicService: Sendable {
         _ track: Track,
         accessToken: String
     ) async throws
+    /// Undoes a just-made `removeFromLibrary` (VK `audio.restore`).
+    func restoreToLibrary(
+        _ track: Track,
+        accessToken: String
+    ) async throws
     func lyrics(
         for track: Track,
         accessToken: String
@@ -139,6 +144,7 @@ protocol MusicService: Sendable {
 }
 
 extension MusicService {
+    func restoreToLibrary(_ track: Track, accessToken: String) async throws { throw APIError.invalidRequest }
     func playlistDetails(_ playlist: Playlist, accessToken: String) async throws -> Playlist { playlist }
     func createPlaylist(title: String, description: String, ownerID: Int, hidden: Bool, accessToken: String) async throws -> Playlist {
         guard !hidden else { throw APIError.invalidRequest }

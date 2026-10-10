@@ -67,6 +67,35 @@ final class LibraryFeaturesTests: XCTestCase {
         try await service.broadcast(track: nil, accessToken: "test")
     }
 
+    func testRestoreToLibraryCallsAudioRestoreOnceWithTheTrackIdentity() async throws {
+        var calls = 0
+        let service = service { request in
+            calls += 1
+            XCTAssertEqual(request.url?.path, "/method/audio.restore")
+            let form = Self.form(request)
+            XCTAssertEqual(form["audio_id"], "456239537")
+            XCTAssertEqual(form["owner_id"], "880122316")
+            return #"{"response":{"id":456239537,"owner_id":880122316}}"#
+        }
+        let track = Track(trackID: 456239537, ownerID: 880122316, title: "T", artist: "A",
+            duration: 10, streamURL: nil, artworkURL: nil)
+        try await service.restoreToLibrary(track, accessToken: "test")
+        XCTAssertEqual(calls, 1)
+    }
+
+    func testRestoreToLibraryRejectsInvalidIdentifiersWithoutARequest() async {
+        let service = service { _ in
+            XCTFail("An invalid track must not reach the network")
+            return "{}"
+        }
+        let track = Track(trackID: 0, ownerID: 5, title: "T", artist: "A",
+            duration: 10, streamURL: nil, artworkURL: nil)
+        do {
+            try await service.restoreToLibrary(track, accessToken: "test")
+            XCTFail("Expected an invalid request")
+        } catch { XCTAssertEqual(error as? APIError, .invalidRequest) }
+    }
+
     func testPlaybackEventWireTypesAndNoAutomaticRetry() async throws {
         var calls = 0
         let service = service { request in
@@ -180,6 +209,9 @@ final class LibraryFeaturesTests: XCTestCase {
         let settings = AppSettings(defaults: defaults)
         XCTAssertFalse(settings.vkBroadcastEnabled)
         XCTAssertFalse(settings.vkReportingEnabled)
+        XCTAssertFalse(settings.autoDownloadLikes)
+        settings.autoDownloadLikes = true
+        XCTAssertTrue(AppSettings(defaults: defaults).autoDownloadLikes)
         settings.crossfadeDuration = .nan
         XCTAssertEqual(settings.crossfadeDuration, 0.55)
         settings.crossfadeDuration = 100

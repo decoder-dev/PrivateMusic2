@@ -37,6 +37,11 @@ struct LibraryView: View {
     @State private var paginationTask: Task<Void, Never>?
     @State private var playlistPaginationTask: Task<Void, Never>?
     @State private var addedTrackReloadTask: Task<Void, Never>?
+    /// The track just removed from the library, offered for a few seconds
+    /// as an undo.
+    @State private var removedTrack: Track?
+    @State private var undoDismissTask: Task<Void, Never>?
+    @State private var undoErrorMessage: String?
     /// Viewport width from a background GeometryReader — wrapping the
     /// ScrollView itself re-laid the whole library on every scroll frame
     /// (same sticky-scroll bug Home and Explore already fixed).
@@ -163,6 +168,20 @@ struct LibraryView: View {
                 // under the header.
                 .padding(.top, LibraryShelfMetrics.contentTopPadding)
             }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if removedTrack != nil {
+                    UndoBanner(
+                        message: L10n.text("library.removed_toast"),
+                        actionTitle: L10n.text("action.undo"),
+                        onUndo: undoRemoval
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.2),
+                value: removedTrack?.id
+            )
             .clearsMiniPlayer()
             .background {
                 GeometryReader { geometry in
@@ -291,6 +310,16 @@ struct LibraryView: View {
             Text(
                 L10n.text("you_are_on_a_cellular_network_downloading_may_use_mobile_data")
             )
+        }
+        .alert(L10n.text("could_not_undo_removal"),
+            isPresented: Binding(
+                get: { undoErrorMessage != nil },
+                set: { if !$0 { undoErrorMessage = nil } }
+            )
+        ) {
+            Button(L10n.text("action.ok"), role: .cancel) {}
+        } message: {
+            Text(undoErrorMessage ?? "")
         }
         .alert(L10n.text("could_not_start_playback"),
             isPresented: Binding(
@@ -1113,6 +1142,7 @@ struct LibraryView: View {
                             accessToken: token
                         ) {
                             libraryStore.markRemoved(track)
+                            offerUndo(for: track)
                         }
                     }
                 } label: {
@@ -1128,6 +1158,39 @@ struct LibraryView: View {
             .accessibilityLabel(L10n.text("more"))
         }
         .padding(.vertical, 6)
+    }
+
+    private func offerUndo(for track: Track) {
+        removedTrack = track
+        undoDismissTask?.cancel()
+        undoDismissTask = Task {
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled else { return }
+            removedTrack = nil
+        }
+    }
+
+    private func undoRemoval() {
+        guard let track = removedTrack else { return }
+        removedTrack = nil
+        undoDismissTask?.cancel()
+        Task {
+            do {
+                try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.restoreToLibrary(
+                        track,
+                        accessToken: token
+                    )
+                }
+                Haptics.success()
+                // The add event re-inserts the row and refreshes the index.
+                MusicLibraryEvents.postAdded(track)
+            } catch is CancellationError {
+                return
+            } catch {
+                undoErrorMessage = error.localizedDescription
+            }
+        }
     }
 
     private func performLibraryTrackPrimaryAction(_ track: Track) {

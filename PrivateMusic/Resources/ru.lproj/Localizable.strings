@@ -844,3 +844,8 @@
 "mix.personal_title" = "Мой микс";
 "mix.personal_subtitle" = "Персональный микс VK по вашей истории прослушивания";
 "mix.personal_name" = "Мой микс";
+"library.removed_toast" = "Удалено из медиатеки";
+"action.undo" = "Отменить";
+"could_not_undo_removal" = "Не удалось отменить";
+"auto_download_likes" = "Автозагрузка лайков";
+"auto_download_likes_footnote" = "Треки, которым вы ставите лайк, автоматически сохраняются для офлайн-прослушивания. Только по Wi-Fi.";
