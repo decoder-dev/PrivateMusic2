@@ -140,7 +140,7 @@ final class AppEnvironment {
     func selenaContinuationTracks(_ tracks: [Track]) -> [Track] {
         let outcome = filterSelenaTracks(tracks, relaxIfEmpty: true)
         if outcome.didRelax {
-            mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
+            mixNotice = L10n.text("mix_filters_relaxed_to_keep_queue")
         }
         return rankSelenaQueue(outcome.tracks)
     }
@@ -149,7 +149,7 @@ final class AppEnvironment {
     func continuationTracks(_ tracks: [Track]) -> [Track] {
         let outcome = filterMixTracks(tracks, relaxIfEmpty: true)
         if outcome.didRelax {
-            mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
+            mixNotice = L10n.text("mix_filters_relaxed_to_keep_queue")
         }
         return outcome.tracks
     }
@@ -159,6 +159,10 @@ final class AppEnvironment {
     /// caching are paused and hidden so the share transfer gets bandwidth.
     private(set) var isShareSessionActive = false
     var mixActionError: String?
+    /// Informational mix messages (e.g. filters relaxed to keep the queue
+    /// alive). Kept apart from `mixActionError` so background refills never
+    /// surface as a modal "Playback Error" while playback is fine.
+    var mixNotice: String?
     private var snippetTask: Task<Void, Never>?
     private struct SessionRecovery {
         let id: UUID
@@ -886,7 +890,7 @@ final class AppEnvironment {
     func filteredMixTracks(_ tracks: [Track]) -> [Track] {
         let outcome = filterMixTracks(tracks, relaxIfEmpty: true)
         if outcome.didRelax {
-            mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
+            mixNotice = L10n.text("mix_filters_relaxed_to_keep_queue")
         }
         return outcome.tracks
     }
@@ -896,7 +900,7 @@ final class AppEnvironment {
     func filteredSelenaTracks(_ tracks: [Track]) -> [Track] {
         let outcome = filterSelenaTracks(tracks, relaxIfEmpty: true)
         if outcome.didRelax {
-            mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
+            mixNotice = L10n.text("mix_filters_relaxed_to_keep_queue")
         }
         return outcome.tracks
     }
@@ -998,7 +1002,7 @@ final class AppEnvironment {
             : outcome.tracks
         player.replaceUpcoming(with: next)
         if outcome.didRelax {
-            mixActionError = L10n.text("mix_filters_relaxed_to_keep_queue")
+            mixNotice = L10n.text("mix_filters_relaxed_to_keep_queue")
         }
     }
 
