@@ -204,7 +204,7 @@
 "explore_music" = "Исследовать музыку";
 "player_look" = "Вид плеера";
 "classic_player_look" = "Старый вид плеера";
-"classic_player_look.footnote" = "Возвращает оформление iOS 18: обычная нижняя панель с мини-плеером вместо плавающей, матовые панели и плоские кнопки вместо Liquid Glass. Действует на плеер, мини-плеер, нижнюю панель и остальные панели приложения.";
+"classic_player_look.footnote" = "Упрощённое оформление без стеклянных эффектов: обычная нижняя панель, матовые панели и плоские кнопки. Действует на плеер, мини-плеер и остальные панели.";
 "settings.preview" = "Пример";
 "liquid_glass" = "Liquid Glass";
 "ios_26_uses_the_system_interactive_glass_effect_ios_16_25_use_a_compatib" = "На iOS 26+ используется системное интерактивное стекло. На iOS 17–25 — совместимый эффект системного материала.";
@@ -214,7 +214,7 @@
 "if_the_queue_has_a_current_track_playback_resumes_after_compatible_headp" = "Если в очереди есть текущий трек, приложение возобновит воспроизведение после подключения совместимых наушников или колонки.";
 "pause_at_minimum_volume" = "Пауза при минимальной громкости";
 "playback_pauses_at_the_current_position_when_system_volume_reaches_zero" = "При снижении системной громкости до нуля воспроизведение приостанавливается на текущей позиции.";
-"skip_unavailable_tracks" = "Пропускать недоступный трек";
+"skip_unavailable_tracks" = "Пропускать недоступные треки";
 "if_vk_cannot_refresh_an_audio_stream_the_player_continues_with_the_next_" = "Если VK не смог обновить аудиопоток, плеер продолжит очередь со следующей песни.";
 "after_several_failed_stream_refresh_attempts_the_player_moves_to_the_nex" = "После нескольких неудачных попыток обновить поток плеер перейдёт к следующему треку. При слабой сети текущий трек пробуется снова без пропуска.";
 "weak_connection_the_player_keeps_retrying_this_track" = "Слабое соединение. Плеер продолжает пробовать этот трек.";
@@ -379,9 +379,9 @@
 "the_vk_session_needs_to_be_refreshed" = "Сессия VK требует обновления.";
 "no_internet_connection" = "Нет подключения к интернету.";
 "the_server_timed_out_try_again" = "Сервер не ответил вовремя. Попробуйте ещё раз.";
-"network_error_0" = "Сетевая ошибка: %@";
-"could_not_process_the_response_0" = "Не удалось обработать ответ: %@";
-"the_server_returned_http_d0" = "Сервер вернул HTTP %d.";
+"network_error_0" = "Не удалось связаться с VK. Проверьте интернет и повторите.";
+"could_not_process_the_response_0" = "VK вернул неожиданный ответ. Попробуйте позже.";
+"the_server_returned_http_d0" = "Сервер VK сейчас недоступен. Попробуйте позже.";
 "playback_error" = "Ошибка воспроизведения";
 "session_error" = "Ошибка сессии";
 "offline_session_saved" = "Нет сети — сессия сохранена";
@@ -427,7 +427,7 @@
 "the_file_is_larger_than_150_mb" = "Файл больше 150 МБ.";
 "could_not_prepare_the_audio_stream" = "Не удалось подготовить аудиопоток.";
 "could_not_create_the_audio_file" = "Не удалось собрать аудиофайл.";
-"no_playable_audio_stream_is_available_for_this_track" = "Для этого трека отсутствует доступный аудиопоток.";
+"no_playable_audio_stream_is_available_for_this_track" = "Этот трек недоступен для прослушивания. Попробуйте другой.";
 "could_not_prepare_background_playback" = "Не удалось подготовить фоновое воспроизведение.";
 "could_not_start_audio_close_the_other_audio_app_and_try_again" = "Не удалось включить звук. Закройте другое аудиоприложение и повторите попытку.";
 "the_audio_stream_was_interrupted_start_playback_again" = "Аудиопоток был прерван. Повторите воспроизведение.";
@@ -451,7 +451,7 @@
 "the_system_downloader_did_not_save_the_audio" = "Системный загрузчик не сохранил аудио.";
 "the_file_is_too_large_for_offline_download" = "Файл слишком большой для офлайн-загрузки.";
 "offline_music_uses_more_than_5_gb_remove_some_downloads" = "Для офлайн-музыки занято больше 5 ГБ. Удалите часть загрузок.";
-"there_is_not_enough_free_storage_on_this_device" = "На устройстве недостаточно свободного места.";
+"there_is_not_enough_free_storage_on_this_device" = "Не хватает места на iPhone. Освободите память или удалите ненужные загрузки.";
 "the_selected_offline_storage_limit_has_been_reached" = "Достигнут выбранный лимит офлайн-хранилища.";
 "used" = "Использовано";
 "n_0_of_d1_gb" = "%@ из %d ГБ";
@@ -660,7 +660,7 @@
 "restore" = "Вернуть";
 "high_quality" = "Высокое качество";
 "crossfade" = "Кроссфейд";
-"overlaps_the_next_track_for_a_short_fade_skipped_on_hls_eq_and_low_powe" = "Коротко перекрывает следующий трек. Не работает на HLS, с эквалайзером и в режиме энергосбережения.";
+"overlaps_the_next_track_for_a_short_fade_skipped_on_hls_eq_and_low_powe" = "Плавно переходит к следующему треку. Не работает с эквалайзером и в режиме энергосбережения.";
 "sad" = "Грустно";
 "makes_quiet_passages_audible_in_noisy_places_headphones_on_the_subway_a_" = "Делает тихие места слышнее в шумной обстановке (наушники в метро, колонка в машине).";
 "for_kids" = "Детям";
@@ -675,7 +675,7 @@
 "audio_quality" = "Качество звука";
 "quality_high_hq_no_hls_cap" = "Качество: высокое (HQ / без лимита HLS)";
 "quality_data_saver_160_kbps" = "Качество: экономия трафика (~160 кбит/с)";
-"dynamic_range_compression" = "Компрессия динамики";
+"dynamic_range_compression" = "Тихие места громче";
 "any_familiarity" = "Любая узнаваемость";
 "love" = "Любовь";
 "any" = "Любое";
@@ -705,12 +705,12 @@
 "try_the_albums_or_artists_tab" = "Попробуйте вкладку альбомов или исполнителей.";
 "try_the_albums_artists_or_playlists_tab" = "Попробуйте вкладку альбомов, исполнителей или плейлистов.";
 "try_changing_your_query" = "Попробуйте изменить запрос.";
-"prefers_vk_hq_streams_and_does_not_cap_the_hls_bitrate_turn_it_off_to_sa" = "Предпочитает HQ-потоки VK и не ограничивает битрейт HLS. Выключите, чтобы экономить трафик (~160 кбит/с). Lossless у VK нет.";
+"prefers_vk_hq_streams_and_does_not_cap_the_hls_bitrate_turn_it_off_to_sa" = "Лучшее доступное качество звука. Выключите, чтобы экономить мобильный трафик.";
 "joyful" = "Радостно";
 "diversifies_the_queue_and_on_closer_to_track_more_novelty_pulls_vk_recom" = "Разбавляет очередь и при «Ближе к треку» / «Больше новизны» подтягивает рекомендации VK по текущему треку";
 "diversifies_the_queue_closer_to_track_and_more_novelty_pull_vk_recommend" = "Разбавляет очередь; «Ближе к треку» и «Больше новизны» подтягивают рекомендации VK";
 "russian" = "Русский";
-"smooths_volume_jumps_between_tracks_works_on_progressive_streams_on_devi" = "Сглаживает скачки громкости между треками. Работает на прогрессивных потоках; для HLS обработка на устройстве недоступна.";
+"smooths_volume_jumps_between_tracks_works_on_progressive_streams_on_devi" = "Выравнивает громкость разных треков. Работает не для всех треков.";
 "tales_lullabies_and_family_mixes" = "Сказки, колыбельные и семейные миксы";
 "download_2" = "Скачать";
 "hidden_in_mixes" = "Скрытое в миксах";
@@ -821,7 +821,7 @@
 "features.download.title" = "Скачать всю медиатеку";
 "features.download.explanation" = "Сохраняет все треки вашей медиатеки для офлайн-прослушивания. Уже скачанное не загружается повторно. Лимит хранилища действует. Оставьте приложение открытым; после перезапуска очередь можно продолжить.";
 "features.download.wifi" = "Только по Wi-Fi";
-"features.download.need_wifi" = "Загрузка приостановлена. Подключитесь к Wi-Fi или разрешите мобильную сеть.";
+"features.download.need_wifi" = "Загрузка приостановлена: нет Wi-Fi. Подключитесь к Wi-Fi или выключите «Только по Wi-Fi», чтобы качать через мобильную сеть.";
 "features.download.done" = "Медиатека скачана";
 "features.download.progress" = "Обработано: %d из %d";
 "features.download.pause" = "Приостановить";
@@ -910,3 +910,10 @@
 "home.load_failed" = "Не удалось загрузить главную. Нажмите, чтобы повторить.";
 "reset_appearance.message" = "Сбросит тему, цветовую тему, акцент, размер текста и вид плеера.";
 "clear_automatic_cache.message" = "Будет удалено: %@. Скачанные вручную треки не затрагиваются.";
+"vk.error.rate_limit" = "VK временно ограничил запросы. Подождите минуту и повторите.";
+"vk.error.auth" = "Нужно заново войти в VK.";
+"vk.error.unavailable" = "Этот контент недоступен в вашем регионе или закрыт правообладателем.";
+"vk.error.generic" = "VK не смог выполнить запрос (код %d). Попробуйте позже.";
+"playback_track_unavailable" = "Этот трек сейчас недоступен — возможно, из-за региона или прав правообладателя. Попробуйте другой трек.";
+"playback_no_internet" = "Нет интернета. Включите сеть или выберите скачанный трек.";
+"connect.token_placeholder" = "Токен доступа VK";

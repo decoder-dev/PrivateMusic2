@@ -390,9 +390,14 @@ actor APIClient {
                         .api,
                         "POST \(path) vk=\(error.errorCode) \(AppLogRedaction.redact(error.errorMsg))"
                     )
+                    // VK's own text is English and technical; the log keeps it,
+                    // the user gets a plain sentence.
                     throw APIError.server(
                         code: error.errorCode,
-                        message: error.errorMsg
+                        message: APIError.plainVKMessage(
+                            code: error.errorCode,
+                            fallback: error.errorMsg
+                        )
                     )
                 }
 

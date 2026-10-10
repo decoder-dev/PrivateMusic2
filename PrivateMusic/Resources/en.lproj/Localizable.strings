@@ -379,9 +379,9 @@
 "the_vk_session_needs_to_be_refreshed" = "The VK session needs to be refreshed.";
 "no_internet_connection" = "No internet connection.";
 "the_server_timed_out_try_again" = "The server timed out. Try again.";
-"network_error_0" = "Network error: %@";
-"could_not_process_the_response_0" = "Could not process the response: %@";
-"the_server_returned_http_d0" = "The server returned HTTP %d.";
+"network_error_0" = "Could not reach VK. Check your internet and try again.";
+"could_not_process_the_response_0" = "VK sent an unexpected response. Try again later.";
+"the_server_returned_http_d0" = "VK is unavailable right now. Try again later.";
 "playback_error" = "Playback Error";
 "session_error" = "Session Error";
 "offline_session_saved" = "Offline — Session Saved";
@@ -427,7 +427,7 @@
 "the_file_is_larger_than_150_mb" = "The file is larger than 150 MB.";
 "could_not_prepare_the_audio_stream" = "Could not prepare the audio stream.";
 "could_not_create_the_audio_file" = "Could not create the audio file.";
-"no_playable_audio_stream_is_available_for_this_track" = "No playable audio stream is available for this track.";
+"no_playable_audio_stream_is_available_for_this_track" = "This track can't be played. Try another one.";
 "could_not_prepare_background_playback" = "Could not prepare background playback.";
 "could_not_start_audio_close_the_other_audio_app_and_try_again" = "Could not start audio. Close the other audio app and try again.";
 "the_audio_stream_was_interrupted_start_playback_again" = "The audio stream was interrupted. Start playback again.";
@@ -451,7 +451,7 @@
 "the_system_downloader_did_not_save_the_audio" = "The system downloader did not save the audio.";
 "the_file_is_too_large_for_offline_download" = "The file is too large for offline download.";
 "offline_music_uses_more_than_5_gb_remove_some_downloads" = "Offline music uses more than 5 GB. Remove some downloads.";
-"there_is_not_enough_free_storage_on_this_device" = "There is not enough free storage on this device.";
+"there_is_not_enough_free_storage_on_this_device" = "Not enough space on this iPhone. Free up storage or delete unneeded downloads.";
 "the_selected_offline_storage_limit_has_been_reached" = "The selected offline storage limit has been reached.";
 "used" = "Used";
 "n_0_of_d1_gb" = "%@ of %d GB";
@@ -821,7 +821,7 @@
 "features.download.title" = "Download entire library";
 "features.download.explanation" = "Save all tracks in your library for offline listening. Existing downloads are reused. Your storage limit applies. Keep the app open; you can resume the queue after restarting.";
 "features.download.wifi" = "Wi-Fi only";
-"features.download.need_wifi" = "Download paused. Connect to Wi-Fi or allow cellular data.";
+"features.download.need_wifi" = "Download paused: no Wi-Fi. Connect to Wi-Fi or turn off \"Wi-Fi only\" to download over cellular.";
 "features.download.done" = "Library downloaded";
 "features.download.progress" = "Processed: %d of %d";
 "features.download.pause" = "Pause";
@@ -910,3 +910,10 @@
 "home.load_failed" = "Could not load Home. Tap to try again.";
 "reset_appearance.message" = "Resets theme, color theme, accent, text size and player look.";
 "clear_automatic_cache.message" = "This frees %@. Tracks you downloaded yourself are not affected.";
+"vk.error.rate_limit" = "VK is limiting requests for now. Wait a minute and try again.";
+"vk.error.auth" = "Please sign in to VK again.";
+"vk.error.unavailable" = "This content isn't available in your region or is blocked by the rights holder.";
+"vk.error.generic" = "VK couldn't complete the request (code %d). Try again later.";
+"playback_track_unavailable" = "This track is unavailable right now, possibly because of your region or the rights holder. Try another track.";
+"playback_no_internet" = "No internet. Turn on your connection or pick a downloaded track.";
+"connect.token_placeholder" = "VK access token";

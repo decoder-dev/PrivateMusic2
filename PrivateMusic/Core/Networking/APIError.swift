@@ -45,6 +45,24 @@ enum APIError: LocalizedError, Equatable {
         }
     }
 
+    /// Plain-language text for VK's numeric API errors.
+    static func plainVKMessage(code: Int, fallback: String) -> String {
+        switch code {
+        case 6, 9:
+            return L10n.text("vk.error.rate_limit")
+        case 5:
+            return L10n.text("vk.error.auth")
+        case 15, 201, 203:
+            return L10n.text("vk.error.unavailable")
+        default:
+            // Keep texts that already read as Russian; replace the rest.
+            let readable = fallback.unicodeScalars.contains {
+                (0x0400...0x04FF).contains($0.value)
+            }
+            return readable ? fallback : L10n.format("vk.error.generic", code)
+        }
+    }
+
     static func httpStatus(_ statusCode: Int) -> APIError {
         if statusCode == 401 {
             return .unauthorized
