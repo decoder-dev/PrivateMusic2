@@ -55,10 +55,10 @@ struct CatalogView: View {
                             metrics: metrics
                         )
                     }
-                    if homeCatalog.errorMessage != nil,
-                       nextStepCandidate == nil,
-                       history.entries.isEmpty {
-                        retryRow(errorMessage ?? homeCatalog.errorMessage ?? "")
+                    // Any failed refresh with nothing to show is a dead end;
+                    // listening history alone must not hide it.
+                    if homeCatalog.errorMessage != nil, homeCatalog.isEmpty {
+                        retryRow
                     }
                     if !history.entries.isEmpty {
                         recentlyPlayedSection(metrics: metrics)
@@ -224,10 +224,6 @@ struct CatalogView: View {
                 proxy.scrollTo(destination, anchor: .top)
             }
         }
-    }
-
-    private var errorMessage: String? {
-        actionErrorMessage ?? homeCatalog.errorMessage
     }
 
     private var nextStepRefreshKey: HomeNextStepRefreshKey {
@@ -530,6 +526,9 @@ struct CatalogView: View {
             case let .mix(id):
                 if let mix = homeCatalog.mixes.first(where: { $0.id == id }) {
                     await environment.startCatalogMix(mix)
+                } else {
+                    // The catalog refreshed away from under the card.
+                    actionErrorMessage = L10n.text("the_mix_is_empty_for_now")
                 }
             }
         }
@@ -843,11 +842,15 @@ struct CatalogView: View {
         }
     }
 
-    private func retryRow(_ message: String) -> some View {
+    private var retryRow: some View {
         Button { Task { await load(force: true) } } label: {
             HStack(spacing: 12) {
-                Image(systemName: "arrow.clockwise")
-                Text(message)
+                if homeCatalog.isRefreshing {
+                    ProgressView()
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                }
+                Text(L10n.text("home.load_failed"))
                     .font(.caption)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -858,6 +861,7 @@ struct CatalogView: View {
             .premiumCard(interactive: true)
         }
         .buttonStyle(PremiumPressStyle())
+        .disabled(homeCatalog.isRefreshing)
     }
 
     private func load(force: Bool = false) async {

@@ -907,3 +907,4 @@
 "palette.mocha" = "Mocha";
 "accent.banana" = "Banana";
 "mix.tuning_start_selected" = "Start · %d selected";
+"home.load_failed" = "Could not load Home. Tap to try again.";

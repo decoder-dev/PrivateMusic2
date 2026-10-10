@@ -100,7 +100,10 @@ struct HomeStageView: View {
         }
         .task(id: highlight.currentTrackID) { syncLibraryState() }
         .onChange(of: libraryStore.signatures) { _ in syncLibraryState() }
-        .onDisappear { launchTask?.cancel() }
+        // No cancel on disappear: the stage is a lazy row, so it "disappears"
+        // when Home scrolls, pushes or switches tab — which silently dropped
+        // a station the listener had just started. A new launch cancels the
+        // previous one (see `start`).
     }
 
     // MARK: - Chip
