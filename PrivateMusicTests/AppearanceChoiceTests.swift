@@ -28,7 +28,9 @@ final class AppearanceChoiceTests: XCTestCase {
     func testCachedDerivedColoursFollowThemePaletteAndAccent() {
         withDefaults { defaults in
             let settings = AppSettings(defaults: defaults)
-            func expected() -> BubbleColorComponents {
+            // A closure, not a local func: a local func does not inherit the
+            // main actor, and the settings are main-actor state.
+            let expected: () -> BubbleColorComponents = {
                 settings.accentChoice.components(
                     for: settings.theme,
                     on: settings.palette
