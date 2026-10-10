@@ -780,23 +780,33 @@ struct SearchView: View {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Playlist> {
-        let page = try await environment.withAuthorizedToken { token in
-            try await environment.musicService.playlists(
-                accessToken: token,
-                offset: offset,
-                count: count
-            )
-        }
         // Folded once here; matching itself runs in PrivateMusicCore.c.
         let needle = FoldedSearchQuery(query)
-        let filtered = page.items.filter { playlist in
-            needle.matches(playlist.title)
-                || (playlist.description.map(needle.matches) ?? false)
+        // The library is filtered client-side, so a page without a match
+        // says nothing about the next one: keep looking (a few pages) before
+        // telling someone with more than 100 playlists there is no match.
+        var filtered: [Playlist] = []
+        var nextOffset: Int? = offset
+        var pagesRead = 0
+        while filtered.isEmpty, let current = nextOffset, pagesRead < 5 {
+            let page = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.playlists(
+                    accessToken: token,
+                    offset: current,
+                    count: count
+                )
+            }
+            filtered = page.items.filter { playlist in
+                needle.matches(playlist.title)
+                    || (playlist.description.map(needle.matches) ?? false)
+            }
+            nextOffset = page.nextOffset
+            pagesRead += 1
         }
         return MusicPage(
             items: filtered,
             totalCount: filtered.count,
-            nextOffset: page.nextOffset
+            nextOffset: nextOffset
         )
     }
 

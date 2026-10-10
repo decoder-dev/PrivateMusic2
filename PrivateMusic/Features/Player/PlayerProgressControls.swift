@@ -44,7 +44,14 @@ struct PlayerProgressControls: View {
                 },
                 onCommit: commitScrubbing
             )
-            .frame(height: PlayerProgressPolicy.sliderTrackHeight)
+            // Layout keeps the 20pt row; the view itself is 44pt tall so
+            // missing a 12pt thumb is hard, not the default.
+            .frame(height: PlayerProgressPolicy.sliderTouchHeight)
+            .padding(
+                .vertical,
+                -(PlayerProgressPolicy.sliderTouchHeight
+                    - PlayerProgressPolicy.sliderTrackHeight) / 2
+            )
             .accessibilityLabel(L10n.text("playback_position"))
             .accessibilityValue(
                 "\(displayedElapsed.formattedDuration) / "

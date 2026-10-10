@@ -170,6 +170,8 @@ struct RemotePlayerView: View {
                     remote.send(.previous)
                 } label: {
                     Image(systemName: "backward.fill")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(WatchL10n.text("previous_track"))
@@ -201,6 +203,8 @@ struct RemotePlayerView: View {
                     remote.send(.next)
                 } label: {
                     Image(systemName: "forward.fill")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(WatchL10n.text("next_track"))
@@ -226,7 +230,9 @@ struct RemotePlayerView: View {
             .buttonStyle(.bordered)
             .tint(remote.state.isLiked ? .pink : .white)
         }
-        .disabled(!remote.isReachable || remote.state.isBuffering)
+        // Buffering must not lock the transport: a stalled track is exactly
+        // when pause and skip are needed.
+        .disabled(!remote.isReachable)
         .opacity(remote.isReachable ? 1 : 0.45)
     }
 
