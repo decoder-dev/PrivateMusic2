@@ -2767,10 +2767,9 @@ final class AudioPlayer {
     }
 
     private func updateOutputToneProfile(reloadIfNeeded: Bool) {
-        let ports = AVAudioSession.sharedInstance()
-            .currentRoute.outputs.map(\.portType)
         let profile = PlaybackOutputToneProfile.resolve(
-            outputPortTypes: ports
+            outputs: AVAudioSession.sharedInstance().currentRoute.outputs
+                .map { (port: $0.portType, name: $0.portName) }
         )
         let requiredTap = equalizer.requiresAudioTap
         equalizer.setOutputProfile(profile)
