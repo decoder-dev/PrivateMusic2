@@ -52,4 +52,9 @@ final class PlaybackClockPolicyTests: XCTestCase {
         XCTAssertEqual(persisted, [16, 32, 48, 64].filter { $0 <= 62 })
         XCTAssertFalse(PlaybackClockPolicy.shouldPersist(wholeSecond: 0, lastPersistedSecond: -1))
     }
+
+    func testPersistsAgainAfterSeekingBackwards() {
+        XCTAssertFalse(PlaybackClockPolicy.shouldPersist(wholeSecond: 95, lastPersistedSecond: 100))
+        XCTAssertTrue(PlaybackClockPolicy.shouldPersist(wholeSecond: 20, lastPersistedSecond: 100))
+    }
 }

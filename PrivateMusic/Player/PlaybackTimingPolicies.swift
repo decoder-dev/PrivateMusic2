@@ -136,7 +136,9 @@ enum PlaybackClockPolicy {
         lastPersistedSecond: Int,
         period: Int = 15
     ) -> Bool {
+        // abs(): after a seek backwards the playhead is *behind* the last
+        // persisted second and must still persist once `period` has passed.
         wholeSecond > 0
-            && wholeSecond - max(lastPersistedSecond, 0) >= period
+            && abs(wholeSecond - max(lastPersistedSecond, 0)) >= period
     }
 }

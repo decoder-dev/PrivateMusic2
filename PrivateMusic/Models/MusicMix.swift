@@ -51,7 +51,17 @@ struct MusicMix: Hashable, Identifiable, Sendable {
         self.isSocial = isSocial || (curator?.isUsable == true)
         self.sectionTitle = sectionTitle
         self.curator = curator
-        self.streamOptions = streamOptions
+        // A pinned or restored mix only keeps its id — the tuning rides in
+        // the id's suffix, so recover it instead of silently playing plain.
+        self.streamOptions = streamOptions ?? Self.options(inID: id)
+    }
+
+    private static func options(inID id: String) -> String? {
+        guard let index = id.firstIndex(of: optionsSeparator) else {
+            return nil
+        }
+        let suffix = String(id[id.index(after: index)...])
+        return suffix.isEmpty ? nil : suffix
     }
 
     /// The id VK itself knows the mix by.
