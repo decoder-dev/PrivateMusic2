@@ -246,9 +246,6 @@ struct MixesHubView: View {
                     if orderedVKMixes.count > 1 {
                         vkMixPicker(selected: mix, metrics: metrics)
                     }
-                    if !vibeShelves.isEmpty {
-                        vibeShelfBlock(metrics: metrics)
-                    }
                     vkMagazineShelves(metrics: metrics)
                     if !homeCatalog.newReleases.isEmpty {
                         newReleasesLink
@@ -985,9 +982,11 @@ struct MixesHubView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
 
-                mixConfigureEntry
-                if canTune(mix) {
-                    mixTuningEntry(for: mix)
+                HStack(spacing: 10) {
+                    if canTune(mix) {
+                        mixTuningEntry(for: mix)
+                    }
+                    mixConfigureEntry
                 }
             }
 
@@ -1114,36 +1113,16 @@ struct MixesHubView: View {
     }
 
     private var mixConfigureEntry: some View {
-        Button {
+        ExploreChip(
+            title: hasActiveMixFilters
+                ? configuredMixSummary
+                : L10n.text("configure_mix"),
+            systemImage: "slider.horizontal.3",
+            tint: .secondary,
+            isFlexible: true
+        ) {
             showingMixConfigure = true
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.caption.weight(.semibold))
-                Text(L10n.text("configure_mix"))
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                if hasActiveMixFilters {
-                    Text(configuredMixSummary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
-            )
-            .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(PremiumPressStyle())
         .accessibilityLabel(L10n.text("configure_mix"))
         .accessibilityHint(L10n.text("configure_mix_accessibility_hint"))
     }
@@ -1153,31 +1132,15 @@ struct MixesHubView: View {
     }
 
     private func mixTuningEntry(for mix: MusicMix) -> some View {
-        Button {
+        ExploreChip(
+            title: L10n.text("mix.tuning_short"),
+            systemImage: "sparkles",
+            isFlexible: true
+        ) {
             Haptics.selection()
             tuningBase = mix
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .font(.caption.weight(.semibold))
-                Text(L10n.text("mix.tuning_entry"))
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
-            )
-            .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(PremiumPressStyle())
+        .accessibilityLabel(L10n.text("mix.tuning_entry"))
         .accessibilityHint(L10n.text("mix.tuning_hint"))
     }
 
@@ -1213,7 +1176,10 @@ struct MixesHubView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(artists) { artist in
-                            Button {
+                            ExploreChip(
+                                title: artist.displayName,
+                                systemImage: "person.wave.2.fill"
+                            ) {
                                 Haptics.selection()
                                 Task {
                                     await environment.startMixFromArtist(
@@ -1221,25 +1187,7 @@ struct MixesHubView: View {
                                         seed: nil
                                     )
                                 }
-                            } label: {
-                                Label(
-                                    artist.displayName,
-                                    systemImage: "person.wave.2.fill"
-                                )
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
-                                .padding(.horizontal, 14)
-                                .frame(
-                                    minHeight: PremiumLayout.minimumTapTarget
-                                )
-                                .background(
-                                    Capsule(style: .continuous)
-                                        .fill(Color.primary.opacity(0.07))
-                                )
-                                .contentShape(Capsule(style: .continuous))
                             }
-                            .buttonStyle(PremiumPressStyle())
-                            .foregroundStyle(.primary)
                         }
                     }
                 }
@@ -1261,7 +1209,11 @@ struct MixesHubView: View {
                     ForEach(
                         MixMoodPreference.allCases.filter { $0 != .any }
                     ) { mood in
-                        Button {
+                        ExploreChip(
+                            title: mood.title,
+                            systemImage: mood.chipSymbol,
+                            tint: mood.tint
+                        ) {
                             Haptics.selection()
                             Task {
                                 await environment.startMoodStation(
@@ -1269,22 +1221,7 @@ struct MixesHubView: View {
                                     in: vkMixes
                                 )
                             }
-                        } label: {
-                            Label(mood.title, systemImage: mood.chipSymbol)
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
-                                .padding(.horizontal, 14)
-                                .frame(
-                                    minHeight: PremiumLayout.minimumTapTarget
-                                )
-                                .background(
-                                    Capsule(style: .continuous)
-                                        .fill(Color.primary.opacity(0.07))
-                                )
-                                .contentShape(Capsule(style: .continuous))
                         }
-                        .buttonStyle(PremiumPressStyle())
-                        .foregroundStyle(.primary)
                     }
                 }
             }
@@ -1570,53 +1507,6 @@ struct MixesHubView: View {
                 Label(L10n.text("share_audio_file"),
                     systemImage: "square.and.arrow.up"
                 )
-            }
-        }
-    }
-
-    private func vibeShelfBlock(metrics: MixHubMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.text("vibes_from_vk"))
-                .font(.headline)
-            Text(
-                L10n.text(
-                    "moods_and_themed_shelves_from_the_catalog_just_like_in_the_vk_app"
-                )
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: metrics.cardSpacing) {
-                    ForEach(vibeShelves, id: \.title) { shelf in
-                        Button {
-                            openVibeShelf(shelf)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(shelf.title)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(2)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Text(
-                                    L10n.format(
-                                        "d0_mixes",
-                                        shelf.mixes.count
-                                    )
-                                )
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            }
-                            .frame(
-                                width: metrics.cardWidth,
-                                alignment: .leading
-                            )
-                            .padding(12)
-                            .premiumCard()
-                        }
-                        .buttonStyle(PremiumPressStyle())
-                    }
-                }
             }
         }
     }
