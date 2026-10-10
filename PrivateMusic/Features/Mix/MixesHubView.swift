@@ -61,7 +61,7 @@ struct MixesHubView: View {
     @State private var startingArtistKey: String?
     /// Cached: the affinity pass walks the whole listening history, which is
     /// too much to redo on every state change of this screen.
-    @State private var artistCandidates: [ArtistAffinityCandidate] = []
+    @State private var artistCache = ArtistCandidateCache()
     /// The text of `actionError` that is information, not a failure.
     @State private var noticeText: String?
     /// Mixes the listener tuned this session; kept apart from `mixes` so a
@@ -83,16 +83,36 @@ struct MixesHubView: View {
                     listenLaterBanner
 
                     vkContent(metrics: metrics)
-
-                    if let actionError {
-                        actionErrorRow(actionError)
-                    }
                 }
                 .padding(.horizontal, metrics.horizontalPadding)
                 .padding(.top, 8)
             }
             .softBottomScrollEdge()
             .clearsMiniPlayer(includingWhenDockReservesSpace: true)
+            // A message floats over the content instead of being inserted
+            // into it: inserting (and, six seconds later, removing) a row
+            // pushed everything below it up and down, and at the end of a
+            // long list it was off screen anyway.
+            .overlay(alignment: .top) {
+                if let actionError {
+                    actionErrorRow(actionError)
+                        .padding(.horizontal, 14)
+                        .background(
+                            .regularMaterial,
+                            in: RoundedRectangle(
+                                cornerRadius: PremiumLayout.compactRadius,
+                                style: .continuous
+                            )
+                        )
+                        .padding(.horizontal, metrics.horizontalPadding)
+                        .padding(.top, 6)
+                        .transition(.opacity)
+                }
+            }
+            .animation(
+                reduceMotion ? nil : .easeInOut(duration: 0.2),
+                value: actionError
+            )
             .background {
                 GeometryReader { geometry in
                     Color.clear.preference(
@@ -153,13 +173,6 @@ struct MixesHubView: View {
         }
         .onAppear {
             ensureVKSelection()
-            artistCandidates = computeArtistMixCandidates()
-        }
-        .onChange(of: history.entries.first?.id) { _, _ in
-            artistCandidates = computeArtistMixCandidates()
-        }
-        .onChange(of: mixFeedbackStore.bannedArtists) { _, _ in
-            artistCandidates = computeArtistMixCandidates()
         }
         .onChange(of: environment.mixActionError) { _, error in
             guard let error else { return }
@@ -1178,6 +1191,19 @@ struct MixesHubView: View {
     }
 
     /// «Микс по артисту» for the people the listener actually plays.
+    /// Computed on the first render (a row that popped in a frame later
+    /// shoved everything below it down) and again only when the history or
+    /// the hidden artists change.
+    private var artistCandidates: [ArtistAffinityCandidate] {
+        let key = "\(history.entries.first?.id ?? "")-\(history.entries.count)"
+            + "-\(mixFeedbackStore.bannedArtists.count)"
+        if artistCache.key != key {
+            artistCache.value = computeArtistMixCandidates()
+            artistCache.key = key
+        }
+        return artistCache.value
+    }
+
     private func computeArtistMixCandidates() -> [ArtistAffinityCandidate] {
         Array(
             ArtistAffinityPolicy.candidates(
@@ -2412,4 +2438,12 @@ private struct SelectedTraitModifier: ViewModifier {
             content
         }
     }
+}
+
+
+/// Reference-typed memo for `MixesHubView.artistCandidates`: filling it
+/// during `body` is not a state change, so it does not re-trigger the view.
+private final class ArtistCandidateCache {
+    var key = ""
+    var value: [ArtistAffinityCandidate] = []
 }

@@ -20,15 +20,20 @@ struct ExploreChip: View {
         let color = tint ?? settings.accent
         Button(action: action) {
             HStack(spacing: 7) {
-                if isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(color)
-                } else {
-                    Image(systemName: systemImage)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(color)
+                // Same box either way: swapping the icon for a spinner must
+                // not change the chip's width.
+                Group {
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(color)
+                    } else {
+                        Image(systemName: systemImage)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(color)
+                    }
                 }
+                .frame(width: 18, height: 18)
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
