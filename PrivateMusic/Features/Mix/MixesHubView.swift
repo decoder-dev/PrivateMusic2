@@ -199,6 +199,11 @@ struct MixesHubView: View {
             actionError = error
             environment.mixActionError = nil
         }
+        .onChange(of: environment.mixNotice) { _, notice in
+            guard let notice else { return }
+            actionError = notice
+            environment.mixNotice = nil
+        }
         .onChange(of: settings.mixLanguagePreference) { _, _ in
             guard sessionStore.accessToken != nil else { return }
             if let current = currentMixForFilters() {
