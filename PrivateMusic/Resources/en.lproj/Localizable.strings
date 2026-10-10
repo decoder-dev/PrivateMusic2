@@ -657,7 +657,6 @@
 "more_hits" = "More Hits";
 "a_quick_start_based_on_your_mood" = "A quick start based on your mood";
 "d0_different_artists_in_the_stream" = "%d different artists in the stream";
-"vibes_from_vk" = "Selena vibes";
 "restore" = "Restore";
 "high_quality" = "High Quality";
 "crossfade" = "Crossfade";
@@ -687,7 +686,6 @@
 "mixes" = "Mixes";
 "music_from_your_vk_library_in_a_single_player" = "Music from your VK library in a single player";
 "mood" = "Mood";
-"moods_and_themed_shelves_from_the_catalog_just_like_in_the_vk_app" = "Moods and themed Selena shelves";
 "dislike" = "Dislike";
 "could_not_build_a_mix_from_your_library" = "Could not build a mix from your library";
 "volume_normalization" = "Volume Normalization";
@@ -876,8 +874,8 @@
 "accent.orange" = "Orange";
 "accent.green" = "Green";
 "accent.teal" = "Teal";
-"intent.play_my_mix" = "Play My Mix";
-"intent.play_my_mix.description" = "Starts your personal VK mix.";
+"intent.play_my_mix" = "Play Selena";
+"intent.play_my_mix.description" = "Starts your personal Selena mix.";
 "intent.toggle_playback" = "Play or Pause";
 "intent.toggle_playback.description" = "Pauses the current track, or resumes it.";
 "intent.next_track" = "Next Track";

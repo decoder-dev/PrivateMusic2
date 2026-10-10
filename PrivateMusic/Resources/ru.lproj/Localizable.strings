@@ -657,7 +657,6 @@
 "more_hits" = "Больше хитов";
 "a_quick_start_based_on_your_mood" = "Быстрый старт по настроению";
 "d0_different_artists_in_the_stream" = "В потоке %d разных артистов";
-"vibes_from_vk" = "Вайбы Selena";
 "restore" = "Вернуть";
 "high_quality" = "Высокое качество";
 "crossfade" = "Кроссфейд";
@@ -687,7 +686,6 @@
 "mixes" = "Миксы";
 "music_from_your_vk_library_in_a_single_player" = "Музыка из вашей медиатеки VK в одном плеере";
 "mood" = "Настроение";
-"moods_and_themed_shelves_from_the_catalog_just_like_in_the_vk_app" = "Настроения и тематические полки Selena";
 "dislike" = "Не нравится";
 "could_not_build_a_mix_from_your_library" = "Не удалось собрать микс по медиатеке";
 "volume_normalization" = "Нормализация громкости";
@@ -876,8 +874,8 @@
 "accent.orange" = "Оранжевый";
 "accent.green" = "Зелёный";
 "accent.teal" = "Бирюзовый";
-"intent.play_my_mix" = "Включить мой микс";
-"intent.play_my_mix.description" = "Запускает ваш персональный микс VK.";
+"intent.play_my_mix" = "Включить Selena";
+"intent.play_my_mix.description" = "Запускает вашу персональную Selena.";
 "intent.toggle_playback" = "Играть или пауза";
 "intent.toggle_playback.description" = "Ставит текущий трек на паузу или продолжает его.";
 "intent.next_track" = "Следующий трек";
