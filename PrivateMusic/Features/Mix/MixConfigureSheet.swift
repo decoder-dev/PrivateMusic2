@@ -1,20 +1,18 @@
 import SwiftUI
 
-/// Which dial the sheet is tuning. Selena gets the full Yandex-style wave
-/// (moodEnergy + diversity + language incl. instrumental). Catalog mixes
-/// keep only language + familiarity.
+/// Where the filter chips are shown.
 enum MixConfigureScope: Equatable {
-    case selena
+    /// Bottom sheet opened from a mix.
     case mix
-    /// Settings hosts both dials on one page.
+    /// The Settings page.
     case all
 }
 
-/// Bottom-sheet tuner — Selena wave or basic mix filters.
+/// Bottom-sheet tuner for the basic mix filters (language + familiarity).
 struct MixConfigureSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    var scope: MixConfigureScope = .selena
+    var scope: MixConfigureScope = .mix
     /// When set, the primary button starts playback after applying filters.
     var onStart: (() -> Void)? = nil
     /// Fires after the sheet has dismissed when Start was tapped — keeps
@@ -47,7 +45,6 @@ struct MixConfigureSheet: View {
 
     private var navigationTitle: String {
         switch scope {
-        case .selena: L10n.text("configure_selena")
         case .mix: L10n.text("configure_mix")
         case .all: L10n.text("mix_filters")
         }
@@ -61,7 +58,7 @@ struct MixConfigureContent: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
-    var scope: MixConfigureScope = .selena
+    var scope: MixConfigureScope = .mix
     var showsStartAction = false
     var onCancel: (() -> Void)? = nil
     var onStart: (() -> Void)? = nil
@@ -73,16 +70,7 @@ struct MixConfigureContent: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BubbleSpacing.xxl) {
-                switch scope {
-                case .selena:
-                    selenaSections
-                case .mix:
-                    mixSections
-                case .all:
-                    selenaSections
-                    Divider().opacity(0.35)
-                    mixSections
-                }
+                mixSections
 
                 if !showsStartAction {
                     Text(footnote)
@@ -144,37 +132,17 @@ struct MixConfigureContent: View {
     }
 
     @ViewBuilder
-    private var selenaSections: some View {
-        if scope == .all {
-            Text(L10n.text("selena.wave_section"))
-                .font(.title3.weight(.semibold))
-        }
-        moodSection
-        diversitySection
-        languageSection(cases: MixLanguagePreference.selenaCases)
-    }
-
-    @ViewBuilder
     private var mixSections: some View {
-        if scope == .all {
-            Text(L10n.text("mix.basic_section"))
-                .font(.title3.weight(.semibold))
-        }
         familiaritySection
         languageSection(cases: MixLanguagePreference.mixCases)
     }
 
     private var startTitle: String {
-        switch scope {
-        case .selena: L10n.text("start_selena")
-        case .mix, .all: L10n.text("start_your_mix")
-        }
+        L10n.text("start_your_mix")
     }
 
     private var footnote: String {
         switch scope {
-        case .selena:
-            L10n.text("selena.wave_footnote")
         case .mix:
             L10n.text("mix.basic_footnote")
         case .all:
@@ -185,60 +153,8 @@ struct MixConfigureContent: View {
     }
 
     private var hasActiveFilters: Bool {
-        switch scope {
-        case .selena:
-            return settings.mixMoodPreference != .any
-                || settings.selenaDiversityPreference != .default
-                || settings.mixLanguagePreference != .any
-        case .mix:
-            return settings.mixLanguagePreference != .any
-                || settings.mixFamiliarityPreference != .any
-        case .all:
-            return settings.mixMoodPreference != .any
-                || settings.selenaDiversityPreference != .default
-                || settings.mixLanguagePreference != .any
-                || settings.mixFamiliarityPreference != .any
-        }
-    }
-
-    private var moodSection: some View {
-        filterSection(
-            title: L10n.text("mood"),
-            footnote: L10n.text("selena.mood_live_footnote")
-        ) {
-            ForEach(MixMoodPreference.allCases.filter { $0 != .any }) { mood in
-                MixConfigureChip(
-                    title: mood.title,
-                    systemImage: mood.chipSymbol,
-                    isSelected: settings.mixMoodPreference == mood,
-                    increaseContrast: increaseContrast,
-                    reduceTransparency: reduceTransparency
-                ) {
-                    toggleMood(mood)
-                }
-            }
-        }
-    }
-
-    private var diversitySection: some View {
-        filterSection(
-            title: L10n.text("selena.diversity"),
-            footnote: settings.selenaDiversityPreference.caption
-        ) {
-            ForEach(
-                SelenaDiversityPreference.allCases.filter { $0 != .default }
-            ) { diversity in
-                MixConfigureChip(
-                    title: diversity.chipTitle,
-                    systemImage: diversity.chipSymbol,
-                    isSelected: settings.selenaDiversityPreference == diversity,
-                    increaseContrast: increaseContrast,
-                    reduceTransparency: reduceTransparency
-                ) {
-                    toggleDiversity(diversity)
-                }
-            }
-        }
+        settings.mixLanguagePreference != .any
+            || settings.mixFamiliarityPreference != .any
     }
 
     private var familiaritySection: some View {
@@ -302,37 +218,8 @@ struct MixConfigureContent: View {
 
     private func resetFilters() {
         Haptics.selection()
-        switch scope {
-        case .selena:
-            settings.mixMoodPreference = .any
-            settings.selenaDiversityPreference = .default
-            settings.mixLanguagePreference = .any
-        case .mix:
-            settings.mixLanguagePreference = .any
-            settings.mixFamiliarityPreference = .any
-        case .all:
-            settings.mixMoodPreference = .any
-            settings.selenaDiversityPreference = .default
-            settings.mixLanguagePreference = .any
-            settings.mixFamiliarityPreference = .any
-        }
-        environment.reapplyMixFiltersToPlayingQueue()
-    }
-
-    private func toggleMood(_ mood: MixMoodPreference) {
-        Haptics.selection()
-        settings.mixMoodPreference =
-            settings.mixMoodPreference == mood ? .any : mood
-        // Live on Selena — soft moodEnergy reorder of the playing queue.
-        environment.reapplyMixFiltersToPlayingQueue()
-    }
-
-    private func toggleDiversity(_ diversity: SelenaDiversityPreference) {
-        Haptics.selection()
-        settings.selenaDiversityPreference =
-            settings.selenaDiversityPreference == diversity
-            ? .default
-            : diversity
+        settings.mixLanguagePreference = .any
+        settings.mixFamiliarityPreference = .any
         environment.reapplyMixFiltersToPlayingQueue()
     }
 

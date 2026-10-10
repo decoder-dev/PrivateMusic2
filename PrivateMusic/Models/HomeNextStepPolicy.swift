@@ -26,7 +26,6 @@ struct HomeNextStepCandidate: Equatable, Identifiable, Sendable {
     let artworkURL: URL?
     let confidence: Double
     let stabilityKey: String
-    let sourceIsSelena: Bool
     let mixID: String?
     let artistKey: String?
     let action: HomeNextStepAction
@@ -55,9 +54,9 @@ struct HomeNextStepOccupancy: Equatable, Sendable {
 
     func excludes(_ candidate: HomeNextStepCandidate) -> Bool {
         if occupiedKinds.contains(candidate.kind) { return true }
-        // Mood wave reuses Selena's mix id as source branding for artwork /
-        // Explore hints — it is not "this mix is already playing". Treating
-        // it as occupancy hid the mood card whenever Selena was on (and
+        // The mood card reuses the personal mix id for artwork / Explore
+        // hints — it is not "this mix is already playing". Treating it as
+        // occupancy hid the mood card whenever the personal mix was on (and
         // collapsed it with the personal-station candidate in dedupe).
         if candidate.kind != .vibeContinuation,
            let mixID = candidate.mixID,
@@ -133,8 +132,8 @@ enum HomeNextStepPolicy {
 
         if case let .mix(id, title) = queueSource {
             mixIDs.insert(id)
-            // My Music shares Selena wave filters — occupy the personal
-            // station slot the same way catalog Selena does.
+            // My Music is the personal station's fallback — occupy the
+            // personal station slot the same way the personal mix does.
             if id == MusicMix.common.id || id == MixQueueIdentity.myMusic {
                 kinds.insert(.personalStation)
             }
@@ -241,7 +240,6 @@ enum HomeNextStepPolicy {
         }
 
         if request.selectedMood != .any {
-            // Mood continues Selena's wave — not a jump onto a catalog shelf.
             let confidence = request.hasCurrentTrack
                 ? vibePlayingConfidence
                 : vibeIdleConfidence
@@ -273,7 +271,7 @@ enum HomeNextStepPolicy {
         return Array(byIdentity.values)
     }
 
-    /// Mood wave shares Selena's catalog mix id for artwork, but it is a
+    /// The mood card shares the personal mix id for artwork, but it is a
     /// different action from starting the personal station — keep both.
     private static func identityKey(
         for candidate: HomeNextStepCandidate
@@ -313,7 +311,6 @@ enum HomeNextStepPolicy {
             artworkURL: artist.artworkURL,
             confidence: artist.score,
             stabilityKey: "artist:\(artist.artistKey)",
-            sourceIsSelena: true,
             mixID: nil,
             artistKey: artist.artistKey,
             action: .artist(
@@ -337,7 +334,6 @@ enum HomeNextStepPolicy {
             artworkURL: mix.artworkURL,
             confidence: confidence,
             stabilityKey: "vk:\(mix.id)",
-            sourceIsSelena: false,
             mixID: mix.id,
             artistKey: nil,
             action: .mix(id: mix.id)
@@ -348,7 +344,7 @@ enum HomeNextStepPolicy {
         _ confidence: Double
     ) -> HomeNextStepCandidate {
         HomeNextStepCandidate(
-            id: "station-selena",
+            id: "station-personal",
             kind: .personalStation,
             titleKey: "home_next.station.title",
             titleArgument: nil,
@@ -356,8 +352,7 @@ enum HomeNextStepPolicy {
             actionKey: "home_next.action.start",
             artworkURL: nil,
             confidence: confidence,
-            stabilityKey: "station:selena",
-            sourceIsSelena: true,
+            stabilityKey: "station:personal",
             mixID: MusicMix.common.id,
             artistKey: nil,
             action: .personalStation
@@ -377,8 +372,7 @@ enum HomeNextStepPolicy {
             actionKey: "home_next.action.continue",
             artworkURL: nil,
             confidence: confidence,
-            stabilityKey: "vibe:\(mood.rawValue):selena",
-            sourceIsSelena: true,
+            stabilityKey: "vibe:\(mood.rawValue)",
             mixID: MusicMix.common.id,
             artistKey: nil,
             action: .mood(mood)

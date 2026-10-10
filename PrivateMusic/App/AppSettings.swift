@@ -241,17 +241,6 @@ final class AppSettings {
             )
         }
     }
-    /// Yandex-style diversity dial for Selena only (`favorite` /
-    /// `popular` / `discover` / `default`). Catalog mixes keep
-    /// `mixFamiliarityPreference` instead.
-    var selenaDiversityPreference: SelenaDiversityPreference {
-        didSet {
-            defaults.set(
-                selenaDiversityPreference.rawValue,
-                forKey: Keys.selenaDiversityPreference
-            )
-        }
-    }
     var loudnessNormalization: Bool {
         didSet {
             defaults.set(
@@ -419,11 +408,6 @@ final class AppSettings {
                 forKey: Keys.mixFamiliarityPreference
             ) ?? ""
         ) ?? .any
-        selenaDiversityPreference = SelenaDiversityPreference(
-            rawValue: defaults.string(
-                forKey: Keys.selenaDiversityPreference
-            ) ?? ""
-        ) ?? .default
         loudnessNormalization = defaults.object(
             forKey: Keys.loudnessNormalization
         ) as? Bool ?? false
@@ -532,7 +516,6 @@ final class AppSettings {
         static let mixMoodPreference = "mix.filters.mood"
         static let mixLanguagePreference = "mix.filters.language"
         static let mixFamiliarityPreference = "mix.filters.familiarity"
-        static let selenaDiversityPreference = "selena.wave.diversity"
         static let loudnessNormalization =
             "audio.equalizer.loudnessNormalization"
         static let dynamicRangeCompression =

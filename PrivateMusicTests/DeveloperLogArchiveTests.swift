@@ -142,7 +142,6 @@ final class DeveloperDiagnosticsBuilderTests: XCTestCase {
             mixMoodPreference: "any",
             mixLanguagePreference: "any",
             mixFamiliarityPreference: "any",
-            selenaDiversityPreference: "default",
             offlineStorageLimitGB: 5,
             automaticOfflineCacheEnabled: false,
             hapticsEnabled: true,

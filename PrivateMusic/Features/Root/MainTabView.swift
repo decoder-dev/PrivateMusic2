@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// Mix is not a root destination. Home holds now-playing plus one next
-/// step; the full hub (VK catalog, Selena controls, moods) is Explore,
+/// step; the full hub (VK catalog, mix filters, moods) is Explore,
 /// pushed from Home. Four root tabs read as one product.
 private enum MainTab: CaseIterable, Hashable, Identifiable {
     case home

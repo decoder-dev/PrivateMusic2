@@ -35,7 +35,71 @@ actor MixTrackContinuationCursor {
     }
 }
 
-enum SelenaRecommendationComposer {
+/// Keeps radio refills from replaying the same artists back to back: the
+/// last `window` placements stay ineligible while candidates are generated.
+enum RadioArtistCooldown {
+    static let window = 25
+
+    /// Drop tracks whose artist is still inside the cooldown window. If every
+    /// candidate would vanish, return the input unchanged — silence is worse
+    /// than a repeat.
+    static func applying(
+        _ tracks: [Track],
+        recentArtistKeys: [String],
+        window: Int = window
+    ) -> [Track] {
+        guard !tracks.isEmpty, window > 0, !recentArtistKeys.isEmpty else {
+            return tracks
+        }
+        let blocked = Set(recentArtistKeys.suffix(window))
+        let filtered = tracks.filter { track in
+            let key = MixFeedbackPolicy.normalized(track.artist)
+            return key.isEmpty || !blocked.contains(key)
+        }
+        return filtered.isEmpty ? tracks : filtered
+    }
+
+    /// Seed the window from a newest-first list (listening history order).
+    static func artists(
+        fromNewestFirst tracks: [Track],
+        window: Int = window
+    ) -> [String] {
+        guard window > 0 else { return [] }
+        var keys: [String] = []
+        var seen = Set<String>()
+        keys.reserveCapacity(min(window, tracks.count))
+        for track in tracks {
+            let key = MixFeedbackPolicy.normalized(track.artist)
+            guard !key.isEmpty, seen.insert(key).inserted else { continue }
+            keys.append(key)
+            if keys.count >= window { break }
+        }
+        return keys
+    }
+
+    static func append(
+        _ keys: inout [String],
+        from tracks: [Track],
+        window: Int = window
+    ) {
+        for track in tracks {
+            let key = MixFeedbackPolicy.normalized(track.artist)
+            guard !key.isEmpty else { continue }
+            keys.append(key)
+        }
+        if keys.count > window {
+            keys.removeFirst(keys.count - window)
+        }
+    }
+}
+
+/// Blends VK recommendation pools into one radio queue.
+enum RadioRecommendationComposer {
+    /// Interleave ratio: one personal, one similar, a seed every four picks.
+    private static let personalPerRound = 1
+    private static let similarPerRound = 1
+    private static let seedEvery = 4
+
     static func seedTracks(
         history: [ListeningHistoryEntry],
         recommendations: [Track],
@@ -68,19 +132,16 @@ enum SelenaRecommendationComposer {
         personalRecommendations: [Track],
         similarRecommendations: [Track],
         fallbackMix: [Track] = [],
-        diversity: SelenaDiversityPreference = .default,
-        bias: (personal: Int, similar: Int, seedEvery: Int)? = nil,
         artistCap: Int = 3,
         limit: Int = MixTrackRequestPolicy.queueLimit
-    ) -> (tracks: [Track], sources: [String: SelenaComposeSource]) {
+    ) -> [Track] {
         var known = Set<String>()
         var artistCounts: [String: Int] = [:]
         var result: [Track] = []
-        var sources: [String: SelenaComposeSource] = [:]
         var effectiveCap = artistCap
         result.reserveCapacity(limit)
 
-        func append(_ track: Track, source: SelenaComposeSource) -> Bool {
+        func append(_ track: Track) -> Bool {
             guard result.count < limit,
                   known.insert(track.id).inserted else {
                 return false
@@ -89,19 +150,17 @@ enum SelenaRecommendationComposer {
             if !key.isEmpty, effectiveCap > 0 {
                 let count = artistCounts[key, default: 0]
                 if count >= effectiveCap {
-                    // Hard cap at blend time (troi-style). Leave room for
-                    // other artists; do not burn the slot.
+                    // Hard cap at blend time. Leave room for other artists;
+                    // do not burn the slot.
                     known.remove(track.id)
                     return false
                 }
                 artistCounts[key] = count + 1
             }
             result.append(track)
-            sources[track.id] = source
             return true
         }
 
-        let resolvedBias = bias ?? SelenaWavePolicy.composeBias(diversity: diversity)
         let seeds = seedTracks.prefix(12).map { $0 }
         let personal = personalRecommendations.prefix(limit).map { $0 }
         let similar = similarRecommendations.prefix(limit).map { $0 }
@@ -113,10 +172,9 @@ enum SelenaRecommendationComposer {
         var fallbackIndex = 0
         var stalled = 0
         /// Non-seed placements since the last seed. Gating on `result.count`
-        /// made each seed shift the modulo so default bias inserted one seed
-        /// and then almost never another while pools were still full.
+        /// made each seed shift the modulo so the interleave inserted one
+        /// seed and then almost never another while pools were still full.
         var sinceSeed = 0
-        let seedEvery = max(resolvedBias.seedEvery, 1)
 
         while result.count < limit,
               seedIndex < seeds.count
@@ -124,15 +182,15 @@ enum SelenaRecommendationComposer {
                 || similarIndex < similar.count
                 || fallbackIndex < fallback.count {
             let before = result.count
-            for _ in 0..<resolvedBias.personal where personalIndex < personal.count {
-                if append(personal[personalIndex], source: .personal) {
+            for _ in 0..<personalPerRound where personalIndex < personal.count {
+                if append(personal[personalIndex]) {
                     sinceSeed += 1
                 }
                 personalIndex += 1
                 if result.count >= limit { break }
             }
-            for _ in 0..<resolvedBias.similar where similarIndex < similar.count {
-                if append(similar[similarIndex], source: .similar) {
+            for _ in 0..<similarPerRound where similarIndex < similar.count {
+                if append(similar[similarIndex]) {
                     sinceSeed += 1
                 }
                 similarIndex += 1
@@ -140,7 +198,7 @@ enum SelenaRecommendationComposer {
             }
             if sinceSeed >= seedEvery,
                seedIndex < seeds.count {
-                if append(seeds[seedIndex], source: .seed) {
+                if append(seeds[seedIndex]) {
                     sinceSeed = 0
                 }
                 seedIndex += 1
@@ -148,7 +206,7 @@ enum SelenaRecommendationComposer {
             if personalIndex >= personal.count,
                similarIndex >= similar.count,
                fallbackIndex < fallback.count {
-                if append(fallback[fallbackIndex], source: .fallback) {
+                if append(fallback[fallbackIndex]) {
                     sinceSeed += 1
                 }
                 fallbackIndex += 1
@@ -157,7 +215,7 @@ enum SelenaRecommendationComposer {
                similarIndex >= similar.count,
                fallbackIndex >= fallback.count,
                seedIndex < seeds.count {
-                if append(seeds[seedIndex], source: .seed) {
+                if append(seeds[seedIndex]) {
                     sinceSeed = 0
                 }
                 seedIndex += 1
@@ -176,7 +234,7 @@ enum SelenaRecommendationComposer {
                 stalled = 0
             }
         }
-        return (result, sources)
+        return result
     }
 
     private static func unique(_ tracks: [Track], limit: Int) -> [Track] {
@@ -191,10 +249,10 @@ enum SelenaRecommendationComposer {
     }
 }
 
-/// Selena is a station, not a one-page mix: rotate through taste seeds and ask
+/// Radio is a station, not a one-page mix: rotate through taste seeds and ask
 /// VK for track-based recommendations, with personal recommendations and the
 /// common mix as fallback material.
-actor SelenaRecommendationCursor {
+actor RadioRecommendationCursor {
     private var seeds: [Track]
     private var knownIDs: Set<String>
     private var seedIndex = 0
@@ -207,7 +265,7 @@ actor SelenaRecommendationCursor {
     private var recentArtistKeys: [String] = []
 
     init(seedTracks: [Track], knownTracks: [Track] = []) {
-        self.seeds = SelenaRecommendationComposer.seedTracks(
+        self.seeds = RadioRecommendationComposer.seedTracks(
             history: [],
             recommendations: seedTracks,
             loaded: []
@@ -215,7 +273,7 @@ actor SelenaRecommendationCursor {
         self.knownIDs = Set(knownTracks.map(\.id))
         // Call sites pass newest-first history (and session queues with the
         // hottest material first). Seed by recency, not append-then-trim.
-        self.recentArtistKeys = SelenaWavePolicy.cooldownArtists(
+        self.recentArtistKeys = RadioArtistCooldown.artists(
             fromNewestFirst: knownTracks
         )
     }
@@ -223,13 +281,11 @@ actor SelenaRecommendationCursor {
     func next(
         accessToken: String,
         musicService: any MusicService,
-        cachedPersonalRecommendations: [Track] = [],
-        diversity: SelenaDiversityPreference = .default,
-        bias: (personal: Int, similar: Int, seedEvery: Int)? = nil
-    ) async throws -> (tracks: [Track], sources: [String: SelenaComposeSource]) {
+        cachedPersonalRecommendations: [Track] = []
+    ) async throws -> [Track] {
         // Seed fan-out and personal taste used to run one after another —
-        // four round-trips before Explore could paint Selena. Run them
-        // together; the wall clock is one RTT, not four.
+        // four round-trips before the first paint. Run them together; the
+        // wall clock is one RTT, not four.
         async let similarTracks = seededRecommendations(
             accessToken: accessToken,
             musicService: musicService
@@ -251,49 +307,43 @@ actor SelenaRecommendationCursor {
             )
         }
 
-        let cooledPersonal = SelenaWavePolicy.applyingArtistCooldown(
+        let cooledPersonal = RadioArtistCooldown.applying(
             personal,
             recentArtistKeys: recentArtistKeys
         )
-        let cooledSimilar = SelenaWavePolicy.applyingArtistCooldown(
+        let cooledSimilar = RadioArtistCooldown.applying(
             similar,
             recentArtistKeys: recentArtistKeys
         )
-        let cooledFallback = SelenaWavePolicy.applyingArtistCooldown(
+        let cooledFallback = RadioArtistCooldown.applying(
             fallback,
             recentArtistKeys: recentArtistKeys
         )
 
-        let composed = SelenaRecommendationComposer.compose(
+        let composed = RadioRecommendationComposer.compose(
             seedTracks: seeds,
             personalRecommendations: cooledPersonal,
             similarRecommendations: cooledSimilar,
-            fallbackMix: cooledFallback,
-            diversity: diversity,
-            bias: bias
+            fallbackMix: cooledFallback
         )
 
         var kept: [Track] = []
-        var keptSources: [String: SelenaComposeSource] = [:]
-        kept.reserveCapacity(composed.tracks.count)
-        for track in composed.tracks where knownIDs.insert(track.id).inserted {
+        kept.reserveCapacity(composed.count)
+        for track in composed where knownIDs.insert(track.id).inserted {
             kept.append(track)
-            if let source = composed.sources[track.id] {
-                keptSources[track.id] = source
-            }
         }
 
         if !kept.isEmpty {
-            seeds = SelenaRecommendationComposer.rotatingSeeds(
+            seeds = RadioRecommendationComposer.rotatingSeeds(
                 previous: seeds,
                 composed: kept
             )
-            SelenaWavePolicy.appendCooldownArtists(
+            RadioArtistCooldown.append(
                 &recentArtistKeys,
                 from: kept
             )
         }
-        return (kept, keptSources)
+        return kept
     }
 
     private func personalRecommendations(

@@ -191,7 +191,7 @@ final class MixQueueRankerTests: XCTestCase {
     }
 }
 
-final class SelenaRecommendationComposerTests: XCTestCase {
+final class RadioRecommendationComposerTests: XCTestCase {
     func testComposeInterleavesPersonalAndSimilarRecommendations() {
         let seed = makeTrack(id: 1, artist: "Seed")
         let personal = [
@@ -203,12 +203,12 @@ final class SelenaRecommendationComposerTests: XCTestCase {
             makeTrack(id: 5, artist: "Similar")
         ]
 
-        let result = SelenaRecommendationComposer.compose(
+        let result = RadioRecommendationComposer.compose(
             seedTracks: [seed],
             personalRecommendations: personal,
             similarRecommendations: similar,
             limit: 6
-        ).tracks
+        )
 
         XCTAssertEqual(
             result.map(\.id),
@@ -226,7 +226,7 @@ final class SelenaRecommendationComposerTests: XCTestCase {
             )
         ]
 
-        let seeds = SelenaRecommendationComposer.seedTracks(
+        let seeds = RadioRecommendationComposer.seedTracks(
             history: history,
             recommendations: [
                 duplicate,
@@ -272,11 +272,11 @@ final class SelenaRecommendationComposerTests: XCTestCase {
         )
     }
 
-    func testSelenaCursorKeepsRequestingSeededRecommendations()
+    func testRadioCursorKeepsRequestingSeededRecommendations()
         async throws {
         let service = CursorMusicService()
         let seeds = (1...4).map { makeTrack(id: $0, artist: "Seed \($0)") }
-        let cursor = SelenaRecommendationCursor(
+        let cursor = RadioRecommendationCursor(
             seedTracks: seeds,
             knownTracks: [seeds[0]]
         )
@@ -284,11 +284,11 @@ final class SelenaRecommendationComposerTests: XCTestCase {
         let firstPage = try await cursor.next(
             accessToken: "token",
             musicService: service
-        ).tracks
+        )
         let secondPage = try await cursor.next(
             accessToken: "token",
             musicService: service
-        ).tracks
+        )
 
         let recommendationTargets = await service.recommendationTargets
         let seededTargets = recommendationTargets.compactMap {
@@ -309,14 +309,14 @@ final class SelenaRecommendationComposerTests: XCTestCase {
         )
     }
 
-    func testSelenaCursorReusesCachedPersonalRecommendations() async throws {
+    func testRadioCursorReusesCachedPersonalRecommendations() async throws {
         let service = CursorMusicService()
         let seeds = (1...3).map { makeTrack(id: $0, artist: "Seed \($0)") }
         let cached = [
             makeTrack(id: 50, artist: "Cached"),
             makeTrack(id: 51, artist: "Cached")
         ]
-        let cursor = SelenaRecommendationCursor(
+        let cursor = RadioRecommendationCursor(
             seedTracks: seeds,
             knownTracks: []
         )
@@ -325,7 +325,7 @@ final class SelenaRecommendationComposerTests: XCTestCase {
             accessToken: "token",
             musicService: service,
             cachedPersonalRecommendations: cached
-        ).tracks
+        )
 
         let recommendationTargets = await service.recommendationTargets
         // Cached personal skips the unseeded recommendations() call
@@ -342,7 +342,7 @@ final class SelenaRecommendationComposerTests: XCTestCase {
             makeTrack(id: 102, artist: "New C")
         ]
 
-        let rotated = SelenaRecommendationComposer.rotatingSeeds(
+        let rotated = RadioRecommendationComposer.rotatingSeeds(
             previous: previous,
             composed: composed,
             limit: 32
@@ -358,14 +358,14 @@ final class SelenaRecommendationComposerTests: XCTestCase {
         XCTAssertTrue(rotated.contains { $0.id == "1_1" })
     }
 
-    func testSelenaCursorReusesSessionPersonalOnLaterPages() async throws {
+    func testRadioCursorReusesSessionPersonalOnLaterPages() async throws {
         let service = CursorMusicService()
         let seeds = (1...3).map { makeTrack(id: $0, artist: "Seed \($0)") }
         let cached = [
             makeTrack(id: 70, artist: "Session"),
             makeTrack(id: 71, artist: "Session")
         ]
-        let cursor = SelenaRecommendationCursor(
+        let cursor = RadioRecommendationCursor(
             seedTracks: seeds,
             knownTracks: []
         )
@@ -379,7 +379,7 @@ final class SelenaRecommendationComposerTests: XCTestCase {
         let second = try await cursor.next(
             accessToken: "token",
             musicService: service
-        ).tracks
+        )
         let targets = await service.recommendationTargets
 
         // Second page must not pay for another unseeded personal fetch.

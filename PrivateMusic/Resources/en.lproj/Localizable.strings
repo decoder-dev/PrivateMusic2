@@ -16,12 +16,8 @@
 "vk_mix" = "VK Mix";
 "personalized_vk_selection" = "Personalized VK selection";
 "continuous_personalized_selection_from_vk" = "Continuous personalized selection from VK";
-"selena.curated_by" = "Curated by Selena";
-"selena.subtitle" = "Selena ranks VK recommendations against your listening history";
 "experimental_feature" = "Experimental Feature";
 "personal_mix" = "Personal Mix";
-"selena.prepared_for" = "Selena prepared a selection for %@";
-"selena.prepared_generic" = "Selena prepared a selection just for you";
 
 "tab.home" = "Home";
 "tab.library" = "Library";
@@ -172,7 +168,7 @@
 "appearance" = "Appearance";
 "text_size" = "Text Size";
 "home_stage.action.station" = "Play";
-"home_stage.action.vibe" = "Start Selena with this mood";
+"home_stage.action.vibe" = "Start a VK shelf for this mood";
 "home_stage.action.artist" = "Start the station";
 "home_stage.action.mix" = "Start the mix";
 "artist_radio_0" = "%@ radio";
@@ -197,13 +193,12 @@
 "home_next.vk.title" = "VK Mix";
 "home_next.vk.subtitle" = "A mix to keep going";
 "home_next.vibe.title" = "Keep this vibe going";
-"home_next.vibe.subtitle" = "Selena wave tuned to this mood";
-"home_next.station.title" = "Continue with Selena";
+"home_next.vibe.subtitle" = "A VK shelf tuned to this mood";
+"home_next.station.title" = "Continue with your VK Mix";
 "home_next.station.subtitle" = "Your personal station";
 "home_next.action.continue" = "Continue";
 "home_next.action.play" = "Play";
 "home_next.action.start" = "Start";
-"home_next.source.selena" = "Selena";
 "home_next.less_like_this" = "Less like this";
 "home_next.hide_artist" = "Don't show this artist";
 "explore_music" = "Explore Music";
@@ -621,16 +616,13 @@
 "processing_runs_on_device_and_applies_to_headphones_speakers_and_carkit_" = "Processing runs on device and applies to headphones, speakers, and CarKit / car Bluetooth.";
 "audio_processing_may_disable_airplay" = "Audio processing may disable AirPlay.";
 
-"selena.why" = "Why Selena";
 "why_this_mix" = "Why This Mix";
-"selena.name" = "Selena";
 "vk_mixes_2" = "VK Mixes";
 "mix_sections" = "Mix sections";
 "all_mixes" = "All Mixes";
 "listen" = "Listen";
 "pause_2" = "Pause";
 "open_here" = "Open Here";
-"open_selena" = "Open Selena";
 "other_mixes" = "Other Mixes";
 "same_screen_just_switch_the_mix" = "Same screen — just switch the mix";
 "social_mix" = "Social Mix";
@@ -655,7 +647,7 @@
 "closer" = "Closer";
 "novelty" = "Novelty";
 "n_0_d1_match" = "%@ · %d%% match";
-"vk_has_not_prepared_themed_mixes_for_your_account_yet_check_back_later_o" = "VK has not prepared themed mixes for your account yet — check back later or open Selena.";
+"vk_has_not_prepared_themed_mixes_for_your_account_yet_check_back_later_o" = "VK has not prepared themed mixes for your account yet — check back later.";
 "n_0_d1_gb" = "%@ / %d GB";
 "d0_mixes" = "%d mixes";
 "d0_mixes_in_their_taste" = "%d mixes in their taste";
@@ -728,7 +720,7 @@
 "hidden_tracks" = "Hidden Tracks";
 "hidden_tracks_and_artists_stay_out_of_mixes_on_this_device_vk_has_no_dis" = "Hidden tracks and artists stay out of mixes on this device. VK has no dislike API, so this memory is local.";
 "hide_artist_in_mixes" = "Hide Artist in Mixes";
-"hide_artist_in_mixes_confirmation_0" = "“%@” will disappear from Selena and mixes until you restore them in settings.";
+"hide_artist_in_mixes_confirmation_0" = "“%@” will disappear from mixes until you restore them in settings.";
 "snippet" = "Snippet";
 "calm" = "Calm";
 "settings.status" = "Status";
@@ -746,7 +738,7 @@
 "action.reset" = "Reset";
 "familiar_hits_chip" = "Familiar";
 "unfamiliar_chip" = "Unfamiliar";
-"mix_mood_applies_on_start" = "On Home, mood picks a shelf; on Selena, mood lives in the wave dial.";
+"mix_mood_applies_on_start" = "Mood picks a matching VK shelf when you start it from Home.";
 "storage_2" = "Storage";
 "charts_and_hits" = "Charts and hits";
 "language" = "Language";
@@ -767,14 +759,12 @@
 "vk_shelf" = "VK Shelf";
 "catalog_shelves_with_quick_launch_and_track_previews" = "Catalog shelves with quick launch and track previews";
 "collapse" = "Collapse";
-"selena.personal_station" = "Selena — a ranked station from VK recommendations";
 "hide_first_track_artist" = "Hide First Track Artist";
 "hide_first_track" = "Hide First Track";
 "hidden" = "Hidden";
 "play_all" = "Play All";
 "prioritizes_music_closer_to_the_current_track_and_recent_history" = "Prioritizes music closer to the current track and recent history";
 "social" = "Social";
-"selena_station" = "Selena Station";
 "toggle_list_layout" = "Toggle list layout";
 "sort" = "Sort";
 "default" = "Default";
@@ -805,30 +795,8 @@
 "percent_d0" = "%d%%";
 "spoken_metadata_0_1" = "%@, %@";
 "tab.switch_hint" = "Switches the selected tab";
-"configure_selena" = "Configure Selena";
-"configure_selena_accessibility_hint" = "Opens Selena wave mood, diversity, and language";
-"start_selena" = "Start Selena";
-"selena.wave_section" = "Selena Wave";
 "mix.basic_section" = "Catalog Mixes";
-"selena.wave_footnote" = "Like Yandex Music’s My Wave: mood, diversity, and language reshape Selena live.";
 "mix.basic_footnote" = "Basic filters for VK catalog mixes — language and familiarity.";
-"selena.mood_live_footnote" = "Mood softly boosts matching tracks in Selena’s queue — it does not switch stations.";
-"selena.diversity" = "Diversity";
-"selena.diversity.default" = "Balanced";
-"selena.diversity.favorite" = "Favorites";
-"selena.diversity.popular" = "Popular";
-"selena.diversity.discover" = "Discover";
-"selena.diversity.default_chip" = "Balanced";
-"selena.diversity.favorite_chip" = "Favorites";
-"selena.diversity.popular_chip" = "Popular";
-"selena.diversity.discover_chip" = "Discover";
-"selena.diversity.default_caption" = "Familiar and new interleaved.";
-"selena.diversity.favorite_caption" = "More known artists from your listening history.";
-"selena.diversity.popular_caption" = "Closer to hits and broad recommendations.";
-"selena.diversity.discover_caption" = "More new artists and fewer repeats.";
-"selena.language.instrumental" = "Without Words";
-"selena.wave_card_title" = "Tune your wave";
-"selena.wave_card_empty" = "Mood, diversity, and language — like Yandex Music";
 "mix.basic_card_empty" = "Language and familiarity for catalog mixes";
 
 // Library and VK integration
@@ -873,3 +841,6 @@
 "audit.curator.empty.description" = "Try another section or refresh the catalog.";
 "audit.releases.empty.title" = "No new releases yet";
 "audit.releases.empty.description" = "Pull down to refresh the list.";
+"mix.personal_title" = "My Mix";
+"mix.personal_subtitle" = "VK’s personal mix, built from your listening";
+"mix.personal_name" = "My Mix";

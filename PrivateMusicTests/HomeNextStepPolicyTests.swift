@@ -103,7 +103,7 @@ final class HomeNextStepPolicyTests: XCTestCase {
         XCTAssertEqual(winner?.mixID, "vk1")
     }
 
-    func testStrongSelenaContinuationWinsWhenPlayingSomethingElse() {
+    func testStrongPersonalStationWinsWhenPlayingSomethingElse() {
         let winner = HomeNextStepPolicy.select(
             request(
                 occupancy: HomeNextStepOccupancy(
@@ -282,7 +282,7 @@ final class HomeNextStepPolicyTests: XCTestCase {
             hasCurrentTrack: false,
             queueSource: nil,
             currentArtist: nil,
-            mixes: [makeMix(MusicMix.common.id, title: "Селена")]
+            mixes: [makeMix(MusicMix.common.id, title: "Мой микс")]
         )
         XCTAssertTrue(occupancy.occupiedKinds.contains(.personalStation))
 
@@ -364,10 +364,9 @@ final class HomeNextStepPolicyTests: XCTestCase {
         XCTAssertEqual(winner?.kind, .vibeContinuation)
         XCTAssertEqual(winner?.mixID, MusicMix.common.id)
         XCTAssertEqual(winner?.action, .mood(.energetic))
-        XCTAssertTrue(winner?.sourceIsSelena == true)
     }
 
-    func testMoodWaveSurvivesWhenSelenaMixIsAlreadyOccupied() {
+    func testMoodCardSurvivesWhenPersonalMixIsAlreadyOccupied() {
         let winner = HomeNextStepPolicy.select(
             request(
                 selectedMood: .calm,

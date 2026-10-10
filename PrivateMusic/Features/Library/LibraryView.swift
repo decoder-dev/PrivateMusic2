@@ -465,29 +465,16 @@ struct LibraryView: View {
 
     private func resumePinned(_ pin: PinnedMixSnapshot) {
         let mix = pin.mix
-        if mix.id == MusicMix.common.id {
-            let stream = SelenaRecommendationCursor(
-                seedTracks: pin.tracks,
-                knownTracks: pin.tracks
-            )
-            environment.player.resumePinned(pin) {
-                let more = try await environment.nextSelenaBatch(from: stream)
-                return await MainActor.run {
-                    environment.selenaContinuationTracks(more)
-                }
+        let cursor = MixTrackContinuationCursor(mix: mix)
+        environment.player.resumePinned(pin) {
+            let more = try await environment.withAuthorizedToken { token in
+                try await cursor.next(
+                    accessToken: token,
+                    musicService: environment.musicService
+                )
             }
-        } else {
-            let cursor = MixTrackContinuationCursor(mix: mix)
-            environment.player.resumePinned(pin) {
-                let more = try await environment.withAuthorizedToken { token in
-                    try await cursor.next(
-                        accessToken: token,
-                        musicService: environment.musicService
-                    )
-                }
-                return await MainActor.run {
-                    environment.continuationTracks(more)
-                }
+            return await MainActor.run {
+                environment.continuationTracks(more)
             }
         }
     }

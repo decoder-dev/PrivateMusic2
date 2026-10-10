@@ -92,7 +92,6 @@ required = {
     "PrivateMusic/Services/HLSOfflineDownloadService.swift",
     "PrivateMusic/UI/ContrastPolicy.swift",
     "PrivateMusic/UI/HitTarget.swift",
-    "PrivateMusic/Models/SelenaBanditPolicy.swift",
 }
 for relative in required:
     if not (ROOT / relative).is_file():
@@ -292,39 +291,37 @@ if "MixRadioUpcomingMergePolicy.merge(" not in audio_player_source:
     fail("replaceUpcoming must preserve Play Next pins during radio refill")
 mix_stream_source_path = SOURCE / "Models" / "MixContinuationStream.swift"
 if not mix_stream_source_path.is_file():
-    fail("mixes and Selena must use stateful continuation cursors")
+    fail("mixes and radio must use stateful continuation cursors")
 mix_stream_source = mix_stream_source_path.read_text(encoding="utf-8")
 for required_mix_stream_symbol in (
     "actor MixTrackContinuationCursor",
     # Offset advances after a successful fetch so token-retry cannot skip a page.
     "MixTrackRequestPolicy.continuationPages",
-    "actor SelenaRecommendationCursor",
+    "actor RadioRecommendationCursor",
     "seededBy: seed",
     "withThrowingTaskGroup(of: [Track].self)",
     "knownIDs.insert(track.id).inserted",
     "MixTrackRequestPolicy.pageSize",
     "rotatingSeeds(",
     "sessionPersonal",
-    "diversity:",
 ):
     if required_mix_stream_symbol not in mix_stream_source:
         fail(
-            "infinite mix/Selena continuation invariant is missing: "
+            "infinite mix/radio continuation invariant is missing: "
             f"{required_mix_stream_symbol}"
         )
 if "nextOffset =" not in mix_stream_source and "nextOffset +=" not in mix_stream_source:
     fail(
-        "infinite mix/Selena continuation invariant is missing: "
+        "infinite mix/radio continuation invariant is missing: "
         "nextOffset advancement"
     )
 if "commonMixOffset =" not in mix_stream_source and "commonMixOffset +=" not in mix_stream_source:
     fail(
-        "infinite mix/Selena continuation invariant is missing: "
+        "infinite mix/radio continuation invariant is missing: "
         "commonMixOffset advancement"
     )
 for required_mix_hub_stream_symbol in (
     "mixContinuationProvider(",
-    "SelenaRecommendationCursor(",
     "MixTrackContinuationCursor(mix: mix)",
 ):
     if required_mix_hub_stream_symbol not in mixes_hub_source:
@@ -332,8 +329,6 @@ for required_mix_hub_stream_symbol in (
             "MixesHub must attach infinite continuation providers: "
             f"{required_mix_hub_stream_symbol}"
         )
-if "SelenaRecommendationCursor(" not in library_view_source:
-    fail("pinned Selena resume must keep the recommendation cursor")
 for required_audio_stream_symbol in (
     "ContinuationPrefetchPolicy.shouldPrefetch",
     "guard should else { return }",
@@ -354,14 +349,7 @@ en_strings = (
     SOURCE / "Resources" / "en.lproj" / "Localizable.strings"
 ).read_text(encoding="utf-8")
 if "нейросеть" in ru_strings.lower() or "neural network" in en_strings.lower():
-    fail(
-        "Selena copy must describe ranking over VK recommendations, "
-        "not a neural network"
-    )
-if "ранжир" not in ru_strings.lower():
-    fail("Selena Russian copy must describe ranking")
-if "rank" not in en_strings.lower():
-    fail("Selena English copy must describe ranking")
+    fail("copy must not claim a neural network")
 native_dsp_header = SOURCE / "Native" / "PrivateMusicDSP.h"
 native_dsp_source = SOURCE / "Native" / "PrivateMusicDSP.c"
 native_core_header = SOURCE / "Native" / "PrivateMusicCore.h"
@@ -987,7 +975,7 @@ else:
         fail(
             "appendToQueue must not cap every queue at the mix limit — the "
             "mix ceiling belongs to LibraryQueuePolicy.upcomingLimit(for:), "
-            "which keeps it for mix / Selena and lifts it for Медиатека"
+            "which keeps it for mixes and lifts it for Медиатека"
         )
 library_queue_policy_path = SOURCE / "Player/LibraryQueuePolicy.swift"
 if not library_queue_policy_path.is_file():
@@ -1853,7 +1841,6 @@ def require_home_is_not_a_recommendation_feed() -> None:
         "dynamicArtistSection",
         'PremiumSectionHeader(\n                "vk_mixes"',
         'PremiumSectionHeader(\n                "for_you"',
-        'PremiumSectionHeader(\n            "selena.name"',
     ):
         if forbidden in catalog:
             fail(
@@ -2058,63 +2045,16 @@ def require_ranking_lives_in_a_tested_policy() -> None:
     env = swift_code(
         (SOURCE / "App" / "AppEnvironment.swift").read_text(encoding="utf-8")
     )
-    # Explore may call SelenaBanditPolicy directly or via the shared
-    # AppEnvironment helper Home and Library also use.
-    hub_ranks = "SelenaBanditPolicy.rerank(" in hub or "rankSelenaQueue(" in hub
-    env_ranks = "SelenaBanditPolicy.rerank(" in env
-    if not hub_ranks or not env_ranks:
-        fail("MixesHubView must rerank through SelenaBanditPolicy")
-    for inlined in ("func selenaBanditRerank", "sqrt(log("):
-        if inlined in hub:
-            fail(f"ranking maths must stay in SelenaBanditPolicy: {inlined}")
-    policy = swift_code(
-        (SOURCE / "Models" / "SelenaBanditPolicy.swift")
-        .read_text(encoding="utf-8")
-    )
-    for required_symbol in (
-        "enum SelenaBanditPolicy",
-        "struct SelenaExposure",
-        "static func rerank(",
-        "static func familiarity(",
-        "static func novelty(",
-        "static func spacedOrder(",
-        "ArtistAffinityPolicy.qualifyingScore",
-    ):
-        if required_symbol not in policy:
-            fail(f"SelenaBanditPolicy is missing {required_symbol}")
-    if "affinityByArtistKey:" not in hub and "affinityByArtistKey:" not in env:
-        fail(
-            "the personal mix must rank on real listening evidence: "
-            "pass ArtistAffinityPolicy scores into SelenaBanditPolicy"
-        )
-    # Home's personal station must share Explore's cursor path — not a
-    # separate mixTracksBootstrap for MusicMix.common.
-    if "func startSelenaStation(" not in env:
-        fail("Home must launch Selena through startSelenaStation")
-    if "SelenaRecommendationCursor(" not in env:
-        fail("startSelenaStation must compose through SelenaRecommendationCursor")
     if "refreshHomeCatalog(force: true)" not in hub:
         fail("Explore pull-to-refresh must force-refresh Home recommendations")
-    wave = SOURCE / "Models" / "SelenaWavePolicy.swift"
-    if not wave.is_file():
-        fail("Selena wave policy (Yandex-like dials) is missing")
-    wave_source = swift_code(wave.read_text(encoding="utf-8"))
-    for required in (
-        "enum SelenaDiversityPreference",
-        "enum SelenaWavePolicy",
-        "static func banditWeights(",
-        "static func preferMood(",
-        "static func dedupeRepeats(",
-        "static func applyingArtistCooldown(",
-        "artistCooldownWindow",
-    ):
-        if required not in wave_source:
-            fail(f"SelenaWavePolicy is missing {required}")
+    for inlined in ("func banditRerank", "sqrt(log("):
+        if inlined in hub:
+            fail(f"ranking maths must not live in the hub view: {inlined}")
     if "recentArtistKeys" not in mix_stream_source:
-        fail("Selena cursor must track artist cooldown across refills")
+        fail("radio cursor must track artist cooldown across refills")
     cooccur = SOURCE / "Models" / "ArtistCooccurrenceIndex.swift"
     if not cooccur.is_file():
-        fail("Selena seed rotation needs ArtistCooccurrenceIndex")
+        fail("radio seed rotation needs ArtistCooccurrenceIndex")
     if "ArtistCooccurrenceIndex.boostSeeds(" not in mix_stream_source:
         fail("seedTracks must boost via ArtistCooccurrenceIndex")
     configure = swift_code(
@@ -2122,27 +2062,9 @@ def require_ranking_lives_in_a_tested_policy() -> None:
         .read_text(encoding="utf-8")
     )
     if "enum MixConfigureScope" not in configure:
-        fail("mix configure must split Selena-rich vs mix-basic scopes")
-    if "case selena" not in configure or "case mix" not in configure:
-        fail("MixConfigureScope must distinguish selena and mix")
-    if "configure_selena" not in hub:
-        fail("Explore Selena must expose its own configure entry")
-    if "selenaWaveCard" not in hub:
-        fail("Selena must own the rich wave card")
-    if "startConfiguredSelena" not in hub:
-        fail("Selena start must stay on the personal station")
-    audio = swift_code(player_domain_source())
-    if "usesSelenaWaveFilters" not in audio:
-        fail("QueueSource must flag Selena-flavored queues")
-    if "usesSelenaWaveFilters" not in audio or "usesSelenaWaveFilters != true" not in audio:
-        fail("play() must not MixQueueRanker-reshuffle Selena bandit order")
-    if "usesSelenaWaveFilters != true" not in audio or "func rerankUpcomingMix(" not in audio:
-        fail("rerankUpcomingMix must refuse Selena wave queues")
-    queue_view = swift_code(
-        (SOURCE / "Features" / "Player" / "QueueView.swift").read_text(encoding="utf-8")
-    )
-    if "usesSelenaWaveFilters" not in queue_view:
-        fail("Queue sheet must hide Mix Radio for Selena wave queues")
+        fail("mix configure must keep its scope enum")
+    if "case mix" not in configure:
+        fail("MixConfigureScope must offer the mix scope")
 
 
 require_ranking_lives_in_a_tested_policy()

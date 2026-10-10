@@ -44,7 +44,6 @@ struct DeveloperSettingsSnapshot: Codable, Equatable, Sendable {
     let mixMoodPreference: String
     let mixLanguagePreference: String
     let mixFamiliarityPreference: String
-    let selenaDiversityPreference: String
     let offlineStorageLimitGB: Int
     let automaticOfflineCacheEnabled: Bool
     let hapticsEnabled: Bool
@@ -130,7 +129,6 @@ enum DeveloperDiagnosticsBuilder {
             mixMoodPreference: settings.mixMoodPreference.rawValue,
             mixLanguagePreference: settings.mixLanguagePreference.rawValue,
             mixFamiliarityPreference: settings.mixFamiliarityPreference.rawValue,
-            selenaDiversityPreference: settings.selenaDiversityPreference.rawValue,
             offlineStorageLimitGB: settings.offlineStorageLimitGB,
             automaticOfflineCacheEnabled: settings.automaticOfflineCacheEnabled,
             hapticsEnabled: settings.hapticsEnabled,
