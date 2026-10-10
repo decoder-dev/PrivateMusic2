@@ -336,11 +336,9 @@ struct CatalogView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                    if candidate.sourceIsSelena {
-                        Text(L10n.text("home_next.source.selena"))
-                            .font(BubbleType.micro)
-                            .foregroundStyle(.tertiary)
-                    } else if candidate.kind == .vkMix {
+                    if candidate.kind == .vkMix
+                        || candidate.kind == .personalStation
+                        || candidate.kind == .vibeContinuation {
                         Text(L10n.text("home_next.vk.title"))
                             .font(BubbleType.micro)
                             .foregroundStyle(.tertiary)
@@ -549,8 +547,7 @@ struct CatalogView: View {
                 deprioritizedMixID: nextStepCandidate?.kind
                     == .vibeContinuation
                     ? nil
-                    : nextStepCandidate?.mixID,
-                startsOnVK: nextStepCandidate?.kind == .personalStation
+                    : nextStepCandidate?.mixID
             )
         } label: {
             HStack(spacing: BubbleSpacing.s) {

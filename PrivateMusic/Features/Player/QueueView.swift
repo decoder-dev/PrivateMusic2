@@ -10,7 +10,7 @@ struct QueueView: View {
 
     private var showsCatalogMixRadio: Bool {
         if case .mix = player.queueSource {
-            return player.queueSource?.usesSelenaWaveFilters != true
+            return true
         }
         return false
     }

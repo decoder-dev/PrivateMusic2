@@ -19,7 +19,7 @@ final class LibraryQueueCapacityTests: XCTestCase {
         )
         for source: QueueSource? in [
             nil,
-            .mix(id: "common", title: "Selena"),
+            .mix(id: "common", title: "My Mix"),
             .playlist(title: "P"),
             .album(title: "A"),
             .history
@@ -50,7 +50,7 @@ final class LibraryQueueCapacityTests: XCTestCase {
         XCTAssertEqual(
             LibraryQueuePolicy.appendableCount(
                 upcomingCount: 9,
-                source: .mix(id: "common", title: "Selena")
+                source: .mix(id: "common", title: "My Mix")
             ),
             MixTrackRequestPolicy.queueLimit - 9
         )
@@ -89,7 +89,7 @@ final class LibraryQueueCapacityTests: XCTestCase {
         context.player.play(
             seedPage[0],
             in: seedPage,
-            source: .mix(id: "common", title: "Selena")
+            source: .mix(id: "common", title: "My Mix")
         )
 
         for page in 1...7 {
@@ -123,7 +123,7 @@ final class LibraryQueueCapacityTests: XCTestCase {
         mix.player.play(
             seedPage[0],
             in: seedPage,
-            source: .mix(id: "common", title: "Selena")
+            source: .mix(id: "common", title: "My Mix")
         )
         mix.player.appendToQueue(addition)
 
@@ -166,7 +166,7 @@ final class LibraryQueueCapacityTests: XCTestCase {
         mix.player.play(
             seedPage[0],
             in: seedPage,
-            source: .mix(id: "common", title: "Selena")
+            source: .mix(id: "common", title: "My Mix")
         )
         mix.player.replaceUpcoming(with: replacement)
 

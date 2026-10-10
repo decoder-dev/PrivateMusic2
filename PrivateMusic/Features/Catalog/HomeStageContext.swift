@@ -275,7 +275,7 @@ enum HomeStageContextBuilder {
         return false
     }
 
-    /// Personal Selena is already the session when idle (Hero CTA) or when
+    /// The personal mix is already the session when idle (Hero CTA) or when
     /// that mix is what's playing — the rail must not repeat it.
     static func shouldOmitStation(
         hasCurrentTrack: Bool,

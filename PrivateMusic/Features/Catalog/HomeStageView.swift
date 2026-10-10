@@ -53,7 +53,7 @@ struct HomeStageView: View {
             mixes: homeCatalog.mixes,
             historyEntries: history.entries,
             selectedMood: settings.mixMoodPreference,
-            stationTitle: L10n.text("selena.name")
+            stationTitle: L10n.text("mix.personal_name")
         ).isEmpty == false
     }
 
@@ -153,7 +153,7 @@ struct HomeStageView: View {
 
     private var headlineText: String {
         guard let title = highlight.currentTrackTitle else {
-            return L10n.text("selena.name")
+            return L10n.text("mix.personal_name")
         }
         let artist = highlight.currentArtist?.trimmingCharacters(
             in: .whitespacesAndNewlines
@@ -294,7 +294,7 @@ struct HomeStageView: View {
         HomeStageContext(
             id: "station",
             kind: .station,
-            name: L10n.text("selena.name"),
+            name: L10n.text("mix.personal_name"),
             priority: .primary,
             avatarURL: nil,
             mixID: nil,

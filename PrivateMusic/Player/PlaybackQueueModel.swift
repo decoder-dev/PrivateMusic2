@@ -73,13 +73,6 @@ enum QueueSource: Equatable {
         if case let .mix(_, title) = self { return title }
         return nil
     }
-
-    /// Personal station and "mix from my music" share Selena wave filters /
-    /// bandit ranking — catalog VK mixes do not.
-    var usesSelenaWaveFilters: Bool {
-        guard let mixID else { return false }
-        return mixID == MusicMix.common.id || mixID == MixQueueIdentity.myMusic
-    }
 }
 
 /// Stable ids for mix queues that are not catalog shelves.

@@ -220,13 +220,10 @@ final class MixFilterQueueWiringTests: XCTestCase {
         )
     }
 
-    func testEnvironmentOwnsSharedSelenaExposure() {
+    func testEnvironmentRefreshesHomeCatalogWhenMixesAreEmpty() {
         let source = SourceInspection.code(
             "PrivateMusic/App/AppEnvironment.swift"
         )
-        XCTAssertTrue(source.contains("recordSelenaExposure"))
-        XCTAssertTrue(source.contains("resetSelenaExposure"))
-        XCTAssertTrue(source.contains("SelenaBanditPolicy.rerank"))
         XCTAssertTrue(source.contains("refreshHomeCatalog()"))
     }
 }

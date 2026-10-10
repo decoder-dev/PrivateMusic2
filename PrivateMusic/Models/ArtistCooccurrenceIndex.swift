@@ -2,7 +2,7 @@ import Foundation
 
 /// Single-user artist co-occurrence from listening history — a local
 /// item-based CF sketch (Sarwar et al.), not cross-user collaborative
-/// filtering. Gives Selena seed rotation material beyond "last played".
+/// filtering. Gives radio seed rotation material beyond "last played".
 enum ArtistCooccurrenceIndex {
     /// Build `[artistKey: [neighborKey: count]]` from sliding windows.
     static func build(

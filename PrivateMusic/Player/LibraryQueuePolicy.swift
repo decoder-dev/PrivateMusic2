@@ -24,8 +24,8 @@ enum LibraryQueuePolicy {
         source == .library
     }
 
-    /// Upcoming-window budget for the queue `source` describes. Mix, Selena
-    /// and every implicit automix keep the mix limit.
+    /// Upcoming-window budget for the queue `source` describes. Mix and
+    /// every implicit automix keep the mix limit.
     static func upcomingLimit(for source: QueueSource?) -> Int {
         isLibraryQueue(source)
             ? queueLimit

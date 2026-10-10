@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings destination — Selena wave dial + basic catalog-mix filters.
+/// Settings destination — language and familiarity filters for VK mixes.
 struct MixFiltersSettingsView: View {
     var body: some View {
         MixConfigureContent(scope: .all, showsStartAction: false)

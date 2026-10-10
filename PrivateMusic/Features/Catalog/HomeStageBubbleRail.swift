@@ -24,7 +24,7 @@ struct HomeStageBubbleRail: View {
             mixes: homeCatalog.mixes,
             historyEntries: history.entries,
             selectedMood: settings.mixMoodPreference,
-            stationTitle: L10n.text("selena.name")
+            stationTitle: L10n.text("mix.personal_name")
         )
     }
 

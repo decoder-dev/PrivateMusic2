@@ -17,10 +17,10 @@ final class MixArtworkFallbackTests: XCTestCase {
         )
     }
 
-    /// Selena's own mix is assembled locally and never carries a cover, so
+    /// The personal mix is assembled locally and never carries a cover, so
     /// its generated one has to read as the station the listener already
     /// sees on Home — not as a generic card.
-    func testSelenaMixDrawsAsTheStation() {
+    func testPersonalMixDrawsAsTheStation() {
         XCTAssertEqual(
             MixArtworkFallback.role(for: .common),
             .station
