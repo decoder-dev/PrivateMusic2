@@ -66,6 +66,31 @@ final class AccentContrastTests: XCTestCase {
         }
     }
 
+    /// Accent-coloured text and glyphs sit directly on the page, so the
+    /// accent itself — not only its label — has to read there (WCAG AA).
+    func testEveryAccentIsReadableAsTextOnItsOwnBackground() {
+        let pageDark = BubbleColorComponents(red: 0.055, green: 0.055, blue: 0.055)
+        let pageLight = BubbleColorComponents(red: 0.965, green: 0.965, blue: 0.965)
+        for accent in AppAccent.allCases {
+            XCTAssertGreaterThanOrEqual(
+                contrast(
+                    accent.components(for: .dark).relativeLuminance,
+                    pageDark.relativeLuminance
+                ),
+                4.5,
+                "\(accent) on the dark page"
+            )
+            XCTAssertGreaterThanOrEqual(
+                contrast(
+                    accent.components(for: .light).relativeLuminance,
+                    pageLight.relativeLuminance
+                ),
+                4.5,
+                "\(accent) on the light page"
+            )
+        }
+    }
+
     func testTheOriginalBlueKeepsItsWhiteLabel() {
         for theme in AppTheme.allCases {
             XCTAssertFalse(
