@@ -118,6 +118,20 @@ final class AppLog: @unchecked Sendable {
         write(category: category, level: .info, message: message)
     }
 
+    /// Records a swallowed failure (persistence, file protection) so a silent
+    /// `try?` can no longer lose user data without leaving a trace.
+    func failure(
+        _ category: AppLogCategory,
+        _ operation: String,
+        _ error: Error
+    ) {
+        write(
+            category: category,
+            level: .error,
+            message: "\(operation) failed: \(error.localizedDescription)"
+        )
+    }
+
     func error(_ category: AppLogCategory, _ message: String) {
         write(category: category, level: .error, message: message)
     }

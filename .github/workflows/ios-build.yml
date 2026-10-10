@@ -60,8 +60,34 @@ jobs:
             -parallel-testing-enabled NO \
             -retry-tests-on-failure \
             -test-iterations 2 \
+            -enableCodeCoverage YES \
+            -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO \
             test 2>&1 | tee test.log
+
+      # Advisory reporting: must never fail the gate itself.
+      - name: Report coverage and retried tests
+        if: success() || failure()
+        continue-on-error: true
+        run: |
+          {
+            echo "### Unit test report"
+            echo
+            if [ -d TestResults.xcresult ]; then
+              echo "#### Coverage by target"
+              echo '```'
+              xcrun xccov view --report --only-targets TestResults.xcresult
+              echo '```'
+            fi
+            retried="$(grep -E "Test Case .* failed" test.log | sort -u || true)"
+            if [ -n "$retried" ]; then
+              echo "#### Failed at least once (retried or still failing)"
+              echo '```'
+              echo "$retried"
+              echo '```'
+              echo "::warning::Some tests failed on a first attempt; -retry-tests-on-failure may be hiding flakiness"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report compiler errors
         if: failure()

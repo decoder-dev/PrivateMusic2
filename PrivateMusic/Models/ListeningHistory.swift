@@ -32,8 +32,12 @@ final class ListeningHistoryStore {
         saveTask?.cancel()
         saveTask = nil
         // Flush the outgoing account before changing its storage key.
-        if let key, let data = try? JSONEncoder().encode(entries) {
-            defaults.set(data, forKey: key)
+        if let key {
+            do {
+                defaults.set(try JSONEncoder().encode(entries), forKey: key)
+            } catch {
+                AppLog.shared.failure(.app, "Flush listening history", error)
+            }
         }
         self.accountID = accountID
         entries = []
@@ -101,7 +105,12 @@ final class ListeningHistoryStore {
         for entries: [ListeningHistoryEntry]
     ) async -> Data? {
         await Task.detached(priority: .utility) {
-            try? JSONEncoder().encode(entries)
+            do {
+                return try JSONEncoder().encode(entries)
+            } catch {
+                AppLog.shared.failure(.app, "Encode listening history", error)
+                return nil
+            }
         }.value
     }
 }

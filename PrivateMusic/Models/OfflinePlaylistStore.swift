@@ -1084,13 +1084,17 @@ final class OfflinePlaylistStore {
     }
 
     private func protect(_ url: URL) {
-        try? fileManager.setAttributes(
-            [
-                .protectionKey:
-                    FileProtectionType.completeUntilFirstUserAuthentication
-            ],
-            ofItemAtPath: url.path
-        )
+        do {
+            try fileManager.setAttributes(
+                [
+                    .protectionKey:
+                        FileProtectionType.completeUntilFirstUserAuthentication
+                ],
+                ofItemAtPath: url.path
+            )
+        } catch {
+            AppLog.shared.failure(.app, "Apply file protection", error)
+        }
     }
 
     private func isInside(_ url: URL, parent: URL) -> Bool {
