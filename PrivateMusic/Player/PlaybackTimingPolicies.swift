@@ -101,3 +101,42 @@ enum ContinuationAdvancePolicy {
         requested && playbackIntended
     }
 }
+
+
+/// How often the playback clock is sampled. On screen the progress UI wants
+/// two ticks a second; with the screen off or another app in front nothing
+/// draws it, and every tick is a CPU wake-up that keeps the device out of
+/// idle for the length of the listening session.
+enum PlaybackClockPolicy {
+    static let activeInterval: TimeInterval = 0.5
+    static let backgroundInterval: TimeInterval = 2
+
+    /// A crossfade is armed from the clock, so it keeps the fast tick: a 2 s
+    /// tick could step over a sub-second fade window entirely.
+    static func interval(
+        interfaceActive: Bool,
+        crossfadeEnabled: Bool
+    ) -> TimeInterval {
+        interfaceActive || crossfadeEnabled
+            ? activeInterval
+            : backgroundInterval
+    }
+
+    /// Largest gap between two ticks that still counts as continuous
+    /// listening. Tied to the tick so the slow clock does not stop crediting
+    /// listened time (history, "listened" marks).
+    static func maximumListenDelta(forInterval interval: TimeInterval) -> TimeInterval {
+        max(1.5, interval * 3)
+    }
+
+    /// True once at least `period` whole seconds have passed since the last
+    /// persisted second — robust to ticks that never land on an exact multiple.
+    static func shouldPersist(
+        wholeSecond: Int,
+        lastPersistedSecond: Int,
+        period: Int = 15
+    ) -> Bool {
+        wholeSecond > 0
+            && wholeSecond - max(lastPersistedSecond, 0) >= period
+    }
+}

@@ -134,6 +134,7 @@ final class AudioPlayer {
     private(set) var isPlaying = false {
         didSet { syncHighlight() }
     }
+    @ObservationIgnored private var isInterfaceActive = true
     private var playbackBackgroundTask: UIBackgroundTaskIdentifier = .invalid
 
     private(set) var isBuffering = false {
@@ -2160,10 +2161,29 @@ final class AudioPlayer {
         }
     }
 
+    /// RootView reports whether the UI is on screen. Backgrounded, the clock
+    /// ticks slower — see `PlaybackClockPolicy`.
+    func setInterfaceActive(_ active: Bool) {
+        guard isInterfaceActive != active else { return }
+        isInterfaceActive = active
+        registrations.removePeriodicTime()
+        installPeriodicTimeObserver()
+    }
+
+    private var timeObserverInterval: TimeInterval {
+        PlaybackClockPolicy.interval(
+            interfaceActive: isInterfaceActive,
+            crossfadeEnabled: settings.crossfadeEnabled
+        )
+    }
+
     private func installPeriodicTimeObserver() {
         let observedPlayer = player
         let token = observedPlayer.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+            forInterval: CMTime(
+                seconds: timeObserverInterval,
+                preferredTimescale: 600
+            ),
             queue: .main
         ) { [weak self] time in
             guard let self else { return }
@@ -2207,9 +2227,10 @@ final class AudioPlayer {
                 }
                 self.publishPlaybackState()
                 let wholeSecond = Int(self.elapsedTime)
-                if wholeSecond > 0,
-                   wholeSecond % 15 == 0,
-                   wholeSecond != self.lastPersistedSecond {
+                if PlaybackClockPolicy.shouldPersist(
+                    wholeSecond: wholeSecond,
+                    lastPersistedSecond: self.lastPersistedSecond
+                ) {
                     self.lastPersistedSecond = wholeSecond
                     self.persistPlayback()
                 }
@@ -3952,7 +3973,10 @@ final class AudioPlayer {
             return
         }
         let delta = sample - previous
-        guard delta > 0, delta <= 1.5 else { return }
+        guard delta > 0,
+              delta <= PlaybackClockPolicy.maximumListenDelta(
+                forInterval: timeObserverInterval
+              ) else { return }
         listenedPlaybackDuration += delta
         markCurrentTrackListenedIfNeeded()
     }

@@ -70,7 +70,7 @@ final class ConnectionStabilityTests: XCTestCase {
         )
         XCTAssertEqual(
             StreamFailureRetryPolicy.preferredForwardBufferDuration,
-            30,
+            60,
             accuracy: 0.001
         )
     }
@@ -112,7 +112,7 @@ final class ConnectionStabilityTests: XCTestCase {
         )
         XCTAssertEqual(
             NetworkAdaptiveBufferPolicy.preferredForwardBuffer(for: .nominal),
-            30,
+            60,
             accuracy: 0.001
         )
     }
@@ -649,7 +649,7 @@ final class ConnectionStabilityTests: XCTestCase {
         var condition = NetworkCondition.nominal
         let beforeTransition = NetworkAdaptiveBufferPolicy
             .preferredForwardBuffer(for: condition)
-        XCTAssertEqual(beforeTransition, 30, accuracy: 0.001)
+        XCTAssertEqual(beforeTransition, 60, accuracy: 0.001)
 
         condition = .degraded // 4G → 3G mid-track
         let afterTransition = NetworkAdaptiveBufferPolicy
@@ -2383,9 +2383,9 @@ final class ConnectionStabilityTests: XCTestCase {
     //     once none of the other four flags are already covering the resume
     //     (suspended-app / missed-notification case).
     // - `NetworkAdaptiveBufferPolicy.preferredForwardBuffer(for: .nominal)`
-    //     == `StreamFailureRetryPolicy.preferredForwardBufferDuration` (30,
+    //     == `StreamFailureRetryPolicy.preferredForwardBufferDuration` (60,
     //     pins the existing wifi value byte-for-byte);
-    //     `.degraded` ⇒ `+ degradedBufferBonus` (currently 15, so >= 45).
+    //     `.degraded` ⇒ `+ degradedBufferBonus` (currently 15, so >= 75).
     //     `NetworkAdaptiveBufferPolicy.maximumConnectivityAttempts(baseline:condition:)`
     //     ⇒ `.degraded` never returns fewer than `baseline`.
     //     `NetworkAdaptiveBufferPolicy.retryDelay(base:condition:)` ⇒

@@ -22,7 +22,11 @@ enum NetworkCondition: Equatable {
 enum StreamFailureRetryPolicy {
     static let maximumSameTrackAttempts = 3
     static let maximumConnectivityAttempts = 8
-    static let preferredForwardBufferDuration: TimeInterval = 30
+    /// Seconds of audio requested ahead of the playhead. Long enough that the
+    /// radio can sleep between downloads instead of waking for a segment
+    /// every few seconds; audio is small (~2 MB per minute at the top HLS
+    /// rate), so a skipped track wastes little.
+    static let preferredForwardBufferDuration: TimeInterval = 60
     static let stallRecoveryThreshold: TimeInterval = 20
     static let baseRetryDelay: TimeInterval = 1.2
 
