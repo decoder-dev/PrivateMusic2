@@ -906,3 +906,4 @@
 "palette.rose" = "Роза";
 "palette.mocha" = "Мокко";
 "accent.banana" = "Банан";
+"mix.tuning_start_selected" = "Запустить · выбрано: %d";

@@ -57,6 +57,10 @@ struct MixesHubView: View {
     var focusedMixID: String? = nil
     @State private var showingMixConfigure = false
     @State private var tuningBase: MusicMix?
+    @State private var startingMood: MixMoodPreference?
+    @State private var startingArtistKey: String?
+    /// The text of `actionError` that is information, not a failure.
+    @State private var noticeText: String?
     /// Mixes the listener tuned this session; kept apart from `mixes` so a
     /// pull-to-refresh of the catalog does not drop them.
     @State private var tunedMixes: [MusicMix] = []
@@ -155,7 +159,13 @@ struct MixesHubView: View {
         .onChange(of: environment.mixNotice) { _, notice in
             guard let notice else { return }
             actionError = notice
+            noticeText = notice
             environment.mixNotice = nil
+            // Information, not a failure: it clears itself.
+            Task {
+                try? await Task.sleep(for: .seconds(6))
+                if actionError == notice { actionError = nil }
+            }
         }
         .onChange(of: settings.mixLanguagePreference) { _, _ in
             guard sessionStore.accessToken != nil else { return }
@@ -1184,14 +1194,18 @@ struct MixesHubView: View {
                         ForEach(artists) { artist in
                             ExploreChip(
                                 title: artist.displayName,
-                                systemImage: "person.wave.2.fill"
+                                systemImage: "person.wave.2.fill",
+                                isLoading: startingArtistKey == artist.id
                             ) {
+                                guard startingArtistKey == nil else { return }
                                 Haptics.selection()
+                                startingArtistKey = artist.id
                                 Task {
                                     await environment.startMixFromArtist(
                                         named: artist.displayName,
                                         seed: nil
                                     )
+                                    startingArtistKey = nil
                                 }
                             }
                         }
@@ -1218,14 +1232,18 @@ struct MixesHubView: View {
                         ExploreChip(
                             title: mood.title,
                             systemImage: mood.chipSymbol,
-                            tint: mood.tint
+                            tint: mood.tint,
+                            isLoading: startingMood == mood
                         ) {
+                            guard startingMood == nil else { return }
                             Haptics.selection()
+                            startingMood = mood
                             Task {
                                 await environment.startMoodStation(
                                     mood,
                                     in: vkMixes
                                 )
+                                startingMood = nil
                             }
                         }
                     }
@@ -1721,7 +1739,7 @@ struct MixesHubView: View {
     }
 
     private func actionErrorRow(_ message: String) -> some View {
-        let isFilterNotice = message == L10n.text(
+        let isFilterNotice = message == noticeText || message == L10n.text(
             "mix_filters_relaxed_to_keep_queue"
         )
         return Button { actionError = nil } label: {
