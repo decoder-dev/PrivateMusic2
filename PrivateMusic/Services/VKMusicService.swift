@@ -1120,17 +1120,13 @@ struct VKMusicService: MusicService {
         )
     }
 
+    /// Exact sources first: VK's own text is keyed by this very track's
+    /// `lyrics_id`, LRCLIB matches artist, title and duration. Genius is a
+    /// free-text search, so it goes last and only on a confident match.
     func lyrics(
         for track: Track,
         accessToken: String
     ) async throws -> Lyrics {
-        do {
-            return try await geniusLyricsService.lyrics(for: track)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            // Genius can reject automated requests in some regions.
-        }
         if let lyricsID = track.lyricsID {
             do {
                 let envelope: VKResponse<VKLyrics> = try await client.post(
@@ -1150,10 +1146,29 @@ struct VKMusicService: MusicService {
             } catch let error as APIError where error == .unauthorized {
                 throw error
             } catch {
-                // LRCLIB below is the fallback for missing private VK lyrics.
+                // Next source.
             }
         }
-        return try await lyricsService.lyrics(for: track)
+        var lastError: Error = APIError.invalidResponse
+        do {
+            return try await lyricsService.lyrics(for: track)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            lastError = error
+        }
+        do {
+            return try await geniusLyricsService.lyrics(for: track)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Genius can reject automated requests in some regions.
+            AppLog.shared.info(
+                .app,
+                "genius lyrics unavailable: \(error.localizedDescription)"
+            )
+        }
+        throw lastError
     }
 
     func createPlaylist(

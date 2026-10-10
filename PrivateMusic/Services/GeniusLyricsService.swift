@@ -29,23 +29,49 @@ struct GeniusLyricsService: Sendable {
         components.queryItems = [
             URLQueryItem(
                 name: "q",
-                value: "\(track.artist) \(track.title)"
+                value: GeniusMatcher.searchQuery(
+                    artist: track.artist,
+                    title: track.title
+                )
             )
         ]
         return components.url!
     }
 
     private func findSong(for track: Track) async throws -> URL {
+        // Lead-artist query first; the title alone only when that finds no
+        // confident match (stage names and transliterations differ).
+        let queries = [
+            GeniusMatcher.searchQuery(artist: track.artist, title: track.title),
+            GeniusMatcher.titleOnlyQuery(title: track.title)
+        ]
+        var seen = Set<String>()
+        for query in queries where !query.isEmpty && seen.insert(query).inserted {
+            let candidates = try await search(query)
+            if let match = GeniusMatcher.best(
+                in: candidates,
+                artist: track.artist,
+                title: track.title
+            ),
+               let url = URL.secureRemoteURL(match.url),
+               url.host?.lowercased().hasSuffix("genius.com") == true {
+                return url
+            }
+        }
+        throw APIError.server(
+            code: 404,
+            message: L10n.text("lyrics_were_not_found_on_genius")
+        )
+    }
+
+    private func search(_ query: String) async throws -> [GeniusMatcher.Candidate] {
         var components = URLComponents(
             url: searchEndpoint,
             resolvingAgainstBaseURL: false
         )
         components?.queryItems = [
-            URLQueryItem(name: "per_page", value: "5"),
-            URLQueryItem(
-                name: "q",
-                value: "\(track.artist) \(track.title)"
-            )
+            URLQueryItem(name: "per_page", value: "8"),
+            URLQueryItem(name: "q", value: query)
         ]
         guard let url = components?.url else {
             throw APIError.invalidRequest
@@ -55,38 +81,27 @@ struct GeniusLyricsService: Sendable {
             GeniusSearchResponse.self,
             from: data
         )
-        let candidates = response.response.sections
+        return response.response.sections
             .flatMap(\.hits)
-            .map(\.result)
-            .filter {
-                $0.title != nil
-                    && $0.url != nil
-                    && $0.primaryArtist != nil
+            .filter { hit in
+                guard let type = hit.type else { return true }
+                return ["song", "lyric", "top_hit"].contains(type)
             }
-        let ranked = candidates.map {
-            (
-                candidate: $0,
-                score: Self.matchScore(
-                    trackArtist: track.artist,
-                    trackTitle: track.title,
-                    candidateArtist: $0.primaryArtist?.name ?? "",
-                    candidateTitle: $0.title ?? ""
+            .compactMap { hit -> GeniusMatcher.Candidate? in
+                let result = hit.result
+                // Song pages end in «-lyrics»; artist and album pages do not.
+                guard let title = result.title,
+                      let url = result.url,
+                      url.hasSuffix("-lyrics"),
+                      let artist = result.primaryArtist?.name else {
+                    return nil
+                }
+                return GeniusMatcher.Candidate(
+                    title: title,
+                    artist: artist,
+                    url: url
                 )
-            )
-        }
-        let best = ranked.max { lhs, rhs in lhs.score < rhs.score }
-        let match = (best?.score ?? 0) > 0
-            ? best?.candidate
-            : candidates.first
-        guard let rawURL = match?.url,
-              let url = URL.secureRemoteURL(rawURL),
-              url.host?.lowercased().hasSuffix("genius.com") == true else {
-            throw APIError.server(
-                code: 404,
-                message: L10n.text("lyrics_were_not_found_on_genius")
-            )
-        }
-        return url
+            }
     }
 
     private func request(_ url: URL, accept: String) async throws -> String {
@@ -216,37 +231,12 @@ struct GeniusLyricsService: Sendable {
         candidateArtist: String,
         candidateTitle: String
     ) -> Int {
-        let wantedArtist = normalized(trackArtist)
-        let wantedTitle = normalized(trackTitle)
-        let foundArtist = normalized(candidateArtist)
-        let foundTitle = normalized(candidateTitle)
-        guard !wantedTitle.isEmpty, !foundTitle.isEmpty else { return 0 }
-
-        var score = 0
-        if wantedTitle == foundTitle {
-            score += 70
-        } else if wantedTitle.contains(foundTitle)
-                    || foundTitle.contains(wantedTitle) {
-            score += 48
-        }
-        if !wantedArtist.isEmpty, !foundArtist.isEmpty {
-            if wantedArtist == foundArtist {
-                score += 30
-            } else if wantedArtist.contains(foundArtist)
-                        || foundArtist.contains(wantedArtist) {
-                score += 20
-            }
-        }
-        return score
-    }
-
-    private static func normalized(_ value: String) -> String {
-        value.folding(
-            options: [.caseInsensitive, .diacriticInsensitive],
-            locale: .current
+        GeniusMatcher.matchScore(
+            trackArtist: trackArtist,
+            trackTitle: trackTitle,
+            candidateArtist: candidateArtist,
+            candidateTitle: candidateTitle
         )
-        .lowercased()
-        .filter { $0.isLetter || $0.isNumber }
     }
 }
 
@@ -263,6 +253,7 @@ private struct GeniusSearchSection: Decodable {
 }
 
 private struct GeniusSearchHit: Decodable {
+    let type: String?
     let result: GeniusSongResult
 }
 
