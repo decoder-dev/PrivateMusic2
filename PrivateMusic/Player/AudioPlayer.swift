@@ -2624,11 +2624,17 @@ final class AudioPlayer {
         let previousOutputs = (notification.userInfo?[
             AVAudioSessionRouteChangePreviousRouteKey
         ] as? AVAudioSessionRouteDescription)?.outputs.map(\.portType) ?? []
+        let currentRoute = AVAudioSession.sharedInstance().currentRoute
         logPlayback(
             "route change reason=\(rawReason)"
                 + " from=\(previousOutputs.map(\.rawValue))"
-                + " to=\(AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType.rawValue))"
+                + " to=\(currentRoute.outputs.map(\.portType.rawValue))"
+                + " names=\(currentRoute.outputs.map(\.portName))"
+                + " tone=\(PlaybackOutputToneProfile.resolve(outputs: currentRoute.outputs.map { (port: $0.portType, name: $0.portName) }))"
                 + " playing=\(isPlaying)"
+                + " intended=\(playbackIntended)"
+                + " disconnectPending=\(routeDisconnectPending)"
+                + " resumeOnBluetooth=\(resumeOnBluetoothConnection)"
         )
         var allowsMinimumVolumeResume = true
         switch reason {
