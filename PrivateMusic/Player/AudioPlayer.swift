@@ -2212,6 +2212,10 @@ final class AudioPlayer {
                 if buffering {
                     if self.stallStartedAt == nil {
                         self.stallStartedAt = Date()
+                        self.logPlayback(
+                            "stall started reason=\(self.player.reasonForWaitingToPlay?.rawValue ?? "n/a")"
+                                + " network=\(self.currentNetworkCondition)"
+                        )
                     } else if let started = self.stallStartedAt,
                               Date().timeIntervalSince(started)
                                 >= StreamFailureRetryPolicy
@@ -2247,6 +2251,13 @@ final class AudioPlayer {
         else {
             return
         }
+        logPlayback(
+            "interruption \(type == .began ? "began" : "ended")"
+                + " reason=\(Self.interruptionReasonDescription(notification))"
+                + " options=\(notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0)"
+                + " route=\(AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType.rawValue))"
+                + " playing=\(isPlaying) otherAudio=\(AVAudioSession.sharedInstance().isOtherAudioPlaying)"
+        )
         switch type {
         case .began:
             interruptionResumeTask?.cancel()
@@ -2364,6 +2375,26 @@ final class AudioPlayer {
             handleOutputVolume(AVAudioSession.sharedInstance().outputVolume)
         @unknown default:
             break
+        }
+    }
+
+    private static func interruptionReasonDescription(
+        _ notification: Notification
+    ) -> String {
+        guard #available(iOS 17.0, *),
+              let raw = notification.userInfo?[
+                AVAudioSessionInterruptionReasonKey
+              ] as? UInt,
+              let reason = AVAudioSession.InterruptionReason(rawValue: raw)
+        else {
+            return "n/a"
+        }
+        switch reason {
+        case .default: return "default"
+        case .appWasSuspended: return "appWasSuspended"
+        case .builtInMicMuted: return "builtInMicMuted"
+        case .routeDisconnected: return "routeDisconnected"
+        @unknown default: return "raw\(raw)"
         }
     }
 
@@ -2515,6 +2546,12 @@ final class AudioPlayer {
         let previousOutputs = (notification.userInfo?[
             AVAudioSessionRouteChangePreviousRouteKey
         ] as? AVAudioSessionRouteDescription)?.outputs.map(\.portType) ?? []
+        logPlayback(
+            "route change reason=\(rawReason)"
+                + " from=\(previousOutputs.map(\.rawValue))"
+                + " to=\(AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType.rawValue))"
+                + " playing=\(isPlaying)"
+        )
         var allowsMinimumVolumeResume = true
         switch reason {
         case .oldDeviceUnavailable:
@@ -3021,6 +3058,7 @@ final class AudioPlayer {
         ) {
             pausedForMinimumVolume = true
             minimumVolumeResumeSuppressed = false
+            logPlayback("paused: output volume at minimum (volume=\(volume))")
             pausePreservingIntent()
             return
         }
