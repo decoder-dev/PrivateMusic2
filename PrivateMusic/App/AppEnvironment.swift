@@ -265,41 +265,27 @@ final class AppEnvironment {
                 )
             },
             likeCurrent: { [weak self] track in
-                guard let self else { return false }
-                if self.libraryStore.contains(track) { return true }
-                do {
-                    let added = try await self.withAuthorizedToken { token in
-                        try await self.musicService.addToLibrary(
-                            track,
-                            accessToken: token
-                        )
-                    }
-                    self.libraryStore.markAdded(source: track, stored: added)
-                    return true
-                } catch {
-                    return false
-                }
+                await self?.addToLibraryRemotely(track) ?? false
             },
             unlikeCurrent: { [weak self] track in
-                guard let self else { return false }
-                do {
-                    let stored = self.libraryStore.storedTrack(for: track)
-                        ?? track
-                    try await self.withAuthorizedToken { token in
-                        try await self.musicService.removeFromLibrary(
-                            stored,
-                            accessToken: token
-                        )
-                    }
-                    self.libraryStore.markRemoved(track)
-                    self.libraryStore.markRemoved(stored)
-                    MusicLibraryEvents.postRemoved(stored)
-                    return true
-                } catch {
-                    return false
-                }
+                await self?.removeFromLibraryRemotely(track) ?? false
             }
         )
+        // The same library actions serve the system Like button (CarPlay,
+        // lock screen) as the Watch.
+        player.remoteIsLiked = { [weak self] track in
+            guard let self else { return false }
+            return self.libraryStore.isLiked(
+                track,
+                currentUserID: self.sessionStore.resolvedOfflineAccountID
+            )
+        }
+        player.remoteSetLiked = { [weak self] track, liked in
+            guard let self else { return false }
+            return liked
+                ? await self.addToLibraryRemotely(track)
+                : await self.removeFromLibraryRemotely(track)
+        }
         sessionStore.onAccountChange = { [weak self] in
             guard let self else { return }
             for task in self.refreshTasks.values { task.cancel() }
@@ -324,6 +310,42 @@ final class AppEnvironment {
             MainActor.assumeIsolated {
                 self?.downloadLikedTrackIfEnabled(track)
             }
+        }
+    }
+
+    /// Adds a track to the VK library for a remote control (Watch, car,
+    /// lock screen). Already-liked counts as success.
+    private func addToLibraryRemotely(_ track: Track) async -> Bool {
+        if libraryStore.contains(track) { return true }
+        do {
+            let added = try await withAuthorizedToken { token in
+                try await self.musicService.addToLibrary(
+                    track,
+                    accessToken: token
+                )
+            }
+            libraryStore.markAdded(source: track, stored: added)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func removeFromLibraryRemotely(_ track: Track) async -> Bool {
+        do {
+            let stored = libraryStore.storedTrack(for: track) ?? track
+            try await withAuthorizedToken { token in
+                try await self.musicService.removeFromLibrary(
+                    stored,
+                    accessToken: token
+                )
+            }
+            libraryStore.markRemoved(track)
+            libraryStore.markRemoved(stored)
+            MusicLibraryEvents.postRemoved(stored)
+            return true
+        } catch {
+            return false
         }
     }
 

@@ -9,6 +9,9 @@ final class NowPlayingController {
     private var artworkTask: Task<Void, Never>?
     private var userActivity: NSUserActivity?
     private var userActivityTrackID: String?
+    /// Whether a track is in the library, for the system Like button's
+    /// on/off state (CarPlay, lock screen, AirPods stem menus).
+    var likedState: (@MainActor (Track) -> Bool)?
 
     func update(
         track: Track,
@@ -40,6 +43,8 @@ final class NowPlayingController {
 
         center.nowPlayingInfo = info
         center.playbackState = rate > 0 ? .playing : .paused
+        MPRemoteCommandCenter.shared().likeCommand.isActive =
+            likedState?(track) ?? false
         publishUserActivity(for: track)
 
         artworkTask?.cancel()
