@@ -59,6 +59,11 @@ struct LibraryView: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     listenLaterSection
 
+                    // Filtered once per pass: while searching, every reference
+                    // below used to re-filter the whole library (and once per
+                    // visible row for the divider test).
+                    let visible = filteredTracks
+
                     if playlists.isLoading && playlists.playlists.isEmpty {
                         playlistSkeleton(width: shelfWidth)
                             .librarySectionSpacing()
@@ -107,10 +112,10 @@ struct LibraryView: View {
                             description: "tracks_added_to_your_vk_library_will_appear_here"
                         )
                         .frame(minHeight: 260)
-                    } else if filteredTracks.isEmpty && isSearchingLibrary {
+                    } else if visible.isEmpty && isSearchingLibrary {
                         ProgressView(L10n.text("searching"))
                             .frame(maxWidth: .infinity, minHeight: 220)
-                    } else if filteredTracks.isEmpty && tracks.errorMessage == nil {
+                    } else if visible.isEmpty && tracks.errorMessage == nil {
                         EmptyStateView(
                             title: "no_results",
                             systemImage: "magnifyingglass",
@@ -123,14 +128,14 @@ struct LibraryView: View {
                         // a nested LazyVStack inside ScrollView recycles rows
                         // out of order and looks like a scrambled library.
                         ForEach(
-                            Array(filteredTracks.enumerated()),
+                            Array(visible.enumerated()),
                             id: \.element.id
                         ) { index, track in
                             libraryRow(track)
                                 .onAppear {
                                     loadMoreIfNeeded(after: track)
                                 }
-                            if index < filteredTracks.count - 1 {
+                            if index < visible.count - 1 {
                                 Divider().padding(.leading, 66)
                             }
                         }
@@ -156,7 +161,7 @@ struct LibraryView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                    } else if !filteredTracks.isEmpty && isSearchingLibrary {
+                    } else if !visible.isEmpty && isSearchingLibrary {
                         ProgressView(L10n.text("searching"))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)

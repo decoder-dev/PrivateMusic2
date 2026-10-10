@@ -23,6 +23,36 @@ final class AppearanceChoiceTests: XCTestCase {
         }
     }
 
+    /// The accent is cached (it is read hundreds of times per frame), so the
+    /// cache has to follow every input it depends on.
+    func testCachedDerivedColoursFollowThemePaletteAndAccent() {
+        withDefaults { defaults in
+            let settings = AppSettings(defaults: defaults)
+            func expected() -> BubbleColorComponents {
+                settings.accentChoice.components(
+                    for: settings.theme,
+                    on: settings.palette
+                )
+            }
+            XCTAssertEqual(settings.accentComponents, expected())
+            settings.palette = .banana
+            settings.accentChoice = .banana
+            XCTAssertEqual(settings.accentComponents, expected())
+            XCTAssertEqual(
+                settings.pageColors.count,
+                settings.palette.background(for: settings.theme).count
+            )
+            settings.theme = .light
+            XCTAssertEqual(settings.accentComponents, expected())
+            XCTAssertEqual(
+                settings.onAccent,
+                expected().prefersDarkForeground ? .black : .white
+            )
+            settings.resetAppearance()
+            XCTAssertEqual(settings.accentComponents, expected())
+        }
+    }
+
     func testAccentChoicePersistsAndUnknownValuesFallBackToBlue() {
         withDefaults { defaults in
             AppSettings(defaults: defaults).accentChoice = .violet

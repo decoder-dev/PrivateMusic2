@@ -303,31 +303,53 @@ enum EqualizerPreset: String, CaseIterable, Identifiable {
 @Observable
 final class AppSettings {
     var theme: AppTheme {
-        didSet { defaults.set(theme.rawValue, forKey: Keys.theme) }
+        didSet {
+            defaults.set(theme.rawValue, forKey: Keys.theme)
+            refreshDerivedColors()
+        }
     }
     var accentChoice: AppAccent {
-        didSet { defaults.set(accentChoice.rawValue, forKey: Keys.accentChoice) }
+        didSet {
+            defaults.set(accentChoice.rawValue, forKey: Keys.accentChoice)
+            refreshDerivedColors()
+        }
     }
     var palette: AppPalette {
-        didSet { defaults.set(palette.rawValue, forKey: Keys.palette) }
+        didSet {
+            defaults.set(palette.rawValue, forKey: Keys.palette)
+            refreshDerivedColors()
+        }
     }
+    // Derived colours are stored, not computed: `accent` is read by hundreds
+    // of views per frame, and recomputing it (contrast fitting against the
+    // palette) on every read made scrolling stutter. They are refreshed only
+    // when the theme, palette or accent actually changes.
+
     /// Page gradient of the current palette and appearance.
-    var pageColors: [Color] {
-        palette.background(for: theme).map(\.color)
-    }
+    private(set) var pageColors: [Color] = []
     /// Card / field surface of the current palette and appearance.
-    var surfaceColor: Color {
-        palette.surface(for: theme).color
-    }
+    private(set) var surfaceColor: Color = .black
     /// What views tint with. Reading it (rather than `theme.accent`) is what
     /// makes a view redraw when the accent changes.
-    var accentComponents: BubbleColorComponents {
-        accentChoice.components(for: theme, on: palette)
-    }
-    var accent: Color { accentComponents.color }
+    private(set) var accentComponents = BubbleColorComponents(
+        red: 0.20,
+        green: 0.52,
+        blue: 0.98
+    )
+    private(set) var accent: Color = .blue
     /// Label colour for anything filled with the accent.
-    var onAccent: Color {
-        accentComponents.prefersDarkForeground ? .black : .white
+    private(set) var onAccent: Color = .white
+
+    private func refreshDerivedColors() {
+        let components = accentChoice.components(for: theme, on: palette)
+        if components != accentComponents {
+            accentComponents = components
+            accent = components.color
+            onAccent = components.prefersDarkForeground ? .black : .white
+        }
+        let stops = palette.background(for: theme).map(\.color)
+        if stops != pageColors { pageColors = stops }
+        surfaceColor = palette.surface(for: theme).color
     }
     var appearance: AppearanceMode {
         didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) }
@@ -635,6 +657,7 @@ final class AppSettings {
             forKey: Keys.hapticsEnabled
         ) as? Bool ?? true
         Haptics.isEnabled = hapticsEnabled
+        refreshDerivedColors()
     }
 
     func selectPreset(_ preset: EqualizerPreset) {
