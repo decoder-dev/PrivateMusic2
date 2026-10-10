@@ -155,8 +155,8 @@ struct AlbumDetailView: View {
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(
                             isFollowed
-                                ? BubbleGamut.liked(for: settings.theme)
-                                : settings.theme.accent
+                                ? settings.accent
+                                : settings.accent
                         )
                         .frame(width: 46, height: 46)
                         .contentShape(Circle())
@@ -176,7 +176,7 @@ struct AlbumDetailView: View {
                     ShareLink(item: shareURL) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(settings.theme.accent)
+                            .foregroundStyle(settings.accent)
                             .frame(width: 46, height: 46)
                             .contentShape(Circle())
                             .adaptiveGlass(in: Circle(), interactive: true)
@@ -217,14 +217,14 @@ struct AlbumDetailView: View {
                 listenButtonLabel
             }
             .buttonStyle(.glassProminent)
-            .tint(settings.theme.accent)
+            .tint(settings.accent)
             .disabled(model.tracks.isEmpty)
         } else {
             Button(action: toggleListen) {
                 listenButtonLabel
             }
             .buttonStyle(PremiumProminentButtonStyle())
-            .tint(settings.theme.accent)
+            .tint(settings.accent)
             .disabled(model.tracks.isEmpty)
         }
     }
@@ -233,7 +233,7 @@ struct AlbumDetailView: View {
         Button(action: shuffleAlbum) {
             Image(systemName: "shuffle")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(settings.theme.accent)
+                .foregroundStyle(settings.accent)
                 .frame(width: 46, height: 46)
                 .contentShape(Circle())
                 .adaptiveGlass(in: Circle(), interactive: true)

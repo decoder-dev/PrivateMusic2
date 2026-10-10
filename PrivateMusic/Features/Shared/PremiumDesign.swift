@@ -92,9 +92,9 @@ struct PremiumProminentButtonStyle: ButtonStyle {
             .foregroundStyle(.white)
             .background {
                 RoundedRectangle(cornerRadius: PremiumLayout.controlRadius, style: .continuous)
-                    .fill(settings.theme.accent)
+                    .fill(settings.accent)
                     .shadow(
-                        color: settings.theme.accent.opacity(configuration.isPressed ? 0.3 : 0.6),
+                        color: settings.accent.opacity(configuration.isPressed ? 0.3 : 0.6),
                         radius: configuration.isPressed ? 8 : 16,
                         y: configuration.isPressed ? 4 : 8
                     )
@@ -329,7 +329,7 @@ struct AppStatusPanel: View {
         VStack(spacing: BubbleSpacing.m) {
             Image(systemName: systemImage)
                 .font(.system(size: 34, weight: .medium))
-                .foregroundStyle(settings.theme.accent)
+                .foregroundStyle(settings.accent)
                 .accessibilityHidden(true)
             Text(titleIsLocalizedKey ? L10n.text(title) : title)
                 .font(.title2.weight(.bold))

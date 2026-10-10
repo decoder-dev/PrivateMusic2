@@ -58,7 +58,7 @@ struct TrackRow: View {
                     systemImage: "text.line.first.and.arrowtriangle.forward"
                 )
             }
-            .tint(settings.theme.accent)
+            .tint(settings.accent)
             Button {
                 Haptics.selection()
                 environment.player.playLast(track)
@@ -133,7 +133,7 @@ struct TrackRow: View {
 
     private var currentTrackColor: Color {
         settings.theme == .dark
-            ? settings.theme.accent
+            ? settings.accent
             : .black
     }
 

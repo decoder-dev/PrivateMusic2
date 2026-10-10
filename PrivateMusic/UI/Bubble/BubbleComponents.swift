@@ -154,7 +154,7 @@ struct BubbleIconButton: View {
     /// blue disc rather than a status.
     private var foreground: Color {
         if isProminent { return .white }
-        if isActive { return settings.theme.accent }
+        if isActive { return settings.accent }
         return .primary
     }
 }
@@ -175,7 +175,7 @@ private struct BubbleGlassIfNeeded: ViewModifier {
                 // Subtle: the glyph itself already carries the accent
                 // colour, so the surface only needs to whisper it.
                 tint: isActive
-                    ? settings.theme.accent.opacity(0.12)
+                    ? settings.accent.opacity(0.12)
                     : nil
             )
         } else {
@@ -256,7 +256,7 @@ struct BubbleCallToAction: View {
             .padding(.horizontal, BubbleSpacing.xxl)
             .frame(height: height)
             .frame(minWidth: 0)
-            .background(settings.theme.accent, in: Capsule(style: .continuous))
+            .background(settings.accent, in: Capsule(style: .continuous))
         }
         .buttonStyle(BubblePressStyle())
         .disabled(isBusy)

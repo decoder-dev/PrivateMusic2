@@ -246,7 +246,7 @@ struct LibraryView: View {
                                         .padding(.vertical, 1)
                                         .background(
                                             Capsule()
-                                                .fill(settings.theme.accent)
+                                                .fill(settings.accent)
                                         )
                                     }
                                 }
@@ -529,7 +529,7 @@ struct LibraryView: View {
                 .minimumScaleFactor(0.8)
         }
         .buttonStyle(.bordered)
-        .tint(settings.theme.accent)
+        .tint(settings.accent)
         .disabled(filteredTracks.isEmpty)
         .accessibilityLabel(L10n.text("shuffle"))
         .accessibilityHint(
@@ -767,7 +767,7 @@ struct LibraryView: View {
     }
 
     private var currentTrackColor: Color {
-        settings.theme.accent
+        settings.accent
     }
 
     private var shelfPlaylists: [Playlist] {

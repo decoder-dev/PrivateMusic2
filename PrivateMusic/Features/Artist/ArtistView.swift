@@ -220,7 +220,7 @@ struct ArtistView: View {
                                 .font(.caption2.weight(.semibold))
                         }
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(settings.theme.accent)
+                        .foregroundStyle(settings.accent)
                     }
                 }
             }

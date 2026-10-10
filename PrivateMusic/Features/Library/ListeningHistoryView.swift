@@ -90,7 +90,7 @@ struct ListeningHistoryView: View {
                                         systemImage: "text.badge.plus"
                                     )
                                 }
-                                .tint(settings.theme.accent)
+                                .tint(settings.accent)
                                 Button {
                                     environment.player.playLast(entry.track)
                                 } label: {

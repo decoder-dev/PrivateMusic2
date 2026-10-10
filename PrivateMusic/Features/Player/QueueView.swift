@@ -170,7 +170,7 @@ struct QueueView: View {
                 title: usableMetadata(track.title),
                 artist: usableMetadata(track.artist),
                 titleColor: isCurrent
-                    ? settings.theme.accent
+                    ? settings.accent
                     : .primary,
                 showsLikedBadge: true,
                 likedTrack: track,
@@ -178,7 +178,7 @@ struct QueueView: View {
                 showsPlaybackIndicator: isCurrent,
                 isPlaying: player.isPlaying,
                 playbackIndicatorColor: isCurrent
-                    ? settings.theme.accent
+                    ? settings.accent
                     : .primary
             )
         }
@@ -187,7 +187,7 @@ struct QueueView: View {
         .listRowSeparator(.hidden)
         .listRowBackground(
             isCurrent
-                ? settings.theme.accent.opacity(0.08)
+                ? settings.accent.opacity(0.08)
                 : Color.clear
         )
         .accessibilityElement(children: .ignore)
@@ -217,7 +217,7 @@ struct QueueView: View {
                         systemImage: "text.line.first.and.arrowtriangle.forward"
                     )
                 }
-                .tint(settings.theme.accent)
+                .tint(settings.accent)
             }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {

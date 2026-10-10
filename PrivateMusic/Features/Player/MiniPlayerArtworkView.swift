@@ -71,7 +71,7 @@ struct MiniPlayerArtworkView: View {
             )
             Image(systemName: "music.note")
                 .font(.system(size: size * 0.34, weight: .semibold))
-                .foregroundStyle(settings.theme.accent)
+                .foregroundStyle(settings.accent)
         }
     }
 
