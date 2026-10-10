@@ -16,6 +16,7 @@ enum PremiumLayout {
 
 struct PremiumCardModifier: ViewModifier {
     let interactive: Bool
+    @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
@@ -33,7 +34,7 @@ struct PremiumCardModifier: ViewModifier {
             .background {
                 Group {
                     if reduceTransparency || increased {
-                        shape.fill(Color(uiColor: .secondarySystemBackground))
+                        shape.fill(settings.surfaceColor)
                     } else {
                         shape.fill(.regularMaterial)
                     }

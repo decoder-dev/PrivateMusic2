@@ -36,6 +36,7 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.prefersClassicChrome) private var prefersClassicChrome
+    @Environment(AppSettings.self) private var settings
 
     private var flattensGlass: Bool {
         ContrastPolicy.flattensCustomGlass(
@@ -75,7 +76,7 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                 .clipShape(shape)
                 .background {
                     if reduceTransparency || increased {
-                        shape.fill(Color(uiColor: .secondarySystemBackground))
+                        shape.fill(settings.surfaceColor)
                     } else {
                         shape.fill(.ultraThinMaterial)
                     }
