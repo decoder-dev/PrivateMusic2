@@ -906,3 +906,4 @@
 "palette.rose" = "Rose";
 "palette.mocha" = "Mocha";
 "accent.banana" = "Banana";
+"mix.tuning_start_selected" = "Start · %d selected";

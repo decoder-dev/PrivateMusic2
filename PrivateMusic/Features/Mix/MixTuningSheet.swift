@@ -138,6 +138,14 @@ struct MixTuningSheet: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
+    /// Says what will start: the plain mix, or how many chips are on.
+    private var startTitle: String {
+        let chosen = selection.values.reduce(0) { $0 + $1.count }
+        return chosen == 0
+            ? L10n.text("start_your_mix")
+            : L10n.format("mix.tuning_start_selected", chosen)
+    }
+
     private func playBar(tuning: MixTuning) -> some View {
         VStack(spacing: 0) {
             Divider().opacity(0.35)
@@ -149,7 +157,7 @@ struct MixTuningSheet: View {
                 HStack(spacing: BubbleSpacing.s) {
                     Image(systemName: "play.fill")
                         .font(.system(size: 16, weight: .bold))
-                    Text(L10n.text("start_your_mix"))
+                    Text(startTitle)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                 }

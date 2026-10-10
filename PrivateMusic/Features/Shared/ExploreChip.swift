@@ -11,15 +11,24 @@ struct ExploreChip: View {
     let systemImage: String
     var tint: Color?
     var isFlexible = false
+    /// Shows a spinner in place of the icon and ignores further taps — the
+    /// tap started something that takes a moment (loading a mix).
+    var isLoading = false
     let action: () -> Void
 
     var body: some View {
         let color = tint ?? settings.accent
         Button(action: action) {
             HStack(spacing: 7) {
-                Image(systemName: systemImage)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(color)
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(color)
+                } else {
+                    Image(systemName: systemImage)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(color)
+                }
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
@@ -45,6 +54,8 @@ struct ExploreChip: View {
             .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(PremiumPressStyle())
+        .disabled(isLoading)
+        .accessibilityAddTraits(isLoading ? .updatesFrequently : [])
     }
 }
 
