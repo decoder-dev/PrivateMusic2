@@ -844,3 +844,8 @@
 "mix.personal_title" = "My Mix";
 "mix.personal_subtitle" = "VK’s personal mix, built from your listening";
 "mix.personal_name" = "My Mix";
+"library.removed_toast" = "Removed from your library";
+"action.undo" = "Undo";
+"could_not_undo_removal" = "Could not undo";
+"auto_download_likes" = "Auto-download likes";
+"auto_download_likes_footnote" = "Tracks you like are saved for offline playback automatically. Wi-Fi only.";

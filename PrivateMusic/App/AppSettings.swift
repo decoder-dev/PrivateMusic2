@@ -328,6 +328,13 @@ final class AppSettings {
             )
         }
     }
+    /// Save a track for offline playback right after it is liked. Wi-Fi
+    /// only: a like must never spend mobile data on its own.
+    var autoDownloadLikes: Bool {
+        didSet {
+            defaults.set(autoDownloadLikes, forKey: Keys.autoDownloadLikes)
+        }
+    }
     var hapticsEnabled: Bool {
         didSet {
             defaults.set(hapticsEnabled, forKey: Keys.hapticsEnabled)
@@ -446,6 +453,9 @@ final class AppSettings {
         automaticOfflineCacheEnabled = defaults.object(
             forKey: Keys.automaticOfflineCacheEnabled
         ) as? Bool ?? false
+        autoDownloadLikes = defaults.object(
+            forKey: Keys.autoDownloadLikes
+        ) as? Bool ?? false
         hapticsEnabled = defaults.object(
             forKey: Keys.hapticsEnabled
         ) as? Bool ?? true
@@ -510,6 +520,7 @@ final class AppSettings {
             "offline.storage.limitGB"
         static let automaticOfflineCacheEnabled =
             "offline.cache.automatic.enabled"
+        static let autoDownloadLikes = "offline.autoDownloadLikes"
         static let hapticsEnabled = "feedback.haptics.enabled"
         static let preferHighQuality = "audio.playback.preferHighQuality"
         static let crossfadeEnabled = "audio.playback.crossfadeEnabled"

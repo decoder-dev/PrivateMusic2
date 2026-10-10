@@ -53,6 +53,7 @@ final class AppEnvironment {
     @ObservationIgnored private var automaticCacheSessionRevision: Int?
     @ObservationIgnored private let cacheNotifications = CacheNotificationRegistrations()
     @ObservationIgnored private var cacheObservation: ObservationLoop.Token?
+    @ObservationIgnored private var likeObserver: NSObjectProtocol?
     /// The library-wide walks that more than one screen can ask for.
     private enum RefreshSlot: Hashable {
         case libraryIndex
@@ -306,6 +307,38 @@ final class AppEnvironment {
         configureOfflineAccount()
         watchRemoteCoordinator.start()
         vkIntegration.start(environment: self)
+        likeObserver = NotificationCenter.default.addObserver(
+            forName: MusicLibraryEvents.didAddTrack,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let track = notification.userInfo?[
+                MusicLibraryEvents.trackKey
+            ] as? Track else { return }
+            MainActor.assumeIsolated {
+                self?.downloadLikedTrackIfEnabled(track)
+            }
+        }
+    }
+
+    /// "Auto-download likes": a freshly liked track is saved for offline
+    /// playback, on Wi-Fi only. Anything else (cellular, a share in
+    /// progress, downloads disabled) leaves the like alone.
+    private func downloadLikedTrackIfEnabled(_ track: Track) {
+        guard settings.autoDownloadLikes,
+              OfflineDownloadsFeature.isEnabled,
+              !isShareSessionActive,
+              networkMonitor.transport == .wifi,
+              !offlineStore.contains(track) else { return }
+        Task { [weak self] in
+            do {
+                try await self?.downloadForOffline(track)
+            } catch is CancellationError {
+                return
+            } catch {
+                AppLog.shared.failure(.app, "Auto-download liked track", error)
+            }
+        }
     }
 
     func configureOfflineAccount() {

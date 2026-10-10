@@ -96,6 +96,21 @@ extension VKMusicService {
         return saved.response
     }
 
+    func restoreToLibrary(_ track: Track, accessToken: String) async throws {
+        guard track.trackID > 0, track.ownerID != 0 else {
+            throw APIError.invalidRequest
+        }
+        let _: VKResponse<JSONValue> = try await client.post(
+            path: "/method/audio.restore",
+            form: common(accessToken).merging([
+                "audio_id": String(track.trackID),
+                "owner_id": String(track.ownerID)
+            ]) { _, new in new },
+            retryPolicy: .never,
+            responseType: VKResponse<JSONValue>.self
+        )
+    }
+
     func broadcast(track: Track?, accessToken: String) async throws {
         var form = common(accessToken)
         if let track { form["audio"] = track.id }
