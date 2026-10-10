@@ -286,6 +286,7 @@ private struct AppearanceSettingsView: View {
 
             Section(L10n.text("accent_color")) {
                 accentPicker
+                accentPreview
             }
 
             // Below iOS 26 everything is already drawn this way, so the
@@ -373,6 +374,27 @@ private struct AppearanceSettingsView: View {
         .navigationTitle(L10n.text("appearance"))
     }
 
+    /// What the choice looks like in use: a filled button, accent text and a
+    /// progress bar — the three ways the accent actually appears.
+    private var accentPreview: some View {
+        HStack(spacing: 14) {
+            Label(L10n.text("accent.preview_button"), systemImage: "play.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(settings.onAccent)
+                .padding(.horizontal, 16)
+                .frame(minHeight: PremiumLayout.minimumTapTarget)
+                .background(settings.accent, in: Capsule(style: .continuous))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(L10n.text("accent.preview_link"))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(settings.accent)
+                ProgressView(value: 0.6)
+                    .tint(settings.accent)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
     private var accentPicker: some View {
         LazyVGrid(
             columns: [
@@ -391,6 +413,15 @@ private struct AppearanceSettingsView: View {
                         Circle()
                             .fill(accent.components(for: settings.theme).color)
                             .frame(width: 40, height: 40)
+                            .overlay {
+                                // A ring, not just a tick: the tick alone
+                                // is easy to miss on a light swatch.
+                                if settings.accentChoice == accent {
+                                    Circle()
+                                        .strokeBorder(Color.primary, lineWidth: 2)
+                                        .padding(-5)
+                                }
+                            }
                             .overlay {
                                 if settings.accentChoice == accent {
                                     Image(systemName: "checkmark")
@@ -450,7 +481,11 @@ private struct AppearanceSettingsView: View {
                                 if settings.theme == theme {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 14, weight: .bold))
-                                        .foregroundStyle(theme.accent)
+                                        .foregroundStyle(
+                                            settings.accentChoice
+                                                .components(for: theme)
+                                                .color
+                                        )
                                 }
                             }
                         Text(theme.title)

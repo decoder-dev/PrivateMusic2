@@ -895,3 +895,5 @@
 "mix.artists_subtitle" = "Те, кого вы слушаете чаще всего";
 "mix.tuning_short" = "Настроение и жанры";
 "mix.mood_fallback" = "Для «%@» пока нет отдельного микса — играет Selena.";
+"accent.preview_button" = "Слушать";
+"accent.preview_link" = "Ссылка и значки";

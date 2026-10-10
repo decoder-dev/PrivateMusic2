@@ -58,8 +58,9 @@ enum AppAccent: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Dark surfaces take a lighter tone, light surfaces a deeper one, so
-    /// white labels and thin glyphs keep their contrast on either.
+    /// Dark surfaces take a lighter tone, light surfaces a deeper one. The light
+    /// tones are deep enough (≥ 4.5:1 on the page, and under a white label)
+    /// that accent-coloured text and glyphs stay readable, not only fills.
     func components(for theme: AppTheme) -> BubbleColorComponents {
         let dark = theme == .dark
         switch self {
@@ -72,27 +73,27 @@ enum AppAccent: String, CaseIterable, Identifiable {
         case .violet:
             return dark
                 ? BubbleColorComponents(red: 0.70, green: 0.46, blue: 0.97)
-                : BubbleColorComponents(red: 0.56, green: 0.32, blue: 0.84)
+                : BubbleColorComponents(red: 0.53, green: 0.30, blue: 0.80)
         case .pink:
             return dark
                 ? BubbleColorComponents(red: 0.98, green: 0.40, blue: 0.64)
-                : BubbleColorComponents(red: 0.85, green: 0.24, blue: 0.50)
+                : BubbleColorComponents(red: 0.75, green: 0.21, blue: 0.44)
         case .red:
             return dark
                 ? BubbleColorComponents(red: 0.98, green: 0.38, blue: 0.38)
-                : BubbleColorComponents(red: 0.84, green: 0.22, blue: 0.24)
+                : BubbleColorComponents(red: 0.78, green: 0.20, blue: 0.22)
         case .orange:
             return dark
                 ? BubbleColorComponents(red: 1.00, green: 0.60, blue: 0.20)
-                : BubbleColorComponents(red: 0.88, green: 0.46, blue: 0.08)
+                : BubbleColorComponents(red: 0.65, green: 0.34, blue: 0.06)
         case .green:
             return dark
                 ? BubbleColorComponents(red: 0.30, green: 0.80, blue: 0.48)
-                : BubbleColorComponents(red: 0.14, green: 0.62, blue: 0.34)
+                : BubbleColorComponents(red: 0.11, green: 0.48, blue: 0.27)
         case .teal:
             return dark
                 ? BubbleColorComponents(red: 0.24, green: 0.80, blue: 0.80)
-                : BubbleColorComponents(red: 0.08, green: 0.60, blue: 0.62)
+                : BubbleColorComponents(red: 0.06, green: 0.47, blue: 0.48)
         }
     }
 }

@@ -895,3 +895,5 @@
 "mix.artists_subtitle" = "The artists you play most";
 "mix.tuning_short" = "Mood and genres";
 "mix.mood_fallback" = "There is no separate mix for “%@” yet — Selena is playing.";
+"accent.preview_button" = "Listen";
+"accent.preview_link" = "Links and icons";
