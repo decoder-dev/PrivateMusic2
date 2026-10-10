@@ -1,0 +1,48 @@
+included:
+  - PrivateMusic
+  - PrivateMusicWatch
+  - PrivateMusicTests
+excluded:
+  - PrivateMusic/Resources
+
+# Baseline: surface real defects, do not fail on style debt.
+opt_in_rules:
+  - force_unwrapping
+  - unused_import
+  - empty_count
+  - first_where
+  - contains_over_first_not_nil
+  - sorted_first_last
+  - redundant_nil_coalescing
+
+disabled_rules:
+  - line_length
+  - identifier_name
+  - type_name
+  - todo
+  - trailing_comma
+  - nesting
+  - large_tuple
+
+# Ratchet: large files are known debt (AudioPlayer, MixesHubView, ...).
+# Warn so new files do not grow past these limits.
+file_length:
+  warning: 1500
+  error: 5000
+type_body_length:
+  warning: 1200
+  error: 4500
+function_body_length:
+  warning: 120
+  error: 400
+cyclomatic_complexity:
+  warning: 25
+  error: 60
+
+custom_rules:
+  no_print:
+    name: "No print"
+    regex: '(?<![A-Za-z_.])print\('
+    message: "Use AppLog instead of print()."
+    severity: error
+    excluded: "PrivateMusicTests"
