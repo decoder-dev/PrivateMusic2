@@ -37,6 +37,10 @@ protocol MusicService: Sendable {
         startingOffset: Int,
         pages: Int
     ) async throws -> [Track]
+    func mixTuning(
+        for mix: MusicMix,
+        accessToken: String
+    ) async throws -> MixTuning
     func search(
         query: String,
         accessToken: String,
@@ -159,6 +163,13 @@ extension MusicService {
     func uploadAudio(file: URL, artist: String, title: String, accessToken: String) async throws -> Track { throw APIError.invalidRequest }
     func broadcast(track: Track?, accessToken: String) async throws { throw APIError.invalidRequest }
     func reportPlayback(events: [VKListeningEvent], accessToken: String) async throws { throw APIError.invalidRequest }
+
+    func mixTuning(
+        for mix: MusicMix,
+        accessToken: String
+    ) async throws -> MixTuning {
+        MixTuning(categories: [])
+    }
 
     /// Personal recommendations — optional `targetAudio` seeds «микс по треку».
     func recommendations(accessToken: String) async throws -> [Track] {

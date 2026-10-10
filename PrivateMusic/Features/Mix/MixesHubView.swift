@@ -55,6 +55,7 @@ struct MixesHubView: View {
     /// Open this mix on the VK tab (from What's Next "Открыть микс").
     var focusedMixID: String? = nil
     @State private var showingMixConfigure = false
+    @State private var tuningBase: MusicMix?
 
     private let defaultPreviewTrackLimit = 15
     private let expandedPreviewTrackLimit = 60
@@ -131,6 +132,12 @@ struct MixesHubView: View {
                 if let mix = selectedVKMix ?? orderedVKMixes.first {
                     start(mix)
                 }
+            }
+        }
+        .sheet(item: $tuningBase) { base in
+            MixTuningSheet(mix: base) { tuned in
+                addTunedMix(tuned)
+                start(tuned)
             }
         }
         .onAppear {
@@ -233,6 +240,7 @@ struct MixesHubView: View {
                 tracksSubtitle: vkTracksSubtitle(for: mix),
                 metrics: metrics,
                 picker: {
+                    moodStrip(metrics: metrics)
                     if orderedVKMixes.count > 1 {
                         vkMixPicker(selected: mix, metrics: metrics)
                     }
@@ -976,6 +984,9 @@ struct MixesHubView: View {
                 }
 
                 mixConfigureEntry
+                if canTune(mix) {
+                    mixTuningEntry(for: mix)
+                }
             }
 
             // Hero owns Play. This row is shuffle + keep/hide only —
@@ -1133,6 +1144,90 @@ struct MixesHubView: View {
         .buttonStyle(PremiumPressStyle())
         .accessibilityLabel(L10n.text("configure_mix"))
         .accessibilityHint(L10n.text("configure_mix_accessibility_hint"))
+    }
+
+    private func canTune(_ mix: MusicMix) -> Bool {
+        mix.streamMixID == MusicMix.common.id || mix.streamOptions != nil
+    }
+
+    private func mixTuningEntry(for mix: MusicMix) -> some View {
+        Button {
+            Haptics.selection()
+            tuningBase = mix
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.caption.weight(.semibold))
+                Text(L10n.text("mix.tuning_entry"))
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.primary.opacity(0.06))
+            )
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(PremiumPressStyle())
+        .accessibilityHint(L10n.text("mix.tuning_hint"))
+    }
+
+    /// Tuned variants join the picker so the choice survives a refresh and
+    /// can be switched back to without re-opening the sheet.
+    private func addTunedMix(_ tuned: MusicMix) {
+        guard !mixes.contains(where: { $0.id == tuned.id }) else { return }
+        mixes.insert(tuned, at: 0)
+    }
+
+    /// One-tap moods, like the mood tiles in the official app.
+    private func moodStrip(metrics: MixHubMetrics) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PremiumSectionHeader(
+                "mix.mood_title",
+                subtitle: "mix.mood_subtitle"
+            )
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(
+                        MixMoodPreference.allCases.filter { $0 != .any }
+                    ) { mood in
+                        Button {
+                            Haptics.selection()
+                            Task {
+                                await environment.startMoodStation(
+                                    mood,
+                                    in: vkMixes
+                                )
+                            }
+                        } label: {
+                            Label(mood.title, systemImage: mood.chipSymbol)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                                .padding(.horizontal, 14)
+                                .frame(
+                                    minHeight: PremiumLayout.minimumTapTarget
+                                )
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(Color.primary.opacity(0.07))
+                                )
+                                .contentShape(Capsule(style: .continuous))
+                        }
+                        .buttonStyle(PremiumPressStyle())
+                        .foregroundStyle(.primary)
+                    }
+                }
+            }
+            .scrollsToCardEdges()
+        }
+        .premiumAppear(delay: 0.1)
     }
 
     private var hasActiveMixFilters: Bool {

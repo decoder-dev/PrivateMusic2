@@ -23,6 +23,14 @@ struct MusicMix: Hashable, Identifiable, Sendable {
     let sectionTitle: String?
     /// Friend / curator identity when VK exposes one on social mixes.
     let curator: MixCurator?
+    /// Compact JSON for `audio.getStreamMixAudios` `mix_options` — set on
+    /// tuned variants of one stream mix (mood / activity tiles share the
+    /// `common` mix id and differ only by these options).
+    let streamOptions: String?
+
+    /// Separator between VK's `mix_id` and the options digest in `id`, so
+    /// two moods of the same stream mix stay distinct in lists and pins.
+    static let optionsSeparator: Character = "#"
 
     init(
         id: String,
@@ -32,7 +40,8 @@ struct MusicMix: Hashable, Identifiable, Sendable {
         matchPercent: Int? = nil,
         isSocial: Bool = false,
         sectionTitle: String? = nil,
-        curator: MixCurator? = nil
+        curator: MixCurator? = nil,
+        streamOptions: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -42,6 +51,30 @@ struct MusicMix: Hashable, Identifiable, Sendable {
         self.isSocial = isSocial || (curator?.isUsable == true)
         self.sectionTitle = sectionTitle
         self.curator = curator
+        self.streamOptions = streamOptions
+    }
+
+    /// The id VK itself knows the mix by.
+    var streamMixID: String {
+        guard let index = id.firstIndex(of: Self.optionsSeparator) else {
+            return id
+        }
+        return String(id[..<index])
+    }
+
+    /// Same mix without the tuning, used when VK rejects the options.
+    var untuned: MusicMix {
+        guard streamOptions != nil else { return self }
+        return MusicMix(
+            id: streamMixID,
+            title: title,
+            subtitle: subtitle,
+            artworkURL: artworkURL,
+            matchPercent: matchPercent,
+            isSocial: isSocial,
+            sectionTitle: sectionTitle,
+            curator: curator
+        )
     }
 
     func withSectionTitle(_ title: String?) -> MusicMix {
@@ -56,7 +89,8 @@ struct MusicMix: Hashable, Identifiable, Sendable {
             matchPercent: matchPercent,
             isSocial: isSocial,
             sectionTitle: trimmed,
-            curator: curator
+            curator: curator,
+            streamOptions: streamOptions
         )
     }
 
@@ -69,7 +103,8 @@ struct MusicMix: Hashable, Identifiable, Sendable {
             matchPercent: matchPercent ?? other.matchPercent,
             isSocial: isSocial || other.isSocial,
             sectionTitle: sectionTitle ?? other.sectionTitle,
-            curator: curator ?? other.curator
+            curator: curator ?? other.curator,
+            streamOptions: streamOptions ?? other.streamOptions
         )
     }
 

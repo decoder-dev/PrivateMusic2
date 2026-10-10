@@ -1008,14 +1008,19 @@ final class AppEnvironment {
             catalog = homeCatalogStore.mixes
         }
         let scored = catalog.compactMap { mix -> (MusicMix, Int)? in
-            guard let section = mix.sectionTitle, !section.isEmpty else {
-                return nil
-            }
+            // Mood tiles carry their tuning in `streamOptions` and often
+            // have no shelf title, so match on all three.
+            let haystack = [mix.sectionTitle, mix.title, mix.streamOptions]
+                .compactMap { $0 }
+                .joined(separator: " ")
+            guard !haystack.trimmingCharacters(in: .whitespaces).isEmpty
+            else { return nil }
             let score = MixQueueFilter.shelfMoodMatchScore(
-                section + " " + mix.title,
+                haystack,
                 mood: mood
             )
-            return score > 0 ? (mix, score) : nil
+            guard score > 0 else { return nil }
+            return (mix, score + (mix.streamOptions == nil ? 0 : 5))
         }
         if let best = scored.max(by: { $0.1 < $1.1 })?.0 {
             await startCatalogMix(best)

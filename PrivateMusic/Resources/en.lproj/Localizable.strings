@@ -886,3 +886,10 @@
 "intent.previous_track.description" = "Goes back to the previous track.";
 "intent.app_not_ready" = "Private Music is not ready yet. Try again.";
 "intent.sign_in_required" = "Sign in to Private Music first.";
+
+"mix.tuning_title" = "Tune Mix";
+"mix.tuning_unavailable" = "VK returned no settings for this mix. Try again later or pick a mood on the screen.";
+"mix.tuning_entry" = "Mood, activity and genres";
+"mix.tuning_hint" = "Opens the mix settings from VK Music";
+"mix.mood_title" = "Mood";
+"mix.mood_subtitle" = "One tap for a mix that fits how you feel";
