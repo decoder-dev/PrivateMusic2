@@ -876,3 +876,13 @@
 "accent.orange" = "Orange";
 "accent.green" = "Green";
 "accent.teal" = "Teal";
+"intent.play_my_mix" = "Play My Mix";
+"intent.play_my_mix.description" = "Starts your personal VK mix.";
+"intent.toggle_playback" = "Play or Pause";
+"intent.toggle_playback.description" = "Pauses the current track, or resumes it.";
+"intent.next_track" = "Next Track";
+"intent.next_track.description" = "Skips to the next track.";
+"intent.previous_track" = "Previous Track";
+"intent.previous_track.description" = "Goes back to the previous track.";
+"intent.app_not_ready" = "Private Music is not ready yet. Try again.";
+"intent.sign_in_required" = "Sign in to Private Music first.";

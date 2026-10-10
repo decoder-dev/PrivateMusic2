@@ -876,3 +876,13 @@
 "accent.orange" = "Оранжевый";
 "accent.green" = "Зелёный";
 "accent.teal" = "Бирюзовый";
+"intent.play_my_mix" = "Включить мой микс";
+"intent.play_my_mix.description" = "Запускает ваш персональный микс VK.";
+"intent.toggle_playback" = "Играть или пауза";
+"intent.toggle_playback.description" = "Ставит текущий трек на паузу или продолжает его.";
+"intent.next_track" = "Следующий трек";
+"intent.next_track.description" = "Переходит к следующему треку.";
+"intent.previous_track" = "Предыдущий трек";
+"intent.previous_track.description" = "Возвращается к предыдущему треку.";
+"intent.app_not_ready" = "Private Music ещё не готов. Попробуйте снова.";
+"intent.sign_in_required" = "Сначала войдите в Private Music.";
