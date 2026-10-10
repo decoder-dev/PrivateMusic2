@@ -42,6 +42,13 @@ enum BubbleMetrics {
         return (base * priority.scale).rounded()
     }
 
+    /// A tile grows with its label up to this width; past it the label
+    /// truncates. The base width alone cut "Like this…" and most artist
+    /// names to an ellipsis.
+    static func contextTileMaxWidth(for width: CGFloat) -> CGFloat {
+        clamp(width * 0.68, minimum: 200, maximum: 300)
+    }
+
     /// The icon/avatar inside a context tile.
     static func contextGlyphSize(for tileHeight: CGFloat) -> CGFloat {
         (tileHeight * 0.36).rounded()

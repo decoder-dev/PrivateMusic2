@@ -289,6 +289,10 @@ final class AppSettings {
         accentChoice.components(for: theme)
     }
     var accent: Color { accentComponents.color }
+    /// Label colour for anything filled with the accent.
+    var onAccent: Color {
+        accentComponents.prefersDarkForeground ? .black : .white
+    }
     var appearance: AppearanceMode {
         didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) }
     }

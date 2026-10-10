@@ -83,12 +83,17 @@ struct HomeStageBubbleRail: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                        .minimumScaleFactor(0.88)
                 }
-                Spacer(minLength: 0)
             }
             .padding(.horizontal, BubbleSpacing.m)
-            .frame(width: tileWidth, height: tileHeight, alignment: .leading)
+            .frame(
+                minWidth: tileWidth,
+                maxWidth: BubbleMetrics.contextTileMaxWidth(for: width),
+                minHeight: tileHeight,
+                maxHeight: tileHeight,
+                alignment: .leading
+            )
+            .fixedSize(horizontal: true, vertical: false)
             .bubbleSurface(shape, fill: .solid(fill), elevation: .resting)
             .overlay {
                 if startingContextID == context.id {

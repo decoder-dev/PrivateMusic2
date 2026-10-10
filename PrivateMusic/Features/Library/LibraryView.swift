@@ -182,6 +182,7 @@ struct LibraryView: View {
                 reduceMotion ? nil : .easeOut(duration: 0.2),
                 value: removedTrack?.id
             )
+            .softBottomScrollEdge()
             .clearsMiniPlayer()
             .background {
                 GeometryReader { geometry in

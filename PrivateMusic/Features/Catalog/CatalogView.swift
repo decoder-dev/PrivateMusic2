@@ -100,6 +100,7 @@ struct CatalogView: View {
             // Applied on the ScrollView so the last shelf clears the iOS 26
             // accessory mini player. The legacy overlay dock already reserves
             // this in `tabScreen`.
+            .softBottomScrollEdge()
             .clearsMiniPlayer()
             // Gives up its own top safe-area reservation so the stage's
             // artwork-derived atmosphere can paint behind the status bar
@@ -385,7 +386,12 @@ struct CatalogView: View {
         _ candidate: HomeNextStepCandidate,
         size: CGFloat
     ) -> some View {
-        if let mix = nextStepMix(for: candidate) {
+        if candidate.kind == .vibeContinuation
+            || candidate.kind == .personalStation {
+            // These point at the personal mix, which has no cover of its
+            // own: an empty mix tile read as a missing image.
+            nextStepGlyph(candidate, size: size)
+        } else if let mix = nextStepMix(for: candidate) {
             MixArtworkView(
                 mix: mix,
                 tracks: [],
@@ -424,9 +430,7 @@ struct CatalogView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Image(systemName: candidate.kind == .artistContinuation
-                ? "person.wave.2.fill"
-                : "sparkles")
+            Image(systemName: nextStepSymbol(candidate))
                 .font(.system(size: size * 0.32, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
         }
@@ -437,6 +441,15 @@ struct CatalogView: View {
                 style: .continuous
             )
         )
+    }
+
+    private func nextStepSymbol(_ candidate: HomeNextStepCandidate) -> String {
+        switch candidate.action {
+        case .artist: "person.wave.2.fill"
+        case let .mood(mood): mood.chipSymbol
+        case .personalStation: "sparkles"
+        case .mix: "square.stack.fill"
+        }
     }
 
     private func nextStepActionButton(
@@ -668,14 +681,14 @@ struct CatalogView: View {
                     if highlight.isCurrent(track.id) {
                         PlaybackIndicatorView(
                             isPlaying: highlight.isPlaying,
-                            color: settings.theme.buttonForeground
+                            color: settings.onAccent
                         )
                     } else {
                         Image(systemName: "play.fill")
                     }
                 }
                 .font(.caption.weight(.bold))
-                .foregroundStyle(settings.theme.buttonForeground)
+                .foregroundStyle(settings.onAccent)
                 .frame(width: 32, height: 32)
                 .background(settings.accent, in: Circle())
                 .minimumHitTarget(visualSize: 32)
