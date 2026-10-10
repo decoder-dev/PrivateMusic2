@@ -3356,12 +3356,22 @@ final class AudioPlayer {
         }
 
         let urlError = error as? URLError
+        let isOffline = (error as? APIError) == .offline
+            || urlError?.code == .notConnectedToInternet
+        let isVKRefusal: Bool = {
+            if case .some(.server) = error as? APIError { return true }
+            return (error as? APIError) == .unauthorized
+        }()
         errorMessage = L10n.text(
-            StreamFailureRetryPolicy.isConnectivityFailure(error)
+            isOffline
+                ? "playback_no_internet"
+                : StreamFailureRetryPolicy.isConnectivityFailure(error)
                 ? "weak_connection_the_player_keeps_retrying_this_track"
                 : urlError?.code == .cancelled
                     ? "the_audio_stream_was_interrupted_start_playback_again"
-                    : "playback_failed_check_connection"
+                    : isVKRefusal
+                        ? "playback_track_unavailable"
+                        : "playback_failed_check_connection"
         )
         isBuffering = StreamFailureRetryPolicy.isConnectivityFailure(error)
         Haptics.error()

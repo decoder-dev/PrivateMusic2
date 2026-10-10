@@ -152,7 +152,7 @@ struct ConnectView: View {
             isExpanded: $showsManualImport
         ) {
             VStack(spacing: 12) {
-                SecureField("VK access token", text: $token)
+                SecureField(L10n.text("connect.token_placeholder"), text: $token)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .textContentType(.password)
