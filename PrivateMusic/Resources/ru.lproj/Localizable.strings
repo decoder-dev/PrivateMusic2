@@ -907,3 +907,4 @@
 "palette.mocha" = "Мокко";
 "accent.banana" = "Банан";
 "mix.tuning_start_selected" = "Запустить · выбрано: %d";
+"home.load_failed" = "Не удалось загрузить главную. Нажмите, чтобы повторить.";

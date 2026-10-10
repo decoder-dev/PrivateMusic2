@@ -7,6 +7,9 @@ struct MiniPlayerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @GestureState private var dragOffset: CGSize = .zero
     @State private var tintCache = BubbleTintCache.shared
+    /// When the progress strip last saw a drag. The card gesture runs at the
+    /// same time, so a scrub across the strip must not also skip the track.
+    @State private var lastProgressDragAt: Date?
     let playerNamespace: Namespace.ID
     /// Legacy floating dock needs its own glass plate. The iOS 26.1+
     /// `tabViewBottomAccessory` already provides system chrome — stacking
@@ -193,42 +196,42 @@ struct MiniPlayerView: View {
         .accessibilityLabel(L10n.text("previous_track"))
     }
 
-    @ViewBuilder
+    /// The button stays while buffering: on a weak connection the spinner
+    /// used to replace it, leaving no way to pause or stop a stalled track.
     private var playPauseControl: some View {
-        if player.isBuffering {
-            ProgressView()
-                .controlSize(.regular)
-                .frame(
-                    width: MiniPlayerLayoutMetrics.tapTarget,
-                    height: MiniPlayerLayoutMetrics.tapTarget
-                )
-                .accessibilityLabel(L10n.text("buffering"))
-        } else {
-            Button {
-                Haptics.selection()
-                player.playPause()
-            } label: {
-                Image(
-                    systemName: player.isPlaying
-                        ? "pause.fill"
-                        : "play.fill"
-                )
-                .font(.system(size: 20, weight: .semibold))
-                .frame(
-                    width: MiniPlayerLayoutMetrics.tapTarget,
-                    height: MiniPlayerLayoutMetrics.tapTarget
-                )
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(PremiumPressStyle())
-            .accessibilityLabel(
-                L10n.text(
-                    player.isPlaying
-                        ? "pause"
-                        : "resume_playback"
-                )
+        Button {
+            Haptics.selection()
+            player.playPause()
+        } label: {
+            Image(
+                systemName: player.isPlaying
+                    ? "pause.fill"
+                    : "play.fill"
             )
+            .font(.system(size: 20, weight: .semibold))
+            .opacity(player.isBuffering ? 0.3 : 1)
+            .overlay {
+                if player.isBuffering {
+                    ProgressView().controlSize(.regular)
+                }
+            }
+            .frame(
+                width: MiniPlayerLayoutMetrics.tapTarget,
+                height: MiniPlayerLayoutMetrics.tapTarget
+            )
+            .contentShape(Rectangle())
         }
+        .buttonStyle(PremiumPressStyle())
+        .accessibilityLabel(
+            L10n.text(
+                player.isPlaying
+                    ? "pause"
+                    : "resume_playback"
+            )
+        )
+        .accessibilityValue(
+            player.isBuffering ? L10n.text("buffering") : ""
+        )
     }
 
     private var nextControl: some View {
@@ -320,6 +323,7 @@ struct MiniPlayerView: View {
         DragGesture(
             minimumDistance: MiniPlayerProgressPolicy.seekDragMinimumDistance
         )
+        .onChanged { _ in lastProgressDragAt = Date() }
         .onEnded { value in
             guard MiniPlayerProgressPolicy.shouldCommitSeek(
                 translation: value.translation
@@ -352,6 +356,10 @@ struct MiniPlayerView: View {
             state = value.translation
         }
         .onEnded { value in
+            if let last = lastProgressDragAt,
+               Date().timeIntervalSince(last) < 0.6 {
+                return
+            }
             guard let action = MiniPlayerGesturePolicy.action(
                 translation: value.translation,
                 predictedEndTranslation: value.predictedEndTranslation
