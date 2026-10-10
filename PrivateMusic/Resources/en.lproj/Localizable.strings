@@ -12,10 +12,10 @@
 "rock" = "Rock";
 "custom" = "Custom";
 "vk_music" = "VK Music";
-"my_mix" = "My Mix";
-"vk_mix" = "VK Mix";
-"personalized_vk_selection" = "Personalized VK selection";
-"continuous_personalized_selection_from_vk" = "Continuous personalized selection from VK";
+"my_mix" = "Selena";
+"vk_mix" = "Selena";
+"personalized_vk_selection" = "Personal Selena selection";
+"continuous_personalized_selection_from_vk" = "Continuous personal Selena selection";
 "experimental_feature" = "Experimental Feature";
 "personal_mix" = "Personal Mix";
 
@@ -56,8 +56,8 @@
 "good_evening" = "Good evening";
 "good_night" = "Good night";
 "listener" = "Listener";
-"vk_mixes" = "VK Mixes";
-"a_personalized_selection_based_on_vk_data" = "A personalized selection based on VK data";
+"vk_mixes" = "Selena Mixes";
+"a_personalized_selection_based_on_vk_data" = "A Selena selection based on what you play";
 "new_releases" = "New Releases";
 "fresh_albums" = "Fresh albums";
 "for_you" = "For You";
@@ -116,10 +116,10 @@
 "searching" = "Searching";
 "loading_more" = "Loading More…";
 
-"play_vk_mix" = "Play VK Mix";
-"personalized_vk_selection_2" = "Personalized VK selection";
-"your_vk_mixes" = "Your VK Mixes";
-"selected_by_decoder_dev_s_neural_network_from_your_vk_listening" = "Ranked from your VK listening history and recommendations";
+"play_vk_mix" = "Play Selena";
+"personalized_vk_selection_2" = "Personal Selena selection";
+"your_vk_mixes" = "Selena Mixes";
+"selected_by_decoder_dev_s_neural_network_from_your_vk_listening" = "Ranked from your listening history and recommendations";
 "continue_selection" = "Continue Selection";
 
 "loading_artist" = "Loading artist…";
@@ -168,7 +168,7 @@
 "appearance" = "Appearance";
 "text_size" = "Text Size";
 "home_stage.action.station" = "Play";
-"home_stage.action.vibe" = "Start a VK shelf for this mood";
+"home_stage.action.vibe" = "Start the Selena mix for this mood";
 "home_stage.action.artist" = "Start the station";
 "home_stage.action.mix" = "Start the mix";
 "artist_radio_0" = "%@ radio";
@@ -190,11 +190,11 @@
 "home_next.reason.into_now" = "Looks like you're into this right now";
 "home_next.reason.returning" = "You keep coming back to this music";
 "home_next.reason.recent" = "A few of their tracks in the last few days";
-"home_next.vk.title" = "VK Mix";
+"home_next.vk.title" = "Selena";
 "home_next.vk.subtitle" = "A mix to keep going";
 "home_next.vibe.title" = "Keep this vibe going";
-"home_next.vibe.subtitle" = "A VK shelf tuned to this mood";
-"home_next.station.title" = "Continue with your VK Mix";
+"home_next.vibe.subtitle" = "A Selena mix for this mood";
+"home_next.station.title" = "Continue with your Selena";
 "home_next.station.subtitle" = "Your personal station";
 "home_next.action.continue" = "Continue";
 "home_next.action.play" = "Play";
@@ -617,7 +617,7 @@
 "audio_processing_may_disable_airplay" = "Audio processing may disable AirPlay.";
 
 "why_this_mix" = "Why This Mix";
-"vk_mixes_2" = "VK Mixes";
+"vk_mixes_2" = "Selena Mixes";
 "mix_sections" = "Mix sections";
 "all_mixes" = "All Mixes";
 "listen" = "Listen";
@@ -627,8 +627,8 @@
 "same_screen_just_switch_the_mix" = "Same screen — just switch the mix";
 "social_mix" = "Social Mix";
 "matched_from_overlapping_tastes" = "Matched from overlapping tastes";
-"official_vk_selection" = "Official VK selection";
-"picked_by_vk_algorithms" = "Picked by VK algorithms";
+"official_vk_selection" = "Selena selection";
+"picked_by_vk_algorithms" = "Picked by Selena";
 "you_often_listen_to_0" = "You often listen to %@";
 "overlaps_recommendations_0" = "Overlaps recommendations: %@";
 "includes_albums_from_recent_listening" = "Includes albums from recent listening";
@@ -647,7 +647,7 @@
 "closer" = "Closer";
 "novelty" = "Novelty";
 "n_0_d1_match" = "%@ · %d%% match";
-"vk_has_not_prepared_themed_mixes_for_your_account_yet_check_back_later_o" = "VK has not prepared themed mixes for your account yet — check back later.";
+"vk_has_not_prepared_themed_mixes_for_your_account_yet_check_back_later_o" = "Selena has no themed mixes for you yet — check back later.";
 "n_0_d1_gb" = "%@ / %d GB";
 "d0_mixes" = "%d mixes";
 "d0_mixes_in_their_taste" = "%d mixes in their taste";
@@ -657,7 +657,7 @@
 "more_hits" = "More Hits";
 "a_quick_start_based_on_your_mood" = "A quick start based on your mood";
 "d0_different_artists_in_the_stream" = "%d different artists in the stream";
-"vibes_from_vk" = "Vibes from VK";
+"vibes_from_vk" = "Selena vibes";
 "restore" = "Restore";
 "high_quality" = "High Quality";
 "crossfade" = "Crossfade";
@@ -671,7 +671,7 @@
 "foreign" = "Foreign";
 "no_artists_found" = "No artists found";
 "how_to_start" = "How to start";
-"like_vk_mix_filters_they_apply_to_the_mix_queue_and_to_recommendations_o" = "Like VK Mix filters: they apply to the mix queue and to recommendations on this device. VK server-side parameters for this are undocumented.";
+"like_vk_mix_filters_they_apply_to_the_mix_queue_and_to_recommendations_o" = "Selena mix filters: they apply to the mix queue and to recommendations on this device.";
 "what_is_the_vibe_right_now" = "What is the vibe right now";
 "audio_quality" = "Audio Quality";
 "quality_high_hq_no_hls_cap" = "Quality: high (HQ / no HLS cap)";
@@ -681,13 +681,13 @@
 "love" = "Love";
 "any" = "Any";
 "any_language" = "Any Language";
-"mix_from_my_music" = "Mix from My Music";
+"mix_from_my_music" = "Mix from my music";
 "mix_from_track" = "Mix from Track";
 "the_mix_is_empty_for_now" = "The mix is empty for now";
 "mixes" = "Mixes";
 "music_from_your_vk_library_in_a_single_player" = "Music from your VK library in a single player";
 "mood" = "Mood";
-"moods_and_themed_shelves_from_the_catalog_just_like_in_the_vk_app" = "Moods and themed shelves from the catalog — just like in the VK app";
+"moods_and_themed_shelves_from_the_catalog_just_like_in_the_vk_app" = "Moods and themed Selena shelves";
 "dislike" = "Dislike";
 "could_not_build_a_mix_from_your_library" = "Could not build a mix from your library";
 "volume_normalization" = "Volume Normalization";
@@ -702,7 +702,7 @@
 "share_album" = "Share Album";
 "share_link" = "Share Link";
 "nothing_is_hidden_yet" = "Nothing is hidden yet";
-"vk_catalog_shelves" = "VK catalog shelves";
+"vk_catalog_shelves" = "Selena shelves";
 "settings.eq_bands" = "Frequency Bands";
 "try_the_albums_or_artists_tab" = "Try the albums or artists tab.";
 "try_the_albums_artists_or_playlists_tab" = "Try the albums, artists, or playlists tab.";
@@ -718,45 +718,45 @@
 "hidden_in_mixes" = "Hidden in Mixes";
 "hidden_artists" = "Hidden Artists";
 "hidden_tracks" = "Hidden Tracks";
-"hidden_tracks_and_artists_stay_out_of_mixes_on_this_device_vk_has_no_dis" = "Hidden tracks and artists stay out of mixes on this device. VK has no dislike API, so this memory is local.";
+"hidden_tracks_and_artists_stay_out_of_mixes_on_this_device_vk_has_no_dis" = "Hidden tracks and artists stay out of mixes on this device.";
 "hide_artist_in_mixes" = "Hide Artist in Mixes";
 "hide_artist_in_mixes_confirmation_0" = "“%@” will disappear from mixes until you restore them in settings.";
 "snippet" = "Snippet";
 "calm" = "Calm";
 "settings.status" = "Status";
-"what_the_official_vk_music_app_calls_a_mix_from_your_music_and_a_mix_fro" = "What the official VK Music app calls a mix from your music and a mix from a track";
+"what_the_official_vk_music_app_calls_a_mix_from_your_music_and_a_mix_fro" = "A mix from your music and a mix from a track";
 "no_tracks_found" = "No tracks found";
 "familiarity" = "Familiarity";
 "manage" = "Manage";
 "settings.level" = "Level";
 "the_file_is_ready_tap_the_button_below" = "The file is ready. Tap the button below.";
-"mix_filters" = "Wave & Mixes";
+"mix_filters" = "Selena and mixes";
 "mix_filters_relaxed_to_keep_queue" = "Filters would empty the queue — kept the remaining tracks.";
 "configure_mix" = "Configure Mix";
-"configure_mix_accessibility_hint" = "Opens language and familiarity for catalog mixes";
+"configure_mix_accessibility_hint" = "Opens language and familiarity for Selena mixes";
 "start_your_mix" = "Start Your Mix";
 "action.reset" = "Reset";
 "familiar_hits_chip" = "Familiar";
 "unfamiliar_chip" = "Unfamiliar";
-"mix_mood_applies_on_start" = "Mood picks a matching VK shelf when you start it from Home.";
+"mix_mood_applies_on_start" = "A mood picks the matching Selena mix when you start it from Home.";
 "storage_2" = "Storage";
 "charts_and_hits" = "Charts and hits";
 "language" = "Language";
 "d0_more_in_queue" = "%d more in queue";
 "d0_novelty" = "%d%% novelty";
-"vk_algorithms" = "VK Algorithms";
+"vk_algorithms" = "Selena algorithms";
 "quick_filters" = "Quick Filters";
 "in_window" = "In Window";
 "vibe" = "Vibe";
 "adds_more_new_artists_and_fewer_repeats_from_recent_listening" = "Adds more new artists and fewer repeats from recent listening";
-"vk_mix_magazine" = "VK Mix Magazine";
+"vk_mix_magazine" = "Selena Magazine";
 "curated" = "Curated";
 "recent_seeds" = "Recent Seeds";
 "new_artists" = "New Artists";
-"decoder_dev_s_neural_network_refreshes_the_window_from_history_recommend" = "The listening window refreshes from history, recommendations, and VK Mix";
+"decoder_dev_s_neural_network_refreshes_the_window_from_history_recommend" = "The listening window refreshes from history, recommendations and Selena mixes";
 "shuffles_loaded_tracks_and_keeps_artists_spaced_out" = "Shuffles loaded tracks and keeps artists spaced out";
 "show_more" = "Show More";
-"vk_shelf" = "VK Shelf";
+"vk_shelf" = "Selena shelf";
 "catalog_shelves_with_quick_launch_and_track_previews" = "Catalog shelves with quick launch and track previews";
 "collapse" = "Collapse";
 "hide_first_track_artist" = "Hide First Track Artist";
@@ -796,8 +796,8 @@
 "spoken_metadata_0_1" = "%@, %@";
 "tab.switch_hint" = "Switches the selected tab";
 "mix.basic_section" = "Catalog Mixes";
-"mix.basic_footnote" = "Basic filters for VK catalog mixes — language and familiarity.";
-"mix.basic_card_empty" = "Language and familiarity for catalog mixes";
+"mix.basic_footnote" = "Basic Selena mix filters — language and familiarity.";
+"mix.basic_card_empty" = "Language and familiarity for Selena mixes";
 
 // Library and VK integration
 "features.library.actions" = "Library actions";
@@ -841,9 +841,9 @@
 "audit.curator.empty.description" = "Try another section or refresh the catalog.";
 "audit.releases.empty.title" = "No new releases yet";
 "audit.releases.empty.description" = "Pull down to refresh the list.";
-"mix.personal_title" = "My Mix";
-"mix.personal_subtitle" = "VK’s personal mix, built from your listening";
-"mix.personal_name" = "My Mix";
+"mix.personal_title" = "Selena";
+"mix.personal_subtitle" = "Your personal mix from your listening history";
+"mix.personal_name" = "Selena";
 "library.removed_toast" = "Removed from your library";
 "action.undo" = "Undo";
 "could_not_undo_removal" = "Could not undo";
@@ -888,12 +888,12 @@
 "intent.sign_in_required" = "Sign in to Private Music first.";
 
 "mix.tuning_title" = "Tune Mix";
-"mix.tuning_unavailable" = "VK returned no settings for this mix. Try again later or pick a mood on the screen.";
+"mix.tuning_unavailable" = "Selena could not load settings for this mix. Try again later or pick a mood on the screen.";
 "mix.tuning_entry" = "Mood, activity and genres";
-"mix.tuning_hint" = "Opens the mix settings from VK Music";
+"mix.tuning_hint" = "Opens the Selena mix settings";
 "mix.mood_title" = "Mood";
 "mix.mood_subtitle" = "One tap for a mix that fits how you feel";
 "mix.artists_title" = "Artist mixes";
 "mix.artists_subtitle" = "The artists you play most";
 "mix.tuning_short" = "Mood and genres";
-"mix.mood_fallback" = "VK has no “%@” mix right now — playing My Mix.";
+"mix.mood_fallback" = "There is no separate mix for “%@” yet — Selena is playing.";

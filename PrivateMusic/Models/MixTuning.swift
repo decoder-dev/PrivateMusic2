@@ -53,10 +53,18 @@ struct MixTuning: Equatable, Sendable {
         guard let options = Self.encode(selection) else {
             return base.untuned
         }
+        let chosen = categories.flatMap { category in
+            category.options.filter {
+                selection[category.id]?.contains($0.id) == true
+            }
+        }.map(\.title)
+        let title = chosen.isEmpty
+            ? base.title
+            : base.title + " · " + chosen.joined(separator: ", ")
         return MusicMix(
             id: base.streamMixID
                 + String(MusicMix.optionsSeparator) + options,
-            title: base.title,
+            title: title,
             subtitle: base.subtitle,
             artworkURL: base.artworkURL,
             matchPercent: base.matchPercent,

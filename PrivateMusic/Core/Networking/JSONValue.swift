@@ -407,13 +407,19 @@ enum JSONValue: Codable, Sendable {
                 let id = options.map {
                     baseID + String(MusicMix.optionsSeparator) + $0
                 } ?? baseID
-                let title = object["title"]?.stringValue
+                let rawTitle = object["title"]?.stringValue
                     ?? object["name"]?.stringValue
                     ?? L10n.text("vk_mix")
-                let subtitle = object["subtitle"]?.stringValue
+                let rawSubtitle = object["subtitle"]?.stringValue
                     ?? object["description"]?.stringValue
                     ?? object["caption"]?.stringValue
                     ?? L10n.text("personalized_vk_selection")
+                // The plain `common` stream is the personal mix whatever
+                // VK happens to call it.
+                let title = baseID == MusicMix.common.id && options == nil
+                    ? L10n.text("mix.personal_title")
+                    : MixBranding.display(rawTitle)
+                let subtitle = MixBranding.display(rawSubtitle)
                 let matchPercent = object.mixMatchPercent
                 let curator = object.mixCurator
                 let social = object.looksLikeSocialMix(

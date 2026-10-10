@@ -12,10 +12,10 @@
 "rock" = "Рок";
 "custom" = "Своя";
 "vk_music" = "VK Музыка";
-"my_mix" = "Мой микс";
-"vk_mix" = "VK Микс";
-"personalized_vk_selection" = "Персональная подборка VK";
-"continuous_personalized_selection_from_vk" = "Непрерывная персональная подборка VK";
+"my_mix" = "Selena";
+"vk_mix" = "Selena";
+"personalized_vk_selection" = "Персональная подборка Selena";
+"continuous_personalized_selection_from_vk" = "Непрерывная персональная подборка Selena";
 "experimental_feature" = "Экспериментальная функция";
 "personal_mix" = "Персональный микс";
 
@@ -56,8 +56,8 @@
 "good_evening" = "Добрый вечер";
 "good_night" = "Доброй ночи";
 "listener" = "Слушатель";
-"vk_mixes" = "Миксы VK";
-"a_personalized_selection_based_on_vk_data" = "Персональная подборка по данным VK";
+"vk_mixes" = "Миксы Selena";
+"a_personalized_selection_based_on_vk_data" = "Персональная подборка Selena по вашим прослушиваниям";
 "new_releases" = "Новые релизы";
 "fresh_albums" = "Свежие альбомы";
 "for_you" = "Для вас";
@@ -116,10 +116,10 @@
 "searching" = "Выполняется поиск";
 "loading_more" = "Загружаем ещё…";
 
-"play_vk_mix" = "Слушать VK Микс";
-"personalized_vk_selection_2" = "Персональная подборка VK";
-"your_vk_mixes" = "Ваши VK Миксы";
-"selected_by_decoder_dev_s_neural_network_from_your_vk_listening" = "Ранжирование по истории прослушивания и рекомендациям VK";
+"play_vk_mix" = "Слушать Selena";
+"personalized_vk_selection_2" = "Персональная подборка Selena";
+"your_vk_mixes" = "Миксы Selena";
+"selected_by_decoder_dev_s_neural_network_from_your_vk_listening" = "Ранжирование по истории прослушивания и рекомендациям";
 "continue_selection" = "Продолжить подборку";
 
 "loading_artist" = "Загружаем исполнителя…";
@@ -168,7 +168,7 @@
 "appearance" = "Оформление";
 "text_size" = "Масштаб текста";
 "home_stage.action.station" = "Включить";
-"home_stage.action.vibe" = "Запустить подборку VK с этим настроением";
+"home_stage.action.vibe" = "Запустить подборку Selena с этим настроением";
 "home_stage.action.artist" = "Запустить станцию";
 "home_stage.action.mix" = "Запустить микс";
 "artist_radio_0" = "Радио: %@";
@@ -190,11 +190,11 @@
 "home_next.reason.into_now" = "Похоже, вам это сейчас заходит";
 "home_next.reason.returning" = "Вы часто возвращаетесь к этой музыке";
 "home_next.reason.recent" = "Несколько треков за последние дни";
-"home_next.vk.title" = "VK Микс";
+"home_next.vk.title" = "Selena";
 "home_next.vk.subtitle" = "Подборка для продолжения";
 "home_next.vibe.title" = "Продолжить этот вайб";
-"home_next.vibe.subtitle" = "Подборка VK с этим настроением";
-"home_next.station.title" = "Продолжить с вашим миксом VK";
+"home_next.vibe.subtitle" = "Подборка Selena с этим настроением";
+"home_next.station.title" = "Продолжить с вашей Selena";
 "home_next.station.subtitle" = "Персональная станция";
 "home_next.action.continue" = "Продолжить";
 "home_next.action.play" = "Включить";
@@ -617,7 +617,7 @@
 "audio_processing_may_disable_airplay" = "Обработка звука может отключить AirPlay.";
 
 "why_this_mix" = "Почему этот микс";
-"vk_mixes_2" = "VK Миксы";
+"vk_mixes_2" = "Миксы Selena";
 "mix_sections" = "Раздел миксов";
 "all_mixes" = "Все миксы";
 "listen" = "Слушать";
@@ -627,8 +627,8 @@
 "same_screen_just_switch_the_mix" = "Тот же экран — просто смените подборку";
 "social_mix" = "Социальный микс";
 "matched_from_overlapping_tastes" = "Подобрано по пересечению вкусов";
-"official_vk_selection" = "Официальная подборка VK";
-"picked_by_vk_algorithms" = "Подобрано алгоритмами VK";
+"official_vk_selection" = "Подборка Selena";
+"picked_by_vk_algorithms" = "Подобрано Selena";
 "you_often_listen_to_0" = "Часто слушаете: %@";
 "overlaps_recommendations_0" = "Пересекается с рекомендациями: %@";
 "includes_albums_from_recent_listening" = "Есть альбомы из недавних прослушиваний";
@@ -647,7 +647,7 @@
 "closer" = "Ближе";
 "novelty" = "Новизна";
 "n_0_d1_match" = "%@ · совпадение %d%%";
-"vk_has_not_prepared_themed_mixes_for_your_account_yet_check_back_later_o" = "VK ещё не подготовил тематические подборки для вашего аккаунта — загляните позже.";
+"vk_has_not_prepared_themed_mixes_for_your_account_yet_check_back_later_o" = "Selena ещё не подготовила тематические подборки для вас — загляните позже.";
 "n_0_d1_gb" = "%@ / %d ГБ";
 "d0_mixes" = "%d миксов";
 "d0_mixes_in_their_taste" = "%d миксов со вкусом";
@@ -657,7 +657,7 @@
 "more_hits" = "Больше хитов";
 "a_quick_start_based_on_your_mood" = "Быстрый старт по настроению";
 "d0_different_artists_in_the_stream" = "В потоке %d разных артистов";
-"vibes_from_vk" = "Вайбы из VK";
+"vibes_from_vk" = "Вайбы Selena";
 "restore" = "Вернуть";
 "high_quality" = "Высокое качество";
 "crossfade" = "Кроссфейд";
@@ -671,7 +671,7 @@
 "foreign" = "Иностранный";
 "no_artists_found" = "Исполнители не найдены";
 "how_to_start" = "Как начать";
-"like_vk_mix_filters_they_apply_to_the_mix_queue_and_to_recommendations_o" = "Как фильтры VK Микса: применяются к очереди микса и рекомендациям на устройстве. Серверные параметры VK для этого не задокументированы.";
+"like_vk_mix_filters_they_apply_to_the_mix_queue_and_to_recommendations_o" = "Фильтры миксов Selena: применяются к очереди микса и рекомендациям на устройстве.";
 "what_is_the_vibe_right_now" = "Какой сейчас вайб";
 "audio_quality" = "Качество звука";
 "quality_high_hq_no_hls_cap" = "Качество: высокое (HQ / без лимита HLS)";
@@ -687,7 +687,7 @@
 "mixes" = "Миксы";
 "music_from_your_vk_library_in_a_single_player" = "Музыка из вашей медиатеки VK в одном плеере";
 "mood" = "Настроение";
-"moods_and_themed_shelves_from_the_catalog_just_like_in_the_vk_app" = "Настроения и тематические полки из каталога — как в приложении VK";
+"moods_and_themed_shelves_from_the_catalog_just_like_in_the_vk_app" = "Настроения и тематические полки Selena";
 "dislike" = "Не нравится";
 "could_not_build_a_mix_from_your_library" = "Не удалось собрать микс по медиатеке";
 "volume_normalization" = "Нормализация громкости";
@@ -702,7 +702,7 @@
 "share_album" = "Поделиться альбомом";
 "share_link" = "Поделиться ссылкой";
 "nothing_is_hidden_yet" = "Пока ничего не скрыто";
-"vk_catalog_shelves" = "Полки каталога VK";
+"vk_catalog_shelves" = "Полки Selena";
 "settings.eq_bands" = "Полосы частот";
 "try_the_albums_or_artists_tab" = "Попробуйте вкладку альбомов или исполнителей.";
 "try_the_albums_artists_or_playlists_tab" = "Попробуйте вкладку альбомов, исполнителей или плейлистов.";
@@ -718,45 +718,45 @@
 "hidden_in_mixes" = "Скрытое в миксах";
 "hidden_artists" = "Скрытые исполнители";
 "hidden_tracks" = "Скрытые треки";
-"hidden_tracks_and_artists_stay_out_of_mixes_on_this_device_vk_has_no_dis" = "Скрытые треки и исполнители не попадают в миксы на этом устройстве. VK API для дизлайков нет — память локальная.";
+"hidden_tracks_and_artists_stay_out_of_mixes_on_this_device_vk_has_no_dis" = "Скрытые треки и исполнители не попадают в миксы на этом устройстве.";
 "hide_artist_in_mixes" = "Скрыть исполнителя в миксах";
 "hide_artist_in_mixes_confirmation_0" = "Исполнитель «%@» исчезнет из миксов, пока вы не вернёте его в настройках.";
 "snippet" = "Сниппет";
 "calm" = "Спокойно";
 "settings.status" = "Статус";
-"what_the_official_vk_music_app_calls_a_mix_from_your_music_and_a_mix_fro" = "То, что в официальном VK Music зовут миксом по музыке и по треку";
+"what_the_official_vk_music_app_calls_a_mix_from_your_music_and_a_mix_fro" = "Микс по вашей музыке и микс по треку";
 "no_tracks_found" = "Треки не найдены";
 "familiarity" = "Узнаваемость";
 "manage" = "Управление";
 "settings.level" = "Уровень";
 "the_file_is_ready_tap_the_button_below" = "Файл готов. Нажмите кнопку ниже.";
-"mix_filters" = "Волна и миксы";
+"mix_filters" = "Selena и миксы";
 "mix_filters_relaxed_to_keep_queue" = "Фильтры опустошили бы очередь — оставили оставшиеся треки.";
 "configure_mix" = "Настроить микс";
-"configure_mix_accessibility_hint" = "Открывает язык и узнаваемость каталожного микса";
+"configure_mix_accessibility_hint" = "Открывает язык и узнаваемость миксов Selena";
 "start_your_mix" = "Запустить свой микс";
 "action.reset" = "Сбросить";
 "familiar_hits_chip" = "Знакомое";
 "unfamiliar_chip" = "Незнакомое";
-"mix_mood_applies_on_start" = "Настроение выбирает подходящую подборку VK, когда вы запускаете её с главной.";
+"mix_mood_applies_on_start" = "Настроение выбирает подходящую подборку Selena, когда вы запускаете её с главной.";
 "storage_2" = "Хранилище";
 "charts_and_hits" = "Чарты и хиты";
 "language" = "Язык";
 "d0_more_in_queue" = "%d ещё в очереди";
 "d0_novelty" = "%d%% новизны";
-"vk_algorithms" = "Алгоритмы VK";
+"vk_algorithms" = "Алгоритмы Selena";
 "quick_filters" = "Быстрые фильтры";
 "in_window" = "В окне";
 "vibe" = "Вайб";
 "adds_more_new_artists_and_fewer_repeats_from_recent_listening" = "Даёт больше новых артистов и меньше повторов из недавнего";
-"vk_mix_magazine" = "Журнал VK Миксов";
+"vk_mix_magazine" = "Журнал Selena";
 "curated" = "Кураторский";
 "recent_seeds" = "Недавние сиды";
 "new_artists" = "Новые артисты";
-"decoder_dev_s_neural_network_refreshes_the_window_from_history_recommend" = "Окно слушания обновляется из истории, рекомендаций и VK микса";
+"decoder_dev_s_neural_network_refreshes_the_window_from_history_recommend" = "Окно слушания обновляется из истории, рекомендаций и миксов Selena";
 "shuffles_loaded_tracks_and_keeps_artists_spaced_out" = "Перемешивает загруженные треки и держит артистов на расстоянии";
 "show_more" = "Показать ещё";
-"vk_shelf" = "Полка VK";
+"vk_shelf" = "Полка Selena";
 "catalog_shelves_with_quick_launch_and_track_previews" = "Полки каталога с быстрым запуском и превью треков";
 "collapse" = "Свернуть";
 "hide_first_track_artist" = "Скрыть исполнителя первого трека";
@@ -796,8 +796,8 @@
 "spoken_metadata_0_1" = "%@, %@";
 "tab.switch_hint" = "Переключает выбранный раздел";
 "mix.basic_section" = "Каталожные миксы";
-"mix.basic_footnote" = "Базовые фильтры каталожных миксов VK — язык и узнаваемость.";
-"mix.basic_card_empty" = "Язык и узнаваемость для каталожных миксов";
+"mix.basic_footnote" = "Базовые фильтры миксов Selena — язык и узнаваемость.";
+"mix.basic_card_empty" = "Язык и узнаваемость для миксов Selena";
 
 // Library and VK integration
 "features.library.actions" = "Действия медиатеки";
@@ -841,9 +841,9 @@
 "audit.curator.empty.description" = "Попробуйте другой раздел или обновите каталог.";
 "audit.releases.empty.title" = "Новых релизов пока нет";
 "audit.releases.empty.description" = "Потяните вниз, чтобы обновить список.";
-"mix.personal_title" = "Мой микс";
-"mix.personal_subtitle" = "Персональный микс VK по вашей истории прослушивания";
-"mix.personal_name" = "Мой микс";
+"mix.personal_title" = "Selena";
+"mix.personal_subtitle" = "Ваш личный микс по истории прослушивания";
+"mix.personal_name" = "Selena";
 "library.removed_toast" = "Удалено из медиатеки";
 "action.undo" = "Отменить";
 "could_not_undo_removal" = "Не удалось отменить";
@@ -888,12 +888,12 @@
 "intent.sign_in_required" = "Сначала войдите в Private Music.";
 
 "mix.tuning_title" = "Настроить микс";
-"mix.tuning_unavailable" = "VK не отдал настройки для этого микса. Попробуйте позже или выберите настроение на экране.";
+"mix.tuning_unavailable" = "Selena не смогла получить настройки для этого микса. Попробуйте позже или выберите настроение на экране.";
 "mix.tuning_entry" = "Настроение, занятие и жанры";
-"mix.tuning_hint" = "Открывает настройки микса из VK Музыки";
+"mix.tuning_hint" = "Открывает настройки микса Selena";
 "mix.mood_title" = "Настроение";
 "mix.mood_subtitle" = "Один тап — и микс под нужное состояние";
 "mix.artists_title" = "Миксы по артистам";
 "mix.artists_subtitle" = "Те, кого вы слушаете чаще всего";
 "mix.tuning_short" = "Настроение и жанры";
-"mix.mood_fallback" = "В VK нет микса «%@» — включён «Мой микс».";
+"mix.mood_fallback" = "Для «%@» пока нет отдельного микса — играет Selena.";
