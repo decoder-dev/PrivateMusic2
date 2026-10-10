@@ -125,7 +125,15 @@ final class LibraryFeaturesTests: XCTestCase {
         do {
             _ = try await service.friends(accessToken: "test", offset: 0, count: 100)
             XCTFail("Must not turn a permission error into an empty friend list")
-        } catch { XCTAssertEqual(error as? APIError, .server(code: 15, message: "Access denied")) }
+        } catch {
+            // VK's English text is replaced by a plain sentence; the code stays.
+            guard case let .server(code, message) = error as? APIError else {
+                return XCTFail("Expected a server refusal, got \(error)")
+            }
+            XCTAssertEqual(code, 15)
+            XCTAssertNotEqual(message, "Access denied")
+            XCTAssertEqual(message, APIError.plainVKMessage(code: 15, fallback: "Access denied"))
+        }
     }
 
     func testUploadURLsRejectLookalikeAndInsecureHosts() {
