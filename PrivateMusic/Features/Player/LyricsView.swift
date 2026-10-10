@@ -223,6 +223,12 @@ struct LyricsView: View {
     private func copy(_ line: LyricLine) {
         UIPasteboard.general.string = line.text
         copiedLineID = line.id
+        // The tick is feedback, not state: let it go.
+        let copied = line.id
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            if copiedLineID == copied { copiedLineID = nil }
+        }
         Haptics.selection()
         UIAccessibility.post(
             notification: .announcement,
@@ -234,6 +240,9 @@ struct LyricsView: View {
         isLoading = true
         errorMessage = nil
         guard sessionStore.accessToken != nil else {
+            // Say why there is nothing, and offer Retry, instead of the
+            // misleading "no lyrics found".
+            errorMessage = L10n.text("session_error")
             isLoading = false
             return
         }

@@ -908,3 +908,5 @@
 "accent.banana" = "Banana";
 "mix.tuning_start_selected" = "Start · %d selected";
 "home.load_failed" = "Could not load Home. Tap to try again.";
+"reset_appearance.message" = "Resets theme, color theme, accent, text size and player look.";
+"clear_automatic_cache.message" = "This frees %@. Tracks you downloaded yourself are not affected.";

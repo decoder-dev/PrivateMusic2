@@ -41,7 +41,7 @@ struct ConnectView: View {
         }
         .sheet(isPresented: $isWebLoginPresented) {
             VKWebLoginView { result in
-                Task { await connectWebSession(result) }
+                try await connectWebSession(result)
             }
         }
     }
@@ -240,25 +240,23 @@ struct ConnectView: View {
     }
 
     @MainActor
-    private func connectWebSession(_ result: VKWebAuthResult) async {
+    /// Throws so the sign-in sheet can stay open and offer a retry; it shows
+    /// the error itself.
+    private func connectWebSession(_ result: VKWebAuthResult) async throws {
         isConnecting = true
         defer { isConnecting = false }
-        do {
-            await environment.musicService.configure(
-                userAgent: result.apiUserAgent
-            )
-            environment.player.configureNetwork(
-                userAgent: result.apiUserAgent
-            )
-            let profile = try await environment.musicService.profile(
-                accessToken: result.accessToken
-            )
-            try sessionStore.updateWebSession(
-                result,
-                profile: profile
-            )
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        await environment.musicService.configure(
+            userAgent: result.apiUserAgent
+        )
+        environment.player.configureNetwork(
+            userAgent: result.apiUserAgent
+        )
+        let profile = try await environment.musicService.profile(
+            accessToken: result.accessToken
+        )
+        try sessionStore.updateWebSession(
+            result,
+            profile: profile
+        )
     }
 }
