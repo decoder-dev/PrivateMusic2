@@ -299,11 +299,13 @@ struct VKMusicService: MusicService {
                         let envelope: VKResponse<JSONValue> = try await client
                             .post(
                                 path: "/method/audio.getStreamMixAudios",
-                                form: common(accessToken).merging([
-                                    "mix_id": mix.id,
-                                    "count": String(pageSize),
-                                    "offset": String(offset)
-                                ]) { _, new in new },
+                                form: common(accessToken).merging(
+                                    mixAudiosForm(
+                                        for: mix,
+                                        count: pageSize,
+                                        offset: offset
+                                    )
+                                ) { _, new in new },
                                 responseType: VKResponse<JSONValue>.self
                             )
                         let resolved = envelope.response.tracks.map {
@@ -330,8 +332,62 @@ struct VKMusicService: MusicService {
                 tracks.append(track)
             }
         }
+        if tracks.isEmpty, mix.streamOptions != nil {
+            // VK did not accept the tuning (shape is undocumented) — play the
+            // plain mix instead of failing the tap, and leave a trace so the
+            // next log export shows which options were refused.
+            AppLog.shared.error(
+                .mix,
+                "mix options rejected id=\(mix.streamMixID) options=\(mix.streamOptions ?? "")"
+            )
+            return try await mixTracks(
+                mix.untuned,
+                accessToken: accessToken,
+                startingOffset: startingOffset,
+                pages: pages
+            )
+        }
         guard !tracks.isEmpty else { throw APIError.invalidResponse }
         return Array(tracks.prefix(MixTrackRequestPolicy.queueLimit))
+    }
+
+    private func mixAudiosForm(
+        for mix: MusicMix,
+        count: Int,
+        offset: Int
+    ) -> [String: String] {
+        var form = [
+            "mix_id": mix.streamMixID,
+            "count": String(count),
+            "offset": String(offset)
+        ]
+        if let options = mix.streamOptions {
+            form["mix_options"] = options
+        }
+        return form
+    }
+
+    func mixTuning(
+        for mix: MusicMix,
+        accessToken: String
+    ) async throws -> MixTuning {
+        let envelope: VKResponse<JSONValue> = try await client.post(
+            path: "/method/audio.getStreamMixSettings",
+            form: common(accessToken).merging([
+                "mix_id": mix.streamMixID
+            ]) { _, new in new },
+            responseType: VKResponse<JSONValue>.self
+        )
+        let tuning = envelope.response.mixTuning
+        if tuning.isEmpty {
+            let shape = (try? JSONEncoder().encode(envelope.response))
+                .flatMap(APIResponseShape.skeleton(from:)) ?? "?"
+            AppLog.shared.info(
+                .mix,
+                "mix settings empty id=\(mix.streamMixID) shape=\(shape)"
+            )
+        }
+        return tuning
     }
 
     func search(

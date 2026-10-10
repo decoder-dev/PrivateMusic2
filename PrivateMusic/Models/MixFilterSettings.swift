@@ -18,9 +18,9 @@ struct MixFilterOutcome: Equatable, Sendable {
     let didRelax: Bool
 }
 
-/// Client-side VK-mix style filters. Official mood/language/familiarity
-/// knobs are not documented on `getStreamMixAudios`, so we apply them to
-/// the already-fetched candidate pool (and map mood chips to vibe shelves).
+/// Client-side VK-mix style filters. Language and familiarity are applied to
+/// the already-fetched candidate pool; mood chips map to VK's own mood tiles
+/// (`mix_options` on `getStreamMixAudios`) and fall back to vibe shelves.
 enum MixMoodPreference: String, CaseIterable, Identifiable, Sendable {
     case any
     case energetic

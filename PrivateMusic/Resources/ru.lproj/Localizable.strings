@@ -886,3 +886,10 @@
 "intent.previous_track.description" = "Возвращается к предыдущему треку.";
 "intent.app_not_ready" = "Private Music ещё не готов. Попробуйте снова.";
 "intent.sign_in_required" = "Сначала войдите в Private Music.";
+
+"mix.tuning_title" = "Настроить микс";
+"mix.tuning_unavailable" = "VK не отдал настройки для этого микса. Попробуйте позже или выберите настроение на экране.";
+"mix.tuning_entry" = "Настроение, занятие и жанры";
+"mix.tuning_hint" = "Открывает настройки микса из VK Музыки";
+"mix.mood_title" = "Настроение";
+"mix.mood_subtitle" = "Один тап — и микс под нужное состояние";

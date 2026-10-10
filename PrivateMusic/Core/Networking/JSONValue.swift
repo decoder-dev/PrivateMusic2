@@ -42,6 +42,15 @@ enum JSONValue: Codable, Sendable {
         }
     }
 
+    /// Stable single-line JSON (sorted keys) — safe to use as a request
+    /// parameter and as a dedup key.
+    var compactJSON: String? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(self) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     var tracks: [Track] {
         var result: [Track] = []
         collectTracks(into: &result)
@@ -379,8 +388,12 @@ enum JSONValue: Codable, Sendable {
             let isMix = explicitID != nil
                 || type.localizedCaseInsensitiveContains("stream_mix")
             if isMix,
-               let id = explicitID ?? object["id"]?.stringValue,
-               !id.isEmpty {
+               let baseID = explicitID ?? object["id"]?.stringValue,
+               !baseID.isEmpty {
+                let options = object.mixStreamOptions
+                let id = options.map {
+                    baseID + String(MusicMix.optionsSeparator) + $0
+                } ?? baseID
                 let title = object["title"]?.stringValue
                     ?? object["name"]?.stringValue
                     ?? L10n.text("vk_mix")
@@ -404,7 +417,8 @@ enum JSONValue: Codable, Sendable {
                         artworkURL: object.mixCoverURL,
                         matchPercent: matchPercent,
                         isSocial: social,
-                        curator: curator
+                        curator: curator,
+                        streamOptions: options
                     )
                 )
             }
@@ -593,6 +607,22 @@ private extension Dictionary where Key == String, Value == JSONValue {
     /// playlist VK left in the answer.
     var belongsOnAlbumsShelf: Bool {
         LibraryPlaylistEntryPolicy.belongsOnAlbumsShelf(libraryPlaylistEntry)
+    }
+
+    /// `options` of a tunable stream-mix tile (mood / activity), as the
+    /// compact JSON VK expects back in `mix_options`.
+    var mixStreamOptions: String? {
+        for key in ["mix_options", "options"] {
+            switch self[key] {
+            case let .object(object)? where !object.isEmpty:
+                return JSONValue.object(object).compactJSON
+            case let .string(raw)? where !raw.isEmpty:
+                return raw
+            default:
+                continue
+            }
+        }
+        return nil
     }
 
     var mixMatchPercent: Int? {
