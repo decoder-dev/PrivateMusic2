@@ -935,6 +935,14 @@ final class OfflinePlaylistStore {
         accountDirectory?.appendingPathComponent("index.json")
     }
 
+    private struct LossyRecord: Decodable {
+        let value: OfflinePlaylistRecord?
+
+        init(from decoder: Decoder) throws {
+            value = try? OfflinePlaylistRecord(from: decoder)
+        }
+    }
+
     private struct ManifestLoadResult {
         let records: [String: OfflinePlaylistRecord]
         let isTrusted: Bool
@@ -952,12 +960,14 @@ final class OfflinePlaylistStore {
         ]
         for candidate in candidates {
             guard let data = try? Data(contentsOf: candidate),
-                  let decoded = try? decoder.decode(
-                    [OfflinePlaylistRecord].self,
+                  let wrapped = try? decoder.decode(
+                    [LossyRecord].self,
                     from: data
                   ) else {
                 continue
             }
+            // One undecodable record must not empty the whole library.
+            let decoded = wrapped.compactMap(\.value)
             // Manifests written by older builds may lack file protection;
             // upgrade them on sight so the at-rest policy holds for
             // pre-existing indexes too.

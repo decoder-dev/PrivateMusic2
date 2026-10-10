@@ -14,9 +14,21 @@ final class SessionStore {
     private let keychain: any KeychainStoring
     private let sessionAccount = "vk-session-v2"
     private let profileAccount = "vk-profile-v1"
+    /// Set when logout could not delete the credentials; the next launch
+    /// finishes the wipe instead of silently signing the user back in.
+    private static let pendingWipeKey = "session.pendingWipe"
 
     init(keychain: any KeychainStoring) {
         self.keychain = keychain
+        if UserDefaults.standard.bool(forKey: Self.pendingWipeKey) {
+            let wiped = (try? keychain.delete(account: sessionAccount)) != nil
+                && (try? keychain.delete(account: profileAccount)) != nil
+            if wiped {
+                UserDefaults.standard.removeObject(forKey: Self.pendingWipeKey)
+            }
+            AppLog.shared.info(.session, "Finished an interrupted logout wiped=\(wiped)")
+            return
+        }
         do {
             let saved = try keychain.load(Session.self, account: sessionAccount)
             let isUsable = saved?.isExpired == false
@@ -150,15 +162,22 @@ final class SessionStore {
 
     func logout() {
         var deletionError: String?
-        do {
-            try keychain.delete(account: sessionAccount)
-        } catch {
-            deletionError = error.localizedDescription
+        for account in [sessionAccount, profileAccount] {
+            do {
+                try keychain.delete(account: account)
+            } catch {
+                // One retry: a locked keychain often opens a moment later.
+                do {
+                    try keychain.delete(account: account)
+                } catch {
+                    deletionError = deletionError ?? error.localizedDescription
+                }
+            }
         }
-        do {
-            try keychain.delete(account: profileAccount)
-        } catch {
-            deletionError = deletionError ?? error.localizedDescription
+        if deletionError != nil {
+            UserDefaults.standard.set(true, forKey: Self.pendingWipeKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.pendingWipeKey)
         }
         session = nil
         profile = nil

@@ -39,6 +39,7 @@ final class LibraryDownloadJob {
     }
 
     func pause() {
+        error = nil
         generation = UUID()
         networkObservation?.isCancelled = true
         networkObservation = nil
@@ -56,7 +57,14 @@ final class LibraryDownloadJob {
               accountID == environment.sessionStore.resolvedOfflineAccountID else { return }
         if !hasJob || snapshot.finished { snapshot = LibraryDownloadSnapshot() }
         snapshot.wifiOnly = wifiOnly; hasJob = true; error = nil
-        do { try persist() } catch { self.error = error.localizedDescription; return }
+        do {
+            try persist()
+        } catch {
+            // Nothing was saved, so there is no job to resume.
+            self.error = error.localizedDescription
+            hasJob = false
+            return
+        }
         running = true
         let request = UUID(); generation = request
         task = Task { [weak self, weak environment] in

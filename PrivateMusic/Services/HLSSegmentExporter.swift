@@ -1724,6 +1724,9 @@ actor HLSSegmentExporter {
         }
         writer.startSession(atSourceTime: .zero)
 
+        // The sample loop runs on a dispatch queue, outside the task, so
+        // `Task.isCancelled` is always false there; `onCancel` raises this.
+        let cancelFlag = HLSCancelFlag()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation {
                 (continuation: CheckedContinuation<Void, Error>) in
@@ -1745,7 +1748,7 @@ actor HLSSegmentExporter {
                 }
                 writerInput.requestMediaDataWhenReady(on: queue) {
                     while writerInput.isReadyForMoreMediaData {
-                        if Task.isCancelled {
+                        if cancelFlag.isSet {
                             writerInput.markAsFinished()
                             writer.cancelWriting()
                             reader.cancelReading()
@@ -1792,9 +1795,27 @@ actor HLSSegmentExporter {
                 }
             }
         } onCancel: {
+            cancelFlag.set()
             reader.cancelReading()
             writer.cancelWriting()
         }
+    }
+}
+
+private final class HLSCancelFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSet: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func set() {
+        lock.lock()
+        value = true
+        lock.unlock()
     }
 }
 
