@@ -17,6 +17,15 @@ struct AppConfiguration: Sendable {
             return value
         }
 
+        // A malformed value would make every VK call fail, so only accept
+        // "major.minor" and otherwise keep the known-good default.
+        func version(_ key: String, fallback: String) -> String {
+            guard let raw = info[key] as? String,
+                  raw.range(of: #"^\d+\.\d+$"#, options: .regularExpression) != nil
+            else { return fallback }
+            return raw
+        }
+
         return AppConfiguration(
             vkAPIBaseURL: url("VK_API_BASE_URL", fallback: "https://api.vk.ru"),
             telegramGroupURL: url(
@@ -27,7 +36,7 @@ struct AppConfiguration: Sendable {
                 "TELEGRAM_VPN_URL",
                 fallback: "https://t.me/decshopBot"
             ),
-            apiVersion: "5.199"
+            apiVersion: version("VK_API_VERSION", fallback: "5.199")
         )
     }()
 }

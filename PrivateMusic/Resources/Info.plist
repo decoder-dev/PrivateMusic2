@@ -71,6 +71,8 @@
   </array>
   <key>VK_API_BASE_URL</key>
   <string>https://api.vk.ru</string>
+  <key>VK_API_VERSION</key>
+  <string>5.199</string>
   <key>TELEGRAM_GROUP_URL</key>
   <string>https://t.me/+myDvOG6Y4s9mMDUy</string>
   <key>TELEGRAM_VPN_URL</key>
