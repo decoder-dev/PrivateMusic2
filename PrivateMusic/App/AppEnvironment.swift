@@ -1025,6 +1025,9 @@ final class AppEnvironment {
         if let best = scored.max(by: { $0.1 < $1.1 })?.0 {
             await startCatalogMix(best)
         } else {
+            // Say so: tapping «Грустное» and silently getting the generic
+            // mix reads as a broken button.
+            mixNotice = L10n.format("mix.mood_fallback", mood.title)
             await startPersonalStation(in: catalog)
         }
     }

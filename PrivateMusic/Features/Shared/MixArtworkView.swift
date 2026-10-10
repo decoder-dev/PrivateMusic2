@@ -11,7 +11,7 @@ import SwiftUI
 /// on Home rather than as a generic card.
 enum MixArtworkFallback {
     static func role(for mix: MusicMix) -> BubbleRole {
-        if mix.id == MusicMix.common.id { return .station }
+        if mix.streamMixID == MusicMix.common.id { return .station }
         if mix.isSocial || mix.curator?.isUsable == true { return .artist }
         return .mix
     }

@@ -58,4 +58,21 @@ final class MixTuningTests: XCTestCase {
         )
         XCTAssertEqual(tuning.mix(applying: [:], to: tuned).id, "common")
     }
+
+    func testTuningSurvivesAnIDOnlyRoundTrip() {
+        let tuned = MixTuning(categories: []).mix(
+            applying: ["mood": ["sad"]],
+            to: .common
+        )
+        // A pin keeps only the id; the mix rebuilt from it stays tuned.
+        let restored = MusicMix(
+            id: tuned.id,
+            title: tuned.title,
+            subtitle: tuned.subtitle,
+            artworkURL: nil
+        )
+        XCTAssertEqual(restored.streamMixID, "common")
+        XCTAssertEqual(restored.streamOptions, #"{"mood":["sad"]}"#)
+        XCTAssertNil(MusicMix.common.streamOptions)
+    }
 }

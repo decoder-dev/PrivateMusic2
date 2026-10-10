@@ -57,6 +57,9 @@ struct MixesHubView: View {
     var focusedMixID: String? = nil
     @State private var showingMixConfigure = false
     @State private var tuningBase: MusicMix?
+    /// Mixes the listener tuned this session; kept apart from `mixes` so a
+    /// pull-to-refresh of the catalog does not drop them.
+    @State private var tunedMixes: [MusicMix] = []
 
     private let defaultPreviewTrackLimit = 15
     private let expandedPreviewTrackLimit = 60
@@ -1147,8 +1150,8 @@ struct MixesHubView: View {
     /// Tuned variants join the picker so the choice survives a refresh and
     /// can be switched back to without re-opening the sheet.
     private func addTunedMix(_ tuned: MusicMix) {
-        guard !mixes.contains(where: { $0.id == tuned.id }) else { return }
-        mixes.insert(tuned, at: 0)
+        guard !tunedMixes.contains(where: { $0.id == tuned.id }) else { return }
+        tunedMixes.insert(tuned, at: 0)
     }
 
     /// «Микс по артисту» for the people the listener actually plays.
@@ -1514,7 +1517,9 @@ struct MixesHubView: View {
     // MARK: - Data
 
     private var vkMixes: [MusicMix] {
-        mixes
+        guard !tunedMixes.isEmpty else { return mixes }
+        let known = Set(mixes.map(\.id))
+        return tunedMixes.filter { !known.contains($0.id) } + mixes
     }
 
     private var orderedVKMixes: [MusicMix] {
