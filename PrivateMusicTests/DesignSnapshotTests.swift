@@ -13,6 +13,11 @@ final class DesignSnapshotTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let settings = AppSettings(defaults: defaults)
         let environment = AppEnvironment(keychain: KeychainStore(service: suite))
+        let track = Track(trackID: 1, ownerID: 1, title: "Тихий вечер", artist: "Private Music",
+                          duration: 222, streamURL: nil, artworkURL: nil)
+        environment.player.play(track, in: [track], source: .library, allowsContinuation: false)
+        environment.player.pause()
+        defer { environment.player.stop() }
         for theme in AppTheme.allCases {
             settings.theme = theme
             settings.appearance = theme == .dark ? .dark : .light
@@ -22,6 +27,8 @@ final class DesignSnapshotTests: XCTestCase {
                     name: "appearance-\(theme.rawValue)", environment: environment, settings: settings)
             capture(homeComposition(width: 390), name: "home-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            capture(PlayerView(), name: "player-\(theme.rawValue)",
+                    environment: environment, settings: settings)
         }
         settings.theme = .light
         settings.palette = .banana
@@ -30,6 +37,8 @@ final class DesignSnapshotTests: XCTestCase {
                 width: 320, height: 700, environment: environment, settings: settings)
         capture(NavigationStack { AppearanceSettingsView() }.dynamicTypeSize(.accessibility3),
                 name: "appearance-accessibility", environment: environment, settings: settings)
+        capture(PlayerView().dynamicTypeSize(.accessibility3), name: "player-accessibility",
+                width: 320, height: 700, environment: environment, settings: settings)
     }
 
     private func homeComposition(width: CGFloat) -> some View {

@@ -6,10 +6,13 @@ import Foundation
 enum AACSourceFormat {
     static func resolve(cookie: Data) throws -> AudioStreamBasicDescription {
         try cookie.withUnsafeBytes { bytes in
+            guard !cookie.isEmpty, cookie.count <= 1_048_576, let pointer = bytes.baseAddress else {
+                throw AACPacketRemuxer.RemuxError(operation: "AAC cookie bounds", status: -1)
+            }
             var base = AudioStreamBasicDescription()
             base.mFormatID = kAudioFormatMPEG4AAC
             var info = AudioFormatInfo(
-                mASBD: base, mMagicCookie: bytes.baseAddress,
+                mASBD: base, mMagicCookie: pointer,
                 mMagicCookieSize: UInt32(cookie.count)
             )
             let infoSize = UInt32(MemoryLayout<AudioFormatInfo>.size)
