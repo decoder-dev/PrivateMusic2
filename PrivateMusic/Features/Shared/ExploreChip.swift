@@ -5,6 +5,8 @@ import SwiftUI
 /// so it keeps its contrast on every accent and in both appearances.
 struct ExploreChip: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .footnote) private var iconSize: CGFloat = 18
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     let title: String
@@ -33,14 +35,16 @@ struct ExploreChip: View {
                             .foregroundStyle(color)
                     }
                 }
-                .frame(width: 18, height: 18)
+                .frame(width: iconSize, height: iconSize)
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : (isFlexible ? 2 : 1))
+                    .fixedSize(horizontal: false, vertical: true)
                 if isFlexible { Spacer(minLength: 0) }
             }
             .padding(.horizontal, 14)
+            .padding(.vertical, 8)
             .frame(
                 maxWidth: isFlexible ? .infinity : nil,
                 minHeight: PremiumLayout.minimumTapTarget

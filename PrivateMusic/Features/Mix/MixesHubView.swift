@@ -109,6 +109,7 @@ struct MixesHubView: View {
 
                     vkContent(metrics: metrics)
                 }
+                .frame(width: metrics.contentWidth, alignment: .leading)
                 .padding(.horizontal, metrics.horizontalPadding)
                 .padding(.top, 8)
             }
@@ -783,80 +784,73 @@ struct MixesHubView: View {
         // control. The hero itself is not a Button — nesting a curator
         // link inside another button's label made that link unreachable
         // to both touch and VoiceOver.
-        return ZStack(alignment: .bottomLeading) {
-            Group {
-                if mix.artworkURL == nil, mix.curator?.photoURL == nil,
-                   mix.backdropURL == nil, !artSource.contains(where: { $0.artworkURL != nil }) {
-                    Image(DiscoveryMoodCard.artworkName(for: settings.mixMoodPreference))
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: metrics.contentWidth, height: metrics.heroHeight)
-                        .clipped()
-                } else {
-                    MixArtworkView(
-                        mix: mix,
-                        tracks: artSource,
-                        size: metrics.contentWidth,
-                        height: metrics.heroHeight,
-                        cornerRadius: 0
-                    )
-                }
-            }
-            .overlay {
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.05),
-                        Color.black.opacity(0.55),
-                        Color.black.opacity(0.82)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Spacer(minLength: 0)
-                if let curator = mix.curator, curator.isUsable {
-                    Button {
-                        selectedCurator = curator
-                    } label: {
-                        Text(curator.displayName)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.78))
-                            .textCase(.uppercase)
-                            .tracking(0.55)
-                            .lineLimit(1)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint(L10n.text("open_here"))
-                } else if mix.id == MusicMix.common.id {
-                    Text(L10n.text("personal_mix"))
+        return VStack(alignment: .leading, spacing: 6) {
+            if let curator = mix.curator, curator.isUsable {
+                Button {
+                    selectedCurator = curator
+                } label: {
+                    Text(curator.displayName)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.78))
                         .textCase(.uppercase)
                         .tracking(0.55)
-                } else if mix.isSocial {
-                    Text(L10n.text("social_mix"))
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.78))
-                        .textCase(.uppercase)
-                        .tracking(0.55)
+                        .lineLimit(1)
                 }
-                Text(mix.title)
-                    .font(.title.weight(.bold))
-                    .lineLimit(2)
+                .buttonStyle(.plain)
+                .accessibilityHint(L10n.text("open_here"))
+            } else if mix.id == MusicMix.common.id {
+                Text(L10n.text("personal_mix"))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.78))
+                    .textCase(.uppercase)
+                    .tracking(0.55)
+            } else if mix.isSocial {
+                Text(L10n.text("social_mix"))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.78))
+                    .textCase(.uppercase)
+                    .tracking(0.55)
+            }
+            Text(mix.title)
+                .font(.title.weight(.bold))
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                .fixedSize(horizontal: false, vertical: true)
+            if let trimmedSubtitle {
+                Text(trimmedSubtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.86))
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                     .fixedSize(horizontal: false, vertical: true)
-                if let trimmedSubtitle {
-                    Text(trimmedSubtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.86))
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(22)
+        .padding(.trailing, dynamicTypeSize.isAccessibilitySize ? 0 : 72)
+
+        .padding(.top, dynamicTypeSize.isAccessibilitySize ? 74 : 0)
+        .frame(width: metrics.contentWidth, alignment: .leading)
+        .frame(minHeight: metrics.heroHeight, alignment: .bottomLeading)
+        .background {
+            GeometryReader { geometry in
+                Group {
+                    if mix.artworkURL == nil, mix.curator?.photoURL == nil,
+                       mix.backdropURL == nil, !artSource.contains(where: { $0.artworkURL != nil }) {
+                        Image(DiscoveryMoodCard.artworkName(for: settings.mixMoodPreference))
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .clipped()
+                    } else {
+                        MixArtworkView(mix: mix, tracks: artSource, size: geometry.size.width,
+                                       height: geometry.size.height, cornerRadius: 0)
+                    }
+                }
+                .overlay {
+                    LinearGradient(colors: [.black.opacity(0.05), .black.opacity(0.55), .black.opacity(0.82)],
+                                   startPoint: .top, endPoint: .bottom)
                 }
             }
-            .padding(22)
-            .padding(.trailing, 72)
-
+        }
+        .overlay(alignment: .topTrailing) {
             Button {
                 toggleOrStart(mix)
             } label: {
@@ -880,15 +874,9 @@ struct MixesHubView: View {
                 )
             )
             .accessibilityValue(mix.title)
-            .frame(
-                maxWidth: .infinity,
-                maxHeight: .infinity,
-                alignment: .topTrailing
-            )
             .padding(18)
         }
         .foregroundStyle(.white)
-        .frame(minHeight: metrics.heroHeight)
         .clipShape(
             RoundedRectangle(
                 cornerRadius: PremiumLayout.cardRadius,
@@ -1341,7 +1329,9 @@ struct MixesHubView: View {
                     ) { mood in
                         DiscoveryMoodCard(
                             mood: mood,
-                            width: min(200, max(136, metrics.contentWidth * 0.43)),
+                            width: dynamicTypeSize.isAccessibilitySize
+                                ? min(260, max(208, metrics.contentWidth * 0.85))
+                                : min(200, max(136, metrics.contentWidth * 0.43)),
                             isLoading: startingMood == mood,
                             isSelected: settings.mixMoodPreference == mood
                         ) {
