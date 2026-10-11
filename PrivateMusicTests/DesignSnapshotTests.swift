@@ -19,6 +19,10 @@ final class DesignSnapshotTests: XCTestCase {
         snapshotPlayer = player
         let track = Track(trackID: 1, ownerID: 1, title: "Тихий вечер", artist: "Private Music",
                           duration: 222, streamURL: nil, artworkURL: nil)
+        let record = OfflineTrackRecord(track: track, relativePath: "preview.m4a", storage: .directFile,
+                                        retention: .manual, byteCount: 8_000_000,
+                                        downloadedAt: Date(timeIntervalSince1970: 1_790_000_000),
+                                        lastPlayedAt: Date(timeIntervalSince1970: 1_790_000_000), playCount: 1)
         player.play(track, in: [track], source: .library, allowsContinuation: false)
         player.pause()
         defer { player.stop(); snapshotPlayer = nil }
@@ -37,6 +41,25 @@ final class DesignSnapshotTests: XCTestCase {
                 text: "Тихий вечер\nСвет в окне\nМузыка остаётся со мной", source: "Genius",
                 sourceURL: URL(string: "https://genius.com/Private-music-evening-lyrics")
             )), name: "lyrics-\(theme.rawValue)", environment: environment, settings: settings)
+            capture(QueueView(), name: "queue-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { SettingsView() }, name: "settings-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { EqualizerSettingsView() }, name: "equalizer-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { VKIntegrationSettingsView() }, name: "vk-settings-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(PlaylistEditorView(playlist: nil, onSaved: {}), name: "playlist-editor-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(AudioUploadView(onUploaded: {}), name: "audio-upload-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(MixConfigureSheet(), name: "mix-configure-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { ListeningHistoryView() }, name: "history-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(DownloadedTrackDetailsView(record: record, localURL: nil,
+                                               onPlay: {}, onShare: {}, onDelete: {}),
+                    name: "download-details-\(theme.rawValue)", environment: environment, settings: settings)
         }
         capture(PlayerView(), name: "player-compact", width: 320, height: 700,
                 environment: environment, settings: settings)
@@ -49,6 +72,14 @@ final class DesignSnapshotTests: XCTestCase {
                 name: "appearance-accessibility", environment: environment, settings: settings)
         capture(PlayerView().dynamicTypeSize(.accessibility3), name: "player-accessibility",
                 width: 320, height: 700, environment: environment, settings: settings)
+        capture(AudioUploadView(onUploaded: {}).dynamicTypeSize(.accessibility3),
+                name: "audio-upload-accessibility", width: 320, height: 700,
+                environment: environment, settings: settings)
+        capture(MixConfigureSheet().dynamicTypeSize(.accessibility3), name: "mix-configure-accessibility",
+                width: 320, height: 700, environment: environment, settings: settings)
+        capture(LyricsView(track: track, initialLyrics: Lyrics(text: "Тихий вечер\nСвет в окне", source: "LRCLIB",
+                    lines: [LyricLine(time: 5, text: "Тихий вечер"), LyricLine(time: 15, text: "Свет в окне")]
+                )), name: "lyrics-synced", environment: environment, settings: settings)
     }
 
     private func homeComposition(width: CGFloat) -> some View {
@@ -85,6 +116,7 @@ final class DesignSnapshotTests: XCTestCase {
             .environment(environment.offlineStore)
             .environment(environment.historyStore)
             .environment(environment.homeCatalogStore)
+            .environment(environment.networkMonitor)
             .environment(\.colorScheme, settings.theme.colorScheme)
             .tint(settings.accent)
         guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {

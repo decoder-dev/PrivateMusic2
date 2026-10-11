@@ -331,7 +331,23 @@ struct PlayerView: View {
         }
     }
 
-    private func playerHeader(_ track: Track) -> some View {
+    @ViewBuilder private func playerHeader(_ track: Track) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            HStack(spacing: 12) {
+                Text(player.queueContextTitle)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(playerSecondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilitySortPriority(1)
+                playerHeaderActions(track)
+            }
+        } else {
+            regularPlayerHeader(track)
+        }
+    }
+
+    private func regularPlayerHeader(_ track: Track) -> some View {
         // Plain ZStack — not AdaptiveGlassContainer. Sibling interactive
         // glass circles inside GlassEffectContainer morph into one blob
         // on iOS 26 (same failure mode primaryControls documents).
@@ -339,6 +355,7 @@ struct PlayerView: View {
             VStack(spacing: 2) {
                 Text(L10n.text("player.now_playing_kicker"))
                     .font(.caption2.weight(.bold))
+                    .lineLimit(1)
                     .tracking(1.1)
                     .foregroundStyle(playerSecondary)
                 Text(player.queueContextTitle.uppercased())
@@ -361,28 +378,25 @@ struct PlayerView: View {
 
                 Spacer(minLength: 0)
 
-                HStack(spacing: 8) {
-                    AirPlayRoutePicker(
-                        tintColor: UIColor(playerForeground),
-                        onWillPresent: handleAirPlayRoutePickerOpened
-                    )
-                        .frame(width: 44, height: 44)
-                        .adaptiveGlass(
-                            in: Circle(),
-                            interactive: true
-                        )
-                        .accessibilityLabel(
-                            L10n.text(
-                                "choose_playback_device"
-                            )
-                        )
-                        .accessibilitySortPriority(3)
-                    actionMenuButton(track)
-                        .accessibilitySortPriority(2)
-                }
-                .frame(width: PlayerHeaderMetrics.sideClusterWidth)
+                playerHeaderActions(track)
             }
         }
+    }
+
+    private func playerHeaderActions(_ track: Track) -> some View {
+        HStack(spacing: 8) {
+            AirPlayRoutePicker(
+                tintColor: UIColor(playerForeground),
+                onWillPresent: handleAirPlayRoutePickerOpened
+            )
+            .frame(width: 44, height: 44)
+            .adaptiveGlass(in: Circle(), interactive: true)
+            .accessibilityLabel(L10n.text("choose_playback_device"))
+            .accessibilitySortPriority(3)
+            actionMenuButton(track)
+                .accessibilitySortPriority(2)
+        }
+        .frame(width: PlayerHeaderMetrics.sideClusterWidth)
     }
 
     private func playerArtwork(
@@ -1282,7 +1296,9 @@ struct PlayerLayoutMetrics: Equatable {
             0
         )
 
-        let headerHeight: CGFloat = 44
+        let headerHeight: CGFloat = usesAccessibilityText
+            ? 76 + CGFloat(max(accessibilityStep, 1) - 1) * 14
+            : 44
         let headerTopPadding: CGFloat
         let artworkTopSpacing: CGFloat
         let metadataTopSpacing: CGFloat

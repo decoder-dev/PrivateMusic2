@@ -933,12 +933,6 @@ private struct ArtistInlineError: View {
                 .font(.caption.weight(.semibold))
         }
         .padding(12)
-        .background(
-            Color(uiColor: .secondarySystemBackground),
-            in: RoundedRectangle(
-                cornerRadius: PremiumLayout.controlRadius,
-                style: .continuous
-            )
-        )
+        .premiumCard()
     }
 }

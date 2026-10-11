@@ -196,13 +196,7 @@ struct ConnectView: View {
         }
         .font(.subheadline)
         .padding(16)
-        .background(
-            Color(uiColor: .secondarySystemBackground),
-            in: RoundedRectangle(
-                cornerRadius: PremiumLayout.compactRadius,
-                style: .continuous
-            )
-        )
+        .premiumCard()
     }
 
     @MainActor

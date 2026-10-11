@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PlaylistArtworkView: View {
+    @Environment(AppSettings.self) private var settings
     private let offlinePlaylists =
         OfflinePlaylistStore.shared
     let playlist: Playlist
@@ -56,14 +57,13 @@ struct PlaylistArtworkView: View {
     /// `secondarySystemBackground` fill disappeared into the dark theme
     /// background and left the shelf looking like floating text.
     private var artworkPlaceholder: some View {
-        LinearGradient(
-            colors: [
-                Color(uiColor: .secondarySystemBackground),
-                Color(uiColor: .tertiarySystemBackground)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        settings.surfaceColor.overlay {
+            LinearGradient(
+                colors: [settings.accent.opacity(0.05), settings.accent.opacity(0.14)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
         .overlay {
             Image(systemName: "music.note.list")
                 .font(.system(size: size * 0.28, weight: .medium))

@@ -21,6 +21,8 @@ struct AudioUploadView: View {
                 Section {
                     Button { choosing = true } label: {
                         Label(filename.isEmpty ? L10n.text("features.upload.choose") : filename, systemImage: "doc.badge.plus")
+                            .lineLimit(2)
+                            .truncationMode(.middle)
                     }.disabled(busy)
                     TextField(L10n.text("features.upload.artist"), text: $artist).disabled(busy)
                     TextField(L10n.text("title"), text: $title).disabled(busy)
@@ -28,9 +30,13 @@ struct AudioUploadView: View {
                 if busy { ProgressView(L10n.text("features.upload.progress")) }
                 if let error { Text(error).foregroundStyle(.secondary) }
                 Button(L10n.text("features.upload.submit")) { upload() }
+                    .buttonStyle(PremiumProminentButtonStyle())
+                    .listRowBackground(Color.clear)
                     .disabled(busy || file == nil || artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            .scrollContentBackground(.hidden)
+            .background(ThemeBackground())
             .navigationTitle(L10n.text("features.upload.title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -83,13 +83,7 @@ struct DownloadedTrackDetailsView: View {
                         )
                     }
                     .padding(.horizontal, 16)
-                    .background(
-                        Color(uiColor: .secondarySystemBackground),
-                        in: RoundedRectangle(
-                            cornerRadius: 16,
-                            style: .continuous
-                        )
-                    )
+                    .premiumCard()
 
                     VStack(spacing: 12) {
                         Button {

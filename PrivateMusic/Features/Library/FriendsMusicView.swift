@@ -98,6 +98,8 @@ struct FriendsMusicView: View {
                 Text(L10n.text("features.friends.empty")).foregroundStyle(.secondary)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(ThemeBackground())
         .navigationTitle(L10n.text("features.friends"))
         .clearsMiniPlayer()
         // Keyed on the account, not the access token: the token rotates every
@@ -155,6 +157,8 @@ private struct FriendLibraryView: View {
                 Text(L10n.text("features.friends.no_music")).foregroundStyle(.secondary)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(ThemeBackground())
         .navigationTitle(friend.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .clearsMiniPlayer()

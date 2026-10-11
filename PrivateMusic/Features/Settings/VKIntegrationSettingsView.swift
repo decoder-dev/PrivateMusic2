@@ -23,6 +23,8 @@ struct VKIntegrationSettingsView: View {
                 Button(L10n.text("action.retry")) { environment.vkIntegration.retry(environment: environment) }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(ThemeBackground())
         .navigationTitle(L10n.text("features.vk.settings"))
         .navigationBarTitleDisplayMode(.inline)
     }
