@@ -85,24 +85,9 @@ struct MixArtworkView: View {
                     }
                 }
             } else {
-                let tint = BubblePalette
-                    .surface(MixArtworkFallback.role(for: mix), tint: nil)
-                    .color
-                ZStack {
-                    LinearGradient(
-                        colors: [tint, tint.opacity(0.55)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    Image(systemName: MixArtworkFallback.symbol(for: mix))
-                        .font(
-                            .system(
-                                size: min(size, resolvedHeight) * 0.28,
-                                weight: .semibold
-                            )
-                        )
-                        .foregroundStyle(.white.opacity(0.92))
-                }
+                // Its own palette per mix, with the same ripples as a real
+                // cover — never one flat colour shared by every mix.
+                MixBackdropView(palette: .generated(for: mix.id))
             }
         }
         .task(id: mix.backdropURL) {

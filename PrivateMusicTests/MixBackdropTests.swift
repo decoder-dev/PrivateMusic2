@@ -42,3 +42,36 @@ final class MixBackdropTests: XCTestCase {
         XCTAssertEqual(palette.bottomTrailing, palette.topLeading)
     }
 }
+
+final class MixCoverSourcesTests: XCTestCase {
+    func testTrackWithOnlyATopLevelThumbStillHasArtwork() throws {
+        // Stream-mix tracks often have no `album` object, only `thumb`.
+        let json = """
+        {"id":5,"owner_id":7,"title":"T","artist":"A","duration":100,
+         "thumb":{"photo_300":"https://example.com/c300.jpg","photo_600":"https://example.com/c600.jpg"}}
+        """
+        let track = try JSONDecoder().decode(Track.self, from: Data(json.utf8))
+        XCTAssertEqual(track.artworkURL?.absoluteString, "https://example.com/c600.jpg")
+    }
+
+    func testAlbumThumbStillWinsOverTopLevelThumb() throws {
+        let json = """
+        {"id":5,"owner_id":7,"title":"T","artist":"A","duration":100,
+         "album":{"thumb":{"photo_600":"https://example.com/album.jpg"}},
+         "thumb":{"photo_600":"https://example.com/top.jpg"}}
+        """
+        let track = try JSONDecoder().decode(Track.self, from: Data(json.utf8))
+        XCTAssertEqual(track.artworkURL?.absoluteString, "https://example.com/album.jpg")
+    }
+
+    func testGeneratedPaletteIsStableAndDiffersPerMix() {
+        let first = MixBackdropPalette.generated(for: "pop")
+        XCTAssertEqual(first, MixBackdropPalette.generated(for: "pop"))
+        XCTAssertNotEqual(first, MixBackdropPalette.generated(for: "rock"))
+        for value in [first.topLeading, first.bottomTrailing] {
+            XCTAssertTrue((0...1).contains(value.red))
+            XCTAssertTrue((0...1).contains(value.green))
+            XCTAssertTrue((0...1).contains(value.blue))
+        }
+    }
+}

@@ -62,6 +62,9 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         case lyricsID = "lyrics_id"
         case isHQ = "is_hq"
         case trackCode = "track_code"
+        /// Stream-mix tracks often carry their cover only here, with no
+        /// `album` object at all.
+        case thumb
     }
 
     enum AlbumKeys: String, CodingKey {
@@ -115,6 +118,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
             isHQ = false
         }
 
+        var raw: String?
         if let album = try? container.nestedContainer(
             keyedBy: AlbumKeys.self,
             forKey: .album
@@ -127,7 +131,6 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
                 keyedBy: ThumbKeys.self,
                 forKey: .photo
             )
-            var raw: String?
             if let thumb {
                 raw = try thumb.decodeIfPresent(
                     String.self,
@@ -164,10 +167,27 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
                     )
                 }
             }
-            artworkURL = raw.flatMap(URL.secureRemoteURL)
-        } else {
-            artworkURL = nil
         }
+        if raw == nil,
+           let topThumb = try? container.nestedContainer(
+            keyedBy: ThumbKeys.self,
+            forKey: .thumb
+           ) {
+            raw = try topThumb.decodeIfPresent(String.self, forKey: .photo600)
+            if raw == nil {
+                raw = try topThumb.decodeIfPresent(
+                    String.self,
+                    forKey: .photo300
+                )
+            }
+            if raw == nil {
+                raw = try topThumb.decodeIfPresent(
+                    String.self,
+                    forKey: .photo270
+                )
+            }
+        }
+        artworkURL = raw.flatMap(URL.secureRemoteURL)
         let nestedAlbum = try? container.nestedContainer(
             keyedBy: AlbumKeys.self,
             forKey: .album
