@@ -34,6 +34,8 @@ struct MixArtworkView: View {
     var height: CGFloat? = nil
     var cornerRadius: CGFloat? = nil
     @State private var backdrop: MixBackdropPalette?
+    @State private var backdropResolved = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -55,7 +57,7 @@ struct MixArtworkView: View {
                 )
             } else if let backdrop {
                 MixBackdropView(palette: backdrop)
-            } else if selectedTracks.count >= 4 {
+            } else if selectedTracks.count >= 4, !awaitingBackdrop {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         tile(
@@ -106,10 +108,18 @@ struct MixArtworkView: View {
         .task(id: mix.backdropURL) {
             guard mix.artworkURL == nil, let url = mix.backdropURL else {
                 backdrop = nil
+                backdropResolved = true
                 return
             }
+            backdropResolved = false
             backdrop = await MixBackdropStore.shared.palette(for: url)
+            backdropResolved = true
         }
+        // One calm cross-fade when a better cover arrives, never a jump.
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.25),
+            value: coverStage
+        )
         .frame(width: size, height: resolvedHeight)
         .clipShape(
             RoundedRectangle(
@@ -122,6 +132,18 @@ struct MixArtworkView: View {
     }
 
     private var resolvedHeight: CGFloat { height ?? size }
+
+    /// VK's backdrop is on its way: keep the neutral cover instead of
+    /// flashing a track collage that is about to be replaced.
+    private var awaitingBackdrop: Bool {
+        mix.artworkURL == nil && mix.backdropURL != nil && !backdropResolved
+    }
+
+    private var coverStage: Int {
+        if backdrop != nil { return 2 }
+        if selectedTracks.count >= 4, !awaitingBackdrop { return 1 }
+        return 0
+    }
 
     private var selectedTracks: [Track] {
         let available = tracks.filter { $0.artworkURL != nil }
