@@ -1593,28 +1593,10 @@ struct MixesHubView: View {
     }
 
     private var orderedVKMixes: [MusicMix] {
+        // VK's own order: the first mix is the one VK puts first. Nothing is
+        // regrouped or pushed down to avoid matching Home.
         var seen = Set<String>()
-        var result: [MusicMix] = []
-        let buckets: [[MusicMix]] = [
-            vkMixes.filter(\.isSocial),
-            officialShelves.flatMap(\.mixes),
-            algorithmicMixes
-        ]
-        for bucket in buckets {
-            for mix in bucket where seen.insert(mix.id).inserted {
-                result.append(mix)
-            }
-        }
-        for mix in vkMixes where seen.insert(mix.id).inserted {
-            result.append(mix)
-        }
-        if let skip = deprioritizedMixID,
-           skip != focusedMixID,
-           let index = result.firstIndex(where: { $0.id == skip }) {
-            let moved = result.remove(at: index)
-            result.append(moved)
-        }
-        return result
+        return vkMixes.filter { seen.insert($0.id).inserted }
     }
 
     private var officialShelves: [(title: String, mixes: [MusicMix])] {
