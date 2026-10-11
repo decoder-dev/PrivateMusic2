@@ -214,7 +214,7 @@ final class SearchViewModel {
                     excluding: Set(albums.map(\.compositeID))
                 )
             )
-            albumNextOffset = page.nextOffset
+            albumNextOffset = page.nextOffset.flatMap { $0 > offset ? $0 : nil }
             albumErrorMessage = nil
         } catch {
             guard revision == albumSearchRevision,
@@ -293,7 +293,7 @@ final class SearchViewModel {
                     excluding: Set(playlists.map(Self.playlistIdentity))
                 )
             )
-            playlistNextOffset = page.nextOffset
+            playlistNextOffset = page.nextOffset.flatMap { $0 > offset ? $0 : nil }
             playlistErrorMessage = nil
         } catch {
             guard revision == playlistSearchRevision,
@@ -437,7 +437,7 @@ final class SearchViewModel {
                     excluding: Set(tracks.map(\.id))
                 )
             )
-            nextOffset = page.nextOffset
+            nextOffset = page.nextOffset.flatMap { $0 > offset ? $0 : nil }
         } catch {
             guard revision == searchRevision,
                   !Task.isCancelled,

@@ -516,12 +516,15 @@ private final class PlaylistDetailViewModel {
         force: Bool = false,
         operation: () async throws -> MusicPage<Track>
     ) async {
-        guard !isLoading, force || tracks.isEmpty else { return }
+        guard !isLoading, !isLoadingMore,
+              force || tracks.isEmpty else { return }
         isLoading = true
         defer { isLoading = false }
         do {
             let page = try await operation()
-            tracks = page.items
+            // VK can list one track twice; duplicate ids break ForEach.
+            var seen = Set<String>()
+            tracks = page.items.filter { seen.insert($0.id).inserted }
             nextOffset = page.nextOffset
             errorMessage = nil
             hasLoaded = true
@@ -574,7 +577,12 @@ private final class PlaylistDetailViewModel {
                 from: playlist,
                 accessToken: accessToken
             )
+            let before = tracks.count
             tracks.removeAll { $0.id == track.id }
+            // The server list shifted down; keep the next page aligned.
+            let removed = before - tracks.count
+            nextOffset = nextOffset.map { max($0 - removed, 0) }
+            MusicLibraryEvents.postPlaylistsChanged()
             errorMessage = nil
         } catch is CancellationError {
             return

@@ -300,6 +300,14 @@ extension TimeInterval {
     var formattedDuration: String {
         guard isFinite, self >= 0 else { return "0:00" }
         let total = Int(self)
+        if total >= 3600 {
+            return String(
+                format: "%d:%02d:%02d",
+                total / 3600,
+                total % 3600 / 60,
+                total % 60
+            )
+        }
         return String(format: "%d:%02d", total / 60, total % 60)
     }
 }
