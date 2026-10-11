@@ -462,7 +462,7 @@ struct LibraryView: View {
                             Text(
                                 L10n.format(
                                     "d0_tracks_resume",
-                                    pin.tracks.count
+                                    L10n.trackCount(pin.tracks.count)
                                 )
                             )
                             .font(.caption)

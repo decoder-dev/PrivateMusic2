@@ -582,7 +582,7 @@
 
 "remaining_d0_items_1" = "Remaining: %d items · %@";
 
-"d0_files_1" = "%d files · %@";
+"d0_files_1" = "%@ · %@";
 
 "current_downloads_will_be_stopped_and_downloaded_tracks_playlists_and_au" = "Current downloads will be stopped, and downloaded tracks, playlists, and auto cache will be removed. Your VK music will not change.";
 
@@ -635,7 +635,7 @@
 "matched_to_your_recent_taste" = "Matched to your recent taste";
 "listen_later" = "Listen Later";
 "mix_save_requires_playing" = "Save is available while this mix is playing";
-"d0_tracks_resume" = "%d tracks · resume";
+"d0_tracks_resume" = "%@ · resume";
 "resume" = "Resume";
 "mix_radio" = "Mix Radio";
 "reorders_the_loaded_queue_with_no_extra_requests" = "Reorders the loaded queue with no extra requests";
@@ -649,8 +649,8 @@
 "n_0_d1_match" = "%@ · %d%% match";
 "vk_has_not_prepared_themed_mixes_for_your_account_yet_check_back_later_o" = "Selena has no themed mixes for you yet — check back later.";
 "n_0_d1_gb" = "%@ / %d GB";
-"d0_mixes" = "%d mixes";
-"d0_mixes_in_their_taste" = "%d mixes in their taste";
+"d0_mixes" = "%@";
+"d0_mixes_in_their_taste" = "%@ in their taste";
 "energetic" = "Energetic";
 "no_albums_found" = "No albums found";
 "more_discoveries" = "More Discoveries";

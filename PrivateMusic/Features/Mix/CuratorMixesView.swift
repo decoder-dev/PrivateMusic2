@@ -40,7 +40,7 @@ struct CuratorMixesView: View {
                         Text(
                             L10n.format(
                                 "d0_mixes_in_their_taste",
-                                mixes.count
+                                L10n.mixCount(mixes.count)
                             )
                         )
                         .font(.caption)
