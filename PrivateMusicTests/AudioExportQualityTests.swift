@@ -66,7 +66,7 @@ final class AudioExportQualityTests: XCTestCase {
         let samples = try XCTUnwrap(buffer.floatChannelData)
         for index in 0..<Int(buffer.frameLength) {
             samples[0][index] = Float(sin(Double(index) * 2 * .pi * 440 / 48_000)) * 0.3
-            samples[1][index] = Float(sin(Double(index) * 2 * .pi * 880 / 48_000)) * 0.3
+            samples[1][index] = Float(sin(Double(index) * 2 * .pi * 12_000 / 48_000)) * 0.3
         }
         do {
             let file = try AVAudioFile(forWriting: source, settings: format.settings)
@@ -79,6 +79,19 @@ final class AudioExportQualityTests: XCTestCase {
         XCTAssertEqual(exported.rate, 48_000)
         XCTAssertEqual(exported.channels, 2)
         XCTAssertFalse(exported.packets.isEmpty)
+        let decoded = try AVAudioFile(forReading: destination, commonFormat: .pcmFormatFloat32,
+                                      interleaved: false)
+        let decodedBuffer = try XCTUnwrap(AVAudioPCMBuffer(
+            pcmFormat: decoded.processingFormat, frameCapacity: AVAudioFrameCount(decoded.length)
+        ))
+        try decoded.read(into: decodedBuffer)
+        let decodedSamples = try XCTUnwrap(decodedBuffer.floatChannelData)
+        let count = Int(decodedBuffer.frameLength)
+        XCTAssertGreaterThan(count, 0)
+        XCTAssertGreaterThan(toneAmplitude(decodedSamples[1], count: count, frequency: 12_000), 0.18,
+                             "Fallback must retain high frequencies, rather than sounding muffled")
+        XCTAssertLessThan(toneAmplitude(decodedSamples[0], count: count, frequency: 12_000), 0.03,
+                          "Fallback must preserve stereo separation")
     }
 
     func testFallbackQualityDoesNotUseTheOld192KbpsCeiling() {
@@ -119,5 +132,17 @@ final class AudioExportQualityTests: XCTestCase {
             }
         }
         return (packets, format.mSampleRate, format.mChannelsPerFrame)
+    }
+
+    private func toneAmplitude(_ samples: UnsafePointer<Float>, count: Int, frequency: Double) -> Double {
+        guard count > 0 else { return 0 }
+        var real = 0.0
+        var imaginary = 0.0
+        for index in 0..<count {
+            let phase = Double(index) * 2 * .pi * frequency / 48_000
+            real += Double(samples[index]) * cos(phase)
+            imaginary += Double(samples[index]) * sin(phase)
+        }
+        return 2 * hypot(real, imaginary) / Double(count)
     }
 }

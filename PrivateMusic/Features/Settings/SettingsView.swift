@@ -276,6 +276,7 @@ struct SettingsView: View {
 
 struct AppearanceSettingsView: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var confirmsReset = false
 
     var body: some View {
@@ -397,28 +398,45 @@ struct AppearanceSettingsView: View {
 
     /// What the choice looks like in use: a filled button, accent text and a
     /// progress bar — the three ways the accent actually appears.
-    private var accentPreview: some View {
-        HStack(spacing: 14) {
-            Label(L10n.text("accent.preview_button"), systemImage: "play.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(settings.onAccent)
-                .padding(.horizontal, 16)
-                .frame(minHeight: PremiumLayout.minimumTapTarget)
-                .background(settings.accent, in: Capsule(style: .continuous))
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.text("accent.preview_link"))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(settings.accent)
-                ProgressView(value: 0.6)
-                    .tint(settings.accent)
+    @ViewBuilder private var accentPreview: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 14) {
+                    accentPreviewButton
+                    accentPreviewDetails
+                }
+            } else {
+                HStack(spacing: 14) {
+                    accentPreviewButton
+                    accentPreviewDetails
+                }
             }
         }
         .accessibilityHidden(true)
     }
 
+    private var accentPreviewButton: some View {
+        Label(L10n.text("accent.preview_button"), systemImage: "play.fill")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(settings.onAccent)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .frame(minHeight: PremiumLayout.minimumTapTarget)
+            .background(settings.accent, in: Capsule(style: .continuous))
+    }
+
+    private var accentPreviewDetails: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.text("accent.preview_link"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(settings.accent)
+            ProgressView(value: 0.6).tint(settings.accent)
+        }
+    }
+
     private var palettePicker: some View {
         LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 96), spacing: 12)],
+            columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 140 : 96), spacing: 12)],
             spacing: 14
         ) {
             ForEach(AppPalette.allCases) { palette in
@@ -436,7 +454,8 @@ struct AppearanceSettingsView: View {
                         Text(palette.title)
                             .font(.caption2)
                             .foregroundStyle(.primary)
-                            .lineLimit(1)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                            .multilineTextAlignment(.center)
                     }
                     .contentShape(Rectangle())
                 }
@@ -488,7 +507,7 @@ struct AppearanceSettingsView: View {
     private var accentPicker: some View {
         LazyVGrid(
             columns: [
-                GridItem(.adaptive(minimum: 64), spacing: 12)
+                GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 120 : 80), spacing: 12)
             ],
             spacing: 12
         ) {
@@ -530,7 +549,8 @@ struct AppearanceSettingsView: View {
                         Text(accent.title)
                             .font(.caption2)
                             .foregroundStyle(.primary)
-                            .lineLimit(1)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                            .multilineTextAlignment(.center)
                     }
                     .frame(minHeight: PremiumLayout.minimumTapTarget)
                     .contentShape(Rectangle())
@@ -548,7 +568,7 @@ struct AppearanceSettingsView: View {
     private var themePicker: some View {
         LazyVGrid(
             columns: [
-                GridItem(.adaptive(minimum: 72), spacing: 12)
+                GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 120 : 72), spacing: 12)
             ],
             spacing: 12
         ) {

@@ -65,14 +65,15 @@ struct PremiumCardModifier: ViewModifier {
 
 struct PremiumPressStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .contentShape(Rectangle())
             .scaleEffect(
-                reduceMotion || !configuration.isPressed ? 1 : 0.985
+                reduceMotion || !isEnabled || !configuration.isPressed ? 1 : 0.985
             )
-            .opacity(configuration.isPressed ? 0.85 : 1)
+            .opacity(!isEnabled ? 0.5 : configuration.isPressed ? 0.85 : 1)
             .animation(
                 reduceMotion
                     ? nil
@@ -84,6 +85,7 @@ struct PremiumPressStyle: ButtonStyle {
 
 struct PremiumProminentButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isEnabled) private var isEnabled
     @Environment(AppSettings.self) private var settings
 
     func makeBody(configuration: Configuration) -> some View {
@@ -98,15 +100,15 @@ struct PremiumProminentButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: PremiumLayout.controlRadius, style: .continuous)
                     .fill(settings.accent)
                     .shadow(
-                        color: settings.accent.opacity(configuration.isPressed ? 0.12 : 0.18),
+                        color: settings.accent.opacity(!isEnabled ? 0 : configuration.isPressed ? 0.12 : 0.18),
                         radius: 8,
                         y: 4
                     )
             }
             .scaleEffect(
-                reduceMotion || !configuration.isPressed ? 1 : 0.98
+                reduceMotion || !isEnabled || !configuration.isPressed ? 1 : 0.98
             )
-            .opacity(configuration.isPressed ? 0.85 : 1)
+            .opacity(!isEnabled ? 0.5 : configuration.isPressed ? 0.85 : 1)
             .animation(
                 reduceMotion
                     ? nil

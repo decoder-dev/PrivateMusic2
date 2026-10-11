@@ -81,21 +81,50 @@ final class DesignSnapshotTests: XCTestCase {
             .environment(environment.homeCatalogStore)
             .environment(\.colorScheme, settings.theme.colorScheme)
             .tint(settings.accent)
-        let controller = UIHostingController(rootView: content)
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
+            XCTFail("Snapshot requires the test host's window scene")
+            return
+        }
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let controller = UIHostingController(rootView: content.frame(width: width, height: height))
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        window.windowLevel = .alert + 1
         window.overrideUserInterfaceStyle = settings.theme == .dark ? .dark : .light
         window.rootViewController = controller
         window.makeKeyAndVisible()
         controller.view.frame = window.bounds
+        window.layoutIfNeeded()
         controller.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
-            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        let rendererFormat = UIGraphicsImageRendererFormat()
+        rendererFormat.scale = 2
+        rendererFormat.preferredRange = .standard
+        let image = UIGraphicsImageRenderer(bounds: controller.view.bounds, format: rendererFormat).image { _ in
+            controller.view.drawHierarchy(in: controller.view.bounds, afterScreenUpdates: true)
         }
+        assertVisibleContent(image, name: name)
         let attachment = XCTAttachment(image: image)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
         window.isHidden = true
+        previousWindow?.makeKey()
+    }
+
+    private func assertVisibleContent(_ image: UIImage, name: String) {
+        guard let cgImage = image.cgImage, cgImage.bitsPerPixel == 32,
+              let data = cgImage.dataProvider?.data, let bytes = CFDataGetBytePtr(data) else {
+            XCTFail("Unreadable snapshot: \(name)")
+            return
+        }
+        var darkest = 765
+        var brightest = 0
+        for offset in stride(from: 0, to: CFDataGetLength(data) - 3, by: 16) {
+            let brightness = Int(bytes[offset]) + Int(bytes[offset + 1]) + Int(bytes[offset + 2])
+            darkest = min(darkest, brightness)
+            brightest = max(brightest, brightness)
+        }
+        XCTAssertGreaterThan(brightest - darkest, 90, "Blank screenshot is not visual evidence: \(name)")
     }
 }
