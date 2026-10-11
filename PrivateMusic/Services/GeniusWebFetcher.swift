@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import WebKit
 
 /// Loads a Genius URL in a real WebKit engine. Genius sits behind a
@@ -36,10 +37,21 @@ final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
         )
         view.customUserAgent = Self.userAgent
         view.navigationDelegate = self
+        // A web view that belongs to no window gets its timers and scripts
+        // throttled, which is enough to stall a Cloudflare challenge. Keep
+        // it in the hierarchy, invisible and untouchable, for the load.
+        view.alpha = 0.01
+        view.isUserInteractionEnabled = false
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)?
+            .insertSubview(view, at: 0)
         webView = view
         defer {
             view.stopLoading()
             view.navigationDelegate = nil
+            view.removeFromSuperview()
             webView = nil
         }
         view.load(URLRequest(url: url))
@@ -59,8 +71,21 @@ final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
                   Self.isUsable(text, kind: kind) else {
                 continue
             }
+            AppLog.shared.info(
+                .network,
+                "genius web load ok host=\(url.host ?? "-") bytes=\(text.utf8.count)"
+            )
             return Data(text.utf8)
         }
+        // Say what the page was when we gave up (title and address only),
+        // so the next log shows whether it is a challenge or an error page.
+        let state = (try? await view.evaluateJavaScript(
+            "document.title + ' | ' + location.host + location.pathname"
+        )) as? String
+        AppLog.shared.error(
+            .network,
+            "genius web load gave up finished=\(didFinish) page=\(state ?? "unavailable")"
+        )
         throw APIError.invalidResponse
     }
 

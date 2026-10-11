@@ -162,6 +162,10 @@ struct GeniusLyricsService: Sendable {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode) else {
+            AppLog.shared.info(
+                .network,
+                "genius direct request rejected status=\((response as? HTTPURLResponse)?.statusCode ?? -1) host=\(url.host ?? "-")"
+            )
             throw APIError.invalidResponse
         }
         return data
