@@ -21,6 +21,50 @@ struct MixBackdropPalette: Equatable, Sendable {
     let bottomTrailing: RGB
 }
 
+extension MixBackdropPalette {
+    /// A stable four-colour palette derived from the mix id, so a mix with
+    /// no cover and no usable tracks still gets its own recognisable
+    /// artwork instead of the same flat colour as every other mix.
+    static func generated(for id: String) -> MixBackdropPalette {
+        let seed = id.unicodeScalars.reduce(UInt32(5381)) {
+            ($0 &* 33) &+ $1.value
+        }
+        let base = Double(seed % 360) / 360
+        func colour(_ shift: Double, _ brightness: Double) -> RGB {
+            let hue = (base + shift).truncatingRemainder(dividingBy: 1)
+            let (red, green, blue) = hsb(hue, 0.72, brightness)
+            return RGB(red: red, green: green, blue: blue)
+        }
+        return MixBackdropPalette(
+            topLeading: colour(0.00, 0.98),
+            topTrailing: colour(0.14, 0.78),
+            bottomLeading: colour(0.50, 0.92),
+            bottomTrailing: colour(0.64, 0.62)
+        )
+    }
+
+    private static func hsb(
+        _ hue: Double,
+        _ saturation: Double,
+        _ brightness: Double
+    ) -> (Double, Double, Double) {
+        let sector = hue * 6
+        let index = Int(sector) % 6
+        let fraction = sector - Double(Int(sector))
+        let low = brightness * (1 - saturation)
+        let falling = brightness * (1 - saturation * fraction)
+        let rising = brightness * (1 - saturation * (1 - fraction))
+        switch index {
+        case 0: return (brightness, rising, low)
+        case 1: return (falling, brightness, low)
+        case 2: return (low, brightness, rising)
+        case 3: return (low, falling, brightness)
+        case 4: return (rising, low, brightness)
+        default: return (brightness, low, falling)
+        }
+    }
+}
+
 enum MixBackdropParser {
     /// Reads the corner colours out of a Lottie file; nil when the data is
     /// not a Lottie animation or carries no usable colour.
