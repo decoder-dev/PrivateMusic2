@@ -1926,6 +1926,7 @@ struct MixesHubView: View {
             start(mix)
             return
         }
+        cancelPendingStations()
         player.playShuffled(
             in: loaded,
             continuation: mixContinuationProvider(
@@ -2276,7 +2277,7 @@ struct MixesHubView: View {
 
                 guard !Task.isCancelled else { return }
                 guard let started = queue.first else { return }
-                playTrack(started, queue: queue, mix: mix, applying: mode)
+                playTrack(started, queue: queue, mix: mix, applying: mode, finishingLaunchID: launchID)
             } catch is CancellationError {
                 return
             } catch {
@@ -2299,9 +2300,10 @@ struct MixesHubView: View {
         _ track: Track,
         queue: [Track],
         mix: MusicMix,
-        applying mode: MixRadioMode? = nil
+        applying mode: MixRadioMode? = nil,
+        finishingLaunchID: UUID? = nil
     ) {
-        if startingMood != nil || startingArtistKey != nil {
+        if finishingLaunchID == nil {
             cancelPendingStations()
         }
         player.play(
