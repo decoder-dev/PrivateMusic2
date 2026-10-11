@@ -403,6 +403,16 @@ enum JSONValue: Codable, Sendable {
             if isMix,
                let baseID = explicitID ?? object["id"]?.stringValue,
                !baseID.isEmpty {
+                if let raw = object["background_animation_url"]?.stringValue,
+                   let url = URL(string: raw) {
+                    // Diagnostic only: shows what kind of file VK uses as the
+                    // mix backdrop (Lottie json, video, image) without
+                    // logging the signed URL itself.
+                    AppLog.shared.info(
+                        .mix,
+                        "mix backdrop id=\(baseID) ext=\(url.pathExtension) host=\(url.host ?? "-")"
+                    )
+                }
                 let options = object.mixStreamOptions
                 let id = options.map {
                     baseID + String(MusicMix.optionsSeparator) + $0
