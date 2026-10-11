@@ -1065,6 +1065,7 @@ final class AppEnvironment {
     /// recommendation seed, then a plain search. Every branch stays about
     /// this artist — none of them fall back to the generic library mix.
     func startMixFromArtist(named name: String, seed: Track?) async {
+        guard !Task.isCancelled else { return }
         mixActionError = nil
         let query = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
@@ -1122,6 +1123,7 @@ final class AppEnvironment {
         } catch is CancellationError {
             return
         } catch {
+            guard !Task.isCancelled else { return }
             if let seed {
                 await startMixFromTrack(seed)
             } else {

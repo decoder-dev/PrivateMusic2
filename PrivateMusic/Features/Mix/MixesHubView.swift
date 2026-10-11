@@ -34,6 +34,7 @@ struct MixesHubView: View {
     /// list pagination, or a VK page load cancels the launch mid-flight.
     @State private var launchTask: Task<Void, Never>?
     @State private var seedRadioTask: Task<Void, Never>?
+    @State private var stationLaunchID = UUID()
 
     @State private var selectedVKMix: MusicMix?
     @State private var vkTracks: [Track] = []
@@ -228,8 +229,7 @@ struct MixesHubView: View {
         }
         .onDisappear {
             trackLoadTask?.cancel()
-            launchTask?.cancel()
-            seedRadioTask?.cancel()
+            cancelPendingStations()
             coverPreviewTask?.cancel()
         }
     }
@@ -1061,7 +1061,9 @@ struct MixesHubView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
 
-                HStack(spacing: 10) {
+                (dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+                    : AnyLayout(HStackLayout(spacing: 10))) {
                     if canTune(mix) {
                         mixTuningEntry(for: mix)
                     }
@@ -1072,7 +1074,9 @@ struct MixesHubView: View {
             // Hero owns Play. This row is shuffle + keep/hide only —
             // a second "Play all" next to the play circle was the same
             // verb twice on one card.
-            HStack(spacing: 10) {
+            (dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+                    : AnyLayout(HStackLayout(spacing: 10))) {
                 Button {
                     shuffle(mix)
                 } label: {
@@ -1081,7 +1085,7 @@ struct MixesHubView: View {
                         systemImage: "shuffle"
                     )
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     .minimumScaleFactor(0.8)
                 }
                 .buttonStyle(.bordered)
@@ -1099,7 +1103,7 @@ struct MixesHubView: View {
                             : "bookmark"
                     )
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     .minimumScaleFactor(0.8)
                 }
                 .buttonStyle(.bordered)
@@ -1141,7 +1145,7 @@ struct MixesHubView: View {
                         systemImage: "hand.thumbsdown"
                     )
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     .minimumScaleFactor(0.8)
                 }
                 .buttonStyle(.bordered)
@@ -1271,10 +1275,16 @@ struct MixesHubView: View {
                             Button {
                                 guard startingArtistKey == nil, startingMood == nil else { return }
                                 Haptics.selection()
+                                cancelPendingStations()
+                                let launchID = stationLaunchID
                                 startingArtistKey = artist.id
-                                seedRadioTask?.cancel()
                                 seedRadioTask = Task {
-                                    defer { startingArtistKey = nil }
+                                    defer {
+                                        if stationLaunchID == launchID {
+                                            startingArtistKey = nil
+                                            seedRadioTask = nil
+                                        }
+                                    }
                                     await environment.startMixFromArtist(
                                         named: artist.displayName, seed: nil
                                     )
@@ -1337,10 +1347,16 @@ struct MixesHubView: View {
                         ) {
                             guard startingMood == nil, startingArtistKey == nil else { return }
                             Haptics.selection()
+                            cancelPendingStations()
+                            let launchID = stationLaunchID
                             startingMood = mood
-                            launchTask?.cancel()
                             launchTask = Task {
-                                defer { startingMood = nil }
+                                defer {
+                                    if stationLaunchID == launchID {
+                                        startingMood = nil
+                                        launchTask = nil
+                                    }
+                                }
                                 await environment.startMoodStation(mood, in: vkMixes)
                             }
                         }
@@ -2208,12 +2224,26 @@ struct MixesHubView: View {
         start(mix)
     }
 
+    /// A late station reply must not replace the listener's next choice.
+    private func cancelPendingStations() {
+        stationLaunchID = UUID()
+        if launchTask != nil { loadingMixID = nil }
+        launchTask?.cancel()
+        seedRadioTask?.cancel()
+        launchTask = nil
+        seedRadioTask = nil
+        startingMood = nil
+        startingArtistKey = nil
+    }
+
     @MainActor
     private func start(
         _ mix: MusicMix,
         applying mode: MixRadioMode? = nil
     ) {
         guard sessionStore.accessToken != nil else { return }
+        cancelPendingStations()
+        let launchID = stationLaunchID
         if selectedVKMix?.id != mix.id {
             selectVKMix(mix)
         }
@@ -2229,9 +2259,13 @@ struct MixesHubView: View {
             return
         }
         loadingMixID = mix.id
-        launchTask?.cancel()
         launchTask = Task {
-            defer { loadingMixID = nil }
+            defer {
+                if stationLaunchID == launchID {
+                    loadingMixID = nil
+                    launchTask = nil
+                }
+            }
             do {
                 let bootstrap = try await bootstrapTracks(for: mix)
                 guard !Task.isCancelled else { return }
@@ -2246,6 +2280,7 @@ struct MixesHubView: View {
             } catch is CancellationError {
                 return
             } catch {
+                guard !Task.isCancelled else { return }
                 actionError = error.localizedDescription
             }
         }
@@ -2266,6 +2301,9 @@ struct MixesHubView: View {
         mix: MusicMix,
         applying mode: MixRadioMode? = nil
     ) {
+        if startingMood != nil || startingArtistKey != nil {
+            cancelPendingStations()
+        }
         player.play(
             track,
             in: queue,
