@@ -66,7 +66,6 @@ final class DesignSnapshotTests: XCTestCase {
             .environment(environment.historyStore)
             .environment(environment.homeCatalogStore)
             .environment(\.colorScheme, settings.theme.colorScheme)
-            .environment(\.accessibilityReduceMotion, true)
             .tint(settings.accent)
         let controller = UIHostingController(rootView: content)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: height))

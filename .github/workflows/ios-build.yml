@@ -122,7 +122,7 @@ jobs:
 
   build:
     name: Build IPA (Xcode 27)
-    needs: test
+    needs: [lint, test]
     runs-on: xcode-27
     permissions:
       contents: write
