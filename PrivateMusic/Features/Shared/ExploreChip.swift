@@ -47,7 +47,7 @@ struct ExploreChip: View {
             .padding(.vertical, 8)
             .frame(
                 maxWidth: isFlexible ? .infinity : nil,
-                minHeight: PremiumLayout.minimumTapTarget
+                minHeight: isFlexible ? 64 : PremiumLayout.minimumTapTarget
             )
             .background(
                 Capsule(style: .continuous)

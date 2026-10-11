@@ -825,7 +825,6 @@ struct MixesHubView: View {
         }
         .padding(22)
         .padding(.trailing, dynamicTypeSize.isAccessibilitySize ? 0 : 72)
-
         .padding(.top, dynamicTypeSize.isAccessibilitySize ? 74 : 0)
         .frame(width: metrics.contentWidth, alignment: .leading)
         .frame(minHeight: metrics.heroHeight, alignment: .bottomLeading)
