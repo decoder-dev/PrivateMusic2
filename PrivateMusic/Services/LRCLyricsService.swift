@@ -10,12 +10,11 @@ struct LRCLyricsService: Sendable {
         )
         components?.queryItems = [
             URLQueryItem(name: "track_name", value: track.title),
-            URLQueryItem(name: "artist_name", value: track.artist),
-            URLQueryItem(
-                name: "duration",
-                value: String(Int(track.duration.rounded()))
-            )
+            URLQueryItem(name: "artist_name", value: track.artist)
         ]
+        if let duration = Self.durationQueryValue(track.duration) {
+            components?.queryItems?.append(URLQueryItem(name: "duration", value: duration))
+        }
         guard let url = components?.url else {
             throw APIError.invalidRequest
         }
@@ -26,6 +25,7 @@ struct LRCLyricsService: Sendable {
         configuration.urlCache = nil
         configuration.timeoutIntervalForRequest = 20
         let session = URLSession(configuration: configuration)
+        defer { session.finishTasksAndInvalidate() }
 
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -47,11 +47,14 @@ struct LRCLyricsService: Sendable {
             [LRCLyricsCandidate].self,
             from: data
         )
-        guard let match = candidates.min(by: {
+        guard let match = candidates.filter({ candidate in
+            [candidate.plainLyrics, candidate.syncedLyrics].compactMap { $0 }
+                .contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }).min(by: {
             abs($0.duration - track.duration)
                 < abs($1.duration - track.duration)
         }),
-              track.duration <= 0
+              !track.duration.isFinite || track.duration <= 0
                 || abs(match.duration - track.duration)
                     <= max(12, track.duration * 0.08) else {
             throw APIError.server(
@@ -80,28 +83,33 @@ struct LRCLyricsService: Sendable {
         )
     }
 
-    private static func parseSynced(_ value: String) -> [LyricLine] {
-        value.split(separator: "\n").compactMap { rawLine in
-            let line = String(rawLine)
-            guard line.first == "[",
-                  let closing = line.firstIndex(of: "]") else {
-                return nil
+    static func durationQueryValue(_ duration: TimeInterval) -> String? {
+        guard duration.isFinite, duration > 0,
+              duration.rounded() < Double(Int.max) else { return nil }
+        return String(Int(duration.rounded()))
+    }
+
+    static func parseSynced(_ value: String) -> [LyricLine] {
+        var identifiers = Set<String>()
+        return value.split(separator: "\n").flatMap { rawLine -> [LyricLine] in
+            var remainder = rawLine.trimmingCharacters(in: .whitespaces)
+            var times: [TimeInterval] = []
+            while remainder.first == "[", let closing = remainder.firstIndex(of: "]") {
+                let stamp = remainder[remainder.index(after: remainder.startIndex)..<closing]
+                let parts = stamp.split(separator: ":", maxSplits: 1)
+                guard parts.count == 2,
+                      let minutes = Double(parts[0]), minutes.isFinite, minutes >= 0,
+                      let seconds = Double(parts[1]), seconds.isFinite, (0..<60).contains(seconds),
+                      (minutes * 60 + seconds).isFinite else { return [] }
+                times.append(minutes * 60 + seconds)
+                remainder = String(remainder[remainder.index(after: closing)...])
+                    .trimmingCharacters(in: .whitespaces)
             }
-            let stamp = line[line.index(after: line.startIndex)..<closing]
-            let parts = stamp.split(separator: ":", maxSplits: 1)
-            guard parts.count == 2,
-                  let minutes = Double(parts[0]),
-                  let seconds = Double(parts[1]) else {
-                return nil
+            guard !remainder.isEmpty else { return [] }
+            return times.compactMap { time in
+                let line = LyricLine(time: time, text: remainder)
+                return identifiers.insert(line.id).inserted ? line : nil
             }
-            let textStart = line.index(after: closing)
-            let text = line[textStart...]
-                .trimmingCharacters(in: .whitespaces)
-            guard !text.isEmpty else { return nil }
-            return LyricLine(
-                time: minutes * 60 + seconds,
-                text: text
-            )
         }
         .sorted { $0.time < $1.time }
     }

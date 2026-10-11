@@ -1,7 +1,35 @@
 import XCTest
 @testable import PrivateMusic
 
-final class GeniusLyricsServiceTests: XCTestCase {
+@MainActor final class GeniusLyricsServiceTests: XCTestCase {
+    func testChallengeAndErrorBodiesAreNotAcceptedAsLyrics() {
+        XCTAssertFalse(GeniusResponsePolicy.isUsable("<title>Just a moment</title>", kind: .html))
+        XCTAssertFalse(GeniusResponsePolicy.isUsable("<html>Artist lyrics unavailable</html>", kind: .html))
+        XCTAssertFalse(GeniusResponsePolicy.isUsable("{\"message\":\"response unavailable\"}", kind: .json))
+        XCTAssertTrue(GeniusResponsePolicy.isUsable("{\"response\":{\"sections\":[]}}", kind: .json))
+        XCTAssertTrue(GeniusResponsePolicy.isUsable("<div data-lyrics-container=\"true\">Line</div>", kind: .html))
+    }
+
+    func testSongURLsRejectLookalikeHostsAndNonSongPages() {
+        XCTAssertNil(GeniusResponsePolicy.songURL("https://evilgenius.com/song-lyrics"))
+        XCTAssertNil(GeniusResponsePolicy.songURL("https://genius.com.attacker.test/song-lyrics"))
+        XCTAssertNil(GeniusResponsePolicy.songURL("https://genius.com/artists/Artist"))
+        XCTAssertNotNil(GeniusResponsePolicy.songURL("https://genius.com/Artist-song-lyrics?ref=search"))
+    }
+
+    func testParserKeepsEntitiesAndSkipsEmbeddedResources() throws {
+        let html = """
+        <div data-lyrics-container="true">Rock &amp; roll<br>\
+        &quot;Hello&quot; &#x1F3B5;<img src="https://example.com/image.png">\
+        <script>Not lyrics</script><style>Not lyrics either</style></div>
+        """
+        let result = try XCTUnwrap(GeniusLyricsService.extractLyrics(from: html))
+        XCTAssertTrue(result.contains("Rock & roll"))
+        XCTAssertTrue(result.contains("\"Hello\" 🎵"))
+        XCTAssertFalse(result.contains("Not lyrics"))
+        XCTAssertFalse(result.contains("example.com"))
+    }
+
     func testSearchURLKeepsArtistAndTitleAsOneQuery() throws {
         let track = Track(
             trackID: 1,

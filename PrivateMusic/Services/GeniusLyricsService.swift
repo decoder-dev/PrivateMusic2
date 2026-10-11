@@ -8,7 +8,9 @@ struct GeniusLyricsService: Sendable {
     func lyrics(for track: Track) async throws -> Lyrics {
         let songURL = try await findSong(for: track)
         let html = try await request(songURL, accept: "text/html", kind: .html)
-        guard let text = Self.extractLyrics(from: html),
+        let extracted = await MainActor.run { Self.extractLyrics(from: html) }
+        try Task.checkCancellation()
+        guard let text = extracted,
               !text.isEmpty else {
             throw APIError.server(
                 code: 404,
@@ -53,8 +55,7 @@ struct GeniusLyricsService: Sendable {
                 artist: track.artist,
                 title: track.title
             ),
-               let url = URL.secureRemoteURL(match.url),
-               url.host?.lowercased().hasSuffix("genius.com") == true {
+               let url = GeniusResponsePolicy.songURL(match.url) {
                 return url
             }
         }
@@ -96,7 +97,7 @@ struct GeniusLyricsService: Sendable {
                 // Song pages end in «-lyrics»; artist and album pages do not.
                 guard let title = result.title,
                       let url = result.url,
-                      url.hasSuffix("-lyrics"),
+                      GeniusResponsePolicy.songURL(url) != nil,
                       let artist = result.primaryArtist?.name else {
                     return nil
                 }
@@ -126,7 +127,14 @@ struct GeniusLyricsService: Sendable {
         kind: GeniusWebFetcher.Kind
     ) async throws -> Data {
         do {
-            return try await directData(url, accept: accept)
+            let data = try await directData(url, accept: accept)
+            guard let text = String(data: data, encoding: .utf8),
+                  GeniusResponsePolicy.isUsable(text, kind: kind) else {
+                // A challenge can be returned with HTTP 200. Validate the
+                // body here so it reaches the browser fallback too.
+                throw APIError.invalidResponse
+            }
+            return data
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as URLError
@@ -171,7 +179,7 @@ struct GeniusLyricsService: Sendable {
         return data
     }
 
-    static func extractLyrics(from html: String) -> String? {
+    @MainActor static func extractLyrics(from html: String) -> String? {
         let containerPatterns = [
             #"<div\b[^>]*\bdata-lyrics-container\s*=\s*["']true["'][^>]*>"#,
             #"<div\b[^>]*\bclass\s*=\s*["'][^"']*(?:Lyrics__Container|\blyrics\b)[^"']*["'][^>]*>"#
@@ -229,8 +237,17 @@ struct GeniusLyricsService: Sendable {
         }
         guard !fragments.isEmpty else { return nil }
         let joined = fragments.joined(separator: "<br>")
+        // The importer only needs text, entities and line breaks. Strip
+        // resource-bearing markup so lyric extraction cannot fetch images
+        // or stylesheets and stall the main-thread HTML importer.
+        let safeHTML = joined
+            .replacingOccurrences(of: #"(?is)<(script|style|iframe|object)\b[^>]*>.*?</\1\s*>"#,
+                                  with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"(?i)</?(?:div|p)\b[^>]*>|<br\b[^>]*>"#,
+                                  with: "<br>", options: .regularExpression)
+            .replacingOccurrences(of: #"<(?!br>)[^>]*>"#, with: "", options: .regularExpression)
         guard let attributed = try? NSAttributedString(
-            data: Data(joined.utf8),
+            data: Data(safeHTML.utf8),
             options: [
                 .documentType: NSAttributedString.DocumentType.html,
                 .characterEncoding: String.Encoding.utf8.rawValue

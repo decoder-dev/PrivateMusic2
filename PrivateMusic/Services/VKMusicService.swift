@@ -46,8 +46,7 @@ struct VKMusicService: MusicService {
     let client: APIClient
     private let apiVersion: String
     private let context: VKMusicContext
-    private let lyricsService = LRCLyricsService()
-    private let geniusLyricsService = GeniusLyricsService()
+    private let publicLyricsService = PublicLyricsService()
 
     init(
         client: APIClient,
@@ -1149,26 +1148,7 @@ struct VKMusicService: MusicService {
                 // Next source.
             }
         }
-        var lastError: Error = APIError.invalidResponse
-        do {
-            return try await lyricsService.lyrics(for: track)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            lastError = error
-        }
-        do {
-            return try await geniusLyricsService.lyrics(for: track)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            // Genius can reject automated requests in some regions.
-            AppLog.shared.info(
-                .app,
-                "genius lyrics unavailable: \(error.localizedDescription)"
-            )
-        }
-        throw lastError
+        return try await publicLyricsService.lyrics(for: track)
     }
 
     func createPlaylist(

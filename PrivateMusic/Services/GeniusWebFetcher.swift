@@ -68,7 +68,7 @@ final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
             guard didFinish else { continue }
             let value = try? await view.evaluateJavaScript(script)
             guard let text = value as? String,
-                  Self.isUsable(text, kind: kind) else {
+                  GeniusResponsePolicy.isUsable(text, kind: kind) else {
                 continue
             }
             AppLog.shared.info(
@@ -87,21 +87,6 @@ final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
             "genius web load gave up finished=\(didFinish) page=\(state ?? "unavailable")"
         )
         throw APIError.invalidResponse
-    }
-
-    private static func isUsable(_ text: String, kind: Kind) -> Bool {
-        switch kind {
-        case .json:
-            return text.trimmingCharacters(in: .whitespacesAndNewlines)
-                .hasPrefix(String(UnicodeScalar(123)))
-                && text.contains("\"response\"")
-        case .html:
-            let lower = text.lowercased()
-            return !lower.contains("cloudflare_error.challenge")
-                && !lower.contains("just a moment")
-                && !lower.contains("challenge-platform")
-                && lower.contains("lyrics")
-        }
     }
 
     func webView(

@@ -10,12 +10,22 @@ struct LyricsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     let track: Track
+    private let initialLyrics: Lyrics?
     @State private var lyrics: Lyrics?
     @State private var errorMessage: String?
     @State private var isLoading = true
     @State private var copiedLineID: String?
+    @State private var copiedFeedbackID = UUID()
     @State private var activeLineIndex = 0
     @State private var followsPlayback = true
+    @State private var reloadID = UUID()
+
+    init(track: Track, initialLyrics: Lyrics? = nil) {
+        self.track = track
+        self.initialLyrics = initialLyrics
+        _lyrics = State(initialValue: initialLyrics)
+        _isLoading = State(initialValue: initialLyrics == nil)
+    }
 
     var body: some View {
         NavigationStack {
@@ -29,6 +39,7 @@ struct LyricsView: View {
                         VStack(alignment: .leading, spacing: 18) {
                             Text(lyrics.text)
                                 .font(.title3)
+                                .lineSpacing(8)
                                 .textSelection(.enabled)
                                 .frame(
                                     maxWidth: .infinity,
@@ -50,11 +61,13 @@ struct LyricsView: View {
                         geniusLink(title: "find_lyrics_on_genius")
                         if errorMessage != nil {
                             Button(L10n.text("action.retry")) {
-                                Task { await load() }
+                                reloadID = UUID()
                             }
                             .buttonStyle(.bordered)
                         }
                     }
+                    .padding(.horizontal, PremiumLayout.screenPadding)
+                    .padding(.bottom, 24)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -79,7 +92,16 @@ struct LyricsView: View {
                 }
             }
         }
-        .task { await load() }
+        .task(id: reloadID) {
+            if initialLyrics == nil { await load() }
+        }
+        .task(id: copiedFeedbackID) {
+            guard copiedLineID != nil else { return }
+            do {
+                try await Task.sleep(for: .seconds(1.5))
+                copiedLineID = nil
+            } catch { return }
+        }
         .presentationDragIndicator(.visible)
     }
 
@@ -96,11 +118,7 @@ struct LyricsView: View {
                         } label: {
                             HStack(alignment: .top, spacing: 10) {
                                 Text(line.text)
-                                    .font(
-                                        isActive
-                                            ? .title2.weight(.bold)
-                                            : .title3.weight(.semibold)
-                                    )
+                                    .font(.title2.weight(.semibold))
                                     .foregroundStyle(
                                         isActive
                                             ? AnyShapeStyle(settings.accent)
@@ -202,33 +220,21 @@ struct LyricsView: View {
                 Image(systemName: "arrow.up.right")
             }
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.black)
-                .padding(.horizontal, 14)
-                .frame(minHeight: 44)
-                .background(
-                    Color(red: 1, green: 0.98, blue: 0.18),
-                    in: Capsule()
-                )
         }
-        .buttonStyle(PremiumPressStyle())
+        .buttonStyle(PremiumProminentButtonStyle())
     }
 
     private func resolvedActiveLineIndex(in lyrics: Lyrics) -> Int {
         let elapsed = player.currentTrack?.id == track.id
             ? progress.elapsedTime
             : 0
-        return lyrics.lines.lastIndex { $0.time <= elapsed } ?? 0
+        return lyrics.lines.lastIndex { $0.time <= elapsed } ?? -1
     }
 
     private func copy(_ line: LyricLine) {
         UIPasteboard.general.string = line.text
         copiedLineID = line.id
-        // The tick is feedback, not state: let it go.
-        let copied = line.id
-        Task {
-            try? await Task.sleep(for: .seconds(1.5))
-            if copiedLineID == copied { copiedLineID = nil }
-        }
+        copiedFeedbackID = UUID()
         Haptics.selection()
         UIAccessibility.post(
             notification: .announcement,
@@ -239,24 +245,22 @@ struct LyricsView: View {
     private func load() async {
         isLoading = true
         errorMessage = nil
-        guard sessionStore.accessToken != nil else {
-            // Say why there is nothing, and offer Retry, instead of the
-            // misleading "no lyrics found".
-            errorMessage = L10n.text("session_error")
-            isLoading = false
-            return
-        }
         defer { isLoading = false }
         do {
-            lyrics = try await environment.withAuthorizedToken { token in
-                try await environment.musicService.lyrics(
-                    for: track,
-                    accessToken: token
-                )
+            let loaded: Lyrics
+            if sessionStore.accessToken != nil {
+                loaded = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.lyrics(for: track, accessToken: token)
+                }
+            } else {
+                loaded = try await PublicLyricsService().lyrics(for: track)
             }
+            try Task.checkCancellation()
+            lyrics = loaded
         } catch is CancellationError {
             return
         } catch {
+            guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
         }
     }

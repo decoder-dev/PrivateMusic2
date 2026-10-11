@@ -33,7 +33,13 @@ final class DesignSnapshotTests: XCTestCase {
                     environment: environment, settings: settings)
             capture(PlayerView(), name: "player-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            capture(LyricsView(track: track, initialLyrics: Lyrics(
+                text: "Тихий вечер\nСвет в окне\nМузыка остаётся со мной", source: "Genius",
+                sourceURL: URL(string: "https://genius.com/Private-music-evening-lyrics")
+            )), name: "lyrics-\(theme.rawValue)", environment: environment, settings: settings)
         }
+        capture(PlayerView(), name: "player-compact", width: 320, height: 700,
+                environment: environment, settings: settings)
         settings.theme = .light
         settings.palette = .banana
         settings.accentChoice = .banana

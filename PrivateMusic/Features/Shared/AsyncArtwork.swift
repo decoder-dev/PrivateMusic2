@@ -16,10 +16,11 @@ struct AsyncArtwork: View {
                 .scaledToFill()
         } placeholder: {
             ZStack {
+                settings.surfaceColor
                 LinearGradient(
                     colors: [
-                        settings.theme.secondaryAccent,
-                        settings.theme.secondaryAccent
+                        settings.accent.opacity(0.08),
+                        settings.accent.opacity(0.16)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing

@@ -606,7 +606,7 @@ struct PlayerView: View {
                 Haptics.selection()
                 player.toggleShuffle()
             }
-            Spacer()
+            Spacer(minLength: 0)
             transportSkipButton(
                 systemImage: "backward.fill",
                 accessibilityLabel: "previous_track"
@@ -614,9 +614,9 @@ struct PlayerView: View {
                 Haptics.trackChange()
                 player.previous()
             }
-            Spacer()
+            Spacer(minLength: 0)
             playPauseButton
-            Spacer()
+            Spacer(minLength: 0)
             transportSkipButton(
                 systemImage: "forward.fill",
                 accessibilityLabel: "next_track"
@@ -624,7 +624,7 @@ struct PlayerView: View {
                 Haptics.trackChange()
                 player.next()
             }
-            Spacer()
+            Spacer(minLength: 0)
             secondaryButton(
                 player.repeatMode.systemImage,
                 active: player.repeatMode != .off,
@@ -645,13 +645,10 @@ struct PlayerView: View {
                 player.playPause()
             } label: {
                 playPauseLabel
+                    .foregroundStyle(playerBackground)
+                    .glassEffect(.regular.tint(playerForeground).interactive(), in: Circle())
             }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.circle)
-            .clipShape(Circle())
-            .tint(playerForeground)
-            .foregroundStyle(playerBackground)
-            .controlSize(.large)
+            .buttonStyle(PlayerControlStyle())
             .accessibilityLabel(playPauseAccessibilityLabel)
         } else {
             Button {
@@ -753,11 +750,11 @@ struct PlayerView: View {
             Button(action: action) {
                 Image(systemName: systemImage)
                     .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(playerForeground)
                     .frame(width: 52, height: 52)
+                    .glassEffect(.regular.interactive(), in: Circle())
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
-            .tint(playerForeground)
+            .buttonStyle(PlayerControlStyle())
             .accessibilityLabel(L10n.text(accessibilityLabel))
         } else {
             Button(action: action) {
@@ -787,11 +784,11 @@ struct PlayerView: View {
                 Button(action: action) {
                     Image(systemName: systemImage)
                         .font(font)
+                        .foregroundStyle(resolvedTint)
                         .frame(width: 44, height: 44)
+                        .glassEffect(.regular.interactive(), in: Circle())
                 }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .tint(resolvedTint)
+                .buttonStyle(PlayerControlStyle())
                 .disabled(disabled)
             } else {
                 Button(action: action) {
@@ -830,15 +827,11 @@ struct PlayerView: View {
             Button(action: action) {
                 Image(systemName: image)
                     .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(active ? settings.accent : playerForeground.opacity(0.55))
                     .frame(width: 44, height: 44)
+                    .glassEffect(.regular.interactive(), in: Circle())
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
-            .tint(
-                active
-                    ? settings.accent
-                    : playerForeground.opacity(0.55)
-            )
+            .buttonStyle(PlayerControlStyle())
             .opacity(active ? 1 : 0.85)
             .accessibilityLabel(L10n.text(label))
             .accessibilityValue(L10n.text(accessibilityValue))
@@ -1316,7 +1309,7 @@ struct PlayerLayoutMetrics: Equatable {
             artworkRatio = portraitValue(0.35, 0.42)
         }
 
-        let primaryControlsHeight: CGFloat = 60
+        let primaryControlsHeight: CGFloat = 64
         let axExtra = usesAccessibilityText
             ? CGFloat(max(accessibilityStep, 1) - 1) * 14
             : 0

@@ -1246,11 +1246,11 @@ if "loadedIdentity == loadIdentity ? image : nil" not in cached_image_source:
     fail("cached artwork must never display a stale request identity")
 if "Text(track.duration.formattedDuration)" not in library_view_source:
     fail("library track rows must display track duration")
-if ".buttonStyle(.glassProminent)" not in player_view_source:
-    fail(f"player is missing full-bleed/glass symbol: .buttonStyle(.glassProminent)")
+if ".glassEffect(.regular.tint(playerForeground).interactive(), in: Circle())" not in player_view_source:
+    fail("player play control must retain an explicit tinted glass surface")
 for required_player_symbol in (
     ".background(playerBackground.ignoresSafeArea())",
-    ".buttonStyle(.glass)",
+    ".glassEffect(.regular.interactive(), in: Circle())",
     "Do NOT wrap transport buttons in GlassEffectContainer",
     ".simultaneousGesture(fullScreenDismissGesture)",
     "PlayerDismissGesturePolicy.shouldDismiss",
@@ -1296,7 +1296,8 @@ if "HomeNextStepRefreshKey" not in all_source:
     fail("Home must cache What's Next behind HomeNextStepRefreshKey")
 if "task(id: nextStepRefreshKey)" not in catalog_view_source:
     fail("CatalogView must rebuild What's Next only when inputs change")
-# Mini-player uses plain controls; full-screen player keeps glassProminent.
+# Explicit glass surfaces preserve control sizes; native glass button styles
+# add padding and can push the five transport controls outside narrow screens.
 for required_preload_symbol in (
     "PlaybackPreloadPolicy.nextIndex",
     "PlaybackPreloadPolicy.forwardBufferDuration",
