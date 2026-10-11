@@ -75,6 +75,9 @@ struct MixesHubView: View {
     @State private var tunedMixes: [MusicMix] = []
 
     private let defaultPreviewTrackLimit = 15
+    /// Unfiltered tracks to gather for a mix before the page stops asking VK
+    /// for more; leaves a full «For You» row after filtering.
+    private static let forYouTarget = 40
     private let expandedPreviewTrackLimit = 60
 
     var body: some View {
@@ -2119,13 +2122,37 @@ struct MixesHubView: View {
                     )
                 }
                 guard !Task.isCancelled else { return }
-                await MainActor.run {
+                let seed = await MainActor.run {
                     let base = baseTracks(for: mix)
-                    let seed = base.isEmpty ? tracks(for: mix) : base
-                    storeTracks(
-                        mergeUnfiltered(seed, more),
-                        for: mix
-                    )
+                    return base.isEmpty ? tracks(for: mix) : base
+                }
+                var collected = mergeUnfiltered(seed, more)
+                let firstBatch = collected
+                await MainActor.run {
+                    storeTracks(firstBatch, for: mix)
+                }
+                // VK hands a stream mix out in small batches, so one page
+                // leaves «For You» nearly empty once hidden tracks and the
+                // language/familiarity filters are applied. Keep asking
+                // (a few rounds at most) until there is a full row to show.
+                var rounds = 0
+                while collected.count < Self.forYouTarget, rounds < 4 {
+                    rounds += 1
+                    let next = try await environment.withAuthorizedToken {
+                        token in
+                        try await cursor.next(
+                            accessToken: token,
+                            musicService: environment.musicService
+                        )
+                    }
+                    guard !Task.isCancelled else { return }
+                    let merged = mergeUnfiltered(collected, next)
+                    if merged.count == collected.count { break }
+                    collected = merged
+                    let snapshot = merged
+                    await MainActor.run {
+                        storeTracks(snapshot, for: mix)
+                    }
                 }
             } catch is CancellationError {
                 return

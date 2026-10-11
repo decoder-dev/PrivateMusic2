@@ -403,6 +403,19 @@ enum JSONValue: Codable, Sendable {
             if isMix,
                let baseID = explicitID ?? object["id"]?.stringValue,
                !baseID.isEmpty {
+                // Diagnostic only: which fields the tile carries and where
+                // its cover comes from (host and file name, never a query).
+                if let cover = object.mixCoverURL {
+                    AppLog.shared.info(
+                        .mix,
+                        "mix cover id=\(baseID) host=\(cover.host ?? "-") file=\(cover.lastPathComponent) keys=\(object.keys.sorted().joined(separator: ","))"
+                    )
+                } else {
+                    AppLog.shared.info(
+                        .mix,
+                        "mix without cover id=\(baseID) keys=\(object.keys.sorted().joined(separator: ","))"
+                    )
+                }
                 if let raw = object["background_animation_url"]?.stringValue,
                    let url = URL(string: raw) {
                     // Diagnostic only: shows what kind of file VK uses as the
