@@ -455,18 +455,6 @@ actor HLSSegmentExporter {
 
         let timescale = CMTimeScale(initialization.timescale)
 
-        var asbd = AudioStreamBasicDescription(
-            mSampleRate: initialization.sampleRate,
-            mFormatID: kAudioFormatMPEG4AAC,
-            // MPEG-4 Audio Object Type 2 = AAC Low Complexity.
-            mFormatFlags: 2,
-            mBytesPerPacket: 0,
-            mFramesPerPacket: 1024,
-            mBytesPerFrame: 0,
-            mChannelsPerFrame: initialization.channelCount,
-            mBitsPerChannel: 0,
-            mReserved: 0
-        )
         guard let magicCookie = initialization.elementaryStreamDescriptor else {
             throw HLSDiagnosticError(
                 stage: .creatingWriter,
@@ -476,6 +464,7 @@ actor HLSSegmentExporter {
                 safeDetail: nil
             )
         }
+        var asbd = try AACSourceFormat.resolve(cookie: magicCookie)
         var activeFormat: CMAudioFormatDescription?
         let creationStatus = magicCookie.withUnsafeBytes { cookie in
             CMAudioFormatDescriptionCreate(

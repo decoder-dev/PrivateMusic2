@@ -4,6 +4,29 @@ import XCTest
 @testable import PrivateMusic
 
 final class AudioExportQualityTests: XCTestCase {
+    func testCMAFFormatRetainsHEAACExtensionRate() throws {
+        let format = try AACSourceFormat.resolve(cookie: cookie(asc: [0x2b, 0x92, 0x08, 0x00]))
+        XCTAssertEqual(format.mSampleRate, 44_100)
+        XCTAssertEqual(format.mChannelsPerFrame, 2)
+        XCTAssertEqual(format.mFormatID, kAudioFormatMPEG4AAC_HE)
+    }
+
+    func testCMAFFormatResolvesAACLCFromTheSourceCookie() throws {
+        let format = try AACSourceFormat.resolve(cookie: cookie(asc: [0x12, 0x10]))
+        XCTAssertEqual(format.mSampleRate, 44_100)
+        XCTAssertEqual(format.mChannelsPerFrame, 2)
+        XCTAssertEqual(format.mFramesPerPacket, 1_024)
+        XCTAssertEqual(format.mFormatID, kAudioFormatMPEG4AAC)
+    }
+
+    private func cookie(asc: [UInt8]) -> Data {
+        Data([0x03, UInt8(23 + asc.count), 0x00, 0x01, 0x00,
+              0x04, UInt8(15 + asc.count), 0x40, 0x15,
+              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+              0x00, 0x00, 0x00, 0x00, 0x05, UInt8(asc.count)]
+             + asc + [0x06, 0x01, 0x02])
+    }
+
     func testAACRemuxPreservesEveryCompressedPacket() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
