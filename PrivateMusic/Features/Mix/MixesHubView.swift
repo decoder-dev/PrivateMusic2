@@ -1738,26 +1738,13 @@ struct MixesHubView: View {
 
     private func skeleton(metrics: MixHubMetrics) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            RoundedRectangle(
-                cornerRadius: PremiumLayout.cardRadius,
-                style: .continuous
-            )
-            .fill(.primary.opacity(0.08))
-            .frame(height: metrics.heroHeight)
-            RoundedRectangle(
-                cornerRadius: PremiumLayout.controlRadius,
-                style: .continuous
-            )
-            .fill(.primary.opacity(0.08))
-            .frame(height: 96)
+            SkeletonBlock(height: metrics.heroHeight, cornerRadius: PremiumLayout.cardRadius)
+            SkeletonBlock(height: 96, cornerRadius: PremiumLayout.controlRadius)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: metrics.cardSpacing) {
                     ForEach(0..<3, id: \.self) { _ in
-                        RoundedRectangle(
-                            cornerRadius: PremiumLayout.compactRadius,
-                            style: .continuous
-                        )
-                        .fill(.primary.opacity(0.08))
+                        SkeletonBlock(height: metrics.cardHeight + 44,
+                                      cornerRadius: PremiumLayout.compactRadius)
                         .frame(
                             width: metrics.cardWidth,
                             height: metrics.cardHeight + 44
@@ -1766,8 +1753,7 @@ struct MixesHubView: View {
                 }
             }
         }
-        .redacted(reason: .placeholder)
-        .accessibilityLabel(L10n.text("loading_recommendations_and_mixes"))
+        .skeletonLoading(label: "loading_recommendations_and_mixes")
     }
 
     private func actionErrorRow(_ message: String) -> some View {

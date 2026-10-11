@@ -19,6 +19,7 @@ struct TrackRow: View {
     var showsDuration = true
     var showsPlaybackIndicator = true
     @State private var sharingTrack: Track?
+    @State private var destination: TrackRowDestination?
 
     var body: some View {
         Button {
@@ -49,6 +50,12 @@ struct TrackRow: View {
         .modifier(CurrentTrackAccessibilityValueModifier(isCurrent: isCurrent))
         .accessibilityHint(L10n.text("play_track"))
         .trackShareSheet(track: $sharingTrack)
+        .sheet(item: $destination) { target in
+            switch target {
+            case .artist: ArtistView(artist: track.artist)
+            case .playlist: AddToPlaylistView(track: track)
+            }
+        }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
                 Haptics.selection()
@@ -70,59 +77,48 @@ struct TrackRow: View {
             .tint(BubbleGamut.mix.color)
         }
         .contextMenu {
-            Button {
-                environment.player.playNext(track)
-            } label: {
-                Label(L10n.text("play_next"),
-                    systemImage: "text.line.first.and.arrowtriangle.forward"
-                )
-            }
-            Button {
-                environment.player.playLast(track)
-            } label: {
-                Label(L10n.text("play_last"),
-                    systemImage: "text.line.last.and.arrowtriangle.forward"
-                )
-            }
-            Button {
-                Haptics.open()
-                environment.player.play(track, in: queue, source: source)
-                environment.player.presentPlayer()
-            } label: {
-                Label(L10n.text("open_player"), systemImage: "play.circle")
-            }
-            TrackMixActions.menuButtons(
-                for: track,
-                environment: environment,
-                includeDislike: !mixFeedbackStore.isBanned(track)
-            )
-            Button {
-                Haptics.open()
-                sharingTrack = track
-            } label: {
-                Label(L10n.text("share_audio_file"),
-                    systemImage: "square.and.arrow.up"
-                )
-            }
-            if OfflineDownloadsFeature.showsControls,
-               !environment.isShareSessionActive {
-                Button(
-                    role: offlineStore.contains(track) ? .destructive : nil
-                ) {
-                    toggleOffline()
-                } label: {
-                    Label(
-                        offlineStore.contains(track)
-                            ? "remove_download"
-                            : "download",
-                        systemImage: offlineStore.contains(track)
-                            ? "trash"
-                            : "arrow.down.circle"
-                    )
+            Section {
+                Button { environment.player.playNext(track) } label: {
+                    Label(L10n.text("play_next"), systemImage: "text.line.first.and.arrowtriangle.forward")
                 }
-                .disabled(
-                    offlineStore.downloadingTrackIDs.contains(track.id)
-                )
+                Button { environment.player.playLast(track) } label: {
+                    Label(L10n.text("play_last"), systemImage: "text.line.last.and.arrowtriangle.forward")
+                }
+                Button {
+                    Haptics.open()
+                    environment.player.play(track, in: queue, source: source)
+                    environment.player.presentPlayer()
+                } label: {
+                    Label(L10n.text("open_player"), systemImage: "play.circle")
+                }
+            }
+            Section {
+                Button { destination = .artist } label: {
+                    Label(L10n.text("artist"), systemImage: "person.wave.2")
+                }
+                .disabled(track.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button { destination = .playlist } label: {
+                    Label(L10n.text("add_to_playlist"), systemImage: "rectangle.stack.badge.plus")
+                }
+                .disabled(environment.sessionStore.accessToken == nil)
+                if OfflineDownloadsFeature.showsControls, !environment.isShareSessionActive {
+                    Button(role: offlineStore.contains(track) ? .destructive : nil) {
+                        toggleOffline()
+                    } label: {
+                        Label(L10n.text(offlineStore.contains(track) ? "remove_download" : "download"),
+                              systemImage: offlineStore.contains(track) ? "trash" : "arrow.down.circle")
+                    }
+                    .disabled(offlineStore.downloadingTrackIDs.contains(track.id))
+                }
+            }
+            Section {
+                Button { Haptics.open(); sharingTrack = track } label: {
+                    Label(L10n.text("share_audio_file"), systemImage: "square.and.arrow.up")
+                }
+            }
+            Section {
+                TrackMixActions.menuButtons(for: track, environment: environment,
+                                            includeDislike: !mixFeedbackStore.isBanned(track))
             }
         }
     }
@@ -310,4 +306,10 @@ extension TimeInterval {
         }
         return String(format: "%d:%02d", total / 60, total % 60)
     }
+}
+
+private enum TrackRowDestination: String, Identifiable {
+    case artist
+    case playlist
+    var id: Self { self }
 }

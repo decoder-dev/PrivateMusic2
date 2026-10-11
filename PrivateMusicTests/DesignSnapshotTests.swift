@@ -43,6 +43,10 @@ final class DesignSnapshotTests: XCTestCase {
             )), name: "lyrics-\(theme.rawValue)", environment: environment, settings: settings)
             capture(QueueView(), name: "queue-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            capture(actionsPreview(track), name: "track-actions-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(loadingComposition(width: 390).environment(\.scenePhase, .inactive),
+                    name: "loading-\(theme.rawValue)", environment: environment, settings: settings)
             capture(NavigationStack { SettingsView() }, name: "settings-\(theme.rawValue)",
                     environment: environment, settings: settings)
             capture(NavigationStack { EqualizerSettingsView() }, name: "equalizer-\(theme.rawValue)",
@@ -63,6 +67,11 @@ final class DesignSnapshotTests: XCTestCase {
         }
         capture(PlayerView(), name: "player-compact", width: 320, height: 700,
                 environment: environment, settings: settings)
+        capture(actionsPreview(track).dynamicTypeSize(.accessibility3), name: "track-actions-accessibility",
+                width: 320, height: 1000, environment: environment, settings: settings)
+        capture(loadingComposition(width: 320).dynamicTypeSize(.accessibility3)
+                    .environment(\.scenePhase, .inactive), name: "loading-accessibility",
+                width: 320, height: 1000, environment: environment, settings: settings)
         settings.theme = .light
         settings.palette = .banana
         settings.accentChoice = .banana
@@ -84,6 +93,33 @@ final class DesignSnapshotTests: XCTestCase {
         capture(LyricsView(track: track, initialLyrics: Lyrics(text: "Тихий вечер\nСвет в окне", source: "LRCLIB",
                     lines: [LyricLine(time: 5, text: "Тихий вечер"), LyricLine(time: 15, text: "Свет в окне")]
                 )), name: "lyrics-synced", environment: environment, settings: settings)
+    }
+
+    private func actionsPreview(_ track: Track) -> some View {
+        PlayerActionsSheet(track: track, isInLibrary: false, offlineState: .remote,
+                           availability: PlayerActionAvailability(hasSession: true, isUpdatingLibrary: false),
+                           equalizerEnabled: .constant(false), spatialAudioEnabled: .constant(false),
+                           preferHighQuality: .constant(true), onDismiss: {}, onLibrary: {}, onQueue: {},
+                           onArtist: {}, onPlaylist: {}, onShare: {}, onCopyLink: {}, onOffline: {},
+                           onSettings: {}, onProcessingRouteHint: {}, onDislikeTrack: {}, onDislikeArtist: {},
+                           onMixFromTrack: {}, onSnippet: {}, showsMixFeedback: true, qualityCaption: "HQ")
+    }
+
+    private func loadingComposition(width: CGFloat) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: BubbleSpacing.section) {
+                PremiumSectionHeader("library.playlists")
+                LoadingShelf(width: width)
+                PremiumSectionHeader("library.tracks")
+                AppGroupedSurface { LoadingTrackList() }
+                HStack(spacing: 20) {
+                    PlaybackIndicatorView(isPlaying: true)
+                    PlaybackIndicatorView(isPlaying: false)
+                }
+            }
+            .padding(PremiumLayout.screenPadding)
+        }
+        .background(ThemeBackground())
     }
 
     private func homeComposition(width: CGFloat) -> some View {

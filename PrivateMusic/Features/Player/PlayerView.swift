@@ -853,6 +853,7 @@ struct PlayerView: View {
         if #available(iOS 26.0, *), usesGlassChrome {
             Button(action: action) {
                 Image(systemName: image)
+                    .controlFeedback(isActive: active)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(active ? settings.accent : playerForeground.opacity(0.55))
                     .frame(width: 44, height: 44)
@@ -865,6 +866,7 @@ struct PlayerView: View {
         } else {
             Button(action: action) {
                 Image(systemName: image)
+                    .controlFeedback(isActive: active)
                     .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(
                         active
@@ -952,6 +954,7 @@ struct PlayerView: View {
                     presentedSheet = nil
                     toggleLibrary(track)
                 },
+                onQueue: { deferFromActionSheet(.sheet(.queue)) },
                 onArtist: {
                     deferFromActionSheet(
                         .sheet(.artist(track.artist))
@@ -1637,7 +1640,7 @@ enum PlayerQuickAction: String, CaseIterable, Identifiable {
     }
 }
 
-private struct PlayerActionsSheet: View {
+struct PlayerActionsSheet: View {
     let track: Track
     let isInLibrary: Bool
     let offlineState: OfflineTrackState
@@ -1647,10 +1650,12 @@ private struct PlayerActionsSheet: View {
     @Binding var preferHighQuality: Bool
     @Environment(AudioPlayer.self) private var player
     @Environment(AppSettings.self) private var settings
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var systemVolume = SystemVolumeObserver()
     @State private var showsSleepTimerOptions = false
     let onDismiss: () -> Void
     let onLibrary: () -> Void
+    let onQueue: () -> Void
     let onArtist: () -> Void
     let onPlaylist: () -> Void
     let onShare: () -> Void
@@ -1665,10 +1670,10 @@ private struct PlayerActionsSheet: View {
     let showsMixFeedback: Bool
     let qualityCaption: String
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10)
-    ]
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 10),
+              count: dynamicTypeSize.isAccessibilitySize ? 1 : 2)
+    }
 
     var body: some View {
         ZStack {
@@ -1689,59 +1694,40 @@ private struct PlayerActionsSheet: View {
                     VStack(alignment: .leading, spacing: 0) {
                         libraryAction
 
+                        sectionTitle("actions.playback")
+                        LazyVGrid(columns: columns, spacing: 10) {
+                            actionTile("player.queue", systemImage: "text.line.first.and.arrowtriangle.forward",
+                                       action: onQueue)
+                            actionTile("mix_from_track", systemImage: "dot.radiowaves.up.forward", action: onMixFromTrack)
+                            actionTile("snippet", systemImage: "waveform", action: onSnippet)
+                        }
+
                         sectionTitle("track_actions")
                         LazyVGrid(columns: columns, spacing: 10) {
-                            actionTile(
-                                "artist",
-                                systemImage: "person.wave.2",
-                                action: onArtist
-                            )
-                            actionTile(
-                                "add_to_playlist",
-                                systemImage: "rectangle.stack.badge.plus",
-                                enabled: availability.canAddToPlaylist,
-                                action: onPlaylist
-                            )
-                            actionTile(
-                                "share_audio_file",
-                                systemImage: "square.and.arrow.up",
-                                enabled: availability.canShare,
-                                action: onShare
-                            )
-                            actionTile(
-                                "copy_vk_link",
-                                systemImage: "link",
-                                action: onCopyLink
-                            )
+                            actionTile("artist", systemImage: "person.wave.2", action: onArtist)
+                            actionTile("add_to_playlist", systemImage: "rectangle.stack.badge.plus",
+                                       enabled: availability.canAddToPlaylist, action: onPlaylist)
                             if availability.showsOfflineControls {
-                                actionTile(
-                                    offlineTitle,
-                                    systemImage: offlineImage,
-                                    enabled: offlineState != .downloading,
-                                    action: onOffline
-                                )
+                                actionTile(offlineTitle, systemImage: offlineImage,
+                                           enabled: offlineState != .downloading,
+                                           destructive: offlineState == .available, action: onOffline)
                             }
-                            actionTile(
-                                "mix_from_track",
-                                systemImage: "dot.radiowaves.up.forward",
-                                action: onMixFromTrack
-                            )
-                            actionTile(
-                                "snippet",
-                                systemImage: "waveform",
-                                action: onSnippet
-                            )
-                            if showsMixFeedback {
-                                actionTile(
-                                    "dislike",
-                                    systemImage: "hand.thumbsdown",
-                                    action: onDislikeTrack
-                                )
-                                actionTile(
-                                    "hide_artist",
-                                    systemImage: "person.badge.minus",
-                                    action: onDislikeArtist
-                                )
+                        }
+
+                        sectionTitle("share")
+                        LazyVGrid(columns: columns, spacing: 10) {
+                            actionTile("share_audio_file", systemImage: "square.and.arrow.up",
+                                       enabled: availability.canShare, action: onShare)
+                            actionTile("copy_vk_link", systemImage: "link", action: onCopyLink)
+                        }
+
+                        if showsMixFeedback {
+                            sectionTitle("actions.mix_feedback")
+                            LazyVGrid(columns: columns, spacing: 10) {
+                                actionTile("dislike", systemImage: "hand.thumbsdown",
+                                           destructive: true, action: onDislikeTrack)
+                                actionTile("hide_artist", systemImage: "person.badge.minus",
+                                           destructive: true, action: onDislikeArtist)
                             }
                         }
 
@@ -2079,13 +2065,17 @@ private struct PlayerActionsSheet: View {
         _ title: String,
         systemImage: String,
         enabled: Bool = true,
+        destructive: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 9) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(HStackLayout(alignment: .center, spacing: 12))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: 9))
+        return Button(role: destructive ? .destructive : nil, action: action) {
+            layout {
                 Image(systemName: systemImage)
                     .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(settings.accent)
+                    .foregroundStyle(destructive ? .red : settings.accent)
                     .frame(width: 36, height: 36)
                     .background(
                         settings.accent.opacity(0.12),
@@ -2093,10 +2083,10 @@ private struct PlayerActionsSheet: View {
                     )
                 Text(L10n.text(title))
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(2)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
-                Spacer(minLength: 0)
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(minHeight: 66, alignment: .topLeading)
@@ -2104,7 +2094,7 @@ private struct PlayerActionsSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PremiumPressStyle())
-        .foregroundStyle(Color.primary)
+        .foregroundStyle(destructive ? Color.red : Color.primary)
         .adaptiveGlass(in: RoundedRectangle(
                 cornerRadius: PremiumLayout.compactRadius,
                 style: .continuous

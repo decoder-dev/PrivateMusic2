@@ -312,21 +312,18 @@ struct SearchView: View {
     }
 
     private var searchLoading: some View {
-        VStack(spacing: 14) {
-            ProgressView()
-                .controlSize(.large)
+        VStack(alignment: .leading, spacing: BubbleSpacing.m) {
             Text(L10n.text("search.searching"))
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
             Text(model.normalizedQuery)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-                .multilineTextAlignment(.center)
+            LoadingTrackList(label: "searching")
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(L10n.text("searching"))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var searchResults: some View {

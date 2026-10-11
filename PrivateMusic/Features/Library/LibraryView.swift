@@ -1340,65 +1340,14 @@ struct LibraryView: View {
     }
 
     private func playlistSkeleton(width: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.text("library.playlists"))
-                .font(BubbleType.section)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(
-                    alignment: .top,
-                    spacing: LibraryShelfMetrics.cardSpacing
-                ) {
-                    ForEach(0..<3, id: \.self) { _ in
-                        RoundedRectangle(
-                            cornerRadius: PremiumLayout.cardRadius,
-                            style: .continuous
-                        )
-                            .fill(.primary.opacity(0.08))
-                            .frame(
-                                width: LibraryShelfMetrics.cardWidth(for: width),
-                                height: LibraryShelfMetrics.cardHeight(
-                                    for: width,
-                                    captionHeight: shelfCaptionHeight
-                                )
-                            )
-                    }
-                }
-                .padding(.vertical, LibraryShelfMetrics.shelfPadding)
-            }
-            .frame(
-                height: LibraryShelfMetrics.shelfHeight(
-                    for: width,
-                    captionHeight: shelfCaptionHeight
-                )
-            )
+        VStack(alignment: .leading, spacing: LibraryShelfMetrics.headerSpacing) {
+            PremiumSectionHeader("library.playlists")
+            LoadingShelf(width: width, captionHeight: shelfCaptionHeight)
         }
-        .redacted(reason: .placeholder)
     }
 
     private var trackSkeleton: some View {
-        VStack(spacing: 14) {
-            ForEach(0..<7, id: \.self) { _ in
-                HStack(spacing: 12) {
-                    RoundedRectangle(
-                        cornerRadius:
-                            PremiumLayout.artworkRadius(for: 46),
-                        style: .continuous
-                    )
-                        .fill(.primary.opacity(0.08))
-                        .frame(width: 46, height: 46)
-                    VStack(alignment: .leading, spacing: 8) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(.primary.opacity(0.09))
-                            .frame(width: 190, height: 14)
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(.primary.opacity(0.06))
-                            .frame(width: 120, height: 11)
-                    }
-                    Spacer()
-                }
-            }
-        }
-        .redacted(reason: .placeholder)
+        LoadingTrackList()
     }
 
     /// Tracks, playlists and albums are independent VK lists. Loading them

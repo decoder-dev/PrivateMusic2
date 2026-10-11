@@ -920,3 +920,6 @@
 "couldn_t_update_playlist" = "Не удалось обновить плейлист";
 "home.music_mood_title" = "Музыка и настроение";
 "home.music_mood_subtitle" = "Один тап — и играет то, что подходит";
+
+"actions.playback" = "Воспроизведение";
+"actions.mix_feedback" = "Настроить подборки";

@@ -811,22 +811,15 @@ private struct ArtistLoadingView: View {
         ScrollView {
             VStack(spacing: 0) {
                 HStack(spacing: 16) {
-                    RoundedRectangle(
-                        cornerRadius:
-                            PremiumLayout.artworkRadius(for: 88),
-                        style: .continuous
-                    )
-                        .fill(Color(uiColor: .tertiarySystemFill))
-                        .frame(width: 88, height: 88)
+                    SkeletonBlock(width: 88, height: 88,
+                                  cornerRadius: PremiumLayout.artworkRadius(for: 88))
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text(artist)
                             .font(.title3.weight(.bold))
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color(uiColor: .tertiarySystemFill))
-                            .frame(width: 104, height: 12)
+                        SkeletonBlock(width: 104, height: 12)
                     }
 
                     Spacer()
@@ -853,36 +846,12 @@ private struct ArtistLoadingView: View {
             }
         }
         .scrollDisabled(true)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(L10n.text("loading_artist"))
+        .skeletonLoading(label: "loading_artist")
     }
 }
 
 private struct ArtistLoadingRow: View {
-    var body: some View {
-        HStack(spacing: 12) {
-            RoundedRectangle(
-                cornerRadius: PremiumLayout.artworkRadius(for: 52),
-                style: .continuous
-            )
-                .fill(Color(uiColor: .tertiarySystemFill))
-                .frame(width: 52, height: 52)
-
-            VStack(alignment: .leading, spacing: 8) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(uiColor: .tertiarySystemFill))
-                    .frame(maxWidth: 190)
-                    .frame(height: 12)
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(uiColor: .tertiarySystemFill))
-                    .frame(maxWidth: 120)
-                    .frame(height: 10)
-            }
-
-            Spacer()
-        }
-        .frame(minHeight: 56)
-    }
+    var body: some View { LoadingTrackRow(artworkSize: 52) }
 }
 
 private struct ArtistMessageView: View {
