@@ -13,6 +13,9 @@ struct RootView: View {
     @State private var isValidatingSession = false
     @State private var refreshRequiresReplacement = false
     @State private var refreshNeedsLogin = false
+    /// When the session was last confirmed with VK; coming back from
+    /// Control Center must not cost a request each time.
+    @State private var lastValidationAt: Date?
     @Namespace private var playerNamespace
 
     var body: some View {
@@ -181,7 +184,10 @@ struct RootView: View {
               let session = sessionStore.session else { return }
         if session.shouldRefreshProactively {
             await refreshWebSession()
-        } else {
+        } else if refreshError != nil
+                    || lastValidationAt.map({
+                        Date().timeIntervalSince($0) > 300
+                    }) != false {
             await loadProfile(forceValidation: true)
         }
     }
@@ -303,6 +309,7 @@ struct RootView: View {
             refreshRequiresReplacement = false
             refreshNeedsLogin = false
             refreshError = nil
+            lastValidationAt = Date()
         } catch is CancellationError {
             return
         } catch {

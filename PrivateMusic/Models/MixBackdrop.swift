@@ -152,6 +152,8 @@ actor MixBackdropStore {
     static let shared = MixBackdropStore()
 
     private var cache: [URL: MixBackdropPalette?] = [:]
+    /// One download per URL even when several cards ask at once.
+    private var inFlight: [URL: Task<MixBackdropPalette?, Never>] = [:]
     private static let maxBytes = 600_000
 
     func palette(for url: URL) async -> MixBackdropPalette? {
@@ -162,19 +164,28 @@ actor MixBackdropStore {
             cache[url] = .some(nil)
             return nil
         }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 8
-        let palette: MixBackdropPalette?
-        if let (data, response) = try? await URLSession.shared.data(
-            for: request
-        ),
-           (response as? HTTPURLResponse)?.statusCode == 200,
-           data.count <= Self.maxBytes {
-            palette = MixBackdropParser.palette(fromLottie: data)
-        } else {
-            palette = nil
+        if let running = inFlight[url] { return await running.value }
+        let task = Task<MixBackdropPalette?, Never> {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 8
+            guard let (data, response) = try? await URLSession.shared.data(
+                for: request
+            ) else {
+                return nil
+            }
+            guard (response as? HTTPURLResponse)?.statusCode == 200,
+                  data.count <= Self.maxBytes else {
+                return nil
+            }
+            return MixBackdropParser.palette(fromLottie: data)
         }
-        cache[url] = .some(palette)
+        inFlight[url] = task
+        let palette = await task.value
+        inFlight[url] = nil
+        // A palette is kept for the run. A failure is not: a dropped
+        // connection must not leave the card on the generated colours
+        // until the next launch.
+        if let palette { cache[url] = .some(palette) }
         return palette
     }
 }

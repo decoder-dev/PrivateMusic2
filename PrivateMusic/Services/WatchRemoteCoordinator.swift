@@ -41,13 +41,21 @@ final class WatchRemoteCoordinator: NSObject {
         driftTask?.cancel()
         driftTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
+                // Drift only matters while music plays; a paused player
+                // wakes this loop rarely (state changes still push at once).
+                let playing = self?.player?.isPlaying ?? false
                 try? await Task.sleep(
                     for: .seconds(
-                        WatchStatePushCoalescingPolicy.driftCorrectionSeconds
+                        playing
+                            ? WatchStatePushCoalescingPolicy
+                                .driftCorrectionSeconds
+                            : 300
                     )
                 )
                 guard !Task.isCancelled else { return }
-                self?.markNeedsPush()
+                if self?.player?.isPlaying == true {
+                    self?.markNeedsPush()
+                }
             }
         }
     }
