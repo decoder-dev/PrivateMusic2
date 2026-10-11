@@ -171,7 +171,10 @@ struct CatalogView: View {
                 for: MusicLibraryEvents.didChangePlaylists
             )
         ) { _ in
-            Task { await load(force: true) }
+            // Home shows no playlists of its own, so a playlist edit must
+            // not rebuild the whole page (recommendations, mixes, releases)
+            // under the user's finger; a stale catalog still refreshes.
+            Task { await load(force: false) }
         }
         .alert(
             L10n.text("playback_error"),

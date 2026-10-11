@@ -392,7 +392,7 @@ struct MixesHubView: View {
     ) -> some View {
         let artTracks = vkTrackCache[mix.id]
             ?? coverPreviews[mix.id]
-            ?? homeCatalog.recommendations
+            ?? []
         let cachedTracks = vkTrackCache[mix.id] ?? []
         return VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .bottomTrailing) {
@@ -590,7 +590,7 @@ struct MixesHubView: View {
         let cached = vkTrackCache[mix.id] ?? []
         let artTracks = !cached.isEmpty
             ? cached
-            : (coverPreviews[mix.id] ?? homeCatalog.recommendations)
+            : (coverPreviews[mix.id] ?? [])
         return VStack(alignment: .leading, spacing: 7) {
             Button {
                 selectVKMix(mix)
