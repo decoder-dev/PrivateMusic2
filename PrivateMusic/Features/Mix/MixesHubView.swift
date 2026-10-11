@@ -84,10 +84,11 @@ struct MixesHubView: View {
     private let isDesignPreview: Bool
 
     init(deprioritizedMixID: String? = nil, focusedMixID: String? = nil,
-         previewMixes: [MusicMix]? = nil, previewTracks: [Track] = []) {
+         previewMixes: [MusicMix]? = nil, previewTracks: [Track] = [], previewWidth: CGFloat? = nil) {
         self.deprioritizedMixID = deprioritizedMixID
         self.focusedMixID = focusedMixID
         isDesignPreview = previewMixes != nil
+        _containerWidth = State(initialValue: previewWidth ?? 390)
         _mixes = State(initialValue: previewMixes ?? [])
         _selectedVKMix = State(initialValue: previewMixes?.first)
         _vkTracks = State(initialValue: previewTracks)
@@ -113,6 +114,7 @@ struct MixesHubView: View {
                 .padding(.horizontal, metrics.horizontalPadding)
                 .padding(.top, 8)
             }
+            .containerRelativeFrame(.horizontal)
             .softBottomScrollEdge()
             .clearsMiniPlayer(includingWhenDockReservesSpace: true)
             // A message floats over the content instead of being inserted
@@ -1048,7 +1050,7 @@ struct MixesHubView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
 
-                (dynamicTypeSize.isAccessibilitySize
+                (dynamicTypeSize.isAccessibilitySize || containerWidth <= 350
                     ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
                     : AnyLayout(HStackLayout(spacing: 10))) {
                     if canTune(mix) {
@@ -1061,7 +1063,7 @@ struct MixesHubView: View {
             // Hero owns Play. This row is shuffle + keep/hide only —
             // a second "Play all" next to the play circle was the same
             // verb twice on one card.
-            (dynamicTypeSize.isAccessibilitySize
+            (dynamicTypeSize.isAccessibilitySize || containerWidth <= 350
                     ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
                     : AnyLayout(HStackLayout(spacing: 10))) {
                 Button {
@@ -1072,7 +1074,7 @@ struct MixesHubView: View {
                         systemImage: "shuffle"
                     )
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize || containerWidth <= 350 ? nil : 1)
                     .minimumScaleFactor(0.8)
                 }
                 .buttonStyle(.bordered)
@@ -1090,7 +1092,7 @@ struct MixesHubView: View {
                             : "bookmark"
                     )
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize || containerWidth <= 350 ? nil : 1)
                     .minimumScaleFactor(0.8)
                 }
                 .buttonStyle(.bordered)
@@ -1132,7 +1134,7 @@ struct MixesHubView: View {
                         systemImage: "hand.thumbsdown"
                     )
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize || containerWidth <= 350 ? nil : 1)
                     .minimumScaleFactor(0.8)
                 }
                 .buttonStyle(.bordered)

@@ -69,9 +69,9 @@ final class DesignSnapshotTests: XCTestCase {
                                                onPlay: {}, onShare: {}, onDelete: {}),
                     name: "download-details-\(theme.rawValue)", environment: environment, settings: settings)
         }
-        capture(discoveryPreview(track), name: "discovery-compact", width: 320, height: 900,
+        capture(discoveryPreview(track, width: 320), name: "discovery-compact", width: 320, height: 900,
                 environment: environment, settings: settings)
-        capture(discoveryPreview(track).dynamicTypeSize(.accessibility3),
+        capture(discoveryPreview(track, width: 320).dynamicTypeSize(.accessibility3),
                 name: "discovery-accessibility", width: 320, height: 1500,
                 environment: environment, settings: settings)
         capture(PlaylistEditorView(playlist: nil, onSaved: {}), name: "playlist-editor-ipad",
@@ -108,14 +108,14 @@ final class DesignSnapshotTests: XCTestCase {
                 )), name: "lyrics-synced", environment: environment, settings: settings)
     }
 
-    private func discoveryPreview(_ track: Track) -> some View {
+    private func discoveryPreview(_ track: Track, width: CGFloat = 390) -> some View {
         NavigationStack {
             MixesHubView(previewMixes: [
                 MusicMix(id: "common", title: "Selena", subtitle: "Музыка, которая подходит вам",
                          artworkURL: nil),
                 MusicMix(id: "preview-evening", title: "Тихий вечер",
                          subtitle: "Спокойные мелодии", artworkURL: nil)
-            ], previewTracks: [track])
+            ], previewTracks: [track], previewWidth: width)
         }
     }
 
