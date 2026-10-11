@@ -143,6 +143,15 @@ final class SearchViewModel {
         beginPlaylistSearch(delay: debounceDuration, operation: operation)
     }
 
+    /// Flipping scopes must not throw away pages the user already loaded.
+    var needsAlbumSearch: Bool {
+        normalizedQuery != activeAlbumQuery || albumErrorMessage != nil
+    }
+
+    var needsPlaylistSearch: Bool {
+        normalizedQuery != activePlaylistQuery || playlistErrorMessage != nil
+    }
+
     func submitPlaylists(operation: @escaping PlaylistSearchOperation) {
         beginPlaylistSearch(delay: .zero, operation: operation)
     }

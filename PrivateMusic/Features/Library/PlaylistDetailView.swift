@@ -16,6 +16,7 @@ struct PlaylistDetailView: View {
     @State private var showsDeleteConfirmation = false
     @State private var isDeletingPlaylist = false
     @State private var deleteErrorMessage: String?
+    @State private var refreshErrorMessage: String?
 
     var body: some View {
         Group {
@@ -95,6 +96,17 @@ struct PlaylistDetailView: View {
             Text(deleteConfirmationMessage)
         }
         .alert(
+            L10n.text("couldn_t_update_playlist"),
+            isPresented: Binding(
+                get: { refreshErrorMessage != nil },
+                set: { if !$0 { refreshErrorMessage = nil } }
+            )
+        ) {
+            Button(L10n.text("action.ok"), role: .cancel) {}
+        } message: {
+            Text(refreshErrorMessage ?? "")
+        }
+        .alert(
             L10n.text("couldn_t_delete_playlist"),
             isPresented: Binding(
                 get: { deleteErrorMessage != nil },
@@ -123,7 +135,7 @@ struct PlaylistDetailView: View {
             playlist = updated
             await load(force: true)
         } catch {
-            deleteErrorMessage = error.localizedDescription
+            refreshErrorMessage = error.localizedDescription
         }
     }
 
