@@ -24,6 +24,9 @@ struct CatalogView: View {
     @State private var pendingHiddenArtist: HomeNextStepCandidate?
     @State private var openingMixID: String?
     @State private var startingMood: MixMoodPreference?
+    /// The mood / activity chips VK itself offers for the personal mix.
+    @State private var vkTuning: MixTuning?
+    @State private var startingTuningOptionID: String?
     @State private var containerWidth: CGFloat = 390
     @State private var topSafeAreaInset: CGFloat = 0
     @State private var nextStepCandidate: HomeNextStepCandidate?
@@ -141,6 +144,9 @@ struct CatalogView: View {
         .refreshable { await load(force: true) }
         .task(id: sessionStore.resolvedOfflineAccountID) {
             await load()
+        }
+        .task(id: sessionStore.resolvedOfflineAccountID) {
+            await loadVKTuning()
         }
         .task(id: nextStepRefreshKey) {
             nextStepCandidate = resolveNextStepCandidate()
@@ -574,24 +580,39 @@ struct CatalogView: View {
             )
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    ForEach(
-                        MixMoodPreference.allCases.filter { $0 != .any }
-                    ) { mood in
-                        ExploreChip(
-                            title: mood.title,
-                            systemImage: mood.chipSymbol,
-                            tint: mood.tint,
-                            isLoading: startingMood == mood
-                        ) {
-                            guard startingMood == nil else { return }
-                            Haptics.selection()
-                            startingMood = mood
-                            Task {
-                                await environment.startMoodStation(
-                                    mood,
-                                    in: homeCatalog.mixes
-                                )
-                                startingMood = nil
+                    if let tuning = vkTuning, !vkChips(tuning).isEmpty {
+                        // VK's own chips, in VK's order and wording.
+                        ForEach(vkChips(tuning), id: \.key) { chip in
+                            ExploreChip(
+                                title: chip.option.title,
+                                systemImage: chip.mood?.chipSymbol
+                                    ?? "sparkles",
+                                tint: chip.mood?.tint,
+                                isLoading: startingTuningOptionID == chip.key
+                            ) {
+                                startVKChip(chip, tuning: tuning)
+                            }
+                        }
+                    } else {
+                        ForEach(
+                            MixMoodPreference.allCases.filter { $0 != .any }
+                        ) { mood in
+                            ExploreChip(
+                                title: mood.title,
+                                systemImage: mood.chipSymbol,
+                                tint: mood.tint,
+                                isLoading: startingMood == mood
+                            ) {
+                                guard startingMood == nil else { return }
+                                Haptics.selection()
+                                startingMood = mood
+                                Task {
+                                    await environment.startMoodStation(
+                                        mood,
+                                        in: homeCatalog.mixes
+                                    )
+                                    startingMood = nil
+                                }
                             }
                         }
                     }
@@ -631,6 +652,63 @@ struct CatalogView: View {
                 .scrollsToCardEdges()
             }
             exploreMusicEntry
+        }
+    }
+
+    private struct VKChip {
+        let category: MixTuningCategory
+        let option: MixTuningOption
+        let mood: MixMoodPreference?
+        var key: String { category.id + "/" + option.id }
+    }
+
+    /// The first rows VK reports (mood, then activity), capped so the strip
+    /// stays one swipe long.
+    private func vkChips(_ tuning: MixTuning) -> [VKChip] {
+        var chips: [VKChip] = []
+        for category in tuning.categories.prefix(2) {
+            for option in category.options {
+                let mood = MixMoodPreference.allCases.first {
+                    $0 != .any
+                        && MixQueueFilter.shelfMoodMatchScore(
+                            option.title,
+                            mood: $0
+                        ) > 0
+                }
+                chips.append(
+                    VKChip(category: category, option: option, mood: mood)
+                )
+            }
+        }
+        return Array(chips.prefix(12))
+    }
+
+    private func startVKChip(_ chip: VKChip, tuning: MixTuning) {
+        guard startingTuningOptionID == nil else { return }
+        Haptics.selection()
+        startingTuningOptionID = chip.key
+        let tuned = tuning.mix(
+            applying: [chip.category.id: [chip.option.id]],
+            to: .common
+        )
+        Task {
+            await environment.startCatalogMix(tuned)
+            startingTuningOptionID = nil
+        }
+    }
+
+    private func loadVKTuning() async {
+        guard sessionStore.accessToken != nil, vkTuning == nil else { return }
+        do {
+            let tuning = try await environment.withAuthorizedToken { token in
+                try await environment.musicService.mixTuning(
+                    for: .common,
+                    accessToken: token
+                )
+            }
+            if !tuning.isEmpty { vkTuning = tuning }
+        } catch {
+            // The fixed mood chips stay; nothing to tell the listener.
         }
     }
 
