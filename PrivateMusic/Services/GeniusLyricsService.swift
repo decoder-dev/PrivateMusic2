@@ -49,7 +49,20 @@ struct GeniusLyricsService: Sendable {
         ]
         var seen = Set<String>()
         for query in queries where !query.isEmpty && seen.insert(query).inserted {
-            let candidates = try await search(query)
+            // One query failing (a changed reply shape, a hiccup) must not
+            // stop the next one from being tried.
+            let candidates: [GeniusMatcher.Candidate]
+            do {
+                candidates = try await search(query)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                AppLog.shared.info(
+                    .network,
+                    "genius search failed: \(AppLogRedaction.redact(error.localizedDescription))"
+                )
+                continue
+            }
             if let match = GeniusMatcher.best(
                 in: candidates,
                 artist: track.artist,
@@ -294,17 +307,48 @@ private struct GeniusSearchResponse: Decodable {
     let response: GeniusSearchPayload
 }
 
+/// The reply shape is read leniently: a section without hits, a hit without
+/// a result or an artist without a name is skipped instead of failing the
+/// whole search.
 private struct GeniusSearchPayload: Decodable {
     let sections: [GeniusSearchSection]
+
+    enum CodingKeys: String, CodingKey { case sections }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sections = ((try? container.decode(
+            [GeniusLossy<GeniusSearchSection>].self,
+            forKey: .sections
+        )) ?? []).compactMap(\.value)
+    }
 }
 
 private struct GeniusSearchSection: Decodable {
     let hits: [GeniusSearchHit]
+
+    enum CodingKeys: String, CodingKey { case hits }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hits = ((try? container.decode(
+            [GeniusLossy<GeniusSearchHit>].self,
+            forKey: .hits
+        )) ?? []).compactMap(\.value)
+    }
 }
 
 private struct GeniusSearchHit: Decodable {
     let type: String?
     let result: GeniusSongResult
+}
+
+private struct GeniusLossy<Value: Decodable>: Decodable {
+    let value: Value?
+
+    init(from decoder: Decoder) throws {
+        value = try? Value(from: decoder)
+    }
 }
 
 private struct GeniusSongResult: Decodable {
@@ -320,5 +364,5 @@ private struct GeniusSongResult: Decodable {
 }
 
 private struct GeniusArtist: Decodable {
-    let name: String
+    let name: String?
 }
