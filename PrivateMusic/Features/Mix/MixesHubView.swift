@@ -215,6 +215,7 @@ struct MixesHubView: View {
             trackLoadTask?.cancel()
             launchTask?.cancel()
             seedRadioTask?.cancel()
+            coverPreviewTask?.cancel()
         }
     }
 
@@ -1968,9 +1969,17 @@ struct MixesHubView: View {
 
     private func startCoverPreviews() {
         coverPreviewTask?.cancel()
+        let account = sessionStore.resolvedOfflineAccountID
+        // Re-entering Explore must not repeat a dozen requests.
+        for (id, tracks) in MixCoverPreviewStore.tracks(for: account)
+        where coverPreviews[id] == nil {
+            coverPreviews[id] = tracks
+        }
         let pending = orderedVKMixes.filter { mix in
             mix.artworkURL == nil
                 && mix.curator?.photoURL == nil
+                // A Lottie backdrop already becomes the cover.
+                && mix.backdropURL?.pathExtension.lowercased() != "json"
                 && vkTrackCache[mix.id] == nil
                 && coverPreviews[mix.id] == nil
         }.prefix(12)
@@ -1991,7 +2000,9 @@ struct MixesHubView: View {
                 }
                 let covered = (tracks ?? []).filter { $0.artworkURL != nil }
                 guard !covered.isEmpty else { continue }
-                coverPreviews[mix.id] = Array(covered.prefix(8))
+                let kept = Array(covered.prefix(8))
+                coverPreviews[mix.id] = kept
+                MixCoverPreviewStore.store(kept, mixID: mix.id, account: account)
                 MixBootstrapPrefetch.artwork(for: covered, limit: 4)
             }
         }
@@ -2025,7 +2036,11 @@ struct MixesHubView: View {
                 tracks: vkTrackCache[mix.id],
                 loadIfMissing: loadTracks
             )
-        } else if forceReload || (loadTracks && vkTracks.isEmpty) {
+        } else if forceReload
+                    || (loadTracks && vkTracks.isEmpty
+                        && loadingMixID != mix.id) {
+            // A load already in flight for this mix is left alone:
+            // returning to the screen must not restart it.
             loadVKTracks(mix)
         }
     }
@@ -2497,4 +2512,19 @@ private struct SelectedTraitModifier: ViewModifier {
 private final class ArtistCandidateCache {
     var key = ""
     var value: [ArtistAffinityCandidate] = []
+}
+
+/// Cover-preview tracks kept for the app run so re-opening Explore does not
+/// fetch them again. Keyed by account so a different login never sees them.
+@MainActor
+enum MixCoverPreviewStore {
+    private static var storage: [Int: [String: [Track]]] = [:]
+
+    static func tracks(for account: Int?) -> [String: [Track]] {
+        storage[account ?? 0] ?? [:]
+    }
+
+    static func store(_ tracks: [Track], mixID: String, account: Int?) {
+        storage[account ?? 0, default: [:]][mixID] = tracks
+    }
 }
