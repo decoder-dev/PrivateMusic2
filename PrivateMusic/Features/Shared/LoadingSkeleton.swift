@@ -37,7 +37,7 @@ struct LoadingTrackRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             Spacer(minLength: 0)
         }
-        .frame(minHeight: 56)
+        .frame(minHeight: 48)
         .padding(.vertical, BubbleSpacing.xs)
     }
 }

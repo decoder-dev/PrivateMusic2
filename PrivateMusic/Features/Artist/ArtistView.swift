@@ -851,7 +851,7 @@ private struct ArtistLoadingView: View {
 }
 
 private struct ArtistLoadingRow: View {
-    var body: some View { LoadingTrackRow(artworkSize: 52) }
+    var body: some View { LoadingTrackRow() }
 }
 
 private struct ArtistMessageView: View {

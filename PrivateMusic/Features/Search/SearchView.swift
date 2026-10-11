@@ -324,6 +324,9 @@ struct SearchView: View {
             LoadingTrackList(label: "searching")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.text("searching"))
+        .accessibilityValue(model.normalizedQuery)
     }
 
     private var searchResults: some View {
