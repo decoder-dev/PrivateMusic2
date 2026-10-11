@@ -240,6 +240,7 @@ struct TrackRowContent: View {
                 statusIndicators
             }
         }
+        .padding(.vertical, BubbleSpacing.xs)
         .contentShape(Rectangle())
     }
 
@@ -298,7 +299,7 @@ private struct CurrentTrackAccessibilityValueModifier: ViewModifier {
 
 extension TimeInterval {
     var formattedDuration: String {
-        guard isFinite, self >= 0 else { return "0:00" }
+        guard isFinite, self >= 0, self < Double(Int.max) else { return "0:00" }
         let total = Int(self)
         if total >= 3600 {
             return String(

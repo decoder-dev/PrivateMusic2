@@ -79,7 +79,7 @@ struct LibraryView: View {
 
                     HStack(spacing: 12) {
                         Text(L10n.text("library.tracks"))
-                            .font(.title2.weight(.bold))
+                            .font(BubbleType.section)
                         Spacer()
                         Text("\(tracks.totalCount)")
                             .font(.subheadline.monospacedDigit())
@@ -447,7 +447,7 @@ struct LibraryView: View {
         if let pin = pinnedMixStore.pin, !pin.tracks.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Text(L10n.text("listen_later"))
-                    .font(.title2.weight(.bold))
+                    .font(BubbleType.section)
                 Button {
                     resumePinned(pin)
                 } label: {
@@ -789,7 +789,7 @@ struct LibraryView: View {
     private func playlistShelf(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("library.playlists"))
-                .font(.title2.weight(.bold))
+                .font(BubbleType.section)
             ScrollView(.horizontal, showsIndicators: false) {
                 // Deliberately not lazy: nested inside the library's
                 // LazyVStack, a lazy row left off-screen cards
@@ -945,7 +945,7 @@ struct LibraryView: View {
     private func albumShelf(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("library.albums"))
-                .font(.title2.weight(.bold))
+                .font(BubbleType.section)
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(
                     alignment: .top,
@@ -1342,7 +1342,7 @@ struct LibraryView: View {
     private func playlistSkeleton(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("library.playlists"))
-                .font(.title2.weight(.bold))
+                .font(BubbleType.section)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(
                     alignment: .top,

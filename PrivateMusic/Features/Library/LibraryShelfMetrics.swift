@@ -15,7 +15,7 @@ import SwiftUI
 enum LibraryShelfMetrics {
     /// Square artwork edge of a shelf card.
     static let artworkSize: CGFloat = 136
-    static let cardSpacing: CGFloat = 14
+    static let cardSpacing: CGFloat = BubbleSpacing.m
     /// Gap between artwork and the title/subtitle block.
     static let captionSpacing: CGFloat = 8
     /// Two lines at the default text size (title + count/artist).
@@ -27,9 +27,9 @@ enum LibraryShelfMetrics {
     /// Breathing room between the navigation chrome and the first section.
     static let contentTopPadding: CGFloat = 10
     /// Gap below a whole section (shelf, «Слушать позже»).
-    static let sectionSpacing: CGFloat = 24
+    static let sectionSpacing: CGFloat = BubbleSpacing.section
     /// Gap between a section header and the rows underneath it.
-    static let headerSpacing: CGFloat = 8
+    static let headerSpacing: CGFloat = BubbleSpacing.m
 
     static var cardWidth: CGFloat { artworkSize }
 
