@@ -1023,12 +1023,14 @@ final class AppEnvironment {
         _ mood: MixMoodPreference,
         in mixes: [MusicMix]
     ) async {
+        guard !Task.isCancelled else { return }
         settings.mixMoodPreference = mood
         var catalog = mixes
         if catalog.isEmpty {
             await refreshHomeCatalog()
             catalog = homeCatalogStore.mixes
         }
+        guard !Task.isCancelled else { return }
         let scored = catalog.compactMap { mix -> (MusicMix, Int)? in
             // Mood tiles carry their tuning in `streamOptions` and often
             // have no shelf title, so match on all three.
@@ -1068,6 +1070,7 @@ final class AppEnvironment {
         guard !query.isEmpty else { return }
         do {
             let tracks = try await artistTracks(for: query)
+            guard !Task.isCancelled else { return }
             let cleaned = filteredMixTracks(tracks)
             guard let first = cleaned.first else {
                 if let seed {

@@ -35,6 +35,10 @@ final class DesignSnapshotTests: XCTestCase {
                     name: "appearance-\(theme.rawValue)", environment: environment, settings: settings)
             capture(homeComposition(width: 390), name: "home-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            capture(discoveryPreview(track), name: "discovery-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(discoveryPreview(track), name: "discovery-full-\(theme.rawValue)",
+                    width: 390, height: 1500, environment: environment, settings: settings)
             capture(PlayerView(), name: "player-\(theme.rawValue)",
                     environment: environment, settings: settings)
             capture(LyricsView(track: track, initialLyrics: Lyrics(
@@ -65,6 +69,11 @@ final class DesignSnapshotTests: XCTestCase {
                                                onPlay: {}, onShare: {}, onDelete: {}),
                     name: "download-details-\(theme.rawValue)", environment: environment, settings: settings)
         }
+        capture(discoveryPreview(track), name: "discovery-compact", width: 320, height: 900,
+                environment: environment, settings: settings)
+        capture(discoveryPreview(track).dynamicTypeSize(.accessibility3),
+                name: "discovery-accessibility", width: 320, height: 1500,
+                environment: environment, settings: settings)
         capture(PlayerView(), name: "player-compact", width: 320, height: 700,
                 environment: environment, settings: settings)
         capture(actionsPreview(track).dynamicTypeSize(.accessibility3), name: "track-actions-accessibility",
@@ -93,6 +102,17 @@ final class DesignSnapshotTests: XCTestCase {
         capture(LyricsView(track: track, initialLyrics: Lyrics(text: "Тихий вечер\nСвет в окне", source: "LRCLIB",
                     lines: [LyricLine(time: 5, text: "Тихий вечер"), LyricLine(time: 15, text: "Свет в окне")]
                 )), name: "lyrics-synced", environment: environment, settings: settings)
+    }
+
+    private func discoveryPreview(_ track: Track) -> some View {
+        NavigationStack {
+            MixesHubView(previewMixes: [
+                MusicMix(id: "common", title: "Selena", subtitle: "Музыка, которая подходит вам",
+                         artworkURL: nil),
+                MusicMix(id: "preview-evening", title: "Тихий вечер",
+                         subtitle: "Спокойные мелодии", artworkURL: nil)
+            ], previewTracks: [track])
+        }
     }
 
     private func actionsPreview(_ track: Track) -> some View {
@@ -157,6 +177,9 @@ final class DesignSnapshotTests: XCTestCase {
             .environment(environment.historyStore)
             .environment(environment.homeCatalogStore)
             .environment(environment.networkMonitor)
+            .environment(environment.pinnedMixStore)
+            .environment(environment.mixFeedbackStore)
+            .environment(MainTabScrollCoordinator())
             .environment(\.colorScheme, settings.theme.colorScheme)
             .tint(settings.accent)
         guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {

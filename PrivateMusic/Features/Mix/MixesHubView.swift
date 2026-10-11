@@ -80,11 +80,26 @@ struct MixesHubView: View {
     private static let forYouTarget = 40
     private let expandedPreviewTrackLimit = 60
 
+    private let isDesignPreview: Bool
+
+    init(deprioritizedMixID: String? = nil, focusedMixID: String? = nil,
+         previewMixes: [MusicMix]? = nil, previewTracks: [Track] = []) {
+        self.deprioritizedMixID = deprioritizedMixID
+        self.focusedMixID = focusedMixID
+        isDesignPreview = previewMixes != nil
+        _mixes = State(initialValue: previewMixes ?? [])
+        _selectedVKMix = State(initialValue: previewMixes?.first)
+        _vkTracks = State(initialValue: previewTracks)
+        _vkTrackCache = State(initialValue: Dictionary(
+            uniqueKeysWithValues: (previewMixes ?? []).map { ($0.id, previewTracks) }
+        ))
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             let metrics = MixHubMetrics(width: containerWidth)
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 20) {
+                LazyVStack(alignment: .leading, spacing: 18) {
                     Color.clear
                         .frame(height: 0)
                         .id(MainTabScrollDestination.mix)
@@ -165,8 +180,8 @@ struct MixesHubView: View {
                 )
             }
         }
-        .refreshable { await load(force: true) }
-        .task(id: sessionStore.accessToken) { await load() }
+        .refreshable { if !isDesignPreview { await load(force: true) } }
+        .task(id: sessionStore.accessToken) { if !isDesignPreview { await load() } }
         .sheet(isPresented: $showingMixConfigure) {
             MixConfigureSheet(scope: .mix) {
                 if let mix = selectedVKMix ?? orderedVKMixes.first {
@@ -181,7 +196,7 @@ struct MixesHubView: View {
             }
         }
         .onAppear {
-            ensureVKSelection()
+            if !isDesignPreview { ensureVKSelection() }
         }
         .onChange(of: environment.mixActionError) { _, error in
             guard let error else { return }
@@ -769,13 +784,24 @@ struct MixesHubView: View {
         // link inside another button's label made that link unreachable
         // to both touch and VoiceOver.
         return ZStack(alignment: .bottomLeading) {
-            MixArtworkView(
-                mix: mix,
-                tracks: artSource,
-                size: metrics.contentWidth,
-                height: metrics.heroHeight,
-                cornerRadius: 0
-            )
+            Group {
+                if mix.artworkURL == nil, mix.curator?.photoURL == nil,
+                   mix.backdropURL == nil, !artSource.contains(where: { $0.artworkURL != nil }) {
+                    Image(DiscoveryMoodCard.artworkName(for: settings.mixMoodPreference))
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: metrics.contentWidth, height: metrics.heroHeight)
+                        .clipped()
+                } else {
+                    MixArtworkView(
+                        mix: mix,
+                        tracks: artSource,
+                        size: metrics.contentWidth,
+                        height: metrics.heroHeight,
+                        cornerRadius: 0
+                    )
+                }
+            }
             .overlay {
                 LinearGradient(
                     colors: [
@@ -1242,22 +1268,46 @@ struct MixesHubView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(artists) { artist in
-                            ExploreChip(
-                                title: artist.displayName,
-                                systemImage: "person.wave.2.fill",
-                                isLoading: startingArtistKey == artist.id
-                            ) {
-                                guard startingArtistKey == nil else { return }
+                            Button {
+                                guard startingArtistKey == nil, startingMood == nil else { return }
                                 Haptics.selection()
                                 startingArtistKey = artist.id
-                                Task {
+                                seedRadioTask?.cancel()
+                                seedRadioTask = Task {
+                                    defer { startingArtistKey = nil }
                                     await environment.startMixFromArtist(
-                                        named: artist.displayName,
-                                        seed: nil
+                                        named: artist.displayName, seed: nil
                                     )
-                                    startingArtistKey = nil
                                 }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    AsyncArtwork(url: artist.artworkURL, size: 116)
+                                        .overlay(alignment: .bottomTrailing) {
+                                            Group {
+                                                if startingArtistKey == artist.id {
+                                                    ProgressView().tint(.white)
+                                                } else {
+                                                    Image(systemName: "play.fill")
+                                                        .font(.caption.weight(.bold))
+                                                }
+                                            }
+                                            .foregroundStyle(.white)
+                                            .frame(width: 32, height: 32)
+                                            .background(.black.opacity(0.7), in: Circle())
+                                            .padding(8)
+                                        }
+                                    Text(artist.displayName)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .frame(width: 116, alignment: .leading)
                             }
+                            .buttonStyle(PremiumPressStyle())
+                            .disabled(startingArtistKey != nil || startingMood != nil)
+                            .accessibilityLabel(artist.displayName)
+                            .accessibilityHint(L10n.text("mix.artists_title"))
                         }
                     }
                 }
@@ -1279,23 +1329,22 @@ struct MixesHubView: View {
                     ForEach(
                         MixMoodPreference.allCases.filter { $0 != .any }
                     ) { mood in
-                        ExploreChip(
-                            title: mood.title,
-                            systemImage: mood.chipSymbol,
-                            tint: mood.tint(for: settings.theme, on: settings.palette),
-                            isLoading: startingMood == mood
+                        DiscoveryMoodCard(
+                            mood: mood,
+                            width: min(200, max(136, metrics.contentWidth * 0.43)),
+                            isLoading: startingMood == mood,
+                            isSelected: settings.mixMoodPreference == mood
                         ) {
-                            guard startingMood == nil else { return }
+                            guard startingMood == nil, startingArtistKey == nil else { return }
                             Haptics.selection()
                             startingMood = mood
-                            Task {
-                                await environment.startMoodStation(
-                                    mood,
-                                    in: vkMixes
-                                )
-                                startingMood = nil
+                            launchTask?.cancel()
+                            launchTask = Task {
+                                defer { startingMood = nil }
+                                await environment.startMoodStation(mood, in: vkMixes)
                             }
                         }
+                        .disabled(startingMood != nil || startingArtistKey != nil)
                     }
                 }
             }
