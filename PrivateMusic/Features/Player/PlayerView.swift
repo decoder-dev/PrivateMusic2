@@ -175,14 +175,14 @@ struct PlayerView: View {
             ),
             hasAlbum: track.albumTitle?.isEmpty == false
         )
-        let scrolling = metrics.requiresAccessibilityScrolling(
+        // Track and artist names can wrap beyond the estimated metadata
+        // height. Accessibility text must be allowed to take that space.
+        let scrolling = dynamicTypeSize.isAccessibilitySize || metrics.requiresAccessibilityScrolling(
             containerHeight: size.height
         )
 
         Group {
-            if metrics.requiresAccessibilityScrolling(
-                containerHeight: size.height
-            ) {
+            if scrolling {
                 // Spacers inside a ScrollView grow without a ceiling and
                 // the player becomes infinitely tall. Stack with fixed
                 // gaps so the scroll view's content size is the layout.
@@ -563,6 +563,7 @@ struct PlayerView: View {
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                 }
             }
+            .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
 
             Spacer(minLength: 10)
 
@@ -705,16 +706,24 @@ struct PlayerView: View {
             )
     }
 
-    private func quickActions(_ track: Track) -> some View {
-        HStack(spacing: 0) {
-            ForEach(PlayerQuickAction.allCases) { item in
-                quickAction(item) {
-                    switch item {
-                    case .lyrics: present(.lyrics(track))
-                    case .queue: present(.queue)
-                    case .playlist: present(.playlists(track))
-                    case .share: startShare(track)
-                    }
+    @ViewBuilder private func quickActions(_ track: Track) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                quickActionButtons(track)
+            }
+        } else {
+            HStack(spacing: 0) { quickActionButtons(track) }
+        }
+    }
+
+    private func quickActionButtons(_ track: Track) -> some View {
+        ForEach(PlayerQuickAction.allCases) { item in
+            quickAction(item) {
+                switch item {
+                case .lyrics: present(.lyrics(track))
+                case .queue: present(.queue)
+                case .playlist: present(.playlists(track))
+                case .share: startShare(track)
                 }
             }
         }
@@ -729,8 +738,10 @@ struct PlayerView: View {
                 quickActionGlyph(item.systemImage)
                 Text(L10n.text(item.title))
                     .font(.caption2.weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.72)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                     .padding(.horizontal, 2)
             }
             .foregroundStyle(playerForeground.opacity(0.72))

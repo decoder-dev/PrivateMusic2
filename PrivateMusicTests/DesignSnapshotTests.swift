@@ -72,6 +72,10 @@ final class DesignSnapshotTests: XCTestCase {
                 name: "appearance-accessibility", environment: environment, settings: settings)
         capture(PlayerView().dynamicTypeSize(.accessibility3), name: "player-accessibility",
                 width: 320, height: 700, environment: environment, settings: settings)
+        // A tall capture exposes the complete scrolling composition,
+        // including the two-column actions below the first viewport.
+        capture(PlayerView().dynamicTypeSize(.accessibility3), name: "player-accessibility-full",
+                width: 320, height: 1250, environment: environment, settings: settings)
         capture(AudioUploadView(onUploaded: {}).dynamicTypeSize(.accessibility3),
                 name: "audio-upload-accessibility", width: 320, height: 700,
                 environment: environment, settings: settings)
