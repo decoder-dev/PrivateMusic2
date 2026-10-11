@@ -3,6 +3,25 @@ import XCTest
 
 @MainActor
 final class PlaybackProgressModelTests: XCTestCase {
+    func testInvalidClockValuesDoNotPoisonProgress() {
+        let progress = PlaybackProgressModel()
+        for value in [Double.nan, .infinity, -.infinity, -10] {
+            progress.reset(to: 20)
+            progress.update(value, force: true)
+            XCTAssertEqual(progress.elapsedTime, 0)
+            progress.reset(to: value)
+            XCTAssertEqual(progress.elapsedTime, 0)
+        }
+    }
+
+    func testDurationFormattingHandlesInvalidAndVeryLargeMetadata() {
+        for value in [Double.nan, .infinity, -.infinity, -10, Double(Int.max)] {
+            XCTAssertEqual(value.formattedDuration, "0:00")
+        }
+        XCTAssertEqual(3_661.0.formattedDuration, "1:01:01")
+        XCTAssertEqual(1_000_000_000_000.0.formattedDuration, "277777777:46:40")
+    }
+
     func testUpdatesIgnoreSubThresholdDeltas() {
         let progress = PlaybackProgressModel()
         progress.update(1.0, force: true)

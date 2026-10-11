@@ -302,9 +302,8 @@ extension TimeInterval {
         guard isFinite, self >= 0, self < Double(Int.max) else { return "0:00" }
         let total = Int(self)
         if total >= 3600 {
-            return String(
-                format: "%d:%02d:%02d",
-                total / 3600,
+            return "\(total / 3600):" + String(
+                format: "%02d:%02d",
                 total % 3600 / 60,
                 total % 60
             )

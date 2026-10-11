@@ -337,6 +337,7 @@ actor HLSSegmentExporter {
         // container detection) and demux it without materializing a single
         // stitched MP4 in memory.
         var allSamples: [CMAFAudioDemuxer.CompressedSample] = []
+        var payloadBytes: Int64 = 0
         var nextDecodeTime: Int64? = nil
         let totalSegments = segments.count
 
@@ -394,6 +395,8 @@ actor HLSSegmentExporter {
                         safeDetail: String(describing: error)
                     )
                 }
+                payloadBytes += fragmentSamples.reduce(Int64(0)) { $0 + Int64($1.data.count) }
+                guard payloadBytes <= fileSizeLimit else { throw HLSExportError.fileTooLarge }
                 allSamples.append(contentsOf: fragmentSamples)
             } else {
                 let fragmentSamples: [CMAFAudioDemuxer.CompressedSample]
@@ -415,14 +418,12 @@ actor HLSSegmentExporter {
                         safeDetail: String(describing: error)
                     )
                 }
+                payloadBytes += fragmentSamples.reduce(Int64(0)) { $0 + Int64($1.data.count) }
+                guard payloadBytes <= fileSizeLimit else { throw HLSExportError.fileTooLarge }
                 allSamples.append(contentsOf: fragmentSamples)
             }
 
             try Task.checkCancellation()
-            let estimated = Int64(allSamples.reduce(0) { $0 + $1.data.count })
-            guard estimated <= fileSizeLimit else {
-                throw HLSExportError.fileTooLarge
-            }
             await progress?(
                 .downloadingSegments(
                     completed: index + 1,
