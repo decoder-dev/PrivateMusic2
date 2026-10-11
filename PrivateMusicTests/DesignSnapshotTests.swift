@@ -7,17 +7,21 @@ import XCTest
 /// review evidence, not an assertion that visual quality can be automated.
 @MainActor
 final class DesignSnapshotTests: XCTestCase {
+    private var snapshotPlayer: AudioPlayer?
     func testCaptureAppearanceAndCoreComposition() throws {
         let suite = "DesignSnapshotTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let settings = AppSettings(defaults: defaults)
         let environment = AppEnvironment(keychain: KeychainStore(service: suite))
+        let player = AudioPlayer(settings: settings, historyStore: ListeningHistoryStore(defaults: defaults),
+                                 defaults: defaults)
+        snapshotPlayer = player
         let track = Track(trackID: 1, ownerID: 1, title: "Тихий вечер", artist: "Private Music",
                           duration: 222, streamURL: nil, artworkURL: nil)
-        environment.player.play(track, in: [track], source: .library, allowsContinuation: false)
-        environment.player.pause()
-        defer { environment.player.stop() }
+        player.play(track, in: [track], source: .library, allowsContinuation: false)
+        player.pause()
+        defer { player.stop(); snapshotPlayer = nil }
         for theme in AppTheme.allCases {
             settings.theme = theme
             settings.appearance = theme == .dark ? .dark : .light
@@ -63,13 +67,14 @@ final class DesignSnapshotTests: XCTestCase {
         _ view: V, name: String, width: CGFloat = 390, height: CGFloat = 844,
         environment: AppEnvironment, settings: AppSettings
     ) {
+        let player = snapshotPlayer ?? environment.player
         let content = view
             .environment(environment)
             .environment(settings)
             .environment(environment.sessionStore)
-            .environment(environment.player)
-            .environment(environment.player.highlight)
-            .environment(environment.player.progress)
+            .environment(player)
+            .environment(player.highlight)
+            .environment(player.progress)
             .environment(environment.libraryStore)
             .environment(environment.offlineStore)
             .environment(environment.historyStore)
