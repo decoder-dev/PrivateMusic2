@@ -918,3 +918,5 @@
 "playback_no_internet" = "No internet. Turn on your connection or pick a downloaded track.";
 "connect.token_placeholder" = "VK access token";
 "couldn_t_update_playlist" = "Couldn't update playlist";
+"home.music_mood_title" = "Music & mood";
+"home.music_mood_subtitle" = "One tap and it plays what fits";

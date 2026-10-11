@@ -23,6 +23,7 @@ struct CatalogView: View {
     @State private var isNextStepLaunching = false
     @State private var pendingHiddenArtist: HomeNextStepCandidate?
     @State private var openingMixID: String?
+    @State private var startingMood: MixMoodPreference?
     @State private var containerWidth: CGFloat = 390
     @State private var topSafeAreaInset: CGFloat = 0
     @State private var nextStepCandidate: HomeNextStepCandidate?
@@ -60,10 +61,10 @@ struct CatalogView: View {
                     if homeCatalog.errorMessage != nil, homeCatalog.isEmpty {
                         retryRow
                     }
+                    musicAndMoodSection(metrics: metrics)
                     if !history.entries.isEmpty {
                         recentlyPlayedSection(metrics: metrics)
                     }
-                    exploreMusicEntry
                 }
                 .padding(.horizontal, metrics.horizontalPadding)
                 .padding(.top, BubbleSpacing.xs)
@@ -554,6 +555,83 @@ struct CatalogView: View {
 
     private func hideNextStepArtist(_ candidate: HomeNextStepCandidate) {
         suppressNextStep(candidate, includeArtist: true)
+    }
+
+    /// Everything for choosing what to listen to — moods and VK mixes —
+    /// in one place on Home, with the full Explore screen one tap away.
+    private func musicAndMoodSection(metrics: HomeMetrics) -> some View {
+        let tileWidth: CGFloat = 124
+        let mixes = homeCatalog.mixes
+            .filter { mix in
+                // Mood tiles are the chips above; do not list them twice.
+                !(mix.streamOptions?.contains("vibes") ?? false)
+            }
+            .prefix(10)
+        return VStack(alignment: .leading, spacing: BubbleSpacing.m) {
+            PremiumSectionHeader(
+                "home.music_mood_title",
+                subtitle: "home.music_mood_subtitle"
+            )
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(
+                        MixMoodPreference.allCases.filter { $0 != .any }
+                    ) { mood in
+                        ExploreChip(
+                            title: mood.title,
+                            systemImage: mood.chipSymbol,
+                            tint: mood.tint,
+                            isLoading: startingMood == mood
+                        ) {
+                            guard startingMood == nil else { return }
+                            Haptics.selection()
+                            startingMood = mood
+                            Task {
+                                await environment.startMoodStation(
+                                    mood,
+                                    in: homeCatalog.mixes
+                                )
+                                startingMood = nil
+                            }
+                        }
+                    }
+                }
+            }
+            .scrollsToCardEdges()
+            if !mixes.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: metrics.cardSpacing) {
+                        ForEach(Array(mixes)) { mix in
+                            Button {
+                                Haptics.selection()
+                                openingMixID = mix.id
+                            } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    MixArtworkView(
+                                        mix: mix,
+                                        tracks: [],
+                                        size: tileWidth,
+                                        cornerRadius: PremiumLayout.compactRadius
+                                    )
+                                    Text(mix.title)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                        .frame(
+                                            width: tileWidth,
+                                            alignment: .leading
+                                        )
+                                }
+                            }
+                            .buttonStyle(PremiumPressStyle())
+                        }
+                    }
+                }
+                .scrollsToCardEdges()
+            }
+            exploreMusicEntry
+        }
     }
 
     private var exploreMusicEntry: some View {
