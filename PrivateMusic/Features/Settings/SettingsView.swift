@@ -274,7 +274,7 @@ struct SettingsView: View {
 
 // MARK: - Appearance
 
-private struct AppearanceSettingsView: View {
+struct AppearanceSettingsView: View {
     @Environment(AppSettings.self) private var settings
     @State private var confirmsReset = false
 

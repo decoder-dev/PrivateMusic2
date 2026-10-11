@@ -37,6 +37,7 @@ struct PremiumCardModifier: ViewModifier {
                         shape.fill(settings.surfaceColor)
                     } else {
                         shape.fill(.regularMaterial)
+                        shape.fill(settings.surfaceColor.opacity(0.86))
                     }
                 }
             }
@@ -97,13 +98,13 @@ struct PremiumProminentButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: PremiumLayout.controlRadius, style: .continuous)
                     .fill(settings.accent)
                     .shadow(
-                        color: settings.accent.opacity(configuration.isPressed ? 0.3 : 0.6),
-                        radius: configuration.isPressed ? 8 : 16,
-                        y: configuration.isPressed ? 4 : 8
+                        color: settings.accent.opacity(configuration.isPressed ? 0.12 : 0.18),
+                        radius: 8,
+                        y: 4
                     )
             }
             .scaleEffect(
-                reduceMotion || !configuration.isPressed ? 1 : 0.96
+                reduceMotion || !configuration.isPressed ? 1 : 0.98
             )
             .opacity(configuration.isPressed ? 0.85 : 1)
             .animation(

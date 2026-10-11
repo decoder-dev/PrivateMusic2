@@ -16,7 +16,7 @@ final class PlaybackProgressModel {
         _ value: TimeInterval,
         force: Bool = false
     ) {
-        let sanitized = max(value, 0)
+        let sanitized = value.isFinite ? max(value, 0) : 0
         guard force || abs(elapsedTime - sanitized) >= Self.publishThreshold
         else {
             return
@@ -25,7 +25,7 @@ final class PlaybackProgressModel {
     }
 
     func reset(to value: TimeInterval = 0) {
-        elapsedTime = max(value, 0)
+        elapsedTime = value.isFinite ? max(value, 0) : 0
     }
 }
 
