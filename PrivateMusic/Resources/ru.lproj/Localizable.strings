@@ -582,7 +582,7 @@
 
 "remaining_d0_items_1" = "Осталось: %d объектов · %@";
 
-"d0_files_1" = "%d файлов · %@";
+"d0_files_1" = "%@ · %@";
 
 "current_downloads_will_be_stopped_and_downloaded_tracks_playlists_and_au" = "Будут остановлены текущие загрузки и удалены скачанные треки, плейлисты и автокэш. Музыка в VK не изменится.";
 
@@ -635,7 +635,7 @@
 "matched_to_your_recent_taste" = "Подобрано под ваш недавний вкус";
 "listen_later" = "Слушать позже";
 "mix_save_requires_playing" = "Сохранить можно, пока играет этот микс";
-"d0_tracks_resume" = "%d треков · продолжить";
+"d0_tracks_resume" = "%@ · продолжить";
 "resume" = "Продолжить";
 "mix_radio" = "Радио микса";
 "reorders_the_loaded_queue_with_no_extra_requests" = "Переставляет уже загруженную очередь без новых запросов";
@@ -649,8 +649,8 @@
 "n_0_d1_match" = "%@ · совпадение %d%%";
 "vk_has_not_prepared_themed_mixes_for_your_account_yet_check_back_later_o" = "Selena ещё не подготовила тематические подборки для вас — загляните позже.";
 "n_0_d1_gb" = "%@ / %d ГБ";
-"d0_mixes" = "%d миксов";
-"d0_mixes_in_their_taste" = "%d миксов со вкусом";
+"d0_mixes" = "%@";
+"d0_mixes_in_their_taste" = "%@ со вкусом";
 "energetic" = "Активно";
 "no_albums_found" = "Альбомы не найдены";
 "more_discoveries" = "Больше находок";

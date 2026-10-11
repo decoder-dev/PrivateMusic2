@@ -54,7 +54,7 @@ struct OfflineDeleteAllPresentation: Equatable {
                 title: L10n.text("remove_all_saved_files"),
                 subtitle: L10n.format(
                     "d0_files_1",
-                    downloadedTrackCount,
+                    L10n.fileCount(downloadedTrackCount),
                     formattedBytes(totalBytes)
                 ),
                 systemImage: "trash",

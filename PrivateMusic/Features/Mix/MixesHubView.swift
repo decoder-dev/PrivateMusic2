@@ -540,7 +540,7 @@ struct MixesHubView: View {
                                 Text(
                                     L10n.format(
                                         "d0_mixes",
-                                        shelf.mixes.count
+                                        L10n.mixCount(shelf.mixes.count)
                                     )
                                 )
                                 .font(.caption)
@@ -702,7 +702,7 @@ struct MixesHubView: View {
                         Text(
                             L10n.format(
                                 "d0_tracks_resume",
-                                pin.tracks.count
+                                L10n.trackCount(pin.tracks.count)
                             )
                         )
                         .font(.caption2)

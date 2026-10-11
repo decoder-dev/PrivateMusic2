@@ -39,6 +39,14 @@ enum L10n {
         )
     }
 
+    static func mixCount(_ count: Int) -> String {
+        String.localizedStringWithFormat(text("mixes.count"), count)
+    }
+
+    static func fileCount(_ count: Int) -> String {
+        String.localizedStringWithFormat(text("files.count"), count)
+    }
+
     static func minutes(_ count: Int) -> String {
         String.localizedStringWithFormat(
             text("minutes.count"),
