@@ -210,7 +210,8 @@ struct ArtistView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                if tracks.count > Self.trackPreviewLimit {
+                if tracks.count > Self.trackPreviewLimit
+                    || nextTracksOffset != nil {
                     Button {
                         showsAllTracks = true
                     } label: {

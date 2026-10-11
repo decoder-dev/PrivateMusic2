@@ -139,7 +139,7 @@ struct ListeningHistoryView: View {
     private func play(_ entry: ListeningHistoryEntry) {
         environment.player.play(
             entry.track,
-            in: history.entries.map(\.track),
+            in: (query.isEmpty ? history.entries : filtered).map(\.track),
             source: .history
         )
     }
