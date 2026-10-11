@@ -123,8 +123,8 @@ struct PlayerView: View {
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .padding(.bottom, 40)
         }
-        .animation(.easeInOut(duration: 0.3), value: showCopiedToast)
-        .animation(.easeInOut(duration: 0.3), value: showRouteHint)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: showCopiedToast)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: showRouteHint)
     }
 
     private var artworkBackground: some View {

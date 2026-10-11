@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct OfflineDownloadsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppEnvironment.self) private var environment
     /// Highlight only: observing `AudioPlayer` here would rebuild the whole
     /// downloads list on every buffering / duration tick. Playback actions go
@@ -97,7 +98,7 @@ struct OfflineDownloadsView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .animation(.easeInOut(duration: 0.3), value: contentSnapshot)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: contentSnapshot)
         .background(ThemeBackground())
         .scrollContentBackground(.hidden)
         .clearsMiniPlayer(includingWhenDockReservesSpace: true)
@@ -1185,6 +1186,7 @@ private struct DownloadStorageSummary: View {
 private struct AnimatedProgressView: View {
     let progress: Double
     @Environment(AppSettings.self) private var settings
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var animatedProgress: Double = 0
 
@@ -1203,7 +1205,7 @@ private struct AnimatedProgressView: View {
                             height: 4
                         )
                         .animation(
-                            .easeInOut(duration: 0.4),
+                            reduceMotion ? nil : .easeInOut(duration: 0.4),
                             value: animatedProgress
                         )
                 }
@@ -1215,12 +1217,14 @@ private struct AnimatedProgressView: View {
                 .frame(width: 32, alignment: .trailing)
         }
         .onAppear {
-            animatedProgress = progress
+            animatedProgress = boundedProgress
         }
-        .onChange(of: progress) { newProgress in
-            BubbleMotion.animate(.easeInOut(duration: 0.4)) {
-                animatedProgress = newProgress
-            }
+        .onChange(of: boundedProgress) { _, newProgress in
+            animatedProgress = newProgress
         }
+    }
+
+    private var boundedProgress: Double {
+        progress.isFinite ? min(1, max(0, progress)) : 0
     }
 }

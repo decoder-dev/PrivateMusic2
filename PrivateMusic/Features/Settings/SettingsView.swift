@@ -96,6 +96,7 @@ struct OfflineDeleteAllPresentation: Equatable {
 }
 
 struct SettingsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppEnvironment.self) private var environment
     @Environment(AppSettings.self) private var settings
     @Environment(AudioPlayer.self) private var player
@@ -201,7 +202,7 @@ struct SettingsView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: developerUnlockFlash)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: developerUnlockFlash)
     }
 
     private var versionRow: some View {
@@ -991,6 +992,7 @@ struct EqualizerSettingsView: View {
 // MARK: - Offline & Storage
 
 private struct OfflineStorageSettingsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppEnvironment.self) private var environment
     @Environment(AppSettings.self) private var settings
     @Environment(OfflineTrackStore.self) private var offlineStore
@@ -1067,7 +1069,7 @@ private struct OfflineStorageSettingsView: View {
                                     }
                                 }
                                 .animation(
-                                    .easeInOut(duration: 0.4),
+                                    reduceMotion ? nil : .easeInOut(duration: 0.4),
                                     value: usage.totalBytes
                                 )
                             }
