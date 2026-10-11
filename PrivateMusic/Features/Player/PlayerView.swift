@@ -235,7 +235,7 @@ struct PlayerView: View {
         flexible: Bool
     ) -> some View {
         VStack(spacing: 0) {
-            playerHeader(track)
+            playerHeader(track, compact: metrics.contentWidth < 300)
                 .frame(height: metrics.headerHeight)
                 .padding(.top, metrics.headerTopPadding)
 
@@ -273,7 +273,7 @@ struct PlayerView: View {
         flexible: Bool
     ) -> some View {
         VStack(spacing: 0) {
-            playerHeader(track)
+            playerHeader(track, compact: metrics.contentWidth < 300)
                 .frame(height: metrics.headerHeight)
                 .padding(.top, metrics.headerTopPadding)
 
@@ -331,7 +331,7 @@ struct PlayerView: View {
         }
     }
 
-    @ViewBuilder private func playerHeader(_ track: Track) -> some View {
+    @ViewBuilder private func playerHeader(_ track: Track, compact: Bool) -> some View {
         if dynamicTypeSize.isAccessibilitySize {
             HStack(spacing: 12) {
                 Text(player.queueContextTitle)
@@ -343,21 +343,23 @@ struct PlayerView: View {
                 playerHeaderActions(track)
             }
         } else {
-            regularPlayerHeader(track)
+            regularPlayerHeader(track, compact: compact)
         }
     }
 
-    private func regularPlayerHeader(_ track: Track) -> some View {
+    private func regularPlayerHeader(_ track: Track, compact: Bool) -> some View {
         // Plain ZStack — not AdaptiveGlassContainer. Sibling interactive
         // glass circles inside GlassEffectContainer morph into one blob
         // on iOS 26 (same failure mode primaryControls documents).
         ZStack {
             VStack(spacing: 2) {
-                Text(L10n.text("player.now_playing_kicker"))
-                    .font(.caption2.weight(.bold))
-                    .lineLimit(1)
-                    .tracking(1.1)
-                    .foregroundStyle(playerSecondary)
+                if !compact {
+                    Text(L10n.text("player.now_playing_kicker"))
+                        .font(.caption2.weight(.bold))
+                        .lineLimit(1)
+                        .tracking(1.1)
+                        .foregroundStyle(playerSecondary)
+                }
                 Text(player.queueContextTitle.uppercased())
                     .font(.caption2.weight(.medium))
                     .lineLimit(1)
@@ -366,7 +368,7 @@ struct PlayerView: View {
                     .foregroundStyle(playerSecondary)
                     .multilineTextAlignment(.center)
             }
-            .padding(.horizontal, PlayerHeaderMetrics.titleHorizontalInset)
+            .padding(.horizontal, compact ? PlayerHeaderMetrics.sideClusterWidth : PlayerHeaderMetrics.titleHorizontalInset)
             .frame(maxWidth: .infinity)
             .accessibilityElement(children: .combine)
             .accessibilitySortPriority(1)

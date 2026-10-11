@@ -124,7 +124,10 @@ final class DesignSnapshotTests: XCTestCase {
             return
         }
         let previousWindow = scene.windows.first(where: \.isKeyWindow)
-        let controller = UIHostingController(rootView: content.frame(width: width, height: height))
+        // Let the hosting controller propose its safe-area content size.
+        // A fixed full-window SwiftUI frame shifts its bottom controls
+        // underneath the home indicator and produces misleading captures.
+        let controller = UIHostingController(rootView: content)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: width, height: height)
         window.windowLevel = .alert + 1
