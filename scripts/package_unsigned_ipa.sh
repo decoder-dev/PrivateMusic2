@@ -48,7 +48,7 @@ else
 fi
 
 if [[ "$strip_watch" -eq 1 ]]; then
-  rm -rf "$work_dir/Payload/"*.app/PlugIns
+  rm -rf "$work_dir/Payload/"*.app/PlugIns/PrivateMusicWatch.app
   rm -rf "$work_dir/Payload/"*.app/Watch
 fi
 
@@ -122,8 +122,8 @@ with zipfile.ZipFile(path) as archive:
         for name in names
     )
     if strip_watch:
-        if has_watch_plugin or any("/PlugIns/" in name for name in names):
-            raise SystemExit("strip-watch IPA still contains PlugIns/")
+        if has_watch_plugin:
+            raise SystemExit("strip-watch IPA still contains the Watch app")
     else:
         watch_prefixes = {
             name.removesuffix("Info.plist")

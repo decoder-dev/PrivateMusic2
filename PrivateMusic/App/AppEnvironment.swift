@@ -10,6 +10,8 @@ final class AppEnvironment {
     let sessionStore: SessionStore
     let networkMonitor: NetworkMonitor
     let historyStore: ListeningHistoryStore
+    let savedLyricsStore = SavedLyricsStore()
+    private let audioShareEnricher = AudioShareEnricher()
     let libraryStore: MusicLibraryStore
     let homeCatalogStore: HomeCatalogStore
     let likedAlbumsStore: LikedAlbumsStore
@@ -79,6 +81,7 @@ final class AppEnvironment {
         self.sessionStore = SessionStore(keychain: keychain)
         self.networkMonitor = NetworkMonitor()
         self.historyStore = ListeningHistoryStore(accountID: sessionStore.resolvedOfflineAccountID)
+        savedLyricsStore.configure(accountID: sessionStore.resolvedOfflineAccountID)
         self.libraryStore = MusicLibraryStore()
         self.homeCatalogStore = HomeCatalogStore()
         self.likedAlbumsStore = LikedAlbumsStore()
@@ -369,9 +372,22 @@ final class AppEnvironment {
         }
     }
 
+    func openRecentWidgetURL(_ url: URL) {
+        guard url.scheme == "privatemusic", url.host == "recent",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let query = components.queryItems, query.count == 2,
+              let owner = query.first(where: { $0.name == "account" })?.value.flatMap(Int.init),
+              owner == sessionStore.resolvedOfflineAccountID,
+              let id = query.first(where: { $0.name == "track" })?.value,
+              let entry = historyStore.entries.first(where: { $0.track.id == id }) else { return }
+        player.play(entry.track, in: historyStore.entries.map(\.track), source: .library, allowsContinuation: false)
+        player.presentPlayer()
+    }
+
     func configureOfflineAccount() {
         let accountID = sessionStore.resolvedOfflineAccountID
         historyStore.configure(accountID: accountID)
+        savedLyricsStore.configure(accountID: accountID)
         libraryDownloadJob.configure(accountID: accountID)
         libraryStore.prepare(accountID: accountID)
         likedAlbumsStore.prepare(accountID: accountID)
@@ -586,32 +602,58 @@ final class AppEnvironment {
         for track: Track,
         progress: TrackExportProgressHandler? = nil
     ) async throws -> TrackSharePayload {
+        let account = sessionStore.resolvedOfflineAccountID
         progress?(.resolvingSource)
         try Task.checkCancellation()
 
+        let payload: TrackSharePayload
         if let localURL = offlineStore.localURL(for: track) {
-            return try await trackShareService.payloadFromLocalFile(
+            payload = try await trackShareService.payloadFromLocalFile(
                 localURL,
                 track: track,
                 requiresMP3: false,
                 progress: progress
             )
-        }
+        } else {
+            let refreshed = try await withAuthorizedToken { token in
+                try await musicService.refreshedTrack(
+                    track,
+                    accessToken: token
+                )
+            }
+            try Task.checkCancellation()
 
-        let refreshed = try await withAuthorizedToken { token in
-            try await musicService.refreshedTrack(
-                track,
-                accessToken: token
+            payload = try await trackShareService.preparePayload(
+                for: refreshed,
+                userAgent: sessionStore.userAgent,
+                requiresMP3: false,
+                progress: progress
             )
         }
-        try Task.checkCancellation()
-
-        return try await trackShareService.preparePayload(
-            for: refreshed,
-            userAgent: sessionStore.userAgent,
-            requiresMP3: false,
-            progress: progress
-        )
+        do {
+            try Task.checkCancellation()
+            guard account == sessionStore.resolvedOfflineAccountID else { throw CancellationError() }
+            progress?(.writingMetadata)
+            var artwork: Data?
+            if let url = track.artworkURL {
+                if networkMonitor.isReachable {
+                    await ExportArtworkLoader.prefetch(url)
+                }
+                artwork = (ArtworkImageCache.shared.image(for: url, maxPixelSize: 512)
+                    ?? ArtworkImageCache.shared.image(for: url, maxPixelSize: 256))?.jpegData(compressionQuality: 0.85)
+            }
+            try Task.checkCancellation()
+            guard account == sessionStore.resolvedOfflineAccountID else { throw CancellationError() }
+            try await audioShareEnricher.enrich(payload.fileURL, track: track, artwork: artwork,
+                                                lyrics: savedLyricsStore.lyrics(for: track))
+        } catch is CancellationError {
+            await removeSharePayload(payload)
+            throw CancellationError()
+        } catch {
+            // Unsupported legacy tags must never turn a valid audio export into an error.
+            AppLog.shared.failure(.app, "Add export metadata", error)
+        }
+        return payload
     }
 
     func removeSharePayload(_ payload: TrackSharePayload) async {

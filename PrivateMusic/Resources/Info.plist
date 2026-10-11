@@ -77,5 +77,14 @@
   <string>https://t.me/+myDvOG6Y4s9mMDUy</string>
   <key>TELEGRAM_VPN_URL</key>
   <string>https://t.me/decshopBot</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>com.dec.privatemusic2.recent</string>
+      <key>CFBundleURLSchemes</key>
+      <array><string>privatemusic</string></array>
+    </dict>
+  </array>
 </dict>
 </plist>

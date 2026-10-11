@@ -923,3 +923,11 @@
 
 "actions.playback" = "Playback";
 "actions.mix_feedback" = "Tune Your Mixes";
+
+"search.saved_lyrics" = "In saved lyrics";
+"search.saved_lyrics_hint" = "Lyrics you have opened · available offline";
+"widget.recent" = "Recently played";
+"widget.hint" = "Your recent tracks, one tap away";
+"widget.empty" = "Play some music to see your recent tracks here";
+"export.lyrics" = "Share audio and lyrics";
+"export.metadata_progress" = "Adding artwork and track information";

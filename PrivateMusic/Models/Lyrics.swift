@@ -1,13 +1,13 @@
 import Foundation
 
-struct LyricLine: Sendable, Equatable, Identifiable {
+struct LyricLine: Codable, Sendable, Equatable, Identifiable {
     let time: TimeInterval
     let text: String
 
     var id: String { "\(time)-\(text)" }
 }
 
-struct Lyrics: Sendable, Equatable {
+struct Lyrics: Codable, Sendable, Equatable {
     let text: String
     let source: String
     let sourceURL: URL?

@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import WidgetKit
 import XCTest
 @testable import PrivateMusic
 
@@ -39,6 +40,11 @@ final class DesignSnapshotTests: XCTestCase {
                     environment: environment, settings: settings)
             capture(discoveryPreview(track), name: "discovery-full-\(theme.rawValue)",
                     width: 390, height: 1500, environment: environment, settings: settings)
+            capture(widgetPreview(), name: "recent-widget-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(SavedLyricsResults(records: [SavedLyricsRecord(track: track,
+                    lyrics: Lyrics(text: "Свет в окне", source: "LRCLIB"))], resolve: { $0 }),
+                    name: "lyrics-search-\(theme.rawValue)", environment: environment, settings: settings)
             capture(PlayerView(), name: "player-\(theme.rawValue)",
                     environment: environment, settings: settings)
             capture(LyricsView(track: track, initialLyrics: Lyrics(
@@ -106,6 +112,22 @@ final class DesignSnapshotTests: XCTestCase {
         capture(LyricsView(track: track, initialLyrics: Lyrics(text: "Тихий вечер\nСвет в окне", source: "LRCLIB",
                     lines: [LyricLine(time: 5, text: "Тихий вечер"), LyricLine(time: 15, text: "Свет в окне")]
                 )), name: "lyrics-synced", environment: environment, settings: settings)
+    }
+
+    private func widgetPreview() -> some View {
+        VStack {
+            RecentMusicWidgetView(entry: RecentMusicEntry(date: Date(), snapshot: RecentWidgetSnapshot(
+                accountID: 1, tracks: [
+                    RecentWidgetTrack(id: "1_1", title: "Тихий вечер", artist: "Private Music", artwork: nil),
+                    RecentWidgetTrack(id: "1_2", title: "Навстречу солнцу", artist: "Private Music", artwork: nil),
+                    RecentWidgetTrack(id: "1_3", title: "Океан", artist: "Private Music", artwork: nil)
+                ])))
+                .environment(\.widgetFamily, .systemMedium)
+                .padding(16)
+                .frame(width: 350, height: 180)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+            Spacer()
+        }.padding(.top, 24).background(ThemeBackground())
     }
 
     private func discoveryPreview(_ track: Track, width: CGFloat = 390) -> some View {

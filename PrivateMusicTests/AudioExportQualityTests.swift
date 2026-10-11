@@ -43,6 +43,27 @@ final class AudioExportQualityTests: XCTestCase {
         XCTAssertEqual(exported.channels, 2)
     }
 
+    func testM4AMetadataKeepsEveryCompressedAACPacket() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("source.aac")
+        let destination = directory.appendingPathComponent("export.m4a")
+        try AACAudioFixture.data.write(to: source)
+        try AACPacketRemuxer.remux(source: source, destination: destination)
+        let before = try readPackets(destination)
+        let track = Track(trackID: 1, ownerID: 1, title: "Evening", artist: "Private Music",
+                          duration: 1, streamURL: nil, artworkURL: nil)
+        try await AudioShareEnricher().tagM4A(destination, track: track, artwork: nil)
+        let after = try readPackets(destination)
+        XCTAssertEqual(after.packets, before.packets)
+        XCTAssertEqual(after.rate, before.rate)
+        XCTAssertEqual(after.channels, before.channels)
+        let metadata = try await AVURLAsset(url: destination).load(.commonMetadata)
+        XCTAssertEqual(AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: .commonIdentifierTitle)
+            .first?.stringValue, "Evening")
+    }
+
     func testInvalidAACLeavesNoExportAttachment() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

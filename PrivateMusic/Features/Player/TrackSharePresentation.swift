@@ -194,6 +194,8 @@ extension TrackExportProgress {
             return L10n.text("downloading_audio_file")
         case .downloadingSegments:
             return L10n.text("assembling_audio_stream")
+        case .writingMetadata:
+            return L10n.text("export.metadata_progress")
         case .convertingToM4A:
             return L10n.text("creating_m4a_file")
         }
@@ -272,7 +274,7 @@ struct TrackShareFlowView: View {
                 // Let SwiftUI own the activity-controller lifecycle. Every
                 // previous crash happened in custom programmatic UIKit
                 // presentation while another sheet was transitioning.
-                ShareLink(item: payload.fileURL) {
+                ShareLink(items: payload.files) {
                     Label(
                         L10n.text("share"),
                         systemImage: "square.and.arrow.up"

@@ -11,6 +11,13 @@ enum TrackSharePayload: Equatable, Sendable {
         }
     }
 
+    var files: [URL] {
+        [fileURL] + ["lrc", "txt"].compactMap { ext in
+            let url = fileURL.deletingPathExtension().appendingPathExtension(ext)
+            return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        }
+    }
+
     var identifier: String {
         switch self {
         case let .audioFile(url):

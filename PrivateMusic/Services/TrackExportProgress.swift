@@ -8,6 +8,7 @@ enum TrackExportProgress: Equatable, Sendable {
     case copyingLocalFile
     case downloadingDirectFile
     case downloadingSegments(completed: Int, total: Int)
+    case writingMetadata
     case convertingToM4A
 }
 

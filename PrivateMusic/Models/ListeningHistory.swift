@@ -41,6 +41,7 @@ final class ListeningHistoryStore {
         }
         self.accountID = accountID
         entries = []
+        RecentWidgetBridge.publish([], accountID: accountID)
         // The legacy global history has no reliable owner. Keep it on disk
         // rather than assigning another user's listening data to this account.
         guard let key else { return }
@@ -50,6 +51,7 @@ final class ListeningHistoryStore {
                 from: $0
             ) } ?? []
         entries = Array(storedEntries.prefix(Self.maximumEntries))
+        RecentWidgetBridge.publish(entries, accountID: accountID)
         if storedEntries.count > Self.maximumEntries {
             schedulePersist()
         }
@@ -80,6 +82,7 @@ final class ListeningHistoryStore {
 
     func clear() {
         entries = []
+        RecentWidgetBridge.publish([], accountID: accountID)
         saveTask?.cancel()
         saveTask = nil
         if let key { defaults.removeObject(forKey: key) }
@@ -87,6 +90,7 @@ final class ListeningHistoryStore {
 
     private func schedulePersist() {
         guard let key else { return }
+        RecentWidgetBridge.publish(entries, accountID: accountID)
         let snapshot = entries
         saveTask?.cancel()
         saveTask = Task { [weak self, snapshot] in

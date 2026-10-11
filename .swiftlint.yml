@@ -1,6 +1,7 @@
 included:
   - PrivateMusic
   - PrivateMusicWatch
+  - PrivateMusicWidgets
   - PrivateMusicTests
 excluded:
   - PrivateMusic/Resources

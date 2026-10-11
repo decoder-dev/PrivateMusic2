@@ -31,15 +31,19 @@ targets:
       - path: PrivateMusic
         excludes:
           - Resources/Info.plist
+          - Resources/PrivateMusic.entitlements
     settings:
       base:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: PrivateMusic/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: PrivateMusic/Resources/PrivateMusic.entitlements
         PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2
         SWIFT_OBJC_BRIDGING_HEADER: PrivateMusic/Native/PrivateMusic-Bridging-Header.h
         CLANG_ENABLE_MODULES: YES
     dependencies:
       - target: PrivateMusicWatch
+        embed: true
+      - target: PrivateMusicWidgets
         embed: true
     scheme:
       testTargets:
@@ -63,6 +67,27 @@ targets:
         SKIP_INSTALL: YES
         TARGETED_DEVICE_FAMILY: 4
         SUPPORTED_PLATFORMS: "watchos watchsimulator"
+    scheme: {}
+  PrivateMusicWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: PrivateMusicWidgets
+        excludes:
+          - PrivateMusicWidgets.entitlements
+          - Info.plist
+      - path: PrivateMusic/Shared/RecentWidgetSnapshot.swift
+      - path: PrivateMusic/Shared/RecentMusicWidgetView.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2.widgets
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: PrivateMusicWidgets/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: Private Music
+        CODE_SIGN_ENTITLEMENTS: PrivateMusicWidgets/PrivateMusicWidgets.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
     scheme: {}
   PrivateMusicTests:
     type: bundle.unit-test

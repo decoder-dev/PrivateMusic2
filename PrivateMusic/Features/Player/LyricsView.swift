@@ -243,7 +243,9 @@ struct LyricsView: View {
     }
 
     private func load() async {
-        isLoading = true
+        let account = sessionStore.resolvedOfflineAccountID
+        if let saved = environment.savedLyricsStore.lyrics(for: track) { lyrics = saved }
+        isLoading = lyrics == nil
         errorMessage = nil
         defer { isLoading = false }
         do {
@@ -256,12 +258,14 @@ struct LyricsView: View {
                 loaded = try await PublicLyricsService().lyrics(for: track)
             }
             try Task.checkCancellation()
+            guard account == sessionStore.resolvedOfflineAccountID else { return }
             lyrics = loaded
+            environment.savedLyricsStore.save(loaded, for: track)
         } catch is CancellationError {
             return
         } catch {
             guard !Task.isCancelled else { return }
-            errorMessage = error.localizedDescription
+            if lyrics == nil { errorMessage = error.localizedDescription }
         }
     }
 }

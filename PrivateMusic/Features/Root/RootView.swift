@@ -37,6 +37,7 @@ struct RootView: View {
                     }
             }
         }
+        .onOpenURL { environment.openRecentWidgetURL($0) }
         .onContinueUserActivity(
             NowPlayingUserActivityPolicy.activityType
         ) { activity in
