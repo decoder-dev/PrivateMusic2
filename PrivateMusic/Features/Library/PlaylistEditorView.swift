@@ -64,6 +64,8 @@ struct PlaylistEditorView: View {
                 }
             }
             .scrollContentBackground(.hidden)
+            .frame(maxWidth: 600)
+            .frame(maxWidth: .infinity)
             .background(ThemeBackground())
             .navigationTitle(
                 L10n.text(

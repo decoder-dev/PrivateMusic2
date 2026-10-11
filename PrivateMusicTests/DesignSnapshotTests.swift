@@ -74,6 +74,10 @@ final class DesignSnapshotTests: XCTestCase {
         capture(discoveryPreview(track).dynamicTypeSize(.accessibility3),
                 name: "discovery-accessibility", width: 320, height: 1500,
                 environment: environment, settings: settings)
+        capture(PlaylistEditorView(playlist: nil, onSaved: {}), name: "playlist-editor-ipad",
+                width: 768, height: 1024, environment: environment, settings: settings)
+        capture(AudioUploadView(onUploaded: {}), name: "audio-upload-ipad",
+                width: 768, height: 1024, environment: environment, settings: settings)
         capture(PlayerView(), name: "player-compact", width: 320, height: 700,
                 environment: environment, settings: settings)
         capture(actionsPreview(track).dynamicTypeSize(.accessibility3), name: "track-actions-accessibility",

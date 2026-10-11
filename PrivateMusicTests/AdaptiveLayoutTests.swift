@@ -88,9 +88,9 @@ final class AdaptiveLayoutTests: XCTestCase {
         let phone = MixHubMetrics(width: phoneWidth)
         let iPad = MixHubMetrics(width: iPadWidth)
 
-        XCTAssertEqual(phone.horizontalPadding, 16)
-        XCTAssertEqual(phone.contentWidth, 358, accuracy: 0.01)
-        XCTAssertEqual(phone.cardWidth, 358 * 0.38, accuracy: 0.01)
+        XCTAssertEqual(phone.horizontalPadding, 14)
+        XCTAssertEqual(phone.contentWidth, 362, accuracy: 0.01)
+        XCTAssertEqual(phone.cardWidth, 362 * 0.38, accuracy: 0.01)
         XCTAssertEqual(phone.trackWidth, 140.4, accuracy: 0.01)
         XCTAssertEqual(phone.columnCount, 2)
 

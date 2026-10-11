@@ -39,6 +39,8 @@ struct AudioUploadView: View {
                         || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .scrollContentBackground(.hidden)
+            .frame(maxWidth: 600)
+            .frame(maxWidth: .infinity)
             .background(ThemeBackground())
             .navigationTitle(L10n.text("features.upload.title"))
             .navigationBarTitleDisplayMode(.inline)

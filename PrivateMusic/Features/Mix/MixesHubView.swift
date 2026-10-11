@@ -2441,7 +2441,7 @@ struct MixHubMetrics {
     let width: CGFloat
 
     var horizontalPadding: CGFloat {
-        AdaptiveLayout.horizontalPadding(for: width)
+        AdaptiveLayout.isRegularWidth(width) ? 24 : 14
     }
     var cardSpacing: CGFloat { width <= 350 ? 10 : 12 }
     var heroHeight: CGFloat { width <= 350 ? 176 : 200 }
