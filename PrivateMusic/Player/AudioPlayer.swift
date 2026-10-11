@@ -1105,6 +1105,8 @@ final class AudioPlayer {
     private func pausePreservingIntent() {
         player.pause()
         isPlaying = false
+        // Pausing at 0:44 and being killed must not resume from 0:30.
+        persistPlayback()
         publishPlaybackState(force: true)
     }
 
@@ -1187,6 +1189,7 @@ final class AudioPlayer {
 
     func stop() {
         cancelCrossfade()
+        errorMessage = nil
         pausedForMinimumVolume = false
         pausedForAppVolumeZero = false
         minimumVolumeResumeSuppressed = false
@@ -1983,7 +1986,8 @@ final class AudioPlayer {
                       let track = self.currentTrack,
                       let setLiked = self.remoteSetLiked else { return }
                 let isLiked = self.remoteIsLiked?(track) ?? false
-                if await setLiked(track, !isLiked) {
+                if await setLiked(track, !isLiked),
+                   self.currentTrack?.id == track.id {
                     MPRemoteCommandCenter.shared().likeCommand.isActive =
                         !isLiked
                 }
@@ -2988,6 +2992,13 @@ final class AudioPlayer {
         guard let currentIndex, !queue.isEmpty, repeatMode != .one else {
             return nil
         }
+        // Sleep timers and a blocked autoplay route end playback at the
+        // track boundary; a crossfade would sail past them.
+        guard sleepTimerMode != .endOfTrack,
+              !shouldStopForEndOfQueueTimer,
+              allowsAutomaticPlayback else {
+            return nil
+        }
         var nextIndex = queue.index(after: currentIndex)
         if nextIndex >= queue.endIndex {
             guard repeatMode == .all else { return nil }
@@ -3133,11 +3144,13 @@ final class AudioPlayer {
             continuationPrefetchTask = nil
             advanceAfterContinuationPrefetch = false
         }
-        loadedTrackID = upcoming.track.id
-        loadedOfflineTrackID = upcoming.isOffline ? upcoming.track.id : nil
         activePlaybackURL = upcoming.url
         playbackURLStrategyTrackID = upcoming.track.id
         resetProgressForTrackTransition()
+        // The reset clears the loaded ids; set them afterwards or the clock
+        // guard (`loadedTrackID == currentTrack?.id`) stalls progress.
+        loadedTrackID = upcoming.track.id
+        loadedOfflineTrackID = upcoming.isOffline ? upcoming.track.id : nil
         persistPlayback()
         if let item = player.currentItem,
            shouldAttachAudioProcessing(
@@ -3871,9 +3884,9 @@ final class AudioPlayer {
         guard !nextQueue.isEmpty else {
             queue = []
             self.currentIndex = nil
-            pause()
-            persistPlayback()
-            publishNowPlayingQueue()
+            // Nothing is left to resume: a plain pause would keep the old
+            // snapshot and bring the dropped track back after a relaunch.
+            stop()
             return
         }
         let nextIndex = min(currentIndex, nextQueue.count - 1)
