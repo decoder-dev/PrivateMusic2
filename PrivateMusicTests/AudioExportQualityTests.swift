@@ -1,0 +1,100 @@
+import AudioToolbox
+import AVFoundation
+import XCTest
+@testable import PrivateMusic
+
+final class AudioExportQualityTests: XCTestCase {
+    func testAACRemuxPreservesEveryCompressedPacket() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("source.aac")
+        let destination = directory.appendingPathComponent("export.m4a")
+        try AACAudioFixture.data.write(to: source)
+        try AACPacketRemuxer.remux(source: source, destination: destination)
+        let original = try readPackets(source)
+        let exported = try readPackets(destination)
+        XCTAssertFalse(original.packets.isEmpty)
+        XCTAssertEqual(exported.packets, original.packets, "Export must not re-encode AAC")
+        XCTAssertEqual(exported.rate, original.rate)
+        XCTAssertEqual(exported.channels, 2)
+    }
+
+    func testInvalidAACLeavesNoExportAttachment() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("broken.aac")
+        let destination = directory.appendingPathComponent("export.m4a")
+        try Data("invalid audio".utf8).write(to: source)
+        XCTAssertThrowsError(try AACPacketRemuxer.remux(source: source, destination: destination))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+    }
+
+    func testFallbackPreservesTheSourceRateAndChannelCount() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("source.wav")
+        let destination = directory.appendingPathComponent("export.m4a")
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 24_000))
+        buffer.frameLength = buffer.frameCapacity
+        let samples = try XCTUnwrap(buffer.floatChannelData)
+        for index in 0..<Int(buffer.frameLength) {
+            samples[0][index] = Float(sin(Double(index) * 2 * .pi * 440 / 48_000)) * 0.3
+            samples[1][index] = Float(sin(Double(index) * 2 * .pi * 880 / 48_000)) * 0.3
+        }
+        do {
+            let file = try AVAudioFile(forWriting: source, settings: format.settings)
+            try file.write(from: buffer)
+        }
+        try await HLSSegmentExporter().exportMovpkgToM4A(
+            packageURL: source, destination: destination, fileSizeLimit: 150_000_000
+        )
+        let exported = try readPackets(destination)
+        XCTAssertEqual(exported.rate, 48_000)
+        XCTAssertEqual(exported.channels, 2)
+        XCTAssertFalse(exported.packets.isEmpty)
+    }
+
+    func testFallbackQualityDoesNotUseTheOld192KbpsCeiling() {
+        XCTAssertEqual(AudioExportQualityPolicy.bitRate(channels: 2), 320_000)
+        XCTAssertEqual(AudioExportQualityPolicy.sampleRate(48_000), 48_000)
+        XCTAssertEqual(AudioExportQualityPolicy.sampleRate(.nan), 44_100)
+        XCTAssertEqual(AudioExportQualityPolicy.channelCount(6), 6)
+    }
+
+    private func readPackets(_ url: URL) throws -> (packets: [Data], rate: Double, channels: UInt32) {
+        var file: AudioFileID?
+        let status = AudioFileOpenURL(url as CFURL, .readPermission, 0, &file)
+        XCTAssertEqual(status, noErr)
+        let opened = try XCTUnwrap(file)
+        defer { AudioFileClose(opened) }
+        var format = AudioStreamBasicDescription()
+        var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        XCTAssertEqual(AudioFileGetProperty(opened, kAudioFilePropertyDataFormat, &size, &format), noErr)
+        var packets: [Data] = []
+        var position: Int64 = 0
+        var buffer = [UInt8](repeating: 0, count: 16_384)
+        while true {
+            var count: UInt32 = 1
+            var bytes = UInt32(buffer.count)
+            var description = AudioStreamPacketDescription()
+            let read = buffer.withUnsafeMutableBytes {
+                AudioFileReadPacketData(opened, false, &bytes, &description, position, &count, $0.baseAddress)
+            }
+            guard read == noErr || read == kAudioFileEndOfFileError else {
+                throw AACPacketRemuxer.RemuxError(operation: "test read", status: read)
+            }
+            guard count > 0 else { break }
+            XCTAssertEqual(read, noErr)
+            packets.append(Data(buffer.prefix(Int(bytes))))
+            position += 1
+            guard position <= 10_000 else {
+                throw AACPacketRemuxer.RemuxError(operation: "test packet limit", status: -1)
+            }
+        }
+        return (packets, format.mSampleRate, format.mChannelsPerFrame)
+    }
+}

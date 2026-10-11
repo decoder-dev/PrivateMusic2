@@ -587,7 +587,7 @@ struct CatalogView: View {
                                 title: chip.option.title,
                                 systemImage: chip.mood?.chipSymbol
                                     ?? "sparkles",
-                                tint: chip.mood?.tint,
+                                tint: chip.mood.map { $0.tint(for: settings.theme, on: settings.palette) },
                                 isLoading: startingTuningOptionID == chip.key
                             ) {
                                 startVKChip(chip, tuning: tuning)
@@ -600,7 +600,7 @@ struct CatalogView: View {
                             ExploreChip(
                                 title: mood.title,
                                 systemImage: mood.chipSymbol,
-                                tint: mood.tint,
+                                tint: mood.tint(for: settings.theme, on: settings.palette),
                                 isLoading: startingMood == mood
                             ) {
                                 guard startingMood == nil else { return }

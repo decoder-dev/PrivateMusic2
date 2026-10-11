@@ -100,7 +100,7 @@ struct ConnectView: View {
             } label: {
                 HStack {
                     if isConnecting {
-                        ProgressView().tint(.white)
+                        ProgressView().tint(settings.onAccent)
                     } else {
                         Image(systemName: "person.crop.circle.badge.checkmark")
                     }

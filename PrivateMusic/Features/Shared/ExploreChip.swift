@@ -66,14 +66,20 @@ struct ExploreChip: View {
 
 extension MixMoodPreference {
     /// One hue per mood, so the strip reads as a palette, not a grey row.
-    var tint: Color {
+    func tint(for theme: AppTheme, on palette: AppPalette) -> Color {
+        let accent: AppAccent
         switch self {
-        case .any: .gray
-        case .energetic: .orange
-        case .calm: .teal
-        case .sad: .indigo
-        case .joyful: .yellow
-        case .love: .pink
+        case .any:
+            return BubbleGamut.neutral.ensuringContrast(
+                against: palette.luminances(for: theme),
+                towardWhite: theme == .dark
+            ).color
+        case .energetic: accent = .orange
+        case .calm: accent = .teal
+        case .sad: accent = .indigo
+        case .joyful: accent = .banana
+        case .love: accent = .pink
         }
+        return accent.components(for: theme, on: palette).color
     }
 }

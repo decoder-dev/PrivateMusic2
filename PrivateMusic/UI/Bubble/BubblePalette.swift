@@ -45,11 +45,11 @@ struct BubbleColorComponents: Equatable, Hashable, Sendable {
             + 0.0722 * linear(blue)
     }
 
-    /// White stays the label colour wherever it reaches 3:1 (the floor for
-    /// large text and UI glyphs); lighter fills switch to black instead of
-    /// carrying a washed-out white label.
+    /// Choose the stronger of black and white. This guarantees at least
+    /// 4.5:1 for ordinary button text, not only large glyphs.
     var prefersDarkForeground: Bool {
-        relativeLuminance > 0.30
+        ContrastRatio.between(relativeLuminance, 0)
+            >= ContrastRatio.between(relativeLuminance, 1)
     }
 
     var saturation: Double {
@@ -78,7 +78,9 @@ struct BubbleColorComponents: Equatable, Hashable, Sendable {
                 blue: min(1, result.blue + lift)
             )
         }
-        return result
+        // Context tiles carry white captions. Gamma-space brightness alone
+        // cannot guarantee their contrast, especially for yellow artwork.
+        return result.ensuringContrast(against: [1], towardWhite: false)
     }
 
     func scaled(by factor: Double) -> BubbleColorComponents {

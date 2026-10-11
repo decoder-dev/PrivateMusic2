@@ -238,10 +238,26 @@ actor HLSSegmentExporter {
         }
 
         do {
-            try await transcodeToM4A(
-                source: AVURLAsset(url: transcodeURL),
-                destination: destination
-            )
+            if transcodeURL.pathExtension == "aac" {
+                do {
+                    try AACPacketRemuxer.remux(source: transcodeURL, destination: destination)
+                    hlsLogInfo("HLS export: preserved original AAC packets in M4A")
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // Some ADTS profiles cannot be represented by AudioFile.
+                    // Remove any partial file before the high-quality fallback.
+                    try? fileManager.removeItem(at: destination)
+                    hlsLogInfo("HLS export: AAC remux unavailable; using high-quality conversion")
+                    try await transcodeToM4A(
+                        source: AVURLAsset(url: transcodeURL), destination: destination
+                    )
+                }
+            } else {
+                try await transcodeToM4A(
+                    source: AVURLAsset(url: transcodeURL), destination: destination
+                )
+            }
             try enforceSizeLimit(destination, limit: fileSizeLimit)
         } catch {
             try? fileManager.removeItem(at: destination)
@@ -1597,8 +1613,8 @@ actor HLSSegmentExporter {
     /// regardless of whether the source codec is AAC/MP3/AC-3 — unlike a
     /// copy-remux, which AVAssetWriter refuses for TS ADTS frames.
     ///
-    /// Equivalent of `ffmpeg -i input -c:a aac -b:a 192k out.m4a`, but
-    /// with the hardware-accelerated iOS AAC encoder.
+    /// High-quality fallback for formats that cannot be copied. AAC ADTS
+    /// normally goes through AACPacketRemuxer and CMAF through passthrough.
     private func transcodeToM4A(
         source: AVURLAsset,
         destination: URL
@@ -1626,12 +1642,11 @@ actor HLSSegmentExporter {
         }
 
         let asbd = await Self.audioStreamBasicDescription(from: track)
-        let sampleRate = asbd?.mSampleRate ?? 44100
-        let sourceChannels = UInt32(asbd?.mChannelsPerFrame ?? 2)
-        let channels: UInt32 = min(2, max(1, sourceChannels))
+        let sampleRate = AudioExportQualityPolicy.sampleRate(asbd?.mSampleRate)
+        let channels = AudioExportQualityPolicy.channelCount(asbd?.mChannelsPerFrame)
 
         guard let pcmFormat = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
+            commonFormat: .pcmFormatFloat32,
             sampleRate: sampleRate,
             channels: AVAudioChannelCount(channels),
             interleaved: true
@@ -1640,9 +1655,9 @@ actor HLSSegmentExporter {
         }
         let readerSettings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatLinearPCM),
-            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMBitDepthKey: 32,
             AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsFloatKey: true,
             AVLinearPCMIsNonInterleaved: false,
             AVSampleRateKey: pcmFormat.sampleRate,
             AVNumberOfChannelsKey: Int(pcmFormat.channelCount),
@@ -1678,8 +1693,7 @@ actor HLSSegmentExporter {
             outputURL: destination,
             fileType: .m4a
         )
-        let bitRate = Int(min(192_000, max(96_000,
-            sampleRate * Double(channels) * 2)))
+        let bitRate = AudioExportQualityPolicy.bitRate(channels: channels)
         let writerInput = AVAssetWriterInput(
             mediaType: .audio,
             outputSettings: [
@@ -1687,6 +1701,7 @@ actor HLSSegmentExporter {
                 AVSampleRateKey: Int(pcmFormat.sampleRate),
                 AVNumberOfChannelsKey: Int(pcmFormat.channelCount),
                 AVEncoderBitRateKey: bitRate,
+                AVEncoderAudioQualityKey: AVAudioQuality.max.rawValue,
             ]
         )
         writerInput.expectsMediaDataInRealTime = false

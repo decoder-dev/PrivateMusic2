@@ -299,6 +299,17 @@ enum EqualizerPreset: String, CaseIterable, Identifiable {
     }
 }
 
+enum AudioSettingsValuePolicy {
+    static func bounded(_ value: Double, in range: ClosedRange<Double>, fallback: Double) -> Double {
+        value.isFinite ? min(range.upperBound, max(range.lowerBound, value)) : fallback
+    }
+
+    static func gains(_ values: [Double]) -> [Double] {
+        guard values.count == 10 else { return EqualizerPreset.flat.gains }
+        return values.map { bounded($0, in: -12...12, fallback: 0) }
+    }
+}
+
 @MainActor
 @Observable
 final class AppSettings {
@@ -344,9 +355,9 @@ final class AppSettings {
         let components = accentChoice.components(for: theme, on: palette)
         if components != accentComponents {
             accentComponents = components
-            accent = components.color
-            onAccent = components.prefersDarkForeground ? .black : .white
         }
+        accent = components.color
+        onAccent = components.prefersDarkForeground ? .black : .white
         let stops = palette.background(for: theme).map(\.color)
         if stops != pageColors { pageColors = stops }
         surfaceColor = palette.surface(for: theme).color
@@ -380,10 +391,18 @@ final class AppSettings {
         didSet { defaults.set(equalizerPreset.rawValue, forKey: Keys.preset) }
     }
     var equalizerGains: [Double] {
-        didSet { defaults.set(equalizerGains, forKey: Keys.gains) }
+        didSet {
+            let normalized = AudioSettingsValuePolicy.gains(equalizerGains)
+            if normalized != equalizerGains { equalizerGains = normalized }
+            defaults.set(normalized, forKey: Keys.gains)
+        }
     }
     var equalizerPreamp: Double {
-        didSet { defaults.set(equalizerPreamp, forKey: Keys.preamp) }
+        didSet {
+            let normalized = AudioSettingsValuePolicy.bounded(equalizerPreamp, in: -12...6, fallback: 0)
+            if normalized != equalizerPreamp { equalizerPreamp = normalized }
+            defaults.set(normalized, forKey: Keys.preamp)
+        }
     }
     var preferHighQuality: Bool {
         didSet {
@@ -458,10 +477,11 @@ final class AppSettings {
     }
     var spatialAudioIntensity: Double {
         didSet {
-            let normalized = min(max(spatialAudioIntensity, 0), 1)
+            let normalized = AudioSettingsValuePolicy.bounded(
+                spatialAudioIntensity, in: 0...1, fallback: SpatialAudioDSP.defaultIntensity
+            )
             if spatialAudioIntensity != normalized {
                 spatialAudioIntensity = normalized
-                return
             }
             defaults.set(normalized, forKey: Keys.spatialAudioIntensity)
         }
@@ -484,10 +504,9 @@ final class AppSettings {
     }
     var appVolume: Double {
         didSet {
-            let normalized = min(max(appVolume, 0), 1)
+            let normalized = AudioSettingsValuePolicy.bounded(appVolume, in: 0...1, fallback: 1)
             if appVolume != normalized {
                 appVolume = normalized
-                return
             }
             defaults.set(normalized, forKey: Keys.appVolume)
         }
@@ -585,12 +604,11 @@ final class AppSettings {
             rawValue: defaults.string(forKey: Keys.preset) ?? ""
         ) ?? .flat
         let savedGains = defaults.array(forKey: Keys.gains) as? [Double]
-        if let savedGains, savedGains.count == 10 {
-            equalizerGains = savedGains
-        } else {
-            equalizerGains = EqualizerPreset.flat.gains
-        }
-        equalizerPreamp = defaults.object(forKey: Keys.preamp) as? Double ?? 0
+        equalizerGains = AudioSettingsValuePolicy.gains(savedGains ?? [])
+        equalizerPreamp = AudioSettingsValuePolicy.bounded(
+            defaults.object(forKey: Keys.preamp) as? Double ?? 0,
+            in: -12...6, fallback: 0
+        )
         preferHighQuality = defaults.object(
             forKey: Keys.preferHighQuality
         ) as? Bool ?? true
@@ -621,14 +639,10 @@ final class AppSettings {
         spatialAudioEnabled = defaults.object(
             forKey: Keys.spatialAudioEnabled
         ) as? Bool ?? false
-        spatialAudioIntensity = min(
-            max(
-                defaults.object(
-                    forKey: Keys.spatialAudioIntensity
-                ) as? Double ?? SpatialAudioDSP.defaultIntensity,
-                0
-            ),
-            1
+        spatialAudioIntensity = AudioSettingsValuePolicy.bounded(
+            defaults.object(forKey: Keys.spatialAudioIntensity) as? Double
+                ?? SpatialAudioDSP.defaultIntensity,
+            in: 0...1, fallback: SpatialAudioDSP.defaultIntensity
         )
         resumeOnBluetoothConnection = defaults.object(
             forKey: Keys.resumeOnBluetoothConnection
@@ -636,9 +650,9 @@ final class AppSettings {
         pauseAtMinimumVolume = defaults.object(
             forKey: Keys.pauseAtMinimumVolume
         ) as? Bool ?? false
-        appVolume = min(
-            max(defaults.object(forKey: Keys.appVolume) as? Double ?? 1, 0),
-            1
+        appVolume = AudioSettingsValuePolicy.bounded(
+            defaults.object(forKey: Keys.appVolume) as? Double ?? 1,
+            in: 0...1, fallback: 1
         )
         advanceOnPlaybackError = defaults.object(
             forKey: Keys.advanceOnPlaybackError
@@ -668,7 +682,7 @@ final class AppSettings {
 
     func setGain(_ gain: Double, at index: Int) {
         guard equalizerGains.indices.contains(index) else { return }
-        equalizerGains[index] = min(max(gain, -12), 12)
+        equalizerGains[index] = AudioSettingsValuePolicy.bounded(gain, in: -12...12, fallback: 0)
         equalizerPreset = .custom
     }
 
@@ -679,6 +693,18 @@ final class AppSettings {
         palette = .classic
         textScale = .system
         classicChrome = false
+    }
+
+    /// Resolve semantic colours from the effective system appearance while
+    /// preserving the user's choice to follow it.
+    func synchronizeAppearance(with systemScheme: ColorScheme) {
+        let resolved: AppTheme
+        switch appearance {
+        case .system: resolved = systemScheme == .dark ? .dark : .light
+        case .dark: resolved = .dark
+        case .light: resolved = .light
+        }
+        if theme != resolved { theme = resolved }
     }
 
     var offlineStorageLimitBytes: Int64 {

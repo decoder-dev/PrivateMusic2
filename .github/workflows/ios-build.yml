@@ -40,6 +40,7 @@ jobs:
         run: |
           python3 scripts/validate_project.py
           python3 scripts/validate_localizations.py
+          python3 scripts/validate_artwork.py
           python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Install XcodeGen
@@ -136,6 +137,7 @@ jobs:
         run: |
           python3 scripts/validate_project.py
           python3 scripts/validate_localizations.py
+          python3 scripts/validate_artwork.py
 
       - name: Install XcodeGen
         run: brew install xcodegen
