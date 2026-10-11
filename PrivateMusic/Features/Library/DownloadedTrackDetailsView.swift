@@ -118,6 +118,7 @@ struct DownloadedTrackDetailsView: View {
                             .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
+                        .tint(.red)
                     }
                 }
                 .padding(24)

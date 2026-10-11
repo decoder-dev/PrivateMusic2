@@ -108,7 +108,7 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BubbleSpacing.section) {
-                AppGroupedSection(title: "tab.settings") {
+                AppGroupedSurface {
                     settingsDestination(
                         title: "appearance",
                         systemImage: "paintpalette"

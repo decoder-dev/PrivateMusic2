@@ -29,7 +29,10 @@ struct AudioUploadView: View {
                 } footer: { Text(L10n.text("features.upload.hint")) }
                 if busy { ProgressView(L10n.text("features.upload.progress")) }
                 if let error { Text(error).foregroundStyle(.secondary) }
-                Button(L10n.text("features.upload.submit")) { upload() }
+                Button { upload() } label: {
+                    Text(L10n.text("features.upload.submit"))
+                        .frame(maxWidth: .infinity)
+                }
                     .buttonStyle(PremiumProminentButtonStyle())
                     .listRowBackground(Color.clear)
                     .disabled(busy || file == nil || artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
