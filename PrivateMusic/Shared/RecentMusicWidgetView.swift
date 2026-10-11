@@ -9,6 +9,7 @@ struct RecentMusicEntry: TimelineEntry {
 struct RecentMusicWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: RecentMusicEntry
+    var previewFamily: WidgetFamily? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -19,7 +20,7 @@ struct RecentMusicWidgetView: View {
                 Text(String(localized: "widget.empty"))
                     .font(.subheadline).foregroundStyle(.secondary)
             } else {
-                ForEach(Array(entry.snapshot.tracks.prefix(family == .systemSmall ? 1 : 3))) { track in
+                ForEach(Array(entry.snapshot.tracks.prefix((previewFamily ?? family) == .systemSmall ? 1 : 3))) { track in
                     Link(destination: entry.snapshot.url(for: track) ?? URL(string: "privatemusic://recent")!) {
                         HStack(spacing: 10) {
                             Group {

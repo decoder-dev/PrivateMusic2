@@ -276,7 +276,7 @@ struct TrackShareFlowView: View {
                 // presentation while another sheet was transitioning.
                 ShareLink(items: payload.files) {
                     Label(
-                        L10n.text("share"),
+                        L10n.text(payload.files.count > 1 ? "export.lyrics" : "share"),
                         systemImage: "square.and.arrow.up"
                     )
                     .frame(maxWidth: .infinity)

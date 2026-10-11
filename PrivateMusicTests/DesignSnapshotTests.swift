@@ -121,8 +121,7 @@ final class DesignSnapshotTests: XCTestCase {
                     RecentWidgetTrack(id: "1_1", title: "Тихий вечер", artist: "Private Music", artwork: nil),
                     RecentWidgetTrack(id: "1_2", title: "Навстречу солнцу", artist: "Private Music", artwork: nil),
                     RecentWidgetTrack(id: "1_3", title: "Океан", artist: "Private Music", artwork: nil)
-                ])))
-                .environment(\.widgetFamily, .systemMedium)
+                ])), previewFamily: .systemMedium)
                 .padding(16)
                 .frame(width: 350, height: 180)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
