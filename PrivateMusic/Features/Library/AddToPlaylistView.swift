@@ -100,15 +100,25 @@ struct AddToPlaylistView: View {
         }
         defer { isLoading = false }
         do {
-            let page = try await environment.withAuthorizedToken { token in
-                try await environment.musicService.playlists(
-                    accessToken: token,
-                    offset: 0,
-                    count: 100
-                )
+            // Followed albums share this endpoint, so the user's own
+            // playlists can sit past the first page.
+            var collected: [Playlist] = []
+            var offset: Int? = 0
+            var pages = 0
+            while let current = offset, pages < 5 {
+                let page = try await environment.withAuthorizedToken { token in
+                    try await environment.musicService.playlists(
+                        accessToken: token,
+                        offset: current,
+                        count: 100
+                    )
+                }
+                collected += page.items.filter { $0.ownerID == userID }
+                offset = page.nextOffset.flatMap { $0 > current ? $0 : nil }
+                pages += 1
             }
             playlists = LibraryPlaylistShelfPolicy.normalized(
-                page.items.filter { $0.ownerID == userID },
+                collected,
                 ownerID: userID
             )
         } catch is CancellationError {

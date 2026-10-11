@@ -735,13 +735,15 @@ struct SearchView: View {
     }
 
     private func loadAlbumsIfNeeded() {
-        guard sessionStore.accessToken != nil, scope == .albums else { return }
+        guard sessionStore.accessToken != nil, scope == .albums,
+              model.needsAlbumSearch else { return }
         model.submitAlbums(operation: searchAlbums)
     }
 
     private func loadPlaylistsIfNeeded() {
         guard sessionStore.accessToken != nil,
-              scope == .playlists else { return }
+              scope == .playlists,
+              model.needsPlaylistSearch else { return }
         model.submitPlaylists(operation: searchPlaylists)
     }
 

@@ -917,3 +917,4 @@
 "playback_track_unavailable" = "This track is unavailable right now, possibly because of your region or the rights holder. Try another track.";
 "playback_no_internet" = "No internet. Turn on your connection or pick a downloaded track.";
 "connect.token_placeholder" = "VK access token";
+"couldn_t_update_playlist" = "Couldn't update playlist";

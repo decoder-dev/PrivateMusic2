@@ -163,7 +163,7 @@ struct NewReleasesView: View {
                         album,
                         accessToken: token,
                         offset: 0,
-                        count: 50
+                        count: 100
                     )
                 }
                 guard let first = page.items.first else { return }
