@@ -1,19 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
 <defs>
-<linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="#181A22"/><stop offset="1" stop-color="#050507"/></linearGradient>
-<radialGradient id="glow" cx="0.5" cy="0.34" r="0.62"><stop offset="0" stop-color="#3385FA" stop-opacity="0.24"/><stop offset="1" stop-color="#3385FA" stop-opacity="0"/></radialGradient>
-<linearGradient id="bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8CBBFF"/><stop offset="1" stop-color="#3385FA"/></linearGradient>
+<linearGradient id="bg" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#1C2635"/><stop offset="1" stop-color="#080B11"/></linearGradient>
+<radialGradient id="glow" cx="0.48" cy="0.36" r="0.64"><stop offset="0" stop-color="#477EB5" stop-opacity="0.15"/><stop offset="1" stop-color="#477EB5" stop-opacity="0"/></radialGradient>
+<linearGradient id="pearl" gradientUnits="userSpaceOnUse" x1="324" y1="242" x2="640" y2="782"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#CDD8E7"/></linearGradient>
+<linearGradient id="bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#B3D4FF"/><stop offset="1" stop-color="#6DA4F4"/></linearGradient>
 </defs>
 <rect width="1024" height="1024" fill="url(#bg)"/>
 <rect width="1024" height="1024" fill="url(#glow)"/>
-<g transform="translate(0 14)">
-<path fill="#FFFFFF" fill-rule="evenodd" d="M285.0 818 V177.0 H566.0 A173.0 173.0 0 0 1 566.0 523.0 H285.0 Z M351.0 243.0 H566.0 A107.0 107.0 0 0 1 566.0 457.0 H351.0 Z"/>
-<rect x="285.0" y="490" width="66" height="86" fill="#FFFFFF"/>
-<path fill="#FFFFFF" d="M351.00 818.00 L351.00 658.00 L512.00 808.00 L673.00 658.00 L673.00 818.00 L739.00 818.00 L739.00 574.00 L673.00 574.00 L512.00 724.00 L351.00 574.00 L285.00 574.00 L285.00 818.00 Z"/>
-<rect x="403.00" y="320.00" width="22" height="60" rx="11" fill="url(#bar)"/>
-<rect x="449.00" y="294.00" width="22" height="112" rx="11" fill="url(#bar)"/>
-<rect x="495.00" y="268.00" width="22" height="164" rx="11" fill="url(#bar)"/>
-<rect x="541.00" y="294.00" width="22" height="112" rx="11" fill="url(#bar)"/>
-<rect x="587.00" y="320.00" width="22" height="60" rx="11" fill="url(#bar)"/>
+<g fill="none" stroke="url(#pearl)" stroke-width="76"
+    stroke-linecap="round" stroke-linejoin="round">
+  <path d="M324 744 V280 H564 C647 280 700 327 700 396
+    C700 465 647 512 564 512 H324"/>
+  <path d="M324 558 L512 710 L700 558 V744"/>
+</g>
+<g fill="url(#bar)">
+  <rect x="442" y="368" width="28" height="56" rx="14"/>
+  <rect x="502" y="344" width="28" height="104" rx="14"/>
+  <rect x="562" y="368" width="28" height="56" rx="14"/>
 </g>
 </svg>

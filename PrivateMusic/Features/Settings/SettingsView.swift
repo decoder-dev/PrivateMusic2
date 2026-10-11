@@ -552,47 +552,51 @@ private struct AppearanceSettingsView: View {
             ],
             spacing: 12
         ) {
-            ForEach(AppTheme.allCases) { theme in
+            ForEach(AppearanceMode.allCases) { mode in
+                let theme: AppTheme = mode == .light ? .light : .dark
+                let colors = mode == .system
+                    ? [settings.palette.background(for: .light)[0].color,
+                       settings.palette.background(for: .dark)[0].color]
+                    : settings.palette.background(for: theme).map(\.color)
                 Button {
                     BubbleMotion.animate(.easeInOut(duration: 0.25)) {
-                        settings.theme = theme
-                        settings.appearance =
-                            theme == .dark ? .dark : .light
+                        settings.appearance = mode
+                        if mode != .system { settings.theme = theme }
                     }
                 } label: {
                     VStack(spacing: 7) {
                         Circle()
                             .fill(
                                 LinearGradient(
-                                    colors: theme.colors,
+                                    colors: colors,
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
                             .frame(width: 44, height: 44)
                             .overlay {
-                                if settings.theme == theme {
+                                if settings.appearance == mode {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 14, weight: .bold))
                                         .foregroundStyle(
                                             settings.accentChoice
                                                 .components(
-                                                    for: theme,
+                                                    for: mode == .system ? settings.theme : theme,
                                                     on: settings.palette
                                                 )
                                                 .color
                                         )
                                 }
                             }
-                        Text(theme.title)
+                        Text(mode.title)
                             .font(.caption2)
                             .foregroundStyle(.primary)
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(theme.title)
+                .accessibilityLabel(mode.title)
                 .accessibilityAddTraits(
-                    settings.theme == theme ? .isSelected : []
+                    settings.appearance == mode ? .isSelected : []
                 )
             }
         }

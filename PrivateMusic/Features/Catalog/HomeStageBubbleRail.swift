@@ -67,7 +67,7 @@ struct HomeStageBubbleRail: View {
         let fill = BubblePalette.surface(
             context.kind.role,
             tint: tintCache.cached(for: context.avatarURL)
-        )
+        ).ensuringContrast(against: [1], towardWhite: false)
         return Button {
             onStart(context)
         } label: {
@@ -76,7 +76,7 @@ struct HomeStageBubbleRail: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(context.kind.kicker)
                         .font(BubbleType.bubbleKicker)
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(context.displayName)
                         .font(BubbleType.bubbleTitle)
@@ -137,7 +137,7 @@ struct HomeStageBubbleRail: View {
     ) -> some View {
         Image(systemName: context.kind.symbol)
             .font(.system(size: size * 0.6, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.92))
+            .foregroundStyle(.white)
             .frame(width: size, height: size)
     }
 }

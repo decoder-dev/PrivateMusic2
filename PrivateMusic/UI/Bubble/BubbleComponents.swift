@@ -131,7 +131,7 @@ struct BubbleIconButton: View {
         .disabled(!isEnabled)
         .background {
             if isProminent {
-                Circle().fill(BubblePalette.color(role))
+                Circle().fill(prominentFill.color)
             }
         }
         .modifier(
@@ -148,12 +148,18 @@ struct BubbleIconButton: View {
 
     private var glyphSize: CGFloat { (size * 0.36).rounded() }
 
+    private var prominentFill: BubbleColorComponents {
+        role == .accent ? settings.accentComponents : BubblePalette.fallback(role)
+    }
+
     /// Active state reads through colour, not through a filled ball: an
     /// accent glyph on a barely-tinted surface is the "restrained accent"
     /// the heart needs — a solid fill at this size reads as a dominant
     /// blue disc rather than a status.
     private var foreground: Color {
-        if isProminent { return .white }
+        if isProminent {
+            return prominentFill.prefersDarkForeground ? .black : .white
+        }
         if isActive { return settings.accent }
         return .primary
     }

@@ -7,6 +7,7 @@ struct RootView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(NetworkMonitor.self) private var networkMonitor
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
     @State private var refreshError: String?
     @State private var automaticRetryTask: Task<Void, Never>?
     @State private var automaticRetryAttempt = 0
@@ -99,7 +100,13 @@ struct RootView: View {
         // rendering bug rather than a choice.
         .environment(\.prefersClassicChrome, settings.classicChrome)
         .background(ThemeBackground())
-        .preferredColorScheme(settings.theme.colorScheme)
+        .preferredColorScheme(settings.appearance.colorScheme)
+        .onChange(of: colorScheme, initial: true) { _, scheme in
+            settings.synchronizeAppearance(with: scheme)
+        }
+        .onChange(of: settings.appearance) { _, _ in
+            settings.synchronizeAppearance(with: colorScheme)
+        }
         .appTextScale(settings.textScale)
         .alert(L10n.text("playback_error"),
             isPresented: Binding(

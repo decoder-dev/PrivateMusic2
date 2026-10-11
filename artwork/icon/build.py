@@ -27,13 +27,14 @@ HEAD = ('<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" '
 def default_svg():
     return f'''{HEAD}
 <defs>
-<linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="#181A22"/><stop offset="1" stop-color="#050507"/></linearGradient>
-<radialGradient id="glow" cx="0.5" cy="0.34" r="0.62"><stop offset="0" stop-color="#3385FA" stop-opacity="0.24"/><stop offset="1" stop-color="#3385FA" stop-opacity="0"/></radialGradient>
-<linearGradient id="bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8CBBFF"/><stop offset="1" stop-color="#3385FA"/></linearGradient>
+<linearGradient id="bg" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#1C2635"/><stop offset="1" stop-color="#080B11"/></linearGradient>
+<radialGradient id="glow" cx="0.48" cy="0.36" r="0.64"><stop offset="0" stop-color="#477EB5" stop-opacity="0.15"/><stop offset="1" stop-color="#477EB5" stop-opacity="0"/></radialGradient>
+<linearGradient id="pearl" gradientUnits="userSpaceOnUse" x1="324" y1="242" x2="640" y2="782"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#CDD8E7"/></linearGradient>
+<linearGradient id="bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#B3D4FF"/><stop offset="1" stop-color="#6DA4F4"/></linearGradient>
 </defs>
 <rect width="1024" height="1024" fill="url(#bg)"/>
 <rect width="1024" height="1024" fill="url(#glow)"/>
-{monogram("#FFFFFF", "url(#bar)")}
+{monogram("url(#pearl)", "url(#bar)")}
 </svg>'''
 
 
@@ -42,7 +43,7 @@ def dark_svg():
 <defs>
 <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8CBBFF"/><stop offset="1" stop-color="#3385FA"/></linearGradient>
 </defs>
-<rect width="1024" height="1024" fill="#000000"/>
+<rect width="1024" height="1024" fill="#05070B"/>
 {monogram("#FFFFFF", "url(#bar)")}
 </svg>'''
 
@@ -58,8 +59,8 @@ def launch_mark_svg():
     # Flat colours only: Xcode's SVG importer is conservative about gradients.
     body = monogram("#FFFFFF", "#5C9DFF")
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
-  <rect x="1" y="1" width="94" height="94" rx="25" fill="#121216" stroke="#303030" stroke-width="2"/>
-  <g transform="translate(-5.76 -5.76) scale(0.105)">
+  <rect width="96" height="96" rx="25" fill="#101722"/>
+  <g transform="scale(0.09375)">
 {body}
   </g>
 </svg>
@@ -95,9 +96,9 @@ def main():
     save(default, f"{preview}/AppIconPreview.png", 512)
     save(default, f"{preview}/AppIconPreview3x.png", 768)
     (ROOT / "PrivateMusic/Resources/Assets.xcassets/LaunchMark.imageset/LaunchMark.svg"
-     ).write_text(launch_mark_svg())
+     ).write_text(launch_mark_svg(), encoding="utf-8", newline="\n")
     print("wrote LaunchMark.svg")
-    (HERE / "AppIcon.svg").write_text(default_svg())
+    (HERE / "AppIcon.svg").write_text(default_svg(), encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

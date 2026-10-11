@@ -80,6 +80,9 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
                     } else {
                         shape.fill(.ultraThinMaterial)
                     }
+                    if let tint {
+                        shape.fill(tint)
+                    }
                 }
                 .overlay {
                     shape.stroke(

@@ -14,6 +14,11 @@ final class AppearanceChoiceTests: XCTestCase {
         withDefaults { defaults in
             let settings = AppSettings(defaults: defaults)
             XCTAssertEqual(settings.accentChoice, .blue)
+            XCTAssertEqual(settings.accent, settings.accentComponents.color)
+            XCTAssertEqual(
+                settings.onAccent,
+                settings.accentComponents.prefersDarkForeground ? .black : .white
+            )
             for theme in AppTheme.allCases {
                 XCTAssertEqual(
                     AppAccent.blue.components(for: theme),
@@ -64,6 +69,31 @@ final class AppearanceChoiceTests: XCTestCase {
         }
     }
 
+    func testSystemAppearanceFollowsChangesAndPersistsItsMode() {
+        withDefaults { defaults in
+            let settings = AppSettings(defaults: defaults)
+            settings.appearance = .system
+            settings.synchronizeAppearance(with: .light)
+            XCTAssertEqual(settings.theme, .light)
+            XCTAssertEqual(settings.appearance, .system)
+            settings.synchronizeAppearance(with: .dark)
+            XCTAssertEqual(settings.theme, .dark)
+            XCTAssertEqual(AppSettings(defaults: defaults).appearance, .system)
+        }
+    }
+
+    func testExplicitAppearanceIgnoresSystemChanges() {
+        withDefaults { defaults in
+            let settings = AppSettings(defaults: defaults)
+            settings.appearance = .light
+            settings.synchronizeAppearance(with: .dark)
+            XCTAssertEqual(settings.theme, .light)
+            settings.appearance = .dark
+            settings.synchronizeAppearance(with: .light)
+            XCTAssertEqual(settings.theme, .dark)
+        }
+    }
+
     func testEveryAccentHasADistinctColourPerTheme() {
         for theme in AppTheme.allCases {
             let all = AppAccent.allCases.map { $0.components(for: theme) }
@@ -91,7 +121,7 @@ final class AccentContrastTests: XCTestCase {
                 let label = fill.prefersDarkForeground ? 0.0 : 1.0
                 XCTAssertGreaterThanOrEqual(
                     contrast(fill.relativeLuminance, label),
-                    3.0,
+                    4.5,
                     "\(accent) on \(theme)"
                 )
             }
@@ -123,13 +153,9 @@ final class AccentContrastTests: XCTestCase {
         }
     }
 
-    func testTheOriginalBlueKeepsItsWhiteLabel() {
-        for theme in AppTheme.allCases {
-            XCTAssertFalse(
-                BubbleGamut.accent(for: theme).prefersDarkForeground,
-                "\(theme)"
-            )
-        }
+    func testBlueChoosesTheStrongerLabelInEachAppearance() {
+        XCTAssertTrue(BubbleGamut.accent(for: .dark).prefersDarkForeground)
+        XCTAssertFalse(BubbleGamut.accent(for: .light).prefersDarkForeground)
     }
 
     func testBrightAccentsSwitchToDarkLabels() {
@@ -175,6 +201,14 @@ final class AppPaletteTests: XCTestCase {
             for theme in AppTheme.allCases {
                 for accent in AppAccent.allCases {
                     let color = accent.components(for: theme, on: palette)
+                    XCTAssertGreaterThanOrEqual(
+                        ContrastRatio.between(
+                            color.relativeLuminance,
+                            color.prefersDarkForeground ? 0 : 1
+                        ),
+                        4.5,
+                        "button label for \(accent) on \(palette)/\(theme)"
+                    )
                     for background in palette.luminances(for: theme) {
                         XCTAssertGreaterThanOrEqual(
                             ContrastRatio.between(
@@ -226,7 +260,7 @@ final class AppPaletteTests: XCTestCase {
                 let label = fill.prefersDarkForeground ? 0.0 : 1.0
                 XCTAssertGreaterThanOrEqual(
                     ContrastRatio.between(fill.relativeLuminance, label),
-                    3.0,
+                    4.5,
                     "\(palette)/\(theme)"
                 )
             }

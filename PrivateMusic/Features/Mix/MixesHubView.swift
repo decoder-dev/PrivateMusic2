@@ -1282,7 +1282,7 @@ struct MixesHubView: View {
                         ExploreChip(
                             title: mood.title,
                             systemImage: mood.chipSymbol,
-                            tint: mood.tint,
+                            tint: mood.tint(for: settings.theme, on: settings.palette),
                             isLoading: startingMood == mood
                         ) {
                             guard startingMood == nil else { return }
