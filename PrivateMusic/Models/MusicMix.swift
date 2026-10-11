@@ -64,6 +64,9 @@ struct MusicMix: Hashable, Identifiable, Sendable {
     /// tuned variants of one stream mix (mood / activity tiles share the
     /// `common` mix id and differ only by these options).
     let streamOptions: String?
+    /// VK's animated backdrop for the mix tile (Lottie); only its colours
+    /// are used, see `MixBackdropPalette`.
+    let backdropURL: URL?
 
     /// Separator between VK's `mix_id` and the options digest in `id`, so
     /// two moods of the same stream mix stay distinct in lists and pins.
@@ -78,8 +81,10 @@ struct MusicMix: Hashable, Identifiable, Sendable {
         isSocial: Bool = false,
         sectionTitle: String? = nil,
         curator: MixCurator? = nil,
-        streamOptions: String? = nil
+        streamOptions: String? = nil,
+        backdropURL: URL? = nil
     ) {
+        self.backdropURL = backdropURL
         self.id = id
         self.title = title
         self.subtitle = subtitle
@@ -120,7 +125,8 @@ struct MusicMix: Hashable, Identifiable, Sendable {
             matchPercent: matchPercent,
             isSocial: isSocial,
             sectionTitle: sectionTitle,
-            curator: curator
+            curator: curator,
+            backdropURL: backdropURL
         )
     }
 
@@ -137,7 +143,8 @@ struct MusicMix: Hashable, Identifiable, Sendable {
             isSocial: isSocial,
             sectionTitle: MixBranding.display(trimmed),
             curator: curator,
-            streamOptions: streamOptions
+            streamOptions: streamOptions,
+            backdropURL: backdropURL
         )
     }
 
@@ -151,7 +158,8 @@ struct MusicMix: Hashable, Identifiable, Sendable {
             isSocial: isSocial || other.isSocial,
             sectionTitle: sectionTitle ?? other.sectionTitle,
             curator: curator ?? other.curator,
-            streamOptions: streamOptions ?? other.streamOptions
+            streamOptions: streamOptions ?? other.streamOptions,
+            backdropURL: backdropURL ?? other.backdropURL
         )
     }
 

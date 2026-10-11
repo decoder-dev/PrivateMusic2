@@ -33,6 +33,7 @@ struct MixArtworkView: View {
     let size: CGFloat
     var height: CGFloat? = nil
     var cornerRadius: CGFloat? = nil
+    @State private var backdrop: MixBackdropPalette?
 
     var body: some View {
         Group {
@@ -52,6 +53,8 @@ struct MixArtworkView: View {
                     width: size,
                     height: resolvedHeight
                 )
+            } else if let backdrop {
+                MixBackdropView(palette: backdrop)
             } else if selectedTracks.count >= 4 {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
@@ -99,6 +102,13 @@ struct MixArtworkView: View {
                         .foregroundStyle(.white.opacity(0.92))
                 }
             }
+        }
+        .task(id: mix.backdropURL) {
+            guard mix.artworkURL == nil, let url = mix.backdropURL else {
+                backdrop = nil
+                return
+            }
+            backdrop = await MixBackdropStore.shared.palette(for: url)
         }
         .frame(width: size, height: resolvedHeight)
         .clipShape(
@@ -152,5 +162,74 @@ struct MixArtworkView: View {
         }
         .frame(width: width, height: height)
         .clipped()
+    }
+}
+
+/// A mix backdrop painted from its four corner colours, with the three
+/// quarter-circle ripples the official mix cover has in its bottom corner.
+struct MixBackdropView: View {
+    let palette: MixBackdropPalette
+
+    var body: some View {
+        GeometryReader { proxy in
+            let side = max(proxy.size.width, proxy.size.height)
+            ZStack(alignment: .bottomLeading) {
+                gradient
+                ForEach([0.31, 0.59, 0.92], id: \.self) { fraction in
+                    Circle()
+                        .fill(.white.opacity(0.08))
+                        .frame(width: side * fraction * 2)
+                        .offset(
+                            x: -side * fraction,
+                            y: side * fraction
+                        )
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
+    }
+
+    @ViewBuilder
+    private var gradient: some View {
+        if #available(iOS 18.0, *) {
+            MeshGradient(
+                width: 2,
+                height: 2,
+                points: [[0, 0], [1, 0], [0, 1], [1, 1]],
+                colors: [
+                    palette.topLeading.color,
+                    palette.topTrailing.color,
+                    palette.bottomLeading.color,
+                    palette.bottomTrailing.color
+                ]
+            )
+        } else {
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        palette.topLeading.color,
+                        palette.bottomTrailing.color
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                LinearGradient(
+                    colors: [
+                        palette.topTrailing.color,
+                        palette.bottomLeading.color
+                    ],
+                    startPoint: .topTrailing,
+                    endPoint: .bottomLeading
+                )
+                .opacity(0.5)
+            }
+        }
+    }
+}
+
+private extension MixBackdropPalette.RGB {
+    var color: Color {
+        Color(red: red, green: green, blue: blue)
     }
 }

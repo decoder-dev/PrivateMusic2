@@ -447,7 +447,9 @@ enum JSONValue: Codable, Sendable {
                         matchPercent: matchPercent,
                         isSocial: social,
                         curator: curator,
-                        streamOptions: options
+                        streamOptions: options,
+                        backdropURL: object["background_animation_url"]?
+                            .stringValue.flatMap(URL.secureRemoteURL)
                     )
                 )
             }
