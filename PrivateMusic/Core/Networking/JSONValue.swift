@@ -658,7 +658,8 @@ private extension Dictionary where Key == String, Value == JSONValue {
     var mixCoverURL: URL? {
         let preferredKeys = [
             "photo_1200", "photo_600", "photo_300", "photo_270",
-            "cover_url", "thumb_url", "image"
+            "cover_url", "thumb_url", "image", "cover", "icon",
+            "background_image_url", "background_url"
         ]
         for key in preferredKeys {
             if case let .string(raw)? = self[key],

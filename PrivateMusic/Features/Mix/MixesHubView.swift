@@ -39,6 +39,12 @@ struct MixesHubView: View {
     @State private var vkTracks: [Track] = []
     @State private var vkRationale: MixRationale = .empty
     @State private var vkTrackCache: [String: [Track]] = [:]
+    /// A few tracks per mix, fetched only to draw its cover: VK's mix tile
+    /// carries no still image, so the cover is built from the mix's own
+    /// tracks. Kept apart from `vkTrackCache` so a three-track preview is
+    /// never mistaken for the mix's real contents.
+    @State private var coverPreviews: [String: [Track]] = [:]
+    @State private var coverPreviewTask: Task<Void, Never>?
     /// Unfiltered baseline for each VK mix.
     @State private var vkTrackBaseCache: [String: [Track]] = [:]
     @State private var vkRationaleCache: [String: MixRationale] = [:]
@@ -384,7 +390,9 @@ struct MixesHubView: View {
         isSelected: Bool,
         metrics: MixHubMetrics
     ) -> some View {
-        let artTracks = vkTrackCache[mix.id] ?? homeCatalog.recommendations
+        let artTracks = vkTrackCache[mix.id]
+            ?? coverPreviews[mix.id]
+            ?? homeCatalog.recommendations
         let cachedTracks = vkTrackCache[mix.id] ?? []
         return VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .bottomTrailing) {
@@ -580,7 +588,9 @@ struct MixesHubView: View {
         metrics: MixHubMetrics
     ) -> some View {
         let cached = vkTrackCache[mix.id] ?? []
-        let artTracks = cached.isEmpty ? homeCatalog.recommendations : cached
+        let artTracks = !cached.isEmpty
+            ? cached
+            : (coverPreviews[mix.id] ?? homeCatalog.recommendations)
         return VStack(alignment: .leading, spacing: 7) {
             Button {
                 selectVKMix(mix)
@@ -1963,10 +1973,42 @@ struct MixesHubView: View {
                 loadErrorMessage = nil
             }
             ensureVKSelection(forceReload: force)
+            startCoverPreviews()
         } catch is CancellationError {
             return
         } catch {
             loadErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func startCoverPreviews() {
+        coverPreviewTask?.cancel()
+        let pending = orderedVKMixes.filter { mix in
+            mix.artworkURL == nil
+                && mix.curator?.photoURL == nil
+                && vkTrackCache[mix.id] == nil
+                && coverPreviews[mix.id] == nil
+        }.prefix(12)
+        guard !pending.isEmpty else { return }
+        // One at a time: a dozen parallel stream requests would look like
+        // abuse to VK and the covers are not urgent.
+        coverPreviewTask = Task {
+            for mix in pending {
+                if Task.isCancelled { return }
+                let tracks = try? await environment.withAuthorizedToken {
+                    token in
+                    try await environment.musicService.mixTracks(
+                        mix,
+                        accessToken: token,
+                        startingOffset: 0,
+                        pages: 2
+                    )
+                }
+                let covered = (tracks ?? []).filter { $0.artworkURL != nil }
+                guard !covered.isEmpty else { continue }
+                coverPreviews[mix.id] = Array(covered.prefix(8))
+                MixBootstrapPrefetch.artwork(for: covered, limit: 4)
+            }
         }
     }
 
