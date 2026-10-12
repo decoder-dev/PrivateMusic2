@@ -9,7 +9,7 @@ enum VPNDetectionPolicy {
         let value = address.lowercased().split(separator: "%").first.map(String.init) ?? ""
         guard !value.isEmpty, value != "::", value != "::1", value != "0.0.0.0",
               !value.hasPrefix("127."), !value.hasPrefix("169.254."),
-              !value.hasPrefix("fe80:") else { return false }
+              !["fe8", "fe9", "fea", "feb"].contains(where: value.hasPrefix) else { return false }
         return true
     }
 }

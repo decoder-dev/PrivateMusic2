@@ -29,7 +29,7 @@ final class DesignSnapshotTests: XCTestCase {
         defer { player.stop(); snapshotPlayer = nil }
         let searchModel = SearchViewModel(defaults: defaults, debounceDuration: .zero)
         searchModel.query = "Вечер"
-        searchModel.submit { _, _, _ in MusicPage(items: [track], nextOffset: nil) }
+        searchModel.submit { _, _, _ in MusicPage(items: [track], totalCount: 1, nextOffset: nil) }
         for _ in 0..<200 where searchModel.isLoading {
             try await Task.sleep(for: .milliseconds(10))
         }
