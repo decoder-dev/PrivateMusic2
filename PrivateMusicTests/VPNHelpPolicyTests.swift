@@ -27,7 +27,7 @@ final class VPNHelpPolicyTests: XCTestCase {
         for error in errors {
             XCTAssertFalse(VPNHelpPolicy.shouldOfferHelp(for: error))
         }
-        XCTAssertFalse(VPNHelpPolicy.shouldOfferHelp(for: VKWebAuthError.rejected))
+        XCTAssertFalse(VPNHelpPolicy.shouldOfferHelp(for: VKWebAuthError.rejected("Session rejected")))
         XCTAssertFalse(VPNHelpPolicy.shouldOfferHelp(for: VKWebAuthError.noSession))
     }
 
