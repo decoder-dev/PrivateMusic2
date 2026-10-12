@@ -12,7 +12,10 @@ struct PlaylistDetailView: View {
         OfflinePlaylistStore.shared
     @State private var playlist: Playlist
     @State private var showingEditor = false
-    init(playlist: Playlist) { _playlist = State(initialValue: playlist) }
+    init(playlist: Playlist, loadedTracks: [Track]? = nil) {
+        _playlist = State(initialValue: playlist)
+        _model = State(initialValue: PlaylistDetailViewModel(loadedTracks: loadedTracks))
+    }
     @State private var model = PlaylistDetailViewModel()
     @State private var showsNavTitle = false
     @State private var showsDeleteConfirmation = false
@@ -535,6 +538,12 @@ private final class PlaylistDetailViewModel {
     var errorMessage: String?
     private var nextOffset: Int?
     var hasMorePages: Bool { nextOffset != nil }
+
+    init(loadedTracks: [Track]? = nil) {
+        var seen = Set<String>()
+        tracks = (loadedTracks ?? []).filter { seen.insert($0.id).inserted }
+        hasLoaded = loadedTracks != nil
+    }
 
     func load(
         force: Bool = false,

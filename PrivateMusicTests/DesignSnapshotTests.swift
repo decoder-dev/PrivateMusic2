@@ -93,11 +93,11 @@ final class DesignSnapshotTests: XCTestCase {
                     environment: environment, settings: settings)
             capture(NavigationStack { LibraryView() }, name: "library-\(theme.rawValue)",
                     environment: environment, settings: settings)
-            capture(NavigationStack { AlbumDetailView(album: album) }, name: "album-\(theme.rawValue)",
+            capture(NavigationStack { AlbumDetailView(album: album, loadedTracks: [track]) }, name: "album-\(theme.rawValue)",
                     environment: environment, settings: settings)
             capture(NavigationStack { ArtistView(artist: "Private Music") }, name: "artist-\(theme.rawValue)",
                     environment: environment, settings: settings)
-            capture(NavigationStack { PlaylistDetailView(playlist: playlist) }, name: "playlist-\(theme.rawValue)",
+            capture(NavigationStack { PlaylistDetailView(playlist: playlist, loadedTracks: [track]) }, name: "playlist-\(theme.rawValue)",
                     environment: environment, settings: settings)
             capture(NavigationStack { ProfileView() }, name: "profile-\(theme.rawValue)",
                     environment: environment, settings: settings)
@@ -140,6 +140,16 @@ final class DesignSnapshotTests: XCTestCase {
                                                onPlay: {}, onShare: {}, onDelete: {}),
                     name: "download-details-\(theme.rawValue)", environment: environment, settings: settings)
         }
+        settings.classicChrome = true
+        capture(NavigationStack { AlbumDetailView(album: album, loadedTracks: [track]) }, name: "album-classic",
+                width: 320, height: 700, environment: environment, settings: settings)
+        capture(NavigationStack { PlaylistDetailView(playlist: playlist, loadedTracks: [track]) }, name: "playlist-classic",
+                width: 320, height: 700, environment: environment, settings: settings)
+        settings.classicChrome = false
+        capture(NavigationStack { AlbumDetailView(album: album, loadedTracks: [track]) }.dynamicTypeSize(.accessibility3),
+                name: "album-accessibility", width: 320, height: 1000, environment: environment, settings: settings)
+        capture(NavigationStack { PlaylistDetailView(playlist: playlist, loadedTracks: [track]) }.dynamicTypeSize(.accessibility3),
+                name: "playlist-accessibility", width: 320, height: 1000, environment: environment, settings: settings)
         capture(discoveryPreview(track, width: 320), name: "discovery-compact", width: 320, height: 900,
                 environment: environment, settings: settings)
         capture(discoveryPreview(track, width: 320).dynamicTypeSize(.accessibility3),
@@ -295,6 +305,7 @@ final class DesignSnapshotTests: XCTestCase {
             .environment(environment.mixFeedbackStore)
             .environment(MainTabScrollCoordinator())
             .environment(\.colorScheme, settings.theme.colorScheme)
+            .environment(\.prefersClassicChrome, settings.classicChrome)
             .tint(settings.accent)
         guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
             XCTFail("Snapshot requires the test host's window scene")

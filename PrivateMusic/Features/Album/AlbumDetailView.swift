@@ -15,6 +15,12 @@ struct AlbumDetailView: View {
     @State private var actionErrorMessage: String?
     @State private var showsNavTitle = false
 
+    /// A caller that already loaded the complete album can avoid an empty loading frame.
+    init(album: Album, loadedTracks: [Track]? = nil) {
+        self.album = album
+        _model = State(initialValue: AlbumDetailViewModel(loadedTracks: loadedTracks))
+    }
+
     var body: some View {
         Group {
             if model.tracks.isEmpty && (!model.hasLoaded || model.isLoading) {
@@ -403,6 +409,12 @@ private final class AlbumDetailViewModel {
     var errorMessage: String?
     var paginationErrorMessage: String?
     private var nextOffset: Int?
+
+    init(loadedTracks: [Track]? = nil) {
+        var seen = Set<String>()
+        tracks = (loadedTracks ?? []).filter { seen.insert($0.id).inserted }
+        hasLoaded = loadedTracks != nil
+    }
 
     func load(
         force: Bool,
