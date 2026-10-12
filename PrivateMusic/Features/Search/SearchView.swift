@@ -197,7 +197,7 @@ struct SearchView: View {
 
     @ViewBuilder
     private var content: some View {
-        SavedLyricsResults(records: environment.savedLyricsStore.search(model.query)) { saved in
+        SavedLyricsResults(records: environment.savedLyricsStore.search(model.query), query: model.query) { saved in
             libraryStore.storedTrack(for: saved)
                 ?? environment.historyStore.entries.first { $0.track.id == saved.id }?.track
                 ?? saved
