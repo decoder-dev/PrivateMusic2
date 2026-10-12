@@ -8,11 +8,12 @@ struct RecentMusicEntry: TimelineEntry {
 
 struct RecentMusicWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let entry: RecentMusicEntry
     var previewFamily: WidgetFamily? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 4) {
             Label(String(localized: "widget.recent"), systemImage: "waveform")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -20,7 +21,7 @@ struct RecentMusicWidgetView: View {
                 Text(String(localized: "widget.empty"))
                     .font(.subheadline).foregroundStyle(.secondary)
             } else {
-                ForEach(Array(entry.snapshot.tracks.prefix((previewFamily ?? family) == .systemSmall ? 1 : 3))) { track in
+                ForEach(Array(entry.snapshot.tracks.prefix(visibleTrackCount))) { track in
                     Link(destination: entry.snapshot.url(for: track) ?? URL(string: "privatemusic://recent")!) {
                         HStack(spacing: 10) {
                             Group {
@@ -49,6 +50,10 @@ struct RecentMusicWidgetView: View {
         }
         .containerBackground(.background, for: .widget)
         .widgetURL(entry.snapshot.tracks.first.flatMap { entry.snapshot.url(for: $0) })
+    }
+
+    private var visibleTrackCount: Int {
+        (previewFamily ?? family) == .systemSmall || dynamicTypeSize.isAccessibilitySize ? 1 : 3
     }
 }
 
