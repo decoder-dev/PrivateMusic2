@@ -15,6 +15,7 @@ struct RootView: View {
     @State private var refreshRequiresReplacement = false
     @State private var refreshNeedsLogin = false
     @State private var dismissedVPNWarning = false
+    @State private var showsReconnect = false
     /// When the session was last confirmed with VK; coming back from
     /// Control Center must not cost a request each time.
     @State private var lastValidationAt: Date?
@@ -129,6 +130,28 @@ struct RootView: View {
         } message: {
             Text(player.errorMessage ?? "")
         }
+        .sheet(isPresented: $showsReconnect) {
+            VKWebLoginView { result in
+                let previousAgent = sessionStore.session?.userAgent
+                await environment.musicService.configure(userAgent: result.apiUserAgent)
+                do {
+                    let profile = try await environment.musicService.profile(accessToken: result.accessToken)
+                    try sessionStore.updateWebSession(result, profile: profile)
+                    environment.player.configureNetwork(userAgent: result.apiUserAgent)
+                    automaticRetryTask?.cancel()
+                    automaticRetryTask = nil
+                    automaticRetryAttempt = 0
+                    refreshError = nil
+                    refreshNeedsLogin = false
+                    refreshRequiresReplacement = false
+                    lastValidationAt = Date()
+                    showsReconnect = false
+                } catch {
+                    if let previousAgent { await environment.musicService.configure(userAgent: previousAgent) }
+                    throw error
+                }
+            }
+        }
         .alert(L10n.text("session_error"),
             isPresented: Binding(
                 get: { sessionStore.errorMessage != nil },
@@ -162,8 +185,9 @@ struct RootView: View {
                 message: refreshError,
                 tint: BubbleGamut.warning.color,
                 retry: refreshNeedsLogin
-                    ? nil
-                    : { Task { await refreshWebSession() } }
+                    ? { showsReconnect = true }
+                    : { Task { await refreshWebSession() } },
+                actionTitle: refreshNeedsLogin ? "connect_vk" : "action.retry"
             )
         }
     }
@@ -351,14 +375,19 @@ struct RootView: View {
 
 private struct ConnectionBanner: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let icon: String?
     let message: String
     let tint: Color
     var showsProgress = false
     var retry: (() -> Void)?
+    var actionTitle = "action.retry"
 
     var body: some View {
-        HStack(spacing: 10) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+            : AnyLayout(HStackLayout(spacing: 10))
+        layout {
             if showsProgress {
                 ProgressView()
                     .tint(tint)
@@ -368,12 +397,13 @@ private struct ConnectionBanner: View {
             }
             Text(L10n.text(message))
                 .font(.footnote.weight(.semibold))
-                .lineLimit(2)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let retry {
-                Button(L10n.text("action.retry"), action: retry)
+                Button(L10n.text(actionTitle), action: retry)
                     .font(.footnote.weight(.bold))
+                    .frame(minWidth: PremiumLayout.minimumTapTarget, minHeight: PremiumLayout.minimumTapTarget)
             }
         }
         .padding(.horizontal, 14)
@@ -384,7 +414,7 @@ private struct ConnectionBanner: View {
             radius: 8,
             y: 3
         )
-        .padding(.horizontal, 12)
+        .padding(.horizontal, PremiumLayout.screenPadding)
         .padding(.top, 6)
         .padding(.bottom, 4)
     }
