@@ -3389,7 +3389,7 @@ final class AudioPlayer {
                         ? "playback_track_unavailable"
                         : "playback_failed_check_connection"
         )
-        errorOffersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
+        errorOffersVPNHelp = error.map { VPNHelpPolicy.shouldOfferHelp(for: $0) } ?? false
         isBuffering = StreamFailureRetryPolicy.isConnectivityFailure(error)
         Haptics.error()
     }
