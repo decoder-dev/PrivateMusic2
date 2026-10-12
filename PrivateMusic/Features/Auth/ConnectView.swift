@@ -9,6 +9,9 @@ struct ConnectView: View {
     @State private var isConnecting = false
     @State private var isWebLoginPresented = false
     @State private var showsManualImport = false
+    @Environment(NetworkMonitor.self) private var networkMonitor
+    @State private var offersVPNHelp = false
+    @State private var showsVPNInstructions = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -29,15 +32,21 @@ struct ConnectView: View {
                 .frame(maxWidth: .infinity)
             }
         }
+        .sheet(isPresented: $showsVPNInstructions) { VPNInstructionsView() }
         .alert(L10n.text("could_not_connect"),
             isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
             )
         ) {
+            if offersVPNHelp, networkMonitor.isReachable {
+                Button(L10n.text("action.retry")) { Task { await connectImportedSession() } }
+                Button(L10n.text("vpn.how_to_disable")) { showsVPNInstructions = true }
+            }
             Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
-            Text(errorMessage ?? "")
+            Text((errorMessage ?? "") + (offersVPNHelp && networkMonitor.isReachable
+                ? "\n\n" + L10n.text("vpn.warning_short") : ""))
         }
         .sheet(isPresented: $isWebLoginPresented) {
             VKWebLoginView { result in
@@ -206,6 +215,7 @@ struct ConnectView: View {
             in: .whitespacesAndNewlines
         )
         guard cleaned.count >= 16, cleanedUserAgent.count >= 12 else {
+            offersVPNHelp = false
             errorMessage = APIError.unauthorized.localizedDescription
             return
         }
@@ -229,6 +239,7 @@ struct ConnectView: View {
             token = ""
             userAgent = ""
         } catch {
+            offersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
             errorMessage = error.localizedDescription
         }
     }

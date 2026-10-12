@@ -32,11 +32,23 @@ final class SearchViewModel {
     private(set) var isLoadingMoreAlbums = false
     private(set) var isLoadingPlaylists = false
     private(set) var isLoadingMorePlaylists = false
-    var albumErrorMessage: String?
-    var playlistErrorMessage: String?
+    var albumErrorMessage: String? {
+        didSet { if albumErrorMessage == nil { albumOffersVPNHelp = false } }
+    }
+    private(set) var albumOffersVPNHelp = false
+    var playlistErrorMessage: String? {
+        didSet { if playlistErrorMessage == nil { playlistOffersVPNHelp = false } }
+    }
+    private(set) var playlistOffersVPNHelp = false
     private(set) var recentQueries: [String]
-    private(set) var errorMessage: String?
-    private(set) var paginationErrorMessage: String?
+    private(set) var errorMessage: String? {
+        didSet { if errorMessage == nil { trackOffersVPNHelp = false } }
+    }
+    private(set) var trackOffersVPNHelp = false
+    private(set) var paginationErrorMessage: String? {
+        didSet { if paginationErrorMessage == nil { paginationOffersVPNHelp = false } }
+    }
+    private(set) var paginationOffersVPNHelp = false
     var actionErrorMessage: String?
 
     private var searchTask: Task<Void, Never>?
@@ -96,6 +108,13 @@ final class SearchViewModel {
             return .empty
         }
         return .idle
+    }
+
+    var failureOffersVPNHelp: Bool {
+        if errorMessage != nil { return trackOffersVPNHelp }
+        if albumErrorMessage != nil { return albumOffersVPNHelp }
+        if playlistErrorMessage != nil { return playlistOffersVPNHelp }
+        return false
     }
 
     var artists: [String] {
@@ -194,6 +213,7 @@ final class SearchViewModel {
                 guard revision == albumSearchRevision else { return }
                 activeAlbumQuery = requestedQuery
                 albumErrorMessage = error.localizedDescription
+                albumOffersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
             }
             if revision == albumSearchRevision {
                 isLoadingAlbums = false
@@ -229,6 +249,7 @@ final class SearchViewModel {
             guard revision == albumSearchRevision,
                   !Self.isCancellation(error) else { return }
             albumErrorMessage = error.localizedDescription
+            albumOffersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
         }
     }
 
@@ -273,6 +294,7 @@ final class SearchViewModel {
                 guard revision == playlistSearchRevision else { return }
                 activePlaylistQuery = requestedQuery
                 playlistErrorMessage = error.localizedDescription
+                playlistOffersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
             }
             if revision == playlistSearchRevision {
                 isLoadingPlaylists = false
@@ -308,6 +330,7 @@ final class SearchViewModel {
             guard revision == playlistSearchRevision,
                   !Self.isCancellation(error) else { return }
             playlistErrorMessage = error.localizedDescription
+            playlistOffersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
         }
     }
 
@@ -414,6 +437,7 @@ final class SearchViewModel {
             }
             activeQuery = requestedQuery
             errorMessage = error.localizedDescription
+            trackOffersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
         }
     }
 
@@ -454,6 +478,7 @@ final class SearchViewModel {
                 return
             }
             paginationErrorMessage = error.localizedDescription
+            paginationOffersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
         }
     }
 

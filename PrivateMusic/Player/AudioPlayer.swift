@@ -174,7 +174,10 @@ final class AudioPlayer {
     var isPlayerPresented = false
     /// One-shot sheet request honored by `PlayerView` after presentation.
     var pendingPlayerSheet: PendingPlayerSheet?
-    var errorMessage: String?
+    var errorMessage: String? {
+        didSet { errorOffersVPNHelp = false }
+    }
+    private(set) var errorOffersVPNHelp = false
 
     /// Scrubber / mini-player / lyrics clock (see `PlaybackProgressModel`).
     let progress = PlaybackProgressModel()
@@ -3386,6 +3389,7 @@ final class AudioPlayer {
                         ? "playback_track_unavailable"
                         : "playback_failed_check_connection"
         )
+        errorOffersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
         isBuffering = StreamFailureRetryPolicy.isConnectivityFailure(error)
         Haptics.error()
     }

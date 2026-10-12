@@ -3,6 +3,43 @@ import XCTest
 
 @MainActor
 final class SearchViewModelTests: XCTestCase {
+    func testVPNAdviceClearsOnRetryAndDoesNotReplaceAuthenticationErrors() async {
+        let context = makeModel(debounce: .zero)
+        defer { context.defaults.removePersistentDomain(forName: context.suite) }
+        context.model.query = "music"
+        context.model.submit { _, _, _ in throw APIError.timedOut }
+        await waitUntil { context.model.errorMessage != nil }
+        XCTAssertTrue(context.model.failureOffersVPNHelp)
+
+        context.model.submit { _, _, _ in throw APIError.unauthorized }
+        XCTAssertFalse(context.model.failureOffersVPNHelp)
+        await waitUntil { context.model.errorMessage != nil }
+        XCTAssertFalse(context.model.failureOffersVPNHelp)
+
+        context.model.submit { _, _, _ in Self.page(items: [Self.track(id: 1)]) }
+        await waitUntil { context.model.state == .results }
+        XCTAssertFalse(context.model.failureOffersVPNHelp)
+    }
+
+    func testAlbumAndPlaylistFailuresKeepTheirOwnTroubleshootingState() async {
+        let context = makeModel(debounce: .zero)
+        defer { context.defaults.removePersistentDomain(forName: context.suite) }
+        context.model.query = "music"
+        context.model.submitAlbums { _, _, _ in throw URLError(.cannotConnectToHost) }
+        await waitUntil { context.model.albumErrorMessage != nil }
+        XCTAssertTrue(context.model.failureOffersVPNHelp)
+        context.model.albumErrorMessage = nil
+
+        context.model.submitPlaylists { _, _, _ in
+            throw APIError.server(code: 15, message: "Unavailable")
+        }
+        await waitUntil { context.model.playlistErrorMessage != nil }
+        XCTAssertFalse(context.model.failureOffersVPNHelp)
+        context.model.submitPlaylists { _, _, _ in throw APIError.timedOut }
+        await waitUntil { context.model.playlistErrorMessage != nil }
+        XCTAssertTrue(context.model.failureOffersVPNHelp)
+    }
+
     func testShortQueryStaysInHintStateWithoutCallingService() async {
         let context = makeModel()
         defer {

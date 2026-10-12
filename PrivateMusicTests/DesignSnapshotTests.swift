@@ -41,6 +41,13 @@ final class DesignSnapshotTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(lyricSearchModel.state, .empty)
+        let failedSearchModel = SearchViewModel(defaults: defaults, debounceDuration: .zero)
+        failedSearchModel.query = "Вечер"
+        failedSearchModel.submit { _, _, _ in throw APIError.timedOut }
+        for _ in 0..<200 where failedSearchModel.isLoading {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(failedSearchModel.failureOffersVPNHelp)
         let album = Album(id: 1, ownerID: 1, title: "Тихий вечер", count: 1, artists: ["Private Music"])
         let playlist = Playlist(id: 1, ownerID: 1, title: "Вечерняя музыка", count: 1)
         for theme in AppTheme.allCases {
@@ -125,8 +132,12 @@ final class DesignSnapshotTests: XCTestCase {
                     environment: environment, settings: settings)
             capture(MixTuningSheet(mix: MusicMix(id: "common", title: "Selena", subtitle: "", artworkURL: nil), onPlay: { _ in }), name: "mix-tuning-\(theme.rawValue)",
                     environment: environment, settings: settings)
-            capture(VPNWarningCard(dismiss: {}), name: "vpn-warning-\(theme.rawValue)",
+            capture(VPNWarningCard(retry: {}), name: "vpn-warning-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            capture(VPNInstructionsView(), name: "vpn-instructions-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { SearchView(isActive: false, model: failedSearchModel) },
+                    name: "search-connection-failure-\(theme.rawValue)", environment: environment, settings: settings)
             capture(ConnectionBanner(icon: "exclamationmark.circle.fill",
                     message: "vk_rejected_the_saved_sign_in_connect_your_account_again",
                     tint: BubbleGamut.warning.color, retry: {}, actionTitle: "connect_vk"),
@@ -166,8 +177,10 @@ final class DesignSnapshotTests: XCTestCase {
         capture(NavigationStack { SearchView(isActive: false, model: searchModel) }.dynamicTypeSize(.accessibility3),
                 name: "search-results-accessibility", width: 320, height: 600,
                 environment: environment, settings: settings)
-        capture(VPNWarningCard(dismiss: {}).dynamicTypeSize(.accessibility3), name: "vpn-warning-accessibility",
+        capture(VPNWarningCard(retry: {}).dynamicTypeSize(.accessibility3), name: "vpn-warning-accessibility",
                 width: 320, height: 700, environment: environment, settings: settings)
+        capture(VPNInstructionsView().dynamicTypeSize(.accessibility3), name: "vpn-instructions-accessibility",
+                width: 320, height: 1000, environment: environment, settings: settings)
         capture(ConnectionBanner(icon: "exclamationmark.circle.fill",
                 message: "vk_rejected_the_saved_sign_in_connect_your_account_again",
                 tint: BubbleGamut.warning.color, retry: {}, actionTitle: "connect_vk").dynamicTypeSize(.accessibility3),

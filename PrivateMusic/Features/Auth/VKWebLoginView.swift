@@ -5,6 +5,9 @@ struct VKWebLoginView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var model = VKWebLoginModel()
     @State private var isCompleting = false
+    @Environment(NetworkMonitor.self) private var networkMonitor
+    @State private var offersVPNHelp = false
+    @State private var showsVPNInstructions = false
     @State private var errorMessage: String?
 
     let onAuthenticated: @MainActor (VKWebAuthResult) async throws -> Void
@@ -27,22 +30,28 @@ struct VKWebLoginView: View {
                                 .foregroundStyle(.secondary)
                         }
                     } else if let loadError = model.loadError {
-                        VStack(spacing: 14) {
-                            Image(systemName: "wifi.exclamationmark")
-                                .font(.system(size: 42))
-                                .foregroundStyle(.secondary)
-                            Text(L10n.text("auth.page_failed"))
-                                .font(.headline)
-                            Text(loadError)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                            Button(L10n.text("action.retry")) {
-                                model.reload()
+                        ScrollView {
+                            VStack(spacing: 14) {
+                                Image(systemName: "wifi.exclamationmark")
+                                    .font(.system(size: 42))
+                                    .foregroundStyle(.secondary)
+                                Text(L10n.text("auth.page_failed"))
+                                    .font(.headline)
+                                Text(loadError)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                                Button(L10n.text("action.retry")) { model.reload() }
+                                    .buttonStyle(PremiumProminentButtonStyle())
+                                if model.loadOffersVPNHelp, networkMonitor.isReachable {
+                                    VPNConnectionAdvice()
+                                }
                             }
-                            .buttonStyle(PremiumProminentButtonStyle())
+                            .frame(maxWidth: 520)
+                            .frame(maxWidth: .infinity)
+                            .padding(24)
                         }
-                        .padding(24)
+                        .background(Color(uiColor: .systemBackground))
                     }
                 }
 
@@ -71,15 +80,21 @@ struct VKWebLoginView: View {
             guard model.sessionRevision > 0, !isCompleting else { return }
             Task { await completeLogin(automatic: true) }
         }
+        .sheet(isPresented: $showsVPNInstructions) { VPNInstructionsView() }
         .alert(L10n.text("could_not_complete_sign_in"),
             isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
             )
         ) {
+            if offersVPNHelp, networkMonitor.isReachable {
+                Button(L10n.text("action.retry")) { Task { await completeLogin(automatic: false) } }
+                Button(L10n.text("vpn.how_to_disable")) { showsVPNInstructions = true }
+            }
             Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
-            Text(errorMessage ?? "")
+            Text((errorMessage ?? "") + (offersVPNHelp && networkMonitor.isReachable
+                ? "\n\n" + L10n.text("vpn.warning_short") : ""))
         }
     }
 
@@ -192,6 +207,7 @@ struct VKWebLoginView: View {
                 // The VK login worked; only saving the profile failed.
                 // Keep the web session and the sheet so one more tap
                 // retries, instead of wiping cookies and starting over.
+                offersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
                 errorMessage = error.localizedDescription
                 return
             }
@@ -199,6 +215,7 @@ struct VKWebLoginView: View {
             dismiss()
         } catch {
             if !automatic {
+                offersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
                 errorMessage = error.localizedDescription
             }
         }
@@ -220,6 +237,7 @@ private struct VKWebView: UIViewRepresentable {
 private final class VKWebLoginModel: NSObject {
     private(set) var isLoading = true
     private(set) var loadError: String?
+    private(set) var loadOffersVPNHelp = false
     private(set) var canGoBack = false
     private(set) var displayHost = "vk.ru"
     private(set) var sessionRevision = 0
@@ -315,6 +333,7 @@ private final class VKWebLoginModel: NSObject {
             return
         }
         isLoading = false
+        loadOffersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
         loadError = error.localizedDescription
     }
 

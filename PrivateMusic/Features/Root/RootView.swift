@@ -14,7 +14,8 @@ struct RootView: View {
     @State private var isValidatingSession = false
     @State private var refreshRequiresReplacement = false
     @State private var refreshNeedsLogin = false
-    @State private var dismissedVPNWarning = false
+    @State private var refreshOffersVPNHelp = false
+    @State private var showsVPNInstructions = false
     @State private var showsReconnect = false
     /// When the session was last confirmed with VK; coming back from
     /// Control Center must not cost a request each time.
@@ -38,14 +39,6 @@ struct RootView: View {
                         connectionBanner
                     }
             }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if networkMonitor.isReachable, networkMonitor.hasVPNHint, !dismissedVPNWarning {
-                VPNWarningCard { dismissedVPNWarning = true }
-            }
-        }
-        .onChange(of: networkMonitor.hasVPNHint) { _, hint in
-            if !hint { dismissedVPNWarning = false }
         }
         .onOpenURL { environment.openRecentWidgetURL($0) }
         .onContinueUserActivity(
@@ -95,7 +88,6 @@ struct RootView: View {
             // notification never delivered — see
             // `AudioPlayer.handleSceneBecameActive()`.
             if phase == .active {
-                networkMonitor.refreshVPNHint()
                 player.handleSceneBecameActive()
             }
             guard phase == .active,
@@ -126,10 +118,16 @@ struct RootView: View {
                 set: { if !$0 { player.errorMessage = nil } }
             )
         ) {
+            if player.errorOffersVPNHelp, networkMonitor.isReachable {
+                Button(L10n.text("action.retry")) { player.resume() }
+                Button(L10n.text("vpn.how_to_disable")) { showsVPNInstructions = true }
+            }
             Button(L10n.text("action.ok"), role: .cancel) {}
         } message: {
-            Text(player.errorMessage ?? "")
+            Text((player.errorMessage ?? "") + (player.errorOffersVPNHelp && networkMonitor.isReachable
+                ? "\n\n" + L10n.text("vpn.warning_short") : ""))
         }
+        .sheet(isPresented: $showsVPNInstructions) { VPNInstructionsView() }
         .sheet(isPresented: $showsReconnect) {
             VKWebLoginView { result in
                 let previousAgent = sessionStore.session?.userAgent
@@ -179,6 +177,8 @@ struct RootView: View {
                 tint: settings.accent,
                 showsProgress: true
             )
+        } else if refreshError != nil, refreshOffersVPNHelp, !refreshNeedsLogin {
+            VPNWarningCard(retry: retryConnection)
         } else if let refreshError {
             ConnectionBanner(
                 icon: "exclamationmark.circle.fill",
@@ -186,9 +186,19 @@ struct RootView: View {
                 tint: BubbleGamut.warning.color,
                 retry: refreshNeedsLogin
                     ? { showsReconnect = true }
-                    : { Task { await refreshWebSession() } },
+                    : retryConnection,
                 actionTitle: refreshNeedsLogin ? "connect_vk" : "action.retry"
             )
+        }
+    }
+
+    private func retryConnection() {
+        Task {
+            if sessionStore.session?.needsRefresh == true || refreshRequiresReplacement {
+                await refreshWebSession()
+            } else {
+                await loadProfile(forceValidation: true)
+            }
         }
     }
 
@@ -268,6 +278,7 @@ struct RootView: View {
         } catch is CancellationError {
             return
         } catch {
+            refreshOffersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
             switch SessionRecoveryDisposition.classify(error) {
             case .ignore:
                 return
@@ -355,6 +366,7 @@ struct RootView: View {
         } catch is CancellationError {
             return
         } catch {
+            refreshOffersVPNHelp = VPNHelpPolicy.shouldOfferHelp(for: error)
             switch SessionRecoveryDisposition.classify(error) {
             case .ignore:
                 return

@@ -22,6 +22,7 @@ struct SearchView: View {
 
     @Environment(AppEnvironment.self) private var environment
     @Environment(SessionStore.self) private var sessionStore
+    @Environment(NetworkMonitor.self) private var networkMonitor
     @Environment(AppSettings.self) private var settings
     @Environment(MusicLibraryStore.self) private var libraryStore
     @Environment(LikedAlbumsStore.self) private var likedAlbumsStore
@@ -254,9 +255,15 @@ struct SearchView: View {
     }
 
     private func searchFailure(_ message: String) -> some View {
-        SearchStatusView(title: "search_error", systemImage: "wifi.exclamationmark",
-                         description: message, descriptionIsLocalizedKey: false,
-                         actionTitle: "action.retry", action: submitSearch)
+        VStack(spacing: 12) {
+            if model.failureOffersVPNHelp, networkMonitor.isReachable {
+                VPNWarningCard(retry: submitSearch)
+            } else {
+                SearchStatusView(title: "search_error", systemImage: "wifi.exclamationmark",
+                                 description: message, descriptionIsLocalizedKey: false,
+                                 actionTitle: "action.retry", action: submitSearch)
+            }
+        }
     }
 
     private var searchTopAnchor: some View {
@@ -375,7 +382,7 @@ struct SearchView: View {
             .padding(.bottom, BubbleSpacing.s)
 
             if scope == .tracks, let error = model.errorMessage {
-                inlineRetry(message: error, action: submitSearch)
+                inlineRetry(message: error, offersVPNHelp: model.trackOffersVPNHelp, action: submitSearch)
                     .padding(.horizontal, PremiumLayout.screenPadding)
                     .padding(.bottom, BubbleSpacing.s)
             }
@@ -517,7 +524,7 @@ struct SearchView: View {
                     .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
                                              bottom: 6, trailing: PremiumLayout.screenPadding))
             } else if let message = model.paginationErrorMessage {
-                inlineRetry(message: message, action: loadMore)
+                inlineRetry(message: message, offersVPNHelp: model.paginationOffersVPNHelp, action: loadMore)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
                                              bottom: 6, trailing: PremiumLayout.screenPadding))
@@ -561,7 +568,7 @@ struct SearchView: View {
                     .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
                                              bottom: 6, trailing: PremiumLayout.screenPadding))
             } else if let message = model.paginationErrorMessage {
-                inlineRetry(message: message, action: loadMore)
+                inlineRetry(message: message, offersVPNHelp: model.paginationOffersVPNHelp, action: loadMore)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
                                              bottom: 6, trailing: PremiumLayout.screenPadding))
@@ -626,7 +633,7 @@ struct SearchView: View {
                     .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
                                              bottom: 6, trailing: PremiumLayout.screenPadding))
             } else if let message = model.albumErrorMessage {
-                inlineRetry(message: message, action: loadMoreAlbums)
+                inlineRetry(message: message, offersVPNHelp: model.albumOffersVPNHelp, action: loadMoreAlbums)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
                                              bottom: 6, trailing: PremiumLayout.screenPadding))
@@ -674,7 +681,7 @@ struct SearchView: View {
                     .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
                                              bottom: 6, trailing: PremiumLayout.screenPadding))
             } else if let message = model.playlistErrorMessage {
-                inlineRetry(message: message, action: loadMorePlaylists)
+                inlineRetry(message: message, offersVPNHelp: model.playlistOffersVPNHelp, action: loadMorePlaylists)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
                                              bottom: 6, trailing: PremiumLayout.screenPadding))
@@ -689,14 +696,18 @@ struct SearchView: View {
 
     private func inlineRetry(
         message: String,
+        offersVPNHelp: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        AppInlineMessageCard(
-            message: message,
-            systemImage: "exclamationmark.circle",
-            actionTitle: L10n.text("action.retry"),
-            action: action
-        )
+        VStack(alignment: .leading, spacing: 8) {
+            AppInlineMessageCard(
+                message: message,
+                systemImage: "exclamationmark.circle",
+                actionTitle: L10n.text("action.retry"),
+                action: action
+            )
+            if offersVPNHelp, networkMonitor.isReachable { VPNConnectionAdvice() }
+        }
     }
 
     private var searchFieldShape: RoundedRectangle {
