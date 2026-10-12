@@ -4,6 +4,7 @@ struct SavedLyricsResults: View {
     let records: [SavedLyricsRecord]
     var query: String = ""
     let resolve: (Track) -> Track
+    @State private var selectedRecord: SavedLyricsRecord?
 
     var body: some View {
         if !records.isEmpty {
@@ -13,8 +14,8 @@ struct SavedLyricsResults: View {
                     ForEach(records) { record in
                         let track = resolve(record.track)
                         TrackRow(track: track, queue: records.map { resolve($0.track) })
-                        NavigationLink {
-                            LyricsView(track: track, initialLyrics: record.lyrics)
+                        Button {
+                            selectedRecord = record
                         } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: "text.alignleft")
@@ -41,6 +42,9 @@ struct SavedLyricsResults: View {
             }
             .padding(.horizontal, PremiumLayout.screenPadding)
             .padding(.bottom, 16)
+            .sheet(item: $selectedRecord) { record in
+                LyricsView(track: resolve(record.track), initialLyrics: record.lyrics)
+            }
         }
     }
 
