@@ -1963,34 +1963,49 @@ struct PlayerActionsSheet: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            AsyncArtwork(url: track.artworkURL, size: 58)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(track.title)
-                    .font(.headline.weight(.bold))
-                    .lineLimit(1)
-                Text(track.artist)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        AsyncArtwork(url: track.artworkURL, size: 48).accessibilityHidden(true)
+                        Spacer(minLength: 0)
+                        closeButton
+                    }
+                    headerText
+                }
+            } else {
+                HStack(spacing: 12) {
+                    AsyncArtwork(url: track.artworkURL, size: 58).accessibilityHidden(true)
+                    headerText
+                    closeButton
+                }
             }
-
-            Spacer(minLength: 10)
-
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .frame(width: 44, height: 44)
-                    .adaptiveGlass(in: Circle(), interactive: true)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(L10n.text("action.close"))
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, PremiumLayout.screenPadding)
         .padding(.vertical, 12)
         .accessibilityElement(children: .contain)
+    }
+
+    private var headerText: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(track.title).font(.headline.weight(.bold))
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+            Text(track.artist).font(.subheadline).foregroundStyle(.secondary)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .layoutPriority(1)
+    }
+
+    private var closeButton: some View {
+        Button(action: onDismiss) {
+            Image(systemName: "xmark").font(.system(size: 14, weight: .bold))
+                .frame(width: 44, height: 44)
+                .adaptiveGlass(in: Circle(), interactive: true)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L10n.text("action.close"))
     }
 
     private var libraryAction: some View {

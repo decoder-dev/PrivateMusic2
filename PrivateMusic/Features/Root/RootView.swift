@@ -408,7 +408,7 @@ struct ConnectionBanner: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .adaptiveGlass(in: bannerShape)
+        .premiumCard()
         .shadow(
             color: .black.opacity(settings.theme == .dark ? 0.16 : 0.08),
             radius: 8,
@@ -419,12 +419,7 @@ struct ConnectionBanner: View {
         .padding(.bottom, 4)
     }
 
-    private var bannerShape: RoundedRectangle {
-        RoundedRectangle(
-            cornerRadius: PremiumLayout.compactRadius,
-            style: .continuous
-        )
-    }
+
 }
 
 enum PlayerZoomTransition {

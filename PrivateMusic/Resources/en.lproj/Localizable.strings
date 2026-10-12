@@ -936,3 +936,5 @@
 "vpn.warning_message" = "A VPN may interfere with VK sign-in and music. If the app is not working correctly, turn off your VPN and try again.";
 "vpn.instructions" = "Disconnect in your VPN app or in iOS Settings: General → VPN & Device Management → VPN. Then return to Private Music.";
 "vpn.dismiss_warning" = "Dismiss VPN warning";
+
+"vpn.warning_short" = "If VK is not working, turn off your VPN and try again.";
