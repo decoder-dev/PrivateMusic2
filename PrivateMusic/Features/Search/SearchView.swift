@@ -381,7 +381,7 @@ struct SearchView: View {
             }
 
             if scope == .tracks {
-                if model.tracks.isEmpty {
+                if model.tracks.isEmpty && savedRecords.isEmpty {
                     SearchStatusView(
                         title: "no_tracks_found",
                         systemImage: "music.note",
@@ -392,7 +392,7 @@ struct SearchView: View {
                     trackResults
                 }
             } else if scope == .artists {
-                if model.artists.isEmpty {
+                if model.artists.isEmpty && savedRecords.isEmpty {
                     SearchStatusView(
                         title: "no_artists_found",
                         systemImage: "person.wave.2",
@@ -402,10 +402,10 @@ struct SearchView: View {
                     artistResults
                 }
             } else if scope == .albums {
-                if model.isLoadingAlbums && model.albums.isEmpty {
+                if model.isLoadingAlbums && model.albums.isEmpty && savedRecords.isEmpty {
                     searchLoading
                 } else if let error = model.albumErrorMessage,
-                          model.albums.isEmpty {
+                          model.albums.isEmpty && savedRecords.isEmpty {
                     SearchStatusView(
                         title: "album_search_failed",
                         systemImage: "wifi.exclamationmark",
@@ -414,7 +414,7 @@ struct SearchView: View {
                         actionTitle: "action.retry",
                         action: submitSearch
                     )
-                } else if model.albums.isEmpty {
+                } else if model.albums.isEmpty && savedRecords.isEmpty {
                     SearchStatusView(
                         title: "no_albums_found",
                         systemImage: "square.stack",
@@ -424,10 +424,10 @@ struct SearchView: View {
                     albumResults
                 }
             } else {
-                if model.isLoadingPlaylists && model.playlists.isEmpty {
+                if model.isLoadingPlaylists && model.playlists.isEmpty && savedRecords.isEmpty {
                     searchLoading
                 } else if let error = model.playlistErrorMessage,
-                          model.playlists.isEmpty {
+                          model.playlists.isEmpty && savedRecords.isEmpty {
                     SearchStatusView(
                         title: "playlist_search_failed",
                         systemImage: "wifi.exclamationmark",
@@ -436,7 +436,7 @@ struct SearchView: View {
                         actionTitle: "action.retry",
                         action: submitSearch
                     )
-                } else if model.playlists.isEmpty {
+                } else if model.playlists.isEmpty && savedRecords.isEmpty {
                     SearchStatusView(
                         title: "no_playlists_found",
                         systemImage: "rectangle.stack",

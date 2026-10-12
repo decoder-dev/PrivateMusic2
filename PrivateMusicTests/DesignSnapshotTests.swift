@@ -34,6 +34,13 @@ final class DesignSnapshotTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(searchModel.state, .results)
+        let lyricSearchModel = SearchViewModel(defaults: defaults, debounceDuration: .zero)
+        lyricSearchModel.query = "окне"
+        lyricSearchModel.submit { _, _, _ in MusicPage(items: [], totalCount: 0, nextOffset: nil) }
+        for _ in 0..<200 where lyricSearchModel.isLoading {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(lyricSearchModel.state, .empty)
         let album = Album(id: 1, ownerID: 1, title: "Тихий вечер", count: 1, artists: ["Private Music"])
         let playlist = Playlist(id: 1, ownerID: 1, title: "Вечерняя музыка", count: 1)
         for theme in AppTheme.allCases {
@@ -120,6 +127,11 @@ final class DesignSnapshotTests: XCTestCase {
                     environment: environment, settings: settings)
             capture(VPNWarningCard(dismiss: {}), name: "vpn-warning-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            environment.savedLyricsStore.configure(accountID: 1)
+            environment.savedLyricsStore.save(Lyrics(text: "Свет в окне", source: "LRCLIB"), for: track)
+            capture(NavigationStack { SearchView(isActive: false, model: lyricSearchModel) },
+                    name: "search-lyrics-only-\(theme.rawValue)", environment: environment, settings: settings)
+            environment.savedLyricsStore.configure(accountID: nil)
             capture(DownloadedTrackDetailsView(record: record, localURL: nil,
                                                onPlay: {}, onShare: {}, onDelete: {}),
                     name: "download-details-\(theme.rawValue)", environment: environment, settings: settings)
