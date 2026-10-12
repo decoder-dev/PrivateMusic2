@@ -4,6 +4,8 @@ struct PlaylistDetailView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SessionStore.self) private var sessionStore
     @Environment(AppSettings.self) private var settings
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(AudioPlayer.self) private var player
     @Environment(\.dismiss) private var dismiss
     private let offlinePlaylists =
@@ -307,13 +309,16 @@ struct PlaylistDetailView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 46)
+        .frame(minHeight: PremiumLayout.minimumTapTarget)
         .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
     private var listenButton: some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), !ContrastPolicy.flattensCustomGlass(
+            reduceTransparency: reduceTransparency, increaseContrast: colorSchemeContrast == .increased,
+            prefersClassicChrome: settings.classicChrome
+        ) {
             Button(action: toggleListen) {
                 listenButtonLabel
             }

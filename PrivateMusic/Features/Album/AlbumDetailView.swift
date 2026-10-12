@@ -5,6 +5,8 @@ struct AlbumDetailView: View {
     @Environment(SessionStore.self) private var sessionStore
     @Environment(LikedAlbumsStore.self) private var likedAlbumsStore
     @Environment(AppSettings.self) private var settings
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(AudioPlayer.self) private var player
     let album: Album
     @State private var model = AlbumDetailViewModel()
@@ -217,13 +219,16 @@ struct AlbumDetailView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 46)
+        .frame(minHeight: PremiumLayout.minimumTapTarget)
         .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
     private var listenButton: some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), !ContrastPolicy.flattensCustomGlass(
+            reduceTransparency: reduceTransparency, increaseContrast: colorSchemeContrast == .increased,
+            prefersClassicChrome: settings.classicChrome
+        ) {
             Button(action: toggleListen) {
                 listenButtonLabel
             }
