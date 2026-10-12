@@ -5,6 +5,7 @@ struct AlbumDetailView: View {
     @Environment(SessionStore.self) private var sessionStore
     @Environment(LikedAlbumsStore.self) private var likedAlbumsStore
     @Environment(AppSettings.self) private var settings
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(AudioPlayer.self) private var player
@@ -166,8 +167,39 @@ struct AlbumDetailView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            HStack(spacing: 12) {
-                listenButton
+            headerActions
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+    }
+
+    @ViewBuilder
+    private var headerActions: some View {
+        if dynamicTypeSize.isAccessibilitySize || ContrastPolicy.flattensCustomGlass(
+            reduceTransparency: reduceTransparency, increaseContrast: colorSchemeContrast == .increased,
+            prefersClassicChrome: settings.classicChrome
+        ) {
+            verticalHeaderActions
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    listenButton.frame(minWidth: 152)
+                    secondaryHeaderActions
+                }
+                verticalHeaderActions
+            }
+        }
+    }
+
+    private var verticalHeaderActions: some View {
+        VStack(spacing: 12) {
+            listenButton
+            secondaryHeaderActions
+        }
+    }
+
+    private var secondaryHeaderActions: some View {
+        HStack(spacing: 12) {
                 shuffleButton
                 Button(action: toggleFollow) {
                     Image(systemName: isFollowed ? "heart.fill" : "heart")
@@ -204,28 +236,18 @@ struct AlbumDetailView: View {
                     .accessibilityLabel(L10n.text("share_album"))
                 }
             }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
     }
 
-    /// A play icon inside a wide Label pushes the text off-center (the
-    /// icon+text group is centered as a unit, but the icon's width isn't
-    /// mirrored on the trailing side). Centering the text on its own and
-    /// pinning the icon to the leading edge keeps "listen" dead-center
-    /// regardless of button width.
+    /// Keep the playback icon and title together as the available width changes.
     private var listenButtonLabel: some View {
-        ZStack {
+        HStack(spacing: 8) {
+            Image(systemName: listenAction.systemImage).accessibilityHidden(true)
             Text(L10n.text(listenAction == .pause ? "pause_2" : "listen"))
-                .font(.headline)
-            HStack {
-                Image(systemName: listenAction.systemImage)
-                    .accessibilityHidden(true)
-                Spacer()
-            }
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity)
-        .frame(minHeight: PremiumLayout.minimumTapTarget)
+        .font(.headline)
+        .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget)
         .accessibilityElement(children: .combine)
     }
 
