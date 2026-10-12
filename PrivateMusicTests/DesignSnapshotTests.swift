@@ -127,6 +127,10 @@ final class DesignSnapshotTests: XCTestCase {
                     environment: environment, settings: settings)
             capture(VPNWarningCard(dismiss: {}), name: "vpn-warning-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            capture(ConnectionBanner(icon: "exclamationmark.circle.fill",
+                    message: "vk_rejected_the_saved_sign_in_connect_your_account_again",
+                    tint: BubbleGamut.warning.color, retry: {}, actionTitle: "connect_vk"),
+                    name: "session-warning-\(theme.rawValue)", environment: environment, settings: settings)
             environment.savedLyricsStore.configure(accountID: 1)
             environment.savedLyricsStore.save(Lyrics(text: "Свет в окне", source: "LRCLIB"), for: track)
             capture(NavigationStack { SearchView(isActive: false, model: lyricSearchModel) },
@@ -154,6 +158,14 @@ final class DesignSnapshotTests: XCTestCase {
                 environment: environment, settings: settings)
         capture(VPNWarningCard(dismiss: {}).dynamicTypeSize(.accessibility3), name: "vpn-warning-accessibility",
                 width: 320, height: 700, environment: environment, settings: settings)
+        capture(ConnectionBanner(icon: "exclamationmark.circle.fill",
+                message: "vk_rejected_the_saved_sign_in_connect_your_account_again",
+                tint: BubbleGamut.warning.color, retry: {}, actionTitle: "connect_vk").dynamicTypeSize(.accessibility3),
+                name: "session-warning-accessibility", width: 320, height: 700,
+                environment: environment, settings: settings)
+        capture(NavigationStack { SearchView(isActive: false, model: searchModel) },
+                name: "search-results-compact", width: 320, height: 560,
+                environment: environment, settings: settings)
         capture(PlayerView(), name: "player-compact", width: 320, height: 700,
                 environment: environment, settings: settings)
         capture(actionsPreview(track).dynamicTypeSize(.accessibility3), name: "track-actions-accessibility",

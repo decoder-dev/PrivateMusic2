@@ -165,7 +165,7 @@ struct RemotePlayerView: View {
                     .padding(.horizontal, 4)
             }
 
-            HStack(spacing: 16) {
+            HStack(spacing: 8) {
                 Button {
                     remote.send(.previous)
                 } label: {
@@ -191,6 +191,7 @@ struct RemotePlayerView: View {
                                 .controlSize(.mini)
                         }
                     }
+                    .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(

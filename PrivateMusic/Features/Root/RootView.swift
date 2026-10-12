@@ -373,7 +373,7 @@ struct RootView: View {
     }
 }
 
-private struct ConnectionBanner: View {
+struct ConnectionBanner: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let icon: String?
