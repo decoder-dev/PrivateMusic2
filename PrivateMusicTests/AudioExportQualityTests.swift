@@ -1,6 +1,7 @@
 import AudioToolbox
 import AVFoundation
 import XCTest
+import UIKit
 @testable import PrivateMusic
 
 final class AudioExportQualityTests: XCTestCase {
@@ -54,14 +55,22 @@ final class AudioExportQualityTests: XCTestCase {
         let before = try readPackets(destination)
         let track = Track(trackID: 1, ownerID: 1, title: "Evening", artist: "Private Music",
                           duration: 1, streamURL: nil, artworkURL: nil)
+        let artwork = await MainActor.run {
+            UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+                context.cgContext.setFillColor(UIColor.blue.cgColor)
+                context.cgContext.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+            }.jpegData(compressionQuality: 0.8)
+        }
+        try await AudioShareEnricher().tagM4A(destination, track: track, artwork: artwork)
         try await AudioShareEnricher().tagM4A(destination, track: track, artwork: nil)
         let after = try readPackets(destination)
         XCTAssertEqual(after.packets, before.packets)
         XCTAssertEqual(after.rate, before.rate)
         XCTAssertEqual(after.channels, before.channels)
         let metadata = try await AVURLAsset(url: destination).load(.commonMetadata)
-        XCTAssertEqual(AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: .commonIdentifierTitle)
-            .first?.stringValue, "Evening")
+        XCTAssertEqual(metadata.first { $0.commonKey == .commonKeyTitle }?.stringValue, "Evening")
+        XCTAssertEqual(metadata.filter { $0.commonKey == .commonKeyTitle }.count, 1)
+        XCTAssertEqual(metadata.first { $0.commonKey == .commonKeyArtwork }?.dataValue, artwork)
     }
 
     func testInvalidAACLeavesNoExportAttachment() throws {

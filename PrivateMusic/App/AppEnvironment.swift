@@ -646,6 +646,8 @@ final class AppEnvironment {
             guard account == sessionStore.resolvedOfflineAccountID else { throw CancellationError() }
             try await audioShareEnricher.enrich(payload.fileURL, track: track, artwork: artwork,
                                                 lyrics: savedLyricsStore.lyrics(for: track))
+            try Task.checkCancellation()
+            guard account == sessionStore.resolvedOfflineAccountID else { throw CancellationError() }
         } catch is CancellationError {
             await removeSharePayload(payload)
             throw CancellationError()

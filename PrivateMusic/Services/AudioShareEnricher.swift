@@ -33,10 +33,13 @@ actor AudioShareEnricher {
         }
         let temporary = url.deletingLastPathComponent().appendingPathComponent(UUID().uuidString + ".m4a")
         defer { try? FileManager.default.removeItem(at: temporary) }
-        let replaced: Set<AVMetadataIdentifier> = [.commonIdentifierTitle, .commonIdentifierArtist,
-                                                  .commonIdentifierAlbumName, .commonIdentifierArtwork]
+        var replaced = Set<AVMetadataKey>()
+        if !track.title.isEmpty { replaced.insert(.commonKeyTitle) }
+        if !track.artist.isEmpty { replaced.insert(.commonKeyArtist) }
+        if !(track.albumTitle ?? "").isEmpty { replaced.insert(.commonKeyAlbumName) }
+        if artwork != nil { replaced.insert(.commonKeyArtwork) }
         var metadata = try await asset.load(.metadata).filter { item in
-            !(item.identifier.map { replaced.contains($0) } ?? false)
+            !(item.commonKey.map { replaced.contains($0) } ?? false)
         }
         for (id, value) in [(AVMetadataIdentifier.commonIdentifierTitle, track.title),
                             (.commonIdentifierArtist, track.artist), (.commonIdentifierAlbumName, track.albumTitle ?? "")] {
