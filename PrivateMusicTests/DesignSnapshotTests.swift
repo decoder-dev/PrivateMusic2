@@ -123,7 +123,7 @@ final class DesignSnapshotTests: XCTestCase {
                     environment: environment, settings: settings)
             capture(NavigationStack { DeveloperSettingsView() }, name: "developer-\(theme.rawValue)",
                     environment: environment, settings: settings)
-            capture(MixTuningSheet(mix: MusicMix(id: "common", title: "Selena", subtitle: nil, artworkURL: nil), onPlay: { _ in }), name: "mix-tuning-\(theme.rawValue)",
+            capture(MixTuningSheet(mix: MusicMix(id: "common", title: "Selena", subtitle: "", artworkURL: nil), onPlay: { _ in }), name: "mix-tuning-\(theme.rawValue)",
                     environment: environment, settings: settings)
             capture(VPNWarningCard(dismiss: {}), name: "vpn-warning-\(theme.rawValue)",
                     environment: environment, settings: settings)
