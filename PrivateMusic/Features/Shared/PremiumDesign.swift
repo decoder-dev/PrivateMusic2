@@ -121,6 +121,30 @@ struct PremiumProminentButtonStyle: ButtonStyle {
 /// A section's entrance: a short fade, nothing else. It used to scale and
 /// slide up with a spring and a stagger, and in lazy lists every row that
 /// scrolled back into view replayed it — the "twitching" while scrolling.
+struct PremiumSecondaryButtonStyle: ButtonStyle {
+    @Environment(AppSettings.self) private var settings
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .frame(minHeight: PremiumLayout.minimumTapTarget)
+            .foregroundStyle(configuration.role == .destructive ? Color.red : settings.accent)
+            .background(settings.surfaceColor, in: RoundedRectangle(cornerRadius: PremiumLayout.controlRadius))
+            .overlay {
+                RoundedRectangle(cornerRadius: PremiumLayout.controlRadius)
+                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: PremiumLayout.controlRadius))
+            .opacity(isEnabled ? 1 : 0.5)
+            .scaleEffect(reduceMotion || !configuration.isPressed ? 1 : 0.985)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 struct PremiumAppearModifier: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
@@ -220,6 +244,24 @@ extension AppGroupedSection where Trailing == EmptyView {
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.init(title: title, subtitle: subtitle, trailing: { EmptyView() }, content: content)
+    }
+}
+
+/// Native form behavior with the same surface and gutters as the music screens.
+struct AppForm<Content: View>: View {
+    @Environment(AppSettings.self) private var settings
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        Form {
+            content().listRowBackground(settings.surfaceColor)
+        }
+        .environment(\.defaultMinListRowHeight, PremiumLayout.minimumTapTarget)
+        .contentMargins(.horizontal, PremiumLayout.screenPadding, for: .scrollContent)
+        .scrollContentBackground(.hidden)
+        .frame(maxWidth: 600)
+        .frame(maxWidth: .infinity)
+        .background(ThemeBackground())
     }
 }
 

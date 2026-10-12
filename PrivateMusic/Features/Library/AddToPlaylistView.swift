@@ -65,8 +65,11 @@ struct AddToPlaylistView: View {
                         .buttonStyle(.plain)
                         .disabled(savingPlaylistID != nil)
                         .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                     }
                     .listStyle(.plain)
+        .contentMargins(.top, 0, for: .scrollContent)
                     .scrollContentBackground(.hidden)
                 }
             }

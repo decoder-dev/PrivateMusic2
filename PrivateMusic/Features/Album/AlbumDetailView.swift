@@ -68,6 +68,8 @@ struct AlbumDetailView: View {
             Section {
                 albumHeader
                     .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                     .listRowSeparator(.hidden)
             }
             ForEach(model.tracks) { track in
@@ -77,6 +79,8 @@ struct AlbumDetailView: View {
                     source: .album(title: displayedTitle)
                 )
                 .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                 .onAppear {
                     if track.id == model.tracks.last?.id {
                         Task { await loadMore() }
@@ -90,6 +94,8 @@ struct AlbumDetailView: View {
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
             } else if let error = model.paginationErrorMessage {
                 Button {
                     Task { await loadMore() }
@@ -99,6 +105,8 @@ struct AlbumDetailView: View {
                         .multilineTextAlignment(.leading)
                 }
                 .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                 .listRowSeparator(.hidden)
             } else if let error = model.errorMessage,
                       !model.tracks.isEmpty {
@@ -110,10 +118,13 @@ struct AlbumDetailView: View {
                         .multilineTextAlignment(.leading)
                 }
                 .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                 .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
+        .contentMargins(.top, 0, for: .scrollContent)
         .scrollContentBackground(.hidden)
     }
 

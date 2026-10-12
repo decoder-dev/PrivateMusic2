@@ -9,7 +9,7 @@ import XCTest
 @MainActor
 final class DesignSnapshotTests: XCTestCase {
     private var snapshotPlayer: AudioPlayer?
-    func testCaptureAppearanceAndCoreComposition() throws {
+    func testCaptureAppearanceAndCoreComposition() async throws {
         let suite = "DesignSnapshotTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -27,6 +27,15 @@ final class DesignSnapshotTests: XCTestCase {
         player.play(track, in: [track], source: .library, allowsContinuation: false)
         player.pause()
         defer { player.stop(); snapshotPlayer = nil }
+        let searchModel = SearchViewModel(defaults: defaults, debounceDuration: .zero)
+        searchModel.query = "Вечер"
+        searchModel.submit { _, _, _ in MusicPage(items: [track], nextOffset: nil) }
+        for _ in 0..<200 where searchModel.isLoading {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(searchModel.state, .results)
+        let album = Album(id: 1, ownerID: 1, title: "Тихий вечер", count: 1, artists: ["Private Music"])
+        let playlist = Playlist(id: 1, ownerID: 1, title: "Вечерняя музыка", count: 1)
         for theme in AppTheme.allCases {
             settings.theme = theme
             settings.appearance = theme == .dark ? .dark : .light
@@ -71,6 +80,46 @@ final class DesignSnapshotTests: XCTestCase {
                     environment: environment, settings: settings)
             capture(NavigationStack { ListeningHistoryView() }, name: "history-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            capture(NavigationStack { SearchView(isActive: false, model: searchModel) }, name: "search-results-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { SearchView(isActive: false) }, name: "search-landing-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { LibraryView() }, name: "library-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { AlbumDetailView(album: album) }, name: "album-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { ArtistView(artist: "Private Music") }, name: "artist-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { PlaylistDetailView(playlist: playlist) }, name: "playlist-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { ProfileView() }, name: "profile-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { FriendsMusicView() }, name: "friends-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { OfflineDownloadsView() }, name: "downloads-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { NewReleasesView(albums: [album]) }, name: "new-releases-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(AddToPlaylistView(track: track), name: "add-to-playlist-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { PlayerAudioSettingsView() }, name: "audio-settings-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { OfflineStorageSettingsView() }, name: "storage-settings-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { SleepTimerSettingsView() }, name: "sleep-timer-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { ConnectionSettingsView() }, name: "connection-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { MixFiltersSettingsView() }, name: "mix-filters-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { MixFeedbackManagerView() }, name: "mix-feedback-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { DeveloperSettingsView() }, name: "developer-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(MixTuningSheet(mix: MusicMix(id: "common", title: "Selena", subtitle: nil, artworkURL: nil), onPlay: { _ in }), name: "mix-tuning-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(VPNWarningCard(dismiss: {}), name: "vpn-warning-\(theme.rawValue)",
+                    environment: environment, settings: settings)
             capture(DownloadedTrackDetailsView(record: record, localURL: nil,
                                                onPlay: {}, onShare: {}, onDelete: {}),
                     name: "download-details-\(theme.rawValue)", environment: environment, settings: settings)
@@ -84,6 +133,15 @@ final class DesignSnapshotTests: XCTestCase {
                 width: 768, height: 1024, environment: environment, settings: settings)
         capture(AudioUploadView(onUploaded: {}), name: "audio-upload-ipad",
                 width: 768, height: 1024, environment: environment, settings: settings)
+        capture(NavigationStack { PlayerAudioSettingsView() }, name: "audio-settings-ipad",
+                width: 768, height: 1024, environment: environment, settings: settings)
+        capture(NavigationStack { OfflineStorageSettingsView() }, name: "storage-settings-ipad",
+                width: 768, height: 1024, environment: environment, settings: settings)
+        capture(NavigationStack { SearchView(isActive: false, model: searchModel) }.dynamicTypeSize(.accessibility3),
+                name: "search-results-accessibility", width: 320, height: 600,
+                environment: environment, settings: settings)
+        capture(VPNWarningCard(dismiss: {}).dynamicTypeSize(.accessibility3), name: "vpn-warning-accessibility",
+                width: 320, height: 700, environment: environment, settings: settings)
         capture(PlayerView(), name: "player-compact", width: 320, height: 700,
                 environment: environment, settings: settings)
         capture(actionsPreview(track).dynamicTypeSize(.accessibility3), name: "track-actions-accessibility",
@@ -94,6 +152,12 @@ final class DesignSnapshotTests: XCTestCase {
         settings.theme = .light
         settings.palette = .banana
         settings.accentChoice = .banana
+        capture(AudioUploadView(onUploaded: {}), name: "audio-upload-cream",
+                environment: environment, settings: settings)
+        capture(PlaylistEditorView(playlist: nil, onSaved: {}), name: "playlist-editor-cream",
+                environment: environment, settings: settings)
+        capture(NavigationStack { PlayerAudioSettingsView() }, name: "audio-settings-cream",
+                environment: environment, settings: settings)
         capture(homeComposition(width: 320), name: "home-compact-cream",
                 width: 320, height: 700, environment: environment, settings: settings)
         capture(NavigationStack { AppearanceSettingsView() }.dynamicTypeSize(.accessibility3),
@@ -198,6 +262,7 @@ final class DesignSnapshotTests: XCTestCase {
             .environment(player.highlight)
             .environment(player.progress)
             .environment(environment.libraryStore)
+            .environment(environment.likedAlbumsStore)
             .environment(environment.offlineStore)
             .environment(environment.historyStore)
             .environment(environment.homeCatalogStore)

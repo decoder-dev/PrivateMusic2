@@ -5,7 +5,7 @@ struct MixFeedbackManagerView: View {
     @State private var showsClearConfirm = false
 
     var body: some View {
-        Form {
+        AppForm {
             Section {
                 if mixFeedbackStore.bannedTracks.isEmpty,
                    mixFeedbackStore.bannedArtistRecords.isEmpty {
@@ -77,7 +77,6 @@ struct MixFeedbackManagerView: View {
                 }
             }
         }
-        .scrollContentBackground(.hidden)
         .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("hidden_in_mixes"))

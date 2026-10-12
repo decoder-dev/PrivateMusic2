@@ -168,7 +168,7 @@ struct LibraryView: View {
                     }
                 }
                 .id(MainTabScrollDestination.library)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, PremiumLayout.screenPadding)
                 // The always-visible search drawer sits directly above the
                 // first section — without this the playlist shelf is jammed
                 // under the header.

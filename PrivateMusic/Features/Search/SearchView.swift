@@ -36,8 +36,9 @@ struct SearchView: View {
     @FocusState private var isSearchFocused: Bool
     let isActive: Bool
 
-    init(isActive: Bool = true) {
+    init(isActive: Bool = true, model: SearchViewModel? = nil) {
         self.isActive = isActive
+        if let model { _model = State(initialValue: model) }
     }
 
     var body: some View {
@@ -138,7 +139,9 @@ struct SearchView: View {
                     .padding(.bottom, BubbleSpacing.m)
             }
 
-            content
+            VStack(spacing: 0) {
+                content
+            }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -197,11 +200,6 @@ struct SearchView: View {
 
     @ViewBuilder
     private var content: some View {
-        SavedLyricsResults(records: environment.savedLyricsStore.search(model.query), query: model.query) { saved in
-            libraryStore.storedTrack(for: saved)
-                ?? environment.historyStore.entries.first { $0.track.id == saved.id }?.track
-                ?? saved
-        }
         switch model.state {
         case .idle:
             searchLanding
@@ -212,21 +210,53 @@ struct SearchView: View {
                 description: "search_requires_at_least_two_characters"
             )
         case .loading:
-            searchLoading
+            if savedRecords.isEmpty { searchLoading } else {
+                ScrollView { SavedLyricsResults(records: savedRecords, query: model.query, resolve: resolveSavedTrack) }
+            }
         case .results:
             searchResults
         case .empty:
             searchResults
         case let .failure(message):
-            SearchStatusView(
-                title: "search_error",
-                systemImage: "wifi.exclamationmark",
-                description: message,
-                descriptionIsLocalizedKey: false,
-                actionTitle: "action.retry",
-                action: submitSearch
-            )
+            if savedRecords.isEmpty {
+                searchFailure(message)
+            } else {
+                ScrollView {
+                    SavedLyricsResults(records: savedRecords, query: model.query, resolve: resolveSavedTrack)
+                    searchFailure(message)
+                }
+            }
         }
+    }
+
+    private var savedRecords: [SavedLyricsRecord] { environment.savedLyricsStore.search(model.query) }
+
+    private func resolveSavedTrack(_ saved: Track) -> Track {
+        libraryStore.storedTrack(for: saved)
+            ?? environment.historyStore.entries.first { $0.track.id == saved.id }?.track
+            ?? saved
+    }
+
+    @ViewBuilder
+    private var savedLyricsSection: some View {
+        let records = savedRecords
+        if !records.isEmpty {
+            Section {
+                ForEach(records) { record in
+                    SavedLyricsResultRow(record: record, track: resolveSavedTrack(record.track),
+                                         queue: records.map { resolveSavedTrack($0.track) }, query: model.query)
+                        .listRowBackground(settings.surfaceColor)
+                }
+            } header: {
+                PremiumSectionHeader("search.saved_lyrics", subtitle: "search.saved_lyrics_hint")
+            }
+        }
+    }
+
+    private func searchFailure(_ message: String) -> some View {
+        SearchStatusView(title: "search_error", systemImage: "wifi.exclamationmark",
+                         description: message, descriptionIsLocalizedKey: false,
+                         actionTitle: "action.retry", action: submitSearch)
     }
 
     private var searchTopAnchor: some View {
@@ -442,9 +472,12 @@ struct SearchView: View {
     private var trackResults: some View {
         List {
             searchTopAnchor
+            savedLyricsSection
             ForEach(model.tracks) { track in
                 TrackRow(track: track, queue: model.tracks)
                     .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                     .onAppear {
                         if track.id == model.tracks.last?.id {
                             loadMore()
@@ -481,13 +514,19 @@ struct SearchView: View {
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
             } else if let message = model.paginationErrorMessage {
                 inlineRetry(message: message, action: loadMore)
                     .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                     .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 0)
+        .contentMargins(.top, 0, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
     }
@@ -495,6 +534,7 @@ struct SearchView: View {
     private var artistResults: some View {
         List {
             searchTopAnchor
+            savedLyricsSection
             ForEach(model.artists, id: \.self) { artist in
                 NavigationLink {
                     ArtistView(artist: artist)
@@ -502,6 +542,8 @@ struct SearchView: View {
                     searchArtistRow(artist)
                 }
                 .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                 .onAppear {
                     if artist == model.artists.last {
                         loadMore()
@@ -516,13 +558,19 @@ struct SearchView: View {
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
             } else if let message = model.paginationErrorMessage {
                 inlineRetry(message: message, action: loadMore)
                     .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                     .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 0)
+        .contentMargins(.top, 0, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
     }
@@ -530,6 +578,7 @@ struct SearchView: View {
     private var albumResults: some View {
         List {
             searchTopAnchor
+            savedLyricsSection
             ForEach(model.albums) { album in
                 NavigationLink {
                     AlbumDetailView(album: album)
@@ -537,6 +586,8 @@ struct SearchView: View {
                     searchAlbumRow(album)
                 }
                 .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                 .contextMenu {
                     Button {
                         toggleAlbum(album)
@@ -572,12 +623,18 @@ struct SearchView: View {
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
             } else if let message = model.albumErrorMessage {
                 inlineRetry(message: message, action: loadMoreAlbums)
                     .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
             }
         }
         .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 0)
+        .contentMargins(.top, 0, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
     }
@@ -585,6 +642,7 @@ struct SearchView: View {
     private var playlistResults: some View {
         List {
             searchTopAnchor
+            savedLyricsSection
             ForEach(
                 Array(model.playlists.enumerated()),
                 id: \.element.searchIdentity
@@ -596,6 +654,8 @@ struct SearchView: View {
                 }
                 .buttonStyle(PremiumPressStyle())
                 .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                 .premiumAppear(delay: min(Double(index) * 0.025, 0.2))
                 .onAppear {
                     if playlist.searchIdentity
@@ -611,12 +671,18 @@ struct SearchView: View {
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
             } else if let message = model.playlistErrorMessage {
                 inlineRetry(message: message, action: loadMorePlaylists)
                     .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
             }
         }
         .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 0)
+        .contentMargins(.top, 0, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
     }

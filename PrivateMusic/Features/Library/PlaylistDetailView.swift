@@ -178,6 +178,8 @@ struct PlaylistDetailView: View {
             Section {
                 playlistHeader
                     .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                     .listRowSeparator(.hidden)
             }
             ForEach(model.tracks) { track in
@@ -187,6 +189,8 @@ struct PlaylistDetailView: View {
                     source: .playlist(title: playlist.title)
                 )
                 .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                 .swipeActions(edge: .trailing) {
                     if playlist.ownerID
                         == sessionStore.session?.userID {
@@ -223,10 +227,13 @@ struct PlaylistDetailView: View {
                         .multilineTextAlignment(.leading)
                 }
                 .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
+                                             bottom: 6, trailing: PremiumLayout.screenPadding))
                 .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
+        .contentMargins(.top, 0, for: .scrollContent)
         .scrollContentBackground(.hidden)
     }
 

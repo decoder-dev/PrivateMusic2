@@ -931,3 +931,8 @@
 "widget.empty" = "Play some music to see your recent tracks here";
 "export.lyrics" = "Share audio and lyrics";
 "export.metadata_progress" = "Adding artwork and track information";
+
+"vpn.warning_title" = "Check your VPN";
+"vpn.warning_message" = "A VPN may interfere with VK sign-in and music. If the app is not working correctly, turn off your VPN and try again.";
+"vpn.instructions" = "Disconnect in your VPN app or in iOS Settings: General → VPN & Device Management → VPN. Then return to Private Music.";
+"vpn.dismiss_warning" = "Dismiss VPN warning";

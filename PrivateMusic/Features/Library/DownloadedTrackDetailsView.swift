@@ -106,7 +106,7 @@ struct DownloadedTrackDetailsView: View {
                             )
                             .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(PremiumSecondaryButtonStyle())
                         .disabled(localURL == nil)
 
                         Button(role: .destructive) {
@@ -117,11 +117,14 @@ struct DownloadedTrackDetailsView: View {
                             )
                             .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(PremiumSecondaryButtonStyle())
                         .tint(.red)
                     }
                 }
-                .padding(24)
+                .padding(.horizontal, PremiumLayout.screenPadding)
+                .padding(.vertical, 24)
+                .frame(maxWidth: 600)
+                .frame(maxWidth: .infinity)
             }
             .background(ThemeBackground())
             .navigationTitle(L10n.text("audio_file"))

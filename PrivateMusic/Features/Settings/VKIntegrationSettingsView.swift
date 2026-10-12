@@ -6,7 +6,7 @@ struct VKIntegrationSettingsView: View {
 
     var body: some View {
         @Bindable var settings = settings
-        Form {
+        AppForm {
             Section {
                 Toggle(L10n.text("features.vk.broadcast"), isOn: $settings.vkBroadcastEnabled)
                 Toggle(L10n.text("features.vk.reporting"), isOn: $settings.vkReportingEnabled)

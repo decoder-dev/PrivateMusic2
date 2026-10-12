@@ -47,7 +47,8 @@ struct LyricsView: View {
                                 )
                             source(lyrics)
                         }
-                        .padding()
+                        .padding(.horizontal, PremiumLayout.screenPadding)
+                        .padding(.vertical, 24)
                     }
                 } else {
                     VStack(spacing: 18) {
@@ -152,7 +153,7 @@ struct LyricsView: View {
                     }
                     source(lyrics).padding(.top, 18)
                 }
-                .padding(.horizontal, 22)
+                .padding(.horizontal, PremiumLayout.screenPadding)
                 .padding(.vertical, 40)
             }
             .onAppear {

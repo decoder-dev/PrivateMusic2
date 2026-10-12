@@ -14,6 +14,7 @@ struct RootView: View {
     @State private var isValidatingSession = false
     @State private var refreshRequiresReplacement = false
     @State private var refreshNeedsLogin = false
+    @State private var dismissedVPNWarning = false
     /// When the session was last confirmed with VK; coming back from
     /// Control Center must not cost a request each time.
     @State private var lastValidationAt: Date?
@@ -36,6 +37,14 @@ struct RootView: View {
                         connectionBanner
                     }
             }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if networkMonitor.isReachable, networkMonitor.hasVPNHint, !dismissedVPNWarning {
+                VPNWarningCard { dismissedVPNWarning = true }
+            }
+        }
+        .onChange(of: networkMonitor.hasVPNHint) { _, hint in
+            if !hint { dismissedVPNWarning = false }
         }
         .onOpenURL { environment.openRecentWidgetURL($0) }
         .onContinueUserActivity(
@@ -85,6 +94,7 @@ struct RootView: View {
             // notification never delivered — see
             // `AudioPlayer.handleSceneBecameActive()`.
             if phase == .active {
+                networkMonitor.refreshVPNHint()
                 player.handleSceneBecameActive()
             }
             guard phase == .active,

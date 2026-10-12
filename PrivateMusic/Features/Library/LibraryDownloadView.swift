@@ -7,7 +7,7 @@ struct LibraryDownloadView: View {
 
     var body: some View {
         let job = environment.libraryDownloadJob
-        Form {
+        AppForm {
             Section {
                 Text(L10n.text("features.download.explanation"))
                 Toggle(L10n.text("features.download.wifi"), isOn: $wifiOnly).disabled(job.running)

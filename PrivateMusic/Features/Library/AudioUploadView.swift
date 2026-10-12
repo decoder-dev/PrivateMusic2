@@ -17,7 +17,7 @@ struct AudioUploadView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            AppForm {
                 Section {
                     Button { choosing = true } label: {
                         Label(filename.isEmpty ? L10n.text("features.upload.choose") : filename, systemImage: "doc.badge.plus")
@@ -38,9 +38,6 @@ struct AudioUploadView: View {
                     .disabled(busy || file == nil || artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .scrollContentBackground(.hidden)
-            .frame(maxWidth: 600)
-            .frame(maxWidth: .infinity)
             .background(ThemeBackground())
             .navigationTitle(L10n.text("features.upload.title"))
             .navigationBarTitleDisplayMode(.inline)

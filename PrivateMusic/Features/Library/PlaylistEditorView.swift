@@ -34,7 +34,7 @@ struct PlaylistEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            AppForm {
                 Section {
                     if let coverData, let image = UIImage(data: coverData) {
                         Image(uiImage: image).resizable().scaledToFit()
@@ -63,9 +63,6 @@ struct PlaylistEditorView: View {
                     Text(L10n.text("features.playlist.hidden_hint"))
                 }
             }
-            .scrollContentBackground(.hidden)
-            .frame(maxWidth: 600)
-            .frame(maxWidth: .infinity)
             .background(ThemeBackground())
             .navigationTitle(
                 L10n.text(

@@ -282,7 +282,7 @@ struct AppearanceSettingsView: View {
 
     var body: some View {
         @Bindable var settings = settings
-        Form {
+        AppForm {
             Section(L10n.text("theme")) {
                 themePicker
             }
@@ -377,7 +377,6 @@ struct AppearanceSettingsView: View {
                 .foregroundStyle(.secondary)
             }
         }
-        .scrollContentBackground(.hidden)
         .labelStyle(AccentIconLabelStyle())
         .background(ThemeBackground())
         .navigationTitle(L10n.text("appearance"))
@@ -627,14 +626,14 @@ struct AppearanceSettingsView: View {
 
 // MARK: - Player & Audio
 
-private struct PlayerAudioSettingsView: View {
+struct PlayerAudioSettingsView: View {
     @Environment(AppSettings.self) private var settings
     @State private var showRouteHint = false
     @State private var routeHintToken = UUID()
 
     var body: some View {
         @Bindable var settings = settings
-        Form {
+        AppForm {
             Section(L10n.text("audio_quality")) {
                 Toggle(
                     isOn: $settings.preferHighQuality
@@ -772,7 +771,6 @@ private struct PlayerAudioSettingsView: View {
                 .foregroundStyle(.secondary)
             }
         }
-        .scrollContentBackground(.hidden)
         .labelStyle(AccentIconLabelStyle())
         .background(ThemeBackground())
         .navigationTitle(L10n.text("player_audio"))
@@ -824,7 +822,7 @@ struct EqualizerSettingsView: View {
 
     var body: some View {
         @Bindable var settings = settings
-        Form {
+        AppForm {
             Section {
                 Toggle(L10n.text("audio_processing"),
                     isOn: equalizerEnabledBinding
@@ -929,7 +927,6 @@ struct EqualizerSettingsView: View {
                 )
             }
         }
-        .scrollContentBackground(.hidden)
         .labelStyle(AccentIconLabelStyle())
         .background(ThemeBackground())
         .navigationTitle(L10n.text("equalizer"))
@@ -991,7 +988,7 @@ struct EqualizerSettingsView: View {
 
 // MARK: - Offline & Storage
 
-private struct OfflineStorageSettingsView: View {
+struct OfflineStorageSettingsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppEnvironment.self) private var environment
     @Environment(AppSettings.self) private var settings
@@ -1005,7 +1002,7 @@ private struct OfflineStorageSettingsView: View {
     var body: some View {
         @Bindable var settings = settings
         let usage = offlineStore.storageUsage
-        Form {
+        AppForm {
             Section(L10n.text("storage_2")) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
@@ -1273,7 +1270,6 @@ private struct OfflineStorageSettingsView: View {
                 .accessibilityValue(presentation.subtitle)
             }
         }
-        .scrollContentBackground(.hidden)
         .labelStyle(AccentIconLabelStyle())
         .background(ThemeBackground())
         .navigationTitle(L10n.text("offline_storage"))
@@ -1420,11 +1416,11 @@ private struct OfflineStorageSettingsView: View {
 
 // MARK: - Sleep Timer
 
-private struct SleepTimerSettingsView: View {
+struct SleepTimerSettingsView: View {
     @Environment(AudioPlayer.self) private var player
 
     var body: some View {
-        Form {
+        AppForm {
             Section {
                 if let mode = player.sleepTimerMode {
                     if let endDate = player.sleepTimerEndDate {
@@ -1466,7 +1462,6 @@ private struct SleepTimerSettingsView: View {
                 }
             }
         }
-        .scrollContentBackground(.hidden)
         .labelStyle(AccentIconLabelStyle())
         .background(ThemeBackground())
         .navigationTitle(L10n.text("sleep_timer"))
@@ -1475,7 +1470,7 @@ private struct SleepTimerSettingsView: View {
 
 // MARK: - Connection
 
-private struct ConnectionSettingsView: View {
+struct ConnectionSettingsView: View {
     @Environment(SessionStore.self) private var sessionStore
     @Environment(NetworkMonitor.self) private var networkMonitor
     @Environment(AppEnvironment.self) private var environment
@@ -1483,7 +1478,7 @@ private struct ConnectionSettingsView: View {
     @State private var refreshError: String?
 
     var body: some View {
-        Form {
+        AppForm {
             Section(L10n.text("network")) {
                 HStack(spacing: 12) {
                     Text(L10n.text("settings.status"))
@@ -1497,6 +1492,13 @@ private struct ConnectionSettingsView: View {
                     .foregroundStyle(networkTint)
                 }
                 .padding(.vertical, 2)
+            }
+
+            Section(L10n.text("vpn.warning_title")) {
+                Text(L10n.text("vpn.warning_message"))
+                    .font(.subheadline)
+                Text(L10n.text("vpn.instructions"))
+                    .font(.footnote).foregroundStyle(.secondary)
             }
 
             Section(L10n.text("vk_session")) {
@@ -1539,7 +1541,6 @@ private struct ConnectionSettingsView: View {
                 .foregroundStyle(.secondary)
             }
         }
-        .scrollContentBackground(.hidden)
         .labelStyle(AccentIconLabelStyle())
         .background(ThemeBackground())
         .navigationTitle(L10n.text("connection"))

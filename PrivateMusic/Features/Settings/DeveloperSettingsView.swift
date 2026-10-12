@@ -20,7 +20,7 @@ struct DeveloperSettingsView: View {
     @State private var captureShapesEnabled = AppLog.shared.capturesResponseShapes
 
     var body: some View {
-        Form {
+        AppForm {
             Section(L10n.text("developer.diagnostics")) {
                 LabeledContent(L10n.text("version"), value: versionLabel)
                 LabeledContent(
@@ -105,7 +105,6 @@ struct DeveloperSettingsView: View {
                 Text(L10n.text("developer.logging_footer"))
             }
         }
-        .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("developer.menu"))
         .onDisappear {
