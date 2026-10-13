@@ -17,6 +17,18 @@ final class EqualizerDSP: @unchecked Sendable {
         var cCoeffs: PMBiquadCoeffs {
             PMBiquadCoeffs(b0: b0, b1: b1, b2: b2, a1: a1, a2: a2)
         }
+
+        init(b0: Float, b1: Float, b2: Float, a1: Float, a2: Float) {
+            self.b0 = b0
+            self.b1 = b1
+            self.b2 = b2
+            self.a1 = a1
+            self.a2 = a2
+        }
+
+        init(_ native: PMBiquadCoeffs) {
+            self.init(b0: native.b0, b1: native.b1, b2: native.b2, a1: native.a1, a2: native.a2)
+        }
     }
 
     private struct BuiltCoefficients {
@@ -573,25 +585,14 @@ final class EqualizerDSP: @unchecked Sendable {
         envelope = 0
     }
 
+    /// Filter design lives in Rust (`native/pm-native/src/dsp.rs`), checked bit
+    /// for bit against the Swift formulas it replaced.
     private static func peakingCoefficients(
         frequency: Double,
         gain: Double,
         sampleRate: Double
     ) -> Coefficients {
-        let safeFrequency = min(frequency, sampleRate * 0.45)
-        let amplitude = pow(10, gain / 40)
-        let omega = 2 * Double.pi * safeFrequency / sampleRate
-        let alpha = sin(omega) / (2 * 1.15)
-        let cosine = cos(omega)
-        let a0 = 1 + alpha / amplitude
-
-        return Coefficients(
-            b0: Float((1 + alpha * amplitude) / a0),
-            b1: Float((-2 * cosine) / a0),
-            b2: Float((1 - alpha * amplitude) / a0),
-            a1: Float((-2 * cosine) / a0),
-            a2: Float((1 - alpha / amplitude) / a0)
-        )
+        Coefficients(pm_eq_peaking_coefficients(frequency, gain, sampleRate))
     }
 
     private static func lowShelfCoefficients(
@@ -599,72 +600,14 @@ final class EqualizerDSP: @unchecked Sendable {
         gain: Double,
         sampleRate: Double
     ) -> Coefficients {
-        let safeFrequency = min(max(frequency, 20), sampleRate * 0.45)
-        let amplitude = pow(10, gain / 40)
-        let omega = 2 * Double.pi * safeFrequency / sampleRate
-        let cosine = cos(omega)
-        let sine = sin(omega)
-        let beta = sqrt(amplitude) / 1.0
-        let a0 = (amplitude + 1)
-            + (amplitude - 1) * cosine
-            + beta * sine
-        return Coefficients(
-            b0: Float(
-                (
-                    amplitude
-                        * (
-                            (amplitude + 1)
-                                - (amplitude - 1) * cosine
-                                + beta * sine
-                        )
-                ) / a0
-            ),
-            b1: Float(
-                (
-                    2 * amplitude
-                        * ((amplitude - 1) - (amplitude + 1) * cosine)
-                ) / a0
-            ),
-            b2: Float(
-                (
-                    amplitude
-                        * (
-                            (amplitude + 1)
-                                - (amplitude - 1) * cosine
-                                - beta * sine
-                        )
-                ) / a0
-            ),
-            a1: Float(
-                (-2 * ((amplitude - 1) + (amplitude + 1) * cosine)) / a0
-            ),
-            a2: Float(
-                (
-                    (amplitude + 1)
-                        + (amplitude - 1) * cosine
-                        - beta * sine
-                ) / a0
-            )
-        )
+        Coefficients(pm_eq_low_shelf_coefficients(frequency, gain, sampleRate))
     }
 
     private static func highPassCoefficients(
         frequency: Double,
         sampleRate: Double
     ) -> Coefficients {
-        let safeFrequency = min(max(frequency, 20), sampleRate * 0.45)
-        let omega = 2 * Double.pi * safeFrequency / sampleRate
-        let cosine = cos(omega)
-        let sine = sin(omega)
-        let alpha = sine / (2 * (1 / sqrt(2.0)))
-        let a0 = 1 + alpha
-        return Coefficients(
-            b0: Float(((1 + cosine) / 2) / a0),
-            b1: Float((-(1 + cosine)) / a0),
-            b2: Float(((1 + cosine) / 2) / a0),
-            a1: Float((-2 * cosine) / a0),
-            a2: Float((1 - alpha) / a0)
-        )
+        Coefficients(pm_eq_high_pass_coefficients(frequency, sampleRate))
     }
 }
 

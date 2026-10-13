@@ -299,3 +299,74 @@ pub unsafe extern "C" fn pm_buffer_peak_magnitude(samples: *const f32, count: i3
     }
     peak
 }
+
+// ------------------------------------------------- filter design (RBJ cookbook)
+
+fn to_coeffs(b0: f64, b1: f64, b2: f64, a1: f64, a2: f64) -> PMBiquadCoeffs {
+    PMBiquadCoeffs { b0: b0 as f32, b1: b1 as f32, b2: b2 as f32, a1: a1 as f32, a2: a2 as f32 }
+}
+
+fn max_f64(a: f64, b: f64) -> f64 {
+    // Swift's `max`/`min` return the second operand unless the first wins
+    // outright, which matters only for NaN; mirror that.
+    if b > a { b } else { a }
+}
+
+fn min_f64(a: f64, b: f64) -> f64 {
+    if b < a { b } else { a }
+}
+
+/// Peaking equalizer section (Q = 1.15), frequency capped at 0.45 * rate.
+#[no_mangle]
+pub extern "C" fn pm_eq_peaking_coefficients(frequency: f64, gain_db: f64, sample_rate: f64) -> PMBiquadCoeffs {
+    let safe_frequency = min_f64(frequency, sample_rate * 0.45);
+    let amplitude = 10f64.powf(gain_db / 40.0);
+    let omega = 2.0 * core::f64::consts::PI * safe_frequency / sample_rate;
+    let alpha = omega.sin() / (2.0 * 1.15);
+    let cosine = omega.cos();
+    let a0 = 1.0 + alpha / amplitude;
+    to_coeffs(
+        (1.0 + alpha * amplitude) / a0,
+        (-2.0 * cosine) / a0,
+        (1.0 - alpha * amplitude) / a0,
+        (-2.0 * cosine) / a0,
+        (1.0 - alpha / amplitude) / a0,
+    )
+}
+
+/// Low shelf with slope 1, frequency clamped to 20 Hz ... 0.45 * rate.
+#[no_mangle]
+pub extern "C" fn pm_eq_low_shelf_coefficients(frequency: f64, gain_db: f64, sample_rate: f64) -> PMBiquadCoeffs {
+    let safe_frequency = min_f64(max_f64(frequency, 20.0), sample_rate * 0.45);
+    let amplitude = 10f64.powf(gain_db / 40.0);
+    let omega = 2.0 * core::f64::consts::PI * safe_frequency / sample_rate;
+    let cosine = omega.cos();
+    let sine = omega.sin();
+    let beta = amplitude.sqrt() / 1.0;
+    let a0 = (amplitude + 1.0) + (amplitude - 1.0) * cosine + beta * sine;
+    to_coeffs(
+        (amplitude * ((amplitude + 1.0) - (amplitude - 1.0) * cosine + beta * sine)) / a0,
+        (2.0 * amplitude * ((amplitude - 1.0) - (amplitude + 1.0) * cosine)) / a0,
+        (amplitude * ((amplitude + 1.0) - (amplitude - 1.0) * cosine - beta * sine)) / a0,
+        (-2.0 * ((amplitude - 1.0) + (amplitude + 1.0) * cosine)) / a0,
+        ((amplitude + 1.0) + (amplitude - 1.0) * cosine - beta * sine) / a0,
+    )
+}
+
+/// Second-order Butterworth high-pass, frequency clamped like the shelf.
+#[no_mangle]
+pub extern "C" fn pm_eq_high_pass_coefficients(frequency: f64, sample_rate: f64) -> PMBiquadCoeffs {
+    let safe_frequency = min_f64(max_f64(frequency, 20.0), sample_rate * 0.45);
+    let omega = 2.0 * core::f64::consts::PI * safe_frequency / sample_rate;
+    let cosine = omega.cos();
+    let sine = omega.sin();
+    let alpha = sine / (2.0 * (1.0 / 2.0f64.sqrt()));
+    let a0 = 1.0 + alpha;
+    to_coeffs(
+        ((1.0 + cosine) / 2.0) / a0,
+        (-(1.0 + cosine)) / a0,
+        ((1.0 + cosine) / 2.0) / a0,
+        (-2.0 * cosine) / a0,
+        (1.0 - alpha) / a0,
+    )
+}

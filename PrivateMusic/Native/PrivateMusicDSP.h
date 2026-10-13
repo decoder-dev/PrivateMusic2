@@ -103,6 +103,12 @@ void pm_spatial_process_interleaved(
 /// MTAudioProcessingTap silence gate never crosses into Swift.
 float pm_buffer_peak_magnitude(const float *samples, int32_t count);
 
+/// Filter design (RBJ cookbook), computed in double precision and rounded to
+/// float once. Implemented in Rust like the rest of this header.
+PMBiquadCoeffs pm_eq_peaking_coefficients(double frequency, double gain_db, double sample_rate);
+PMBiquadCoeffs pm_eq_low_shelf_coefficients(double frequency, double gain_db, double sample_rate);
+PMBiquadCoeffs pm_eq_high_pass_coefficients(double frequency, double sample_rate);
+
 #ifdef __cplusplus
 }
 #endif
