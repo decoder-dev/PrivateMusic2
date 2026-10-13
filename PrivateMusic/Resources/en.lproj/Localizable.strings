@@ -965,3 +965,21 @@
 "stats.reset" = "Reset Stats";
 "stats.reset_confirm_title" = "Reset stats?";
 "stats.reset_confirm_message" = "Your listening stats will be removed from this device. Listening history stays.";
+
+"playlist_import.title" = "Import Playlist";
+"playlist_import.default_name" = "Imported";
+"playlist_import.hint" = "Paste a list of “Artist — Title” lines or open a CSV file exported from Spotify, Yandex Music or another service. VK finds the matches and you review them before the playlist is created.";
+"playlist_import.choose_file" = "Choose a CSV or TXT File";
+"playlist_import.recognized" = "Tracks recognized: %d";
+"playlist_import.nothing_recognized" = "No lines could be recognized";
+"playlist_import.search" = "Find in VK";
+"playlist_import.searching" = "Searching VK: %1$d of %2$d";
+"playlist_import.review_summary" = "Found %1$d of %2$d";
+"playlist_import.not_found" = "Not found in VK";
+"playlist_import.uncertain" = "Check this match";
+"playlist_import.playlist_name" = "Playlist name";
+"playlist_import.create" = "Create Playlist (%d)";
+"playlist_import.creating" = "Adding tracks: %1$d of %2$d";
+"playlist_import.done_title" = "Playlist Created";
+"playlist_import.done_detail" = "Added: %1$d. Could not add: %2$d.";
+"playlist_import.file_unreadable" = "Could not read the file";

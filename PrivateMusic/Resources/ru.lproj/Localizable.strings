@@ -965,3 +965,21 @@
 "stats.reset" = "Сбросить статистику";
 "stats.reset_confirm_title" = "Сбросить статистику?";
 "stats.reset_confirm_message" = "Итоги прослушивания будут удалены с этого устройства. История прослушивания останется.";
+
+"playlist_import.title" = "Импорт плейлиста";
+"playlist_import.default_name" = "Импорт";
+"playlist_import.hint" = "Вставьте список «Исполнитель — Название» или откройте CSV-файл, выгруженный из Spotify, Яндекс Музыки и других сервисов. VK найдёт совпадения, а вы проверите их перед созданием плейлиста.";
+"playlist_import.choose_file" = "Выбрать файл CSV или TXT";
+"playlist_import.recognized" = "Распознано треков: %d";
+"playlist_import.nothing_recognized" = "Не удалось распознать ни одной строки";
+"playlist_import.search" = "Найти в VK";
+"playlist_import.searching" = "Ищем в VK: %1$d из %2$d";
+"playlist_import.review_summary" = "Найдено %1$d из %2$d";
+"playlist_import.not_found" = "Не найдено в VK";
+"playlist_import.uncertain" = "Проверьте совпадение";
+"playlist_import.playlist_name" = "Название плейлиста";
+"playlist_import.create" = "Создать плейлист (%d)";
+"playlist_import.creating" = "Добавляем треки: %1$d из %2$d";
+"playlist_import.done_title" = "Плейлист создан";
+"playlist_import.done_detail" = "Добавлено: %1$d. Не удалось добавить: %2$d.";
+"playlist_import.file_unreadable" = "Не удалось прочитать файл";

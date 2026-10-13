@@ -25,6 +25,7 @@ struct LibraryView: View {
     @State private var trackSearchQuery = ""
     @State private var showingEditor = false
     @State private var showingUpload = false
+    @State private var showingImport = false
     @State private var pendingCellularDownload: Track?
     @State private var sharingTrack: Track?
     @State private var loadingPlayAlbumID: String?
@@ -279,6 +280,9 @@ struct LibraryView: View {
                             Button { showingUpload = true } label: {
                                 Label(L10n.text("features.upload.title"), systemImage: "square.and.arrow.up")
                             }
+                            Button { showingImport = true } label: {
+                                Label(L10n.text("playlist_import.title"), systemImage: "square.and.arrow.down.on.square")
+                            }
                             if OfflineDownloadsFeature.isEnabled {
                                 NavigationLink { LibraryDownloadView() } label: {
                                     Label(L10n.text("features.download.title"), systemImage: "arrow.down.to.line")
@@ -293,6 +297,9 @@ struct LibraryView: View {
         }
         .sheet(isPresented: $showingUpload) {
             AudioUploadView { Task { await load(force: true) } }
+        }
+        .sheet(isPresented: $showingImport) {
+            PlaylistImportView { Task { await load(force: true) } }
         }
         .sheet(isPresented: $showingEditor) {
             PlaylistEditorView(playlist: nil) {
