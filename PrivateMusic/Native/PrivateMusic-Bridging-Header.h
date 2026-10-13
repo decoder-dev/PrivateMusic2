@@ -2,3 +2,4 @@
 #import "PrivateMusicCore.h"
 #import "PrivateMusicMedia.h"
 #import "PrivateMusicHLS.h"
+#import "PrivateMusicOffline.h"

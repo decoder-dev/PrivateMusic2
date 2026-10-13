@@ -991,21 +991,9 @@ final class OfflineTrackStore {
     }
 
     private func makeSpace(for incomingByteCount: Int64) throws {
-        let required = totalByteCount + incomingByteCount - storageLimitBytes
-        if required > 0 {
-            var released: Int64 = 0
-            let candidates = records.values
-                .filter {
-                    $0.resolvedRetention == .automaticCache
-                        && $0.id != protectedTrackIDProvider?()
-                }
-                .sorted { $0.lastPlayedAt < $1.lastPlayedAt }
-            for record in candidates {
-                remove(record.track)
-                released += record.byteCount
-                if released >= required { break }
-            }
-        }
+        evictAutomaticCache(
+            releasing: totalByteCount + incomingByteCount - storageLimitBytes
+        )
         guard totalByteCount + incomingByteCount <= storageLimitBytes else {
             throw offlineError(
                 "the_selected_offline_storage_limit_has_been_reached"
@@ -1015,17 +1003,36 @@ final class OfflineTrackStore {
 
     private func evictAutomaticCacheIfNeeded() {
         guard totalByteCount > storageLimitBytes else { return }
-        var overflow = totalByteCount - storageLimitBytes
-        let candidates = records.values
-            .filter {
-                $0.resolvedRetention == .automaticCache
-                    && $0.id != protectedTrackIDProvider?()
+        evictAutomaticCache(releasing: totalByteCount - storageLimitBytes)
+    }
+
+    /// Removes automatic-cache tracks, least recently played first, until
+    /// `required` bytes are released. Manual saves and the track playing now
+    /// are never touched. The ordering rule lives in Rust
+    /// (`native/pm-native/src/offline.rs`).
+    private func evictAutomaticCache(releasing required: Int64) {
+        guard required > 0 else { return }
+        let protectedID = protectedTrackIDProvider?()
+        let entries = Array(records.values)
+        let candidates = entries.map { record in
+            pm_eviction_candidate(
+                last_played_at: record.lastPlayedAt.timeIntervalSinceReferenceDate,
+                byte_count: record.byteCount,
+                evictable: record.resolvedRetention == .automaticCache
+                    && record.id != protectedID
+            )
+        }
+        var chosen = [Int32](repeating: 0, count: entries.count)
+        let count = candidates.withUnsafeBufferPointer { input in
+            chosen.withUnsafeMutableBufferPointer { output in
+                Int(pm_offline_select_evictions(
+                    input.baseAddress, Int32(clamping: input.count), required,
+                    output.baseAddress, Int32(clamping: output.count)
+                ))
             }
-            .sorted { $0.lastPlayedAt < $1.lastPlayedAt }
-        for record in candidates {
-            remove(record.track)
-            overflow -= record.byteCount
-            if overflow <= 0 { break }
+        }
+        for index in chosen.prefix(count) {
+            remove(entries[Int(index)].track)
         }
     }
 

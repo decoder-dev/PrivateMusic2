@@ -425,6 +425,7 @@ for header in (
     "PrivateMusicCore.h",
     "PrivateMusicMedia.h",
     "PrivateMusicHLS.h",
+    "PrivateMusicOffline.h",
 ):
     if header not in bridging_header_text:
         fail(f"bridging header must import {header}")
@@ -478,6 +479,13 @@ if "pm_hls_parse_media(" not in (
     fail("HLSNativePlaylist must parse media playlists through pm_hls_parse_media")
 if "func parseAttributeList" in hls_exporter_source:
     fail("HLS attribute lists must be parsed by the native playlist module")
+offline_store_source = (SOURCE / "Models" / "OfflineTrackStore.swift").read_text(
+    encoding="utf-8"
+)
+if "pm_offline_select_evictions(" not in offline_store_source:
+    fail("OfflineTrackStore must pick eviction victims through pm_offline_select_evictions")
+if ".sorted { $0.lastPlayedAt < $1.lastPlayedAt }" in offline_store_source:
+    fail("offline eviction ordering must stay in native/pm-native/src/offline.rs")
 track_share_source = (
     SOURCE / "Features" / "Player" / "TrackShareSheet.swift"
 ).read_text(encoding="utf-8")

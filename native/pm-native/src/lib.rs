@@ -11,3 +11,4 @@ pub mod core;
 pub mod dsp;
 pub mod hls;
 pub mod media;
+pub mod offline;
