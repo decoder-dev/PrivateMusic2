@@ -1,5 +1,7 @@
 #pragma once
 
+// Implemented in Rust: native/pm-native/src/dsp.rs (same C ABI).
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -26,7 +28,7 @@ float pm_biquad_process(
 
 /// Run one biquad across a whole channel of interleaved or planar float PCM.
 /// Hot path for the route-tone boom cut: keeps the per-sample filter, the
-/// clamp and the stride walk inside C instead of paying a Swift call plus a
+/// clamp and the stride walk in native code instead of paying a Swift call plus a
 /// coefficient copy for every frame.
 /// `state` is exactly 4 floats: x1,x2,y1,y2.
 void pm_biquad_process_channel(
@@ -97,7 +99,7 @@ void pm_spatial_process_interleaved(
     float *side_state
 );
 
-/// Peak magnitude of a float PCM buffer. Uses Accelerate/vDSP from C so the
+/// Peak magnitude of a float PCM buffer, computed natively so the
 /// MTAudioProcessingTap silence gate never crosses into Swift.
 float pm_buffer_peak_magnitude(const float *samples, int32_t count);
 

@@ -351,12 +351,13 @@ en_strings = (
 if "нейросеть" in ru_strings.lower() or "neural network" in en_strings.lower():
     fail("copy must not claim a neural network")
 native_dsp_header = SOURCE / "Native" / "PrivateMusicDSP.h"
-native_dsp_source = SOURCE / "Native" / "PrivateMusicDSP.c"
+# The DSP implementation is Rust behind the C ABI of PrivateMusicDSP.h.
+native_dsp_source = ROOT / "native" / "pm-native" / "src" / "dsp.rs"
 native_core_header = SOURCE / "Native" / "PrivateMusicCore.h"
 native_core_source = SOURCE / "Native" / "PrivateMusicCore.c"
 bridging_header = SOURCE / "Native" / "PrivateMusic-Bridging-Header.h"
 if not native_dsp_header.is_file() or not native_dsp_source.is_file():
-    fail("PrivateMusicDSP C module (header + source) must exist under Native/")
+    fail("PrivateMusicDSP header (Native/) and its Rust implementation (native/pm-native/src/dsp.rs) must exist")
 if not native_core_header.is_file() or not native_core_source.is_file():
     fail("PrivateMusicCore C module (header + source) must exist under Native/")
 if not bridging_header.is_file():
@@ -498,7 +499,7 @@ for symbol in ("pm_spatial_process_planar(", "pm_spatial_process_interleaved("):
 if "for frame in 0..<frameCount" in equalizer_source:
     fail(
         "EqualizerDSP must not walk audio frames from Swift: the realtime tap "
-        "hot paths live in PrivateMusicDSP.c"
+        "hot paths live in native/pm-native/src/dsp.rs"
     )
 if "pm_buffer_peak_magnitude(" not in equalizer_source:
     fail("EqualizerDSP silence gate must call pm_buffer_peak_magnitude")

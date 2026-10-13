@@ -310,7 +310,7 @@ final class EqualizerDSP: @unchecked Sendable {
         buffers: UnsafeMutableAudioBufferListPointer,
         frameCount: Int
     ) {
-        // Sample-rate hot path lives in PrivateMusicDSP.c (`pm_eq_process_channel`).
+        // Sample-rate hot path lives in the Rust native core (native/pm-native/src/dsp.rs) (`pm_eq_process_channel`).
         coefficients.withUnsafeBufferPointer { coefficientsBuffer in
             states.withUnsafeMutableBufferPointer { statesBuffer in
                 guard let statesBase = statesBuffer.baseAddress else { return }
@@ -392,7 +392,7 @@ final class EqualizerDSP: @unchecked Sendable {
         frameCount: Int
     ) {
         guard let coefficient = boomCutCoefficients else { return }
-        // Per-channel loop lives in PrivateMusicDSP.c: the Swift version paid a
+        // Per-channel loop lives in the Rust native core (native/pm-native/src/dsp.rs): the Swift version paid a
         // coefficient copy and a call for every frame.
         var coeffs = coefficient.cCoeffs
         boomCutStates.withUnsafeMutableBufferPointer { statesBuffer in
@@ -442,7 +442,7 @@ final class EqualizerDSP: @unchecked Sendable {
         )
         guard intensity > 0.000_1 else { return }
 
-        // Widen + side high-pass run per frame in PrivateMusicDSP.c
+        // Widen + side high-pass run per frame in the Rust native core (native/pm-native/src/dsp.rs)
         // (`pm_spatial_process_*`) so the tap does not cross into Swift, copy
         // coefficients and build a tuple for every sample.
         let sideHighPass = sideHighPassCoefficients
