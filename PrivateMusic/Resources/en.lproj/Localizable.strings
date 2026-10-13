@@ -44,7 +44,7 @@
 "remove_from_queue" = "Remove from Queue";
 "player.your_queue" = "Your Queue";
 "see_all" = "See All";
-"mix_based_on_0" = "Mix based on \"%@\"";
+"mix_based_on_0" = "Mix based on “%@”";
 "listening_history" = "Listening History";
 "library.your_tracks" = "Your Tracks";
 "track_d0_of_d1" = "Track %d of %d";
@@ -175,7 +175,7 @@
 "could_not_start_artist_0" = "Could not start %@";
 "home_stage.section" = "Home";
 "home_stage.toggle" = "Now Playing Stage";
-"home_stage.footnote" = "Home opens on what is playing: the artist, the artwork, the controls and compact session contexts. Below that: one What's Next step, recent history, and Explore Music.";
+"home_stage.footnote" = "Home opens on what is playing: the artist, the artwork, the controls and compact session contexts. Below that: one What’s Next step, recent history, and Explore Music.";
 "home_stage.nothing_playing" = "Nothing playing";
 "home_stage.start_station" = "Play";
 "home_stage.clear_queue" = "Clear queue";
@@ -185,9 +185,9 @@
 "home_stage.kind.artist" = "Like this artist";
 "home_stage.kind.mix" = "Mix";
 "home_stage.artist_plus_d0" = "%@ +%d";
-"home_next.title" = "What's Next";
+"home_next.title" = "What’s Next";
 "home_next.continue_with_0" = "Continue with %@";
-"home_next.reason.into_now" = "Looks like you're into this right now";
+"home_next.reason.into_now" = "Looks like you’re into this right now";
 "home_next.reason.returning" = "You keep coming back to this music";
 "home_next.reason.recent" = "A few of their tracks in the last few days";
 "home_next.vk.title" = "Selena";
@@ -200,11 +200,11 @@
 "home_next.action.play" = "Play";
 "home_next.action.start" = "Start";
 "home_next.less_like_this" = "Less like this";
-"home_next.hide_artist" = "Don't show this artist";
+"home_next.hide_artist" = "Don’t show this artist";
 "explore_music" = "Explore Music";
 "player_look" = "Player Look";
 "classic_player_look" = "Classic Player";
-"classic_player_look.footnote" = "Restores the iOS 18 look: a regular bottom bar with the mini player instead of the floating one, frosted panels and flat buttons instead of Liquid Glass. Applies to the player, the mini player, the bottom bar and the app's other panels.";
+"classic_player_look.footnote" = "Restores the iOS 18 look: a regular bottom bar with the mini player instead of the floating one, frosted panels and flat buttons instead of Liquid Glass. Applies to the player, the mini player, the bottom bar and the app’s other panels.";
 "settings.preview" = "Preview";
 "liquid_glass" = "Liquid Glass";
 "ios_26_uses_the_system_interactive_glass_effect_ios_16_25_use_a_compatib" = "iOS 26+ uses the system interactive glass effect. iOS 17–25 use a compatible system material effect.";
@@ -228,7 +228,7 @@
 "expanded_stereo_soundstage" = "Expanded Stereo Soundstage";
 "settings.intensity" = "Intensity";
 "widens_the_soundstage_of_standard_stereo_tracks_works_with_headphones_sp" = "Widens the soundstage of standard stereo tracks. Works with headphones, speakers, and CarKit / car Bluetooth.";
-"widens_the_soundstage_on_headphones_in_the_car_and_on_speakers_bass_stay" = "Widens the soundstage on headphones. In the car and on speakers, bass stays centered and a light anti-boom cut reduces the hollow barrel sound.";
+"widens_the_soundstage_on_headphones_in_the_car_and_on_speakers_bass_stay" = "Widens the soundstage on headphones. In the car and on speakers, bass stays centered and a gentle low-frequency cut keeps the sound from booming.";
 "equalizer_preset" = "Equalizer Preset";
 "preamp" = "Preamp";
 "settings.db" = "dB";
@@ -259,7 +259,7 @@
 "developer.capture_response_shapes" = "Log API response structure (no values)";
 "developer.logging_footer" = "Verbose mode records debug lines, per-category log files and full API/player/session traces. Build a ZIP with app logs, diagnostics, settings and unified logging, then save or share it from the sheet.";
 "developer.log_files" = "Saved log files";
-"developer.log_files_value" = "%1$d files · %2$@";
+"developer.log_files_value" = "Files: %1$d · %2$@";
 "developer.build_log_archive" = "Build log archive";
 "developer.build_log_archive_again" = "Build again";
 "developer.building_log_archive" = "Building archive…";
@@ -427,7 +427,7 @@
 "the_file_is_larger_than_150_mb" = "The file is larger than 150 MB.";
 "could_not_prepare_the_audio_stream" = "Could not prepare the audio stream.";
 "could_not_create_the_audio_file" = "Could not create the audio file.";
-"no_playable_audio_stream_is_available_for_this_track" = "This track can't be played. Try another one.";
+"no_playable_audio_stream_is_available_for_this_track" = "This track can’t be played. Try another one.";
 "could_not_prepare_background_playback" = "Could not prepare background playback.";
 "could_not_start_audio_close_the_other_audio_app_and_try_again" = "Could not start audio. Close the other audio app and try again.";
 "the_audio_stream_was_interrupted_start_playback_again" = "The audio stream was interrupted. Start playback again.";
@@ -451,7 +451,7 @@
 "the_system_downloader_did_not_save_the_audio" = "The system downloader did not save the audio.";
 "the_file_is_too_large_for_offline_download" = "The file is too large for offline download.";
 "offline_music_uses_more_than_5_gb_remove_some_downloads" = "Offline music uses more than 5 GB. Remove some downloads.";
-"there_is_not_enough_free_storage_on_this_device" = "Not enough space on this iPhone. Free up storage or delete unneeded downloads.";
+"there_is_not_enough_free_storage_on_this_device" = "Not enough space on this device. Free up storage or delete unneeded downloads.";
 "the_selected_offline_storage_limit_has_been_reached" = "The selected offline storage limit has been reached.";
 "used" = "Used";
 "n_0_of_d1_gb" = "%@ of %d GB";
@@ -465,9 +465,9 @@
 "preparing" = "Preparing…";
 "queued_2" = "Queued…";
 "processed_d0_of_d1_downloaded_d2_errors_d3" = "Processed %d of %d · Downloaded %d · Errors %d";
-"couldn_t_fetch_the_playlist_tracks" = "Couldn't fetch the playlist tracks";
-"couldn_t_download_the_playlist" = "Couldn't download the playlist";
-"couldn_t_download_d0_of_d1_tracks" = "Couldn't download %d of %d tracks";
+"couldn_t_fetch_the_playlist_tracks" = "Couldn’t fetch the playlist tracks";
+"couldn_t_download_the_playlist" = "Couldn’t download the playlist";
+"couldn_t_download_d0_of_d1_tracks" = "Couldn’t download: %d of %d";
 "downloaded_tracks_were_removed_please_download_the_playlist_again" = "Downloaded tracks were removed. Please download the playlist again.";
 "download_interrupted" = "Download interrupted";
 "active_downloads" = "Active downloads";
@@ -504,8 +504,8 @@
 "downloading_audio_file" = "Downloading audio file…";
 "assembling_audio_stream" = "Assembling audio stream…";
 "creating_m4a_file" = "Creating M4A file…";
-"d0_of_d1_parts" = "%d of %d parts";
-"when_the_file_is_ready_the_standard_iphone_menu_will_open_choose_save_to" = "When the file is ready, the standard iPhone menu will open. Choose «Save to Files», AirDrop, a messenger, or another app.";
+"d0_of_d1_parts" = "Parts: %d of %d";
+"when_the_file_is_ready_the_standard_iphone_menu_will_open_choose_save_to" = "When the file is ready, the system share sheet will open. Choose “Save to Files”, AirDrop, a messenger, or another app.";
 "could_not_prepare_the_file" = "Could not prepare the file";
 "copy_vk_link" = "Copy VK link";
 "downloads_on_this_device" = "Downloads on this device";
@@ -580,8 +580,7 @@
 
 "some_files_could_not_be_removed" = "Some files could not be removed";
 
-"remaining_d0_items_1" = "Remaining: %d items · %@";
-
+"remaining_d0_items_1" = "Items remaining: %d · %@";
 "d0_files_1" = "%@ · %@";
 
 "current_downloads_will_be_stopped_and_downloaded_tracks_playlists_and_au" = "Current downloads will be stopped, and downloaded tracks, playlists, and auto cache will be removed. Your VK music will not change.";
@@ -656,7 +655,7 @@
 "more_discoveries" = "More Discoveries";
 "more_hits" = "More Hits";
 "a_quick_start_based_on_your_mood" = "A quick start based on your mood";
-"d0_different_artists_in_the_stream" = "%d different artists in the stream";
+"d0_different_artists_in_the_stream" = "Different artists in the stream: %d";
 "restore" = "Restore";
 "high_quality" = "High Quality";
 "crossfade" = "Crossfade";
@@ -821,7 +820,7 @@
 "features.download.title" = "Download entire library";
 "features.download.explanation" = "Save all tracks in your library for offline listening. Existing downloads are reused. Your storage limit applies. Keep the app open; you can resume the queue after restarting.";
 "features.download.wifi" = "Wi-Fi only";
-"features.download.need_wifi" = "Download paused: no Wi-Fi. Connect to Wi-Fi or turn off \"Wi-Fi only\" to download over cellular.";
+"features.download.need_wifi" = "Download paused: no Wi-Fi. Connect to Wi-Fi or turn off “Wi-Fi only” to download over cellular.";
 "features.download.done" = "Library downloaded";
 "features.download.progress" = "Processed: %d of %d";
 "features.download.pause" = "Pause";
@@ -912,12 +911,12 @@
 "clear_automatic_cache.message" = "This frees %@. Tracks you downloaded yourself are not affected.";
 "vk.error.rate_limit" = "VK is limiting requests for now. Wait a minute and try again.";
 "vk.error.auth" = "Please sign in to VK again.";
-"vk.error.unavailable" = "This content isn't available in your region or is blocked by the rights holder.";
-"vk.error.generic" = "VK couldn't complete the request (code %d). Try again later.";
+"vk.error.unavailable" = "This content isn’t available in your region or is blocked by the rights holder.";
+"vk.error.generic" = "VK couldn’t complete the request (code %d). Try again later.";
 "playback_track_unavailable" = "This track is unavailable right now, possibly because of your region or the rights holder. Try another track.";
 "playback_no_internet" = "No internet. Turn on your connection or pick a downloaded track.";
 "connect.token_placeholder" = "VK access token";
-"couldn_t_update_playlist" = "Couldn't update playlist";
+"couldn_t_update_playlist" = "Couldn’t update playlist";
 "home.music_mood_title" = "Music & mood";
 "home.music_mood_subtitle" = "One tap and it plays what fits";
 

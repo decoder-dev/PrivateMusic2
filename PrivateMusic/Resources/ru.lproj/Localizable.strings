@@ -29,7 +29,7 @@
 "session" = "Сессия";
 "artist" = "Исполнитель";
 "tab.mix" = "Микс";
-"listen_together" = "Слушайте друг друга";
+"listen_together" = "Слушайте вместе";
 "built_by_algorithms" = "Собрано алгоритмами";
 "music_recommendations_for_you" = "Музыкальные рекомендации для вас";
 "n_0_prepared_something_for_you" = "%@ подготовил(а) кое-что для вас";
@@ -80,7 +80,7 @@
 
 "library.tracks" = "Треки";
 "artists" = "Исполнители";
-"artists_2" = "Артисты";
+"artists_2" = "Исполнители";
 "track_artist_album_or_playlist" = "Трек, исполнитель, альбом или плейлист";
 "search_error" = "Ошибка поиска";
 "playlist_search_failed" = "Ошибка поиска плейлистов";
@@ -182,7 +182,7 @@
 "home_stage.kind.station" = "Станция";
 "home_stage.kind.vibe" = "Вайб";
 "home_stage.vibe_launch_d0" = "Запустить: %@";
-"home_stage.kind.artist" = "В стиле артиста";
+"home_stage.kind.artist" = "В стиле исполнителя";
 "home_stage.kind.mix" = "Микс";
 "home_stage.artist_plus_d0" = "%@ +%d";
 "home_next.title" = "Что дальше";
@@ -259,7 +259,7 @@
 "developer.capture_response_shapes" = "Логировать структуру ответов API (без значений)";
 "developer.logging_footer" = "В подробном режиме пишутся debug-строки, отдельные файлы по категориям и полные следы API/плеера/сессии. Соберите ZIP с логами, диагностикой, настройками и unified logging, затем сохраните или отправьте архив из системного листа.";
 "developer.log_files" = "Сохранённые логи";
-"developer.log_files_value" = "%1$d файлов · %2$@";
+"developer.log_files_value" = "Файлов: %1$d · %2$@";
 "developer.build_log_archive" = "Собрать архив логов";
 "developer.build_log_archive_again" = "Собрать снова";
 "developer.building_log_archive" = "Собираем архив…";
@@ -451,7 +451,7 @@
 "the_system_downloader_did_not_save_the_audio" = "Системный загрузчик не сохранил аудио.";
 "the_file_is_too_large_for_offline_download" = "Файл слишком большой для офлайн-загрузки.";
 "offline_music_uses_more_than_5_gb_remove_some_downloads" = "Для офлайн-музыки занято больше 5 ГБ. Удалите часть загрузок.";
-"there_is_not_enough_free_storage_on_this_device" = "Не хватает места на iPhone. Освободите память или удалите ненужные загрузки.";
+"there_is_not_enough_free_storage_on_this_device" = "Не хватает места на устройстве. Освободите память или удалите ненужные загрузки.";
 "the_selected_offline_storage_limit_has_been_reached" = "Достигнут выбранный лимит офлайн-хранилища.";
 "used" = "Использовано";
 "n_0_of_d1_gb" = "%@ из %d ГБ";
@@ -467,7 +467,7 @@
 "processed_d0_of_d1_downloaded_d2_errors_d3" = "Обработано %d из %d · Скачано %d · Ошибок %d";
 "couldn_t_fetch_the_playlist_tracks" = "Не удалось получить треки плейлиста";
 "couldn_t_download_the_playlist" = "Не удалось скачать плейлист";
-"couldn_t_download_d0_of_d1_tracks" = "Не удалось скачать %d из %d треков";
+"couldn_t_download_d0_of_d1_tracks" = "Не удалось скачать: %d из %d";
 "downloaded_tracks_were_removed_please_download_the_playlist_again" = "Скачанные треки удалены. Скачайте плейлист заново.";
 "download_interrupted" = "Загрузка прервана";
 "active_downloads" = "Активные загрузки";
@@ -504,8 +504,8 @@
 "downloading_audio_file" = "Скачиваем аудиофайл…";
 "assembling_audio_stream" = "Собираем аудиопоток…";
 "creating_m4a_file" = "Создаём файл M4A…";
-"d0_of_d1_parts" = "%d из %d частей";
-"when_the_file_is_ready_the_standard_iphone_menu_will_open_choose_save_to" = "После подготовки откроется стандартное меню iPhone. Выберите «Сохранить в Файлы», AirDrop, мессенджер или другое приложение.";
+"d0_of_d1_parts" = "Части: %d из %d";
+"when_the_file_is_ready_the_standard_iphone_menu_will_open_choose_save_to" = "После подготовки откроется системное меню «Поделиться». Выберите «Сохранить в Файлы», AirDrop, мессенджер или другое приложение.";
 "could_not_prepare_the_file" = "Не удалось подготовить файл";
 "copy_vk_link" = "Скопировать ссылку VK";
 "downloads_on_this_device" = "Загрузки на устройстве";
@@ -580,8 +580,7 @@
 
 "some_files_could_not_be_removed" = "Удалено не всё";
 
-"remaining_d0_items_1" = "Осталось: %d объектов · %@";
-
+"remaining_d0_items_1" = "Осталось объектов: %d · %@";
 "d0_files_1" = "%@ · %@";
 
 "current_downloads_will_be_stopped_and_downloaded_tracks_playlists_and_au" = "Будут остановлены текущие загрузки и удалены скачанные треки, плейлисты и автокэш. Музыка в VK не изменится.";
@@ -639,7 +638,7 @@
 "resume" = "Продолжить";
 "mix_radio" = "Радио микса";
 "reorders_the_loaded_queue_with_no_extra_requests" = "Переставляет уже загруженную очередь без новых запросов";
-"diversifies_the_queue_fewer_same_artist_runs_no_extra_requests" = "Разбавляет очередь: реже одни и те же артисты подряд, без новых запросов";
+"diversifies_the_queue_fewer_same_artist_runs_no_extra_requests" = "Разбавляет очередь: реже одни и те же исполнители подряд, без новых запросов";
 "mode" = "Режим";
 "balanced" = "Баланс";
 "closer_to_track" = "Ближе к треку";
@@ -656,7 +655,7 @@
 "more_discoveries" = "Больше находок";
 "more_hits" = "Больше хитов";
 "a_quick_start_based_on_your_mood" = "Быстрый старт по настроению";
-"d0_different_artists_in_the_stream" = "В потоке %d разных артистов";
+"d0_different_artists_in_the_stream" = "Разных исполнителей в потоке: %d";
 "restore" = "Вернуть";
 "high_quality" = "Высокое качество";
 "crossfade" = "Кроссфейд";
@@ -690,7 +689,7 @@
 "could_not_build_a_mix_from_your_library" = "Не удалось собрать микс по медиатеке";
 "volume_normalization" = "Нормализация громкости";
 "at_least_one_recent_track_is_required" = "Нужен хотя бы один недавний трек";
-"about_d0_of_the_artists_are_new_to_your_recent_history" = "Около %d%% артистов — новые для недавней истории";
+"about_d0_of_the_artists_are_new_to_your_recent_history" = "Около %d%% исполнителей — новые для недавней истории";
 "open" = "Открыть";
 "clear_everything_you_hid" = "Очистить все скрытия?";
 "clear_all" = "Очистить всё";
@@ -746,13 +745,13 @@
 "quick_filters" = "Быстрые фильтры";
 "in_window" = "В окне";
 "vibe" = "Вайб";
-"adds_more_new_artists_and_fewer_repeats_from_recent_listening" = "Даёт больше новых артистов и меньше повторов из недавнего";
+"adds_more_new_artists_and_fewer_repeats_from_recent_listening" = "Даёт больше новых исполнителей и меньше повторов из недавнего";
 "vk_mix_magazine" = "Журнал Selena";
 "curated" = "Кураторский";
 "recent_seeds" = "Недавние сиды";
-"new_artists" = "Новые артисты";
+"new_artists" = "Новые исполнители";
 "decoder_dev_s_neural_network_refreshes_the_window_from_history_recommend" = "Окно слушания обновляется из истории, рекомендаций и миксов Selena";
-"shuffles_loaded_tracks_and_keeps_artists_spaced_out" = "Перемешивает загруженные треки и держит артистов на расстоянии";
+"shuffles_loaded_tracks_and_keeps_artists_spaced_out" = "Перемешивает загруженные треки и разносит исполнителей подальше друг от друга";
 "show_more" = "Показать ещё";
 "vk_shelf" = "Полка Selena";
 "catalog_shelves_with_quick_launch_and_track_previews" = "Полки каталога с быстрым запуском и превью треков";
@@ -860,7 +859,7 @@
 "eq.preset.pop" = "Поп";
 "eq.preset.rnb" = "R&B";
 "eq.preset.hip_hop" = "Хип-хоп";
-"eq.preset.dance" = "Танцы";
+"eq.preset.dance" = "Танцевальная";
 "eq.preset.metal" = "Метал";
 "eq.preset.loudness" = "Громкость";
 "eq.preset.small_speakers" = "Маленькие колонки";
@@ -891,7 +890,7 @@
 "mix.tuning_hint" = "Открывает настройки микса Selena";
 "mix.mood_title" = "Настроение";
 "mix.mood_subtitle" = "Один тап — и микс под нужное состояние";
-"mix.artists_title" = "Миксы по артистам";
+"mix.artists_title" = "Миксы по исполнителям";
 "mix.artists_subtitle" = "Те, кого вы слушаете чаще всего";
 "mix.tuning_short" = "Настроение и жанры";
 "mix.mood_fallback" = "Для «%@» пока нет отдельного микса — играет Selena.";
