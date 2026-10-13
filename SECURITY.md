@@ -1,21 +1,48 @@
-# Security Policy
+# Политика безопасности / Security policy
 
-## Supported Versions
+Private Music — неофициальный клиент VK Music для iOS. Приложение не содержит
+серверной части: токен VK хранится в Keychain на устройстве, запросы идут
+напрямую к VK и к Genius (тексты песен).
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+## Поддерживаемые версии
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+Исправления безопасности выпускаются только для последней версии
+(сейчас ветка `3.30.x`, пререлизы на странице Releases). Старые версии
+не обновляются.
 
-## Reporting a Vulnerability
+| Версия   | Поддерживается |
+| -------- | -------------- |
+| 3.30.x   | да             |
+| < 3.30   | нет            |
 
-Use this section to tell people how to report a vulnerability.
+## Как сообщить об уязвимости
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+Пожалуйста, **не создавайте публичный issue** с подробностями уязвимости.
+
+1. Откройте вкладку **Security → Report a vulnerability** этого репозитория
+   (приватное сообщение для владельца).
+2. Опишите, что и как воспроизводится: версия приложения, iOS, шаги,
+   ожидаемый и фактический результат. Токены, пароли и личные данные
+   в отчёт вставлять не нужно.
+
+Что ожидать: ответ в течение 7 дней; если проблема подтверждается —
+исправление в ближайшем пререлизе и упоминание в его описании (по желанию
+автора отчёта — с указанием имени). Если проблема не подтвердилась или не
+относится к проекту, я объясню причину.
+
+## Что входит в область
+
+- хранение и передача токена VK и данных аккаунта;
+- разбор данных из сети (потоки HLS/MP4, ответы VK и Genius), в том числе
+  нативный модуль на Rust (`native/pm-native`);
+- обмен данными приложения с виджетом и часами.
+
+Не входят: уязвимости самого VK или Genius, а также вопросы, требующие
+физического доступа к разблокированному устройству.
+
+---
+
+*English summary:* only the latest `3.30.x` release is supported. Report
+vulnerabilities privately through **Security → Report a vulnerability** on
+this repository; do not post details in public issues. Expect a reply within
+7 days.
