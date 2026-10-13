@@ -1117,7 +1117,10 @@ final class AudioPlayer {
         cancelCrossfade()
         guard let currentIndex, !queue.isEmpty else { return }
         let nextIndex = queue.index(after: currentIndex)
-        if nextIndex >= queue.endIndex, repeatMode == .off {
+        // Repeat-one only repeats a track that ends by itself. Pressing Next on
+        // the last track must continue (or stop) like repeat-off does, not jump
+        // back to the first track as repeat-all does.
+        if nextIndex >= queue.endIndex, repeatMode != .all {
             if sleepTimerMode == .endOfQueue {
                 cancelSleepTimer()
                 pause()
@@ -3102,12 +3105,19 @@ final class AudioPlayer {
         crossfadeTask?.cancel()
         crossfadeTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            for step in 1...steps {
-                try? await Task.sleep(for: .seconds(stepDuration))
+            // Progress comes from a monotonic clock, not from counting
+            // sleeps: in the background the main actor wakes late, and a
+            // step-counted fade would outlive the outgoing track.
+            let clock = ContinuousClock()
+            let start = clock.now
+            let total = Duration.seconds(fadeDuration)
+            while true {
                 guard !Task.isCancelled, self.isCrossfading else { return }
-                let progress = Float(step) / Float(steps)
-                self.player.volume = max(0, 1 - progress)
-                incoming.volume = progress
+                let fraction = min(1, max(0, (clock.now - start) / total))
+                self.player.volume = Float(1 - fraction)
+                incoming.volume = Float(fraction)
+                if fraction >= 1 { break }
+                try? await Task.sleep(for: .seconds(stepDuration))
             }
             guard !Task.isCancelled, self.isCrossfading else { return }
             self.commitCrossfade(

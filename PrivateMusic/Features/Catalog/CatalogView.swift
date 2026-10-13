@@ -249,7 +249,7 @@ struct CatalogView: View {
             previouslyShownKey: personalization.lastShownNextStepKey,
             bannedArtistKeys: mixFeedback.bannedArtists.sorted(),
             bannedTrackIDs: mixFeedback.bannedTrackIDs.sorted(),
-            librarySignatures: libraryStore.signatures.sorted()
+            librarySignatures: HomeNextStepSetFingerprint(libraryStore.signatures)
         )
     }
 

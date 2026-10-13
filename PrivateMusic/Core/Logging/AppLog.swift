@@ -1,5 +1,8 @@
 import Foundation
 import OSLog
+#if canImport(UIKit)
+import UIKit
+#endif
 
 enum AppLogCategory: String, CaseIterable, Sendable {
     case app
@@ -51,6 +54,20 @@ final class AppLog: @unchecked Sendable {
     private let defaults: UserDefaults
     private var loggers: [AppLogCategory: Logger] = [:]
 
+    /// Lines wait here and reach the disk in one batch. Writing every line on
+    /// its own meant opening, seeking and closing two files per message, which
+    /// kept the storage and the CPU awake during busy playback. Errors flush
+    /// at once so the lines before a failure are never the ones lost.
+    private struct PendingLine {
+        let category: AppLogCategory
+        let text: String
+    }
+
+    private var pending: [PendingLine] = []
+    private var isFlushScheduled = false
+    private static let flushDelay: TimeInterval = 1
+    private static let flushLineLimit = 64
+
     private(set) var isFileLoggingEnabled: Bool
     private(set) var isVerbose: Bool
     /// Opt-in: log the structure (never the values) of API responses.
@@ -77,6 +94,26 @@ final class AppLog: @unchecked Sendable {
                 category: category.rawValue
             )
         }
+        #if canImport(UIKit)
+        for name in [
+            UIApplication.didEnterBackgroundNotification,
+            UIApplication.willTerminateNotification
+        ] {
+            NotificationCenter.default.addObserver(
+                forName: name,
+                object: nil,
+                queue: nil
+            ) { [weak self] _ in
+                self?.flush()
+            }
+        }
+        #endif
+    }
+
+    /// Writes any buffered lines now (app going to the background, log
+    /// export, tests). Safe to call from any thread except the log queue.
+    func flush() {
+        queue.sync { flushPending() }
     }
 
     func bootstrap() {
@@ -138,6 +175,7 @@ final class AppLog: @unchecked Sendable {
 
     func listLogFiles() -> [URL] {
         queue.sync {
+            flushPending()
             guard let directory = try? logsDirectoryURL(),
                   let names = try? fileManager.contentsOfDirectory(
                     at: directory,
@@ -163,6 +201,7 @@ final class AppLog: @unchecked Sendable {
 
     func clearLogFiles() throws {
         try queue.sync {
+            pending.removeAll()
             let directory = try logsDirectoryURL()
             guard fileManager.fileExists(atPath: directory.path) else {
                 return
@@ -200,12 +239,15 @@ final class AppLog: @unchecked Sendable {
         loggers[category]?.log(level: level.osLogType, "\(redacted, privacy: .public)")
         queue.async { [self] in
             guard isFileLoggingEnabled else { return }
-            do {
-                try append(line, category: category)
-            } catch {
-                loggers[.app]?.error(
-                    "AppLog file write failed: \(error.localizedDescription, privacy: .public)"
-                )
+            pending.append(PendingLine(category: category, text: line))
+            if level == .error || pending.count >= Self.flushLineLimit {
+                flushPending()
+            } else if !isFlushScheduled {
+                isFlushScheduled = true
+                queue.asyncAfter(deadline: .now() + Self.flushDelay) { [self] in
+                    isFlushScheduled = false
+                    flushPending()
+                }
             }
         }
     }
@@ -216,18 +258,35 @@ final class AppLog: @unchecked Sendable {
         return isVerbose
     }
 
-    private func append(_ line: String, category: AppLogCategory) throws {
-        try ensureLogsDirectory()
-        let unified = try activeLogFileURL()
-        try appendLine(line, to: unified)
-        try rotateIfNeeded(activeLog: unified)
+    /// Must run on `queue`. One directory check, one open and one rotation
+    /// check per file for the whole batch.
+    private func flushPending() {
+        guard !pending.isEmpty else { return }
+        let batch = pending
+        pending.removeAll(keepingCapacity: true)
+        guard isFileLoggingEnabled else { return }
+        do {
+            try ensureLogsDirectory()
+            let unified = try activeLogFileURL()
+            try appendLine(batch.map(\.text).joined(separator: "\n"), to: unified)
+            try rotateIfNeeded(activeLog: unified)
 
-        if isVerbose {
-            let categoryURL = try logsDirectoryURL().appendingPathComponent(
-                "\(category.rawValue).log"
+            if isVerbose {
+                for (category, lines) in Dictionary(grouping: batch, by: \.category) {
+                    let categoryURL = try logsDirectoryURL().appendingPathComponent(
+                        "\(category.rawValue).log"
+                    )
+                    try appendLine(
+                        lines.map(\.text).joined(separator: "\n"),
+                        to: categoryURL
+                    )
+                    try rotateIfNeeded(activeLog: categoryURL, prefix: category.rawValue)
+                }
+            }
+        } catch {
+            loggers[.app]?.error(
+                "AppLog file write failed: \(error.localizedDescription, privacy: .public)"
             )
-            try appendLine(line, to: categoryURL)
-            try rotateIfNeeded(activeLog: categoryURL, prefix: category.rawValue)
         }
     }
 

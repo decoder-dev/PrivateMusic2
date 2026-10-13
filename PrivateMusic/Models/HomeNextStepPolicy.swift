@@ -83,6 +83,20 @@ struct HomeNextStepRequest: Equatable, Sendable {
     var hasRecommendations: Bool
 }
 
+/// Cheap, order-independent identity of a large set (count plus an XOR of the
+/// members' hashes). The refresh key is rebuilt on every body pass, and the
+/// liked-library set can hold thousands of entries: copying and sorting it
+/// each time was pure overhead. Valid only inside one process run.
+struct HomeNextStepSetFingerprint: Equatable, Sendable {
+    let count: Int
+    let digest: Int
+
+    init(_ values: Set<String>) {
+        count = values.count
+        digest = values.reduce(0) { $0 ^ $1.hashValue }
+    }
+}
+
 /// Inputs that can change the Home "What's Next" winner. Catalog caches
 /// the resolved candidate behind this key so scrolling does not re-run the
 /// full picker on every body pass.
@@ -98,7 +112,7 @@ struct HomeNextStepRefreshKey: Equatable, Sendable {
     var previouslyShownKey: String?
     var bannedArtistKeys: [String]
     var bannedTrackIDs: [String]
-    var librarySignatures: [String]
+    var librarySignatures: HomeNextStepSetFingerprint
 }
 
 enum HomeNextStepPolicy {

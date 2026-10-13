@@ -38,9 +38,9 @@ struct LibraryView: View {
     @State private var paginationTask: Task<Void, Never>?
     @State private var playlistPaginationTask: Task<Void, Never>?
     @State private var addedTrackReloadTask: Task<Void, Never>?
-    /// The track just removed from the library, offered for a few seconds
-    /// as an undo.
-    @State private var removedTrack: Track?
+    /// Tracks just removed from the library, offered for a few seconds as one
+    /// undo. Removing a second track must not make the first one permanent.
+    @State private var removedTracks: [Track] = []
     @State private var undoDismissTask: Task<Void, Never>?
     @State private var undoErrorMessage: String?
     /// Viewport width from a background GeometryReader — wrapping the
@@ -175,9 +175,11 @@ struct LibraryView: View {
                 .padding(.top, LibraryShelfMetrics.contentTopPadding)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if removedTrack != nil {
+                if !removedTracks.isEmpty {
                     UndoBanner(
-                        message: L10n.text("library.removed_toast"),
+                        message: removedTracks.count > 1
+                            ? "\(L10n.text("library.removed_toast")) · \(removedTracks.count)"
+                            : L10n.text("library.removed_toast"),
                         actionTitle: L10n.text("action.undo"),
                         onUndo: undoRemoval
                     )
@@ -186,7 +188,7 @@ struct LibraryView: View {
             }
             .animation(
                 reduceMotion ? nil : .easeOut(duration: 0.2),
-                value: removedTrack?.id
+                value: removedTracks.map(\.id)
             )
             .softBottomScrollEdge()
             .clearsMiniPlayer()
@@ -1173,34 +1175,45 @@ struct LibraryView: View {
     }
 
     private func offerUndo(for track: Track) {
-        removedTrack = track
+        removedTracks.removeAll { $0.id == track.id }
+        removedTracks.append(track)
         undoDismissTask?.cancel()
         undoDismissTask = Task {
             try? await Task.sleep(for: .seconds(6))
             guard !Task.isCancelled else { return }
-            removedTrack = nil
+            removedTracks = []
         }
     }
 
     private func undoRemoval() {
-        guard let track = removedTrack else { return }
-        removedTrack = nil
+        let tracks = removedTracks
+        guard !tracks.isEmpty else { return }
+        removedTracks = []
         undoDismissTask?.cancel()
         Task {
-            do {
-                try await environment.withAuthorizedToken { token in
-                    try await environment.musicService.restoreToLibrary(
-                        track,
-                        accessToken: token
-                    )
+            var firstError: Error?
+            // Newest first: the last removal is the one the user most likely
+            // wants back if the later requests fail.
+            for track in tracks.reversed() {
+                do {
+                    try await environment.withAuthorizedToken { token in
+                        try await environment.musicService.restoreToLibrary(
+                            track,
+                            accessToken: token
+                        )
+                    }
+                    // The add event re-inserts the row and refreshes the index.
+                    MusicLibraryEvents.postAdded(track)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    firstError = firstError ?? error
                 }
+            }
+            if let firstError {
+                undoErrorMessage = firstError.localizedDescription
+            } else {
                 Haptics.success()
-                // The add event re-inserts the row and refreshes the index.
-                MusicLibraryEvents.postAdded(track)
-            } catch is CancellationError {
-                return
-            } catch {
-                undoErrorMessage = error.localizedDescription
             }
         }
     }
