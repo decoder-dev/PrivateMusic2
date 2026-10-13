@@ -1,0 +1,8 @@
+# Test fixtures and oracle tools are not shipped. The AES test vectors are
+# fixed keys on purpose (generated with OpenSSL), and the differential tests
+# read symbols from a deliberately never-unloaded C reference library.
+name: Private Music CodeQL configuration
+paths-ignore:
+  - native/pm-native/tests
+  - native/pm-native/tools
+  - native/pm-native/examples
