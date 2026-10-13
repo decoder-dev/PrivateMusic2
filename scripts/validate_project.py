@@ -396,9 +396,9 @@ for symbol in (
     if symbol not in native_core_header_text:
         fail(f"PrivateMusicCore.h must expose {symbol}")
 native_media_header = SOURCE / "Native" / "PrivateMusicMedia.h"
-native_media_source = SOURCE / "Native" / "PrivateMusicMedia.c"
+native_media_source = ROOT / "native" / "pm-native" / "src" / "media.rs"
 if not native_media_header.is_file() or not native_media_source.is_file():
-    fail("PrivateMusicMedia C module (header + source) must exist under Native/")
+    fail("PrivateMusicMedia header (Native/) and its Rust implementation (native/pm-native/src/media.rs) must exist")
 native_media_header_text = native_media_header.read_text(encoding="utf-8")
 for symbol in (
     "pm_mpegts_extract_audio",
@@ -417,8 +417,8 @@ for symbol in (
     if symbol not in native_media_header_text:
         fail(f"PrivateMusicMedia.h must expose {symbol}")
 native_media_source_text = native_media_source.read_text(encoding="utf-8")
-if "malloc(" in native_media_source_text:
-    fail("PrivateMusicMedia.c must not malloc on the demux/unmask hot path")
+if "Vec::" in native_media_source_text or "vec![" in native_media_source_text or "Box::new" in native_media_source_text:
+    fail("media.rs must not allocate on the demux/unmask hot path")
 bridging_header_text = bridging_header.read_text(encoding="utf-8")
 for header in (
     "PrivateMusicDSP.h",
@@ -440,14 +440,14 @@ for symbol in (
     if symbol not in mpegts_source:
         fail(f"MPEGTSAudioExtractor must call {symbol[:-1]}")
 if "func parsePAT" in mpegts_source or "func parsePMT" in mpegts_source:
-    fail("MPEG-TS PAT/PMT must stay in PrivateMusicMedia.c")
+    fail("MPEG-TS PAT/PMT must stay in the native media module")
 iso_source = (SOURCE / "Services" / "ISOBoxReader.swift").read_text(
     encoding="utf-8"
 )
 if "pm_iso_walk(" not in iso_source:
     fail("ISOBoxReader must walk boxes through pm_iso_walk")
 if "func parseBox" in iso_source:
-    fail("ISO BMFF box headers must be parsed in PrivateMusicMedia.c")
+    fail("ISO BMFF box headers must be parsed in the native media module")
 cmaf_source = (SOURCE / "Services" / "CMAFAudioDemuxer.swift").read_text(
     encoding="utf-8"
 )
@@ -456,7 +456,7 @@ if "pm_cmaf_extract_fragment(" not in cmaf_source:
 if "pm_cmaf_parse_initialization(" not in cmaf_source:
     fail("CMAFAudioDemuxer must parse moov/esds/stsd through pm_cmaf_parse_initialization")
 if "func parseTRUN" in cmaf_source or "func parseTFHD" in cmaf_source:
-    fail("CMAF tfhd/trun tables must stay in PrivateMusicMedia.c")
+    fail("CMAF tfhd/trun tables must stay in the native media module")
 if "[UInt32?]" in cmaf_source:
     fail("CMAF fragment extract must not allocate per-sample Swift size/duration arrays")
 hls_exporter_source = (
@@ -465,9 +465,9 @@ hls_exporter_source = (
 if "pm_iso_contains_types(" not in hls_exporter_source:
     fail("HLSSegmentExporter must detect ftyp/moov/moof/mdat via pm_iso_contains_types")
 if "pm_aes128_cbc_decrypt(" not in hls_exporter_source:
-    fail("HLSSegmentExporter must decrypt AES-128 segments through C")
+    fail("HLSSegmentExporter must decrypt AES-128 segments through the native module")
 if "CCCrypt(" in hls_exporter_source or "import CommonCrypto" in hls_exporter_source:
-    fail("HLS AES-128 decrypt must live in PrivateMusicMedia.c, not Swift")
+    fail("HLS AES-128 decrypt must live in the native media module, not Swift")
 track_share_source = (
     SOURCE / "Features" / "Player" / "TrackShareSheet.swift"
 ).read_text(encoding="utf-8")
@@ -479,7 +479,7 @@ vk_resolver_source = (
 if "pm_vk_unmask(" not in vk_resolver_source:
     fail("VKAudioURLResolver must unmask through pm_vk_unmask")
 if "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN0PQRSTUVWXYZO123456789+/=" in vk_resolver_source:
-    fail("VK unmask alphabet/decode/shuffle must stay in PrivateMusicMedia.c")
+    fail("VK unmask alphabet/decode/shuffle must stay in the native media module")
 if "pm_buffer_max_loaded_ahead(" not in audio_player_source:
     fail("AudioPlayer must fold loadedTimeRanges through pm_buffer_max_loaded_ahead")
 if audio_player_source.count("shouldRefreshHLSBeforePlay(") < 2:

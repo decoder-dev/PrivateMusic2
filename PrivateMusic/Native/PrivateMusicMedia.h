@@ -1,5 +1,8 @@
 #pragma once
 
+// Implemented in Rust: native/pm-native/src/media.rs (C ABI unchanged).
+// On Apple platforms AES-128 goes through CommonCrypto's hardware path.
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

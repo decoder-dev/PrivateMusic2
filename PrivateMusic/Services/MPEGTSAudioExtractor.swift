@@ -27,7 +27,7 @@ enum MPEGTSAudioExtractor {
     /// Returns demuxed audio when the buffer is MPEG-TS with a recognizable
     /// AAC ADTS or MPEG audio elementary stream. `nil` means "leave the
     /// original bytes alone". Packet walk, PAT/PMT and PES drain run in
-    /// `PrivateMusicMedia.c` so a 50k-packet stitch does not allocate a
+    /// `native/pm-native/src/media.rs` so a 50k-packet stitch does not allocate a
     /// `Data` slice per packet.
     static func extractAudio(from data: Data) -> Extraction? {
         guard !data.isEmpty else { return nil }

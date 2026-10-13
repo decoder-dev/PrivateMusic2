@@ -177,7 +177,7 @@ python3 scripts/validate_localizations.py  → OK (782 строки, 2 лока�
 
 ## 4. Нативный C-слой (3 669 строк)
 
-Проверены `PrivateMusicMedia.c` (MPEG-TS/PES/ISO-BMFF/VK-unmask),
+Проверены `PrivateMusicMedia.c` (теперь `native/pm-native/src/media.rs`) (MPEG-TS/PES/ISO-BMFF/VK-unmask),
 Rust-ядро `native/pm-native/src/dsp.rs` (эквалайзер/компрессор; раньше `PrivateMusicDSP.c`), `native/pm-native/src/core.rs` (раньше `PrivateMusicCore.c`).
 
 Сильные стороны:

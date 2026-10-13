@@ -9,6 +9,15 @@ extern "C" {
 
 pub struct Rng(pub u64);
 impl Rng {
+    pub fn u32(&mut self) -> u32 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        (self.0 >> 32) as u32
+    }
+    pub fn below(&mut self, n: usize) -> usize {
+        (self.u32() as usize) % n.max(1)
+    }
     pub fn next(&mut self) -> f32 {
         self.0 ^= self.0 << 13;
         self.0 ^= self.0 >> 7;

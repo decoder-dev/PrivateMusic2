@@ -57,7 +57,7 @@ struct CMAFAudioDemuxer {
 
     /// Parses `ftyp` + `moov` and selects the audio track
     /// (`hdlr.handler_type == "soun"`). The box walk lives in
-    /// `PrivateMusicMedia.c`; Swift only slices `esds` / ASC from offsets.
+    /// `native/pm-native/src/media.rs`; Swift only slices `esds` / ASC from offsets.
     func parseInitialization(_ data: Data) throws -> InitializationInfo {
         do {
             return try parseInitializationNative(data)
@@ -200,7 +200,7 @@ struct CMAFAudioDemuxer {
     /// Parses one `moof`/`mdat` fragment into compressed AAC samples.
     /// `runEnd` supplies a running decode timestamp for streams that omit
     /// `tfdt` on later fragments. `tfhd`/`trun`/`mdat` slicing runs in
-    /// `PrivateMusicMedia.c` so a fragment does not allocate per-sample
+    /// `native/pm-native/src/media.rs` so a fragment does not allocate per-sample
     /// Swift arrays.
     func parseFragment(
         _ data: Data,
