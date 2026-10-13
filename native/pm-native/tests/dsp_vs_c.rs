@@ -4,54 +4,10 @@
 //! Skipped quietly when no C compiler is available.
 
 use pm_native::dsp::*;
-use std::ffi::{c_char, c_int, c_void, CString};
-use std::process::Command;
+use std::ffi::c_int;
 
-extern "C" {
-    fn dlopen(path: *const c_char, flags: c_int) -> *mut c_void;
-    fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
-}
-
-struct Rng(u64);
-impl Rng {
-    fn next(&mut self) -> f32 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        ((self.0 >> 11) as f64 / (1u64 << 53) as f64) as f32 * 2.0 - 1.0
-    }
-}
-
-fn build_reference() -> Option<*mut c_void> {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let c_file = root.join("tests/reference/PrivateMusicDSP.c");
-    let shim = root.join("tests/shim");
-    let out = std::env::temp_dir().join(format!("pm_dsp_ref_{}.so", std::process::id()));
-    let status = Command::new("cc")
-        .args(["-O2", "-ffp-contract=off", "-fPIC", "-shared", "-Wl,-Bsymbolic", "-I"])
-        .arg(&shim)
-        .arg("-I")
-        .arg(root.join("../../PrivateMusic/Native"))
-        .arg(&c_file)
-        .arg("-lm")
-        .arg("-o")
-        .arg(&out)
-        .status()
-        .ok()?;
-    if !status.success() {
-        return None;
-    }
-    let path = CString::new(out.to_str()?).ok()?;
-    let handle = unsafe { dlopen(path.as_ptr(), 2) };
-    (!handle.is_null()).then_some(handle)
-}
-
-fn sym<T>(handle: *mut c_void, name: &str) -> T {
-    let c = CString::new(name).unwrap();
-    let p = unsafe { dlsym(handle, c.as_ptr()) };
-    assert!(!p.is_null(), "missing {name}");
-    unsafe { std::mem::transmute_copy(&p) }
-}
+mod common;
+use common::{build_reference, same, sym, Rng};
 
 fn coeffs(rng: &mut Rng) -> PMBiquadCoeffs {
     PMBiquadCoeffs {
@@ -63,16 +19,9 @@ fn coeffs(rng: &mut Rng) -> PMBiquadCoeffs {
     }
 }
 
-fn same(a: &[f32], b: &[f32]) {
-    assert_eq!(a.len(), b.len());
-    for (i, (x, y)) in a.iter().zip(b).enumerate() {
-        assert!(x.to_bits() == y.to_bits() || (x - y).abs() <= 1e-6, "index {i}: {x} vs {y}");
-    }
-}
-
 #[test]
 fn matches_the_c_reference() {
-    let Some(h) = build_reference() else {
+    let Some(h) = build_reference("PrivateMusicDSP.c") else {
         eprintln!("no C compiler; differential test skipped");
         return;
     };

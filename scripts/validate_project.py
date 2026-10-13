@@ -354,12 +354,12 @@ native_dsp_header = SOURCE / "Native" / "PrivateMusicDSP.h"
 # The DSP implementation is Rust behind the C ABI of PrivateMusicDSP.h.
 native_dsp_source = ROOT / "native" / "pm-native" / "src" / "dsp.rs"
 native_core_header = SOURCE / "Native" / "PrivateMusicCore.h"
-native_core_source = SOURCE / "Native" / "PrivateMusicCore.c"
+native_core_source = ROOT / "native" / "pm-native" / "src" / "core.rs"
 bridging_header = SOURCE / "Native" / "PrivateMusic-Bridging-Header.h"
 if not native_dsp_header.is_file() or not native_dsp_source.is_file():
     fail("PrivateMusicDSP header (Native/) and its Rust implementation (native/pm-native/src/dsp.rs) must exist")
 if not native_core_header.is_file() or not native_core_source.is_file():
-    fail("PrivateMusicCore C module (header + source) must exist under Native/")
+    fail("PrivateMusicCore header (Native/) and its Rust implementation (native/pm-native/src/core.rs) must exist")
 if not bridging_header.is_file():
     fail("PrivateMusic Native bridging header must exist")
 native_dsp_header_text = native_dsp_header.read_text(encoding="utf-8")

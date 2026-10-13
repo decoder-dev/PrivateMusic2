@@ -1,6 +1,6 @@
 import Foundation
 
-/// Case- and diacritic-insensitive text matching backed by PrivateMusicCore.c.
+/// Case- and diacritic-insensitive text matching backed by the Rust native core (core.rs).
 ///
 /// The native fold only claims ASCII and Cyrillic, which is every query this
 /// app realistically sees. Anything else — Latin accents, Greek, CJK — reports

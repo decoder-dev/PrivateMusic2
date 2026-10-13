@@ -864,7 +864,7 @@ struct SearchView: View {
         offset: Int,
         count: Int
     ) async throws -> MusicPage<Playlist> {
-        // Folded once here; matching itself runs in PrivateMusicCore.c.
+        // Folded once here; matching itself runs in the Rust native core (core.rs).
         let needle = FoldedSearchQuery(query)
         // The library is filtered client-side, so a page without a match
         // says nothing about the next one: keep looking (a few pages) before

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Swift-friendly wrapper around the fixed-memory `pm_buffer_health_*` ring
-/// buffer estimator in `PrivateMusicCore.c`.
+/// buffer estimator in `the Rust native core (core.rs)`.
 ///
 /// A class, not a struct: the C struct holds a few hundred bytes of POD
 /// state that is updated on every periodic-time-observer tick (~2 Hz, more

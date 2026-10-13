@@ -1,5 +1,7 @@
 #pragma once
 
+// Implemented in Rust: native/pm-native/src/core.rs (same C ABI).
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

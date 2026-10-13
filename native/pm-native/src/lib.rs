@@ -5,5 +5,7 @@
 //! The headers stay the contract; this crate is the implementation.
 
 #![allow(clippy::missing_safety_doc)]
+#![allow(non_camel_case_types, non_upper_case_globals)]
 
+pub mod core;
 pub mod dsp;

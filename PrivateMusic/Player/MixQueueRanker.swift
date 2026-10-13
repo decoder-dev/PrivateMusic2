@@ -79,7 +79,7 @@ enum MixQueueRanker {
 
     /// Stable seed so the same upcoming set ranks the same way.
     ///
-    /// The FNV-1a rounds run in PrivateMusicCore.c: the Swift version walked
+    /// The FNV-1a rounds run in the Rust native core (core.rs): the Swift version walked
     /// every track id one byte at a time through a closure, which is the whole
     /// queue's worth of UTF-8 on every rerank.
     ///
@@ -189,7 +189,7 @@ enum MixQueueRanker {
         return items
     }
 
-    /// Greedy selection runs in PrivateMusicCore.c (`pm_mix_select_best`).
+    /// Greedy selection runs in the Rust native core (core.rs) (`pm_mix_select_best`).
     /// Every artist and album is folded and hashed once here instead of once
     /// per candidate per pick, so the O(n²) sweep compares 64-bit identities
     /// rather than re-normalizing strings.
