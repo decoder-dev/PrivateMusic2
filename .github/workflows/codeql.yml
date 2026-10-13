@@ -1,6 +1,6 @@
 # CodeQL for the languages in this repository. The Xcode project is generated
-# by XcodeGen, so Swift is analysed from source (build-mode none) instead of
-# autobuild, which would find no project to build. The only remaining C is the
+# by XcodeGen, so Swift uses a manual build (CodeQL has no source-only mode
+# for Swift and autobuild would find no project). The only remaining C is the
 # reference copy used by the Rust differential tests, so c-cpp is not scanned.
 # Actions are pinned by commit SHA; Dependabot proposes the bumps.
 name: "CodeQL"
@@ -25,7 +25,7 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-26') || 'ubuntu-latest' }}
     timeout-minutes: 45
     permissions:
       security-events: write
@@ -38,9 +38,13 @@ jobs:
       matrix:
         include:
         - language: actions
+          build-mode: none
         - language: python
+          build-mode: none
         - language: rust
+          build-mode: none
         - language: swift
+          build-mode: manual
 
     steps:
     - name: Checkout repository
@@ -50,8 +54,23 @@ jobs:
       uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
       with:
         languages: ${{ matrix.language }}
-        build-mode: none
+        build-mode: ${{ matrix.build-mode }}
         queries: security-extended
+
+    - name: Build Swift sources
+      if: matrix.build-mode == 'manual'
+      shell: bash
+      run: |
+        set -o pipefail
+        sudo xcode-select -s /Applications/Xcode_26.5.app
+        brew install xcodegen
+        xcodegen generate
+        xcodebuild \
+          -project PrivateMusic.xcodeproj \
+          -scheme PrivateMusic \
+          -destination "generic/platform=iOS Simulator" \
+          CODE_SIGNING_ALLOWED=NO \
+          build
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
