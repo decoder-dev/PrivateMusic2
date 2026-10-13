@@ -1108,6 +1108,7 @@ final class AudioPlayer {
     private func pausePreservingIntent() {
         player.pause()
         isPlaying = false
+        historyStore.stats.commitPending()
         // Pausing at 0:44 and being killed must not resume from 0:30.
         persistPlayback()
         publishPlaybackState(force: true)
@@ -4147,6 +4148,7 @@ final class AudioPlayer {
         duration = currentTrack?.duration ?? 0
         lastPersistedSecond = -1
         lastNowPlayingSecond = -1
+        historyStore.stats.commitPending()
         listenedTrackID = nil
         listenedPlaybackDuration = 0
         lastListeningElapsedTime = nil
@@ -4167,6 +4169,9 @@ final class AudioPlayer {
                 forInterval: timeObserverInterval
               ) else { return }
         listenedPlaybackDuration += delta
+        if let track = currentTrack {
+            historyStore.stats.recordListening(seconds: delta, track: track)
+        }
         markCurrentTrackListenedIfNeeded()
     }
 

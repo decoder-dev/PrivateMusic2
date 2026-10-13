@@ -13,6 +13,9 @@ final class ListeningHistoryStore {
     static let maximumEntries = 250
 
     private(set) var entries: [ListeningHistoryEntry] = []
+    /// Per-month totals behind the listening-stats screen. Lives here because
+    /// it follows the same account and the same "this track was heard" event.
+    let stats = ListeningStatsStore()
 
     private let defaults: UserDefaults
     private var accountID: Int?
@@ -40,6 +43,7 @@ final class ListeningHistoryStore {
             }
         }
         self.accountID = accountID
+        stats.configure(accountID: accountID)
         entries = []
         RecentWidgetBridge.publish([], accountID: accountID)
         // The legacy global history has no reliable owner. Keep it on disk
@@ -58,6 +62,7 @@ final class ListeningHistoryStore {
     }
 
     func record(_ track: Track) {
+        stats.recordPlay(track)
         if entries.first?.track.id == track.id {
             return
         }

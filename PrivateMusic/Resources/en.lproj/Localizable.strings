@@ -943,3 +943,25 @@
 "vpn.how_to_disable" = "How to turn off a VPN";
 
 "vpn.instructions_note" = "A VPN is only one possible cause. If the connection is not restored, check your internet and try again later. Downloaded music is available without connecting to VK.";
+
+"stats.title" = "Listening Stats";
+"stats.subtitle" = "Top tracks and artists, your listening hours";
+"stats.period.picker" = "Period";
+"stats.period.month" = "Month";
+"stats.period.year" = "Year";
+"stats.period.all" = "All Time";
+"stats.total_time" = "Time listening";
+"stats.plays" = "Plays";
+"stats.active_days" = "Days with music";
+"stats.top_artists" = "Top Artists";
+"stats.top_tracks" = "Top Tracks";
+"stats.when" = "When You Listen";
+"stats.peak_hour" = "Most often: %@";
+"stats.favorite_weekday" = "Favorite day of the week: %@";
+"stats.busiest_day" = "Busiest day: %@";
+"stats.empty_title" = "Not Enough Data Yet";
+"stats.empty_detail" = "Stats are collected while you listen. Play a few tracks and your summary will appear here.";
+"stats.privacy_footer" = "Data stays on this device and is never sent to VK.";
+"stats.reset" = "Reset Stats";
+"stats.reset_confirm_title" = "Reset stats?";
+"stats.reset_confirm_message" = "Your listening stats will be removed from this device. Listening history stays.";

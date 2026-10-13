@@ -98,6 +98,18 @@ struct ProfileView: View {
                 )
             }
             .buttonStyle(.plain)
+            Divider().padding(.leading, 54)
+            NavigationLink {
+                ListeningStatsView()
+            } label: {
+                groupedRow(
+                    title: L10n.text("stats.title"),
+                    subtitle: L10n.text("stats.subtitle"),
+                    systemImage: "chart.bar.xaxis",
+                    trailing: "chevron.right"
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 
