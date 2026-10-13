@@ -1653,6 +1653,7 @@ struct PlayerActionsSheet: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var systemVolume = SystemVolumeObserver()
     @State private var showsSleepTimerOptions = false
+    @State private var showsShareCard = false
     let onDismiss: () -> Void
     let onLibrary: () -> Void
     let onQueue: () -> Void
@@ -1719,6 +1720,9 @@ struct PlayerActionsSheet: View {
                             actionTile("share_audio_file", systemImage: "square.and.arrow.up",
                                        enabled: availability.canShare, action: onShare)
                             actionTile("copy_vk_link", systemImage: "link", action: onCopyLink)
+                            actionTile("share_card.title", systemImage: "rectangle.portrait.on.rectangle.portrait") {
+                                showsShareCard = true
+                            }
                         }
 
                         if showsMixFeedback {
@@ -1760,6 +1764,9 @@ struct PlayerActionsSheet: View {
             .large
         ])
         .presentationDragIndicator(.visible)
+        .sheet(isPresented: $showsShareCard) {
+            TrackShareCardSheet(track: track)
+        }
         .confirmationDialog(
             L10n.text("stop_playback_in"),
             isPresented: $showsSleepTimerOptions,

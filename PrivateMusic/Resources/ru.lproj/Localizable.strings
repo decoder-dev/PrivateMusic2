@@ -983,3 +983,8 @@
 "playlist_import.done_title" = "Плейлист создан";
 "playlist_import.done_detail" = "Добавлено: %1$d. Не удалось добавить: %2$d.";
 "playlist_import.file_unreadable" = "Не удалось прочитать файл";
+"share_card.title" = "Карточка для сторис";
+"share_card.share" = "Поделиться карточкой";
+"share_card.preparing" = "Готовим карточку…";
+"share_card.failed" = "Не удалось подготовить карточку";
+"share_card.preview" = "Предпросмотр карточки трека";

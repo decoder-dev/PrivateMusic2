@@ -983,3 +983,8 @@
 "playlist_import.done_title" = "Playlist Created";
 "playlist_import.done_detail" = "Added: %1$d. Could not add: %2$d.";
 "playlist_import.file_unreadable" = "Could not read the file";
+"share_card.title" = "Story Card";
+"share_card.share" = "Share Card";
+"share_card.preparing" = "Preparing the card…";
+"share_card.failed" = "Could not prepare the card";
+"share_card.preview" = "Track card preview";
