@@ -327,7 +327,7 @@ final class PrivateMusicMediaTests: XCTestCase {
         var tkhd = Data(count: 24)
         tkhd.replaceSubrange(12..<16, with: u32(trackID))
         var mdhd = Data(count: 24)
-        mdhd.replaceSubrange(16..<20, with: u32(timescale))
+        mdhd.replaceSubrange(12..<16, with: u32(timescale))
         var hdlr = Data(count: 12)
         hdlr.replaceSubrange(8..<12, with: Data("soun".utf8))
 

@@ -1383,7 +1383,7 @@ fn parse_mdhd_timescale(d: Buf, length: i32, b: &pm_iso_box) -> Option<u32> {
     if !fits(body, 5, end) || !fits(body, 5, length) {
         return None;
     }
-    let at = if d.u8(body) == 1 { body + 24 } else { body + 16 };
+    let at = if d.u8(body) == 1 { body + 20 } else { body + 12 };
     if !fits(at, 4, end) || !fits(at, 4, length) {
         return None;
     }

@@ -435,8 +435,8 @@ struct CMAFAudioDemuxer {
         let version = try reader.readUInt8(at: box.payloadRange.lowerBound)
         let body = box.payloadRange.lowerBound + 4
         return version == 1
-            ? try reader.readUInt32BE(at: body + 20)
-            : try reader.readUInt32BE(at: body + 12)
+            ? try reader.readUInt32BE(at: body + 16)
+            : try reader.readUInt32BE(at: body + 8)
     }
 
     /// Audio sample entry fields once past the 8-byte entry header:

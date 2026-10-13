@@ -403,9 +403,7 @@ fn matches_the_c_reference() {
         tkhd.extend(be32(1 + rng.below(3) as u32));
         tkhd.extend([0u8; 60]);
         let mut mdhd = vec![version, 0, 0, 0];
-        // The C parser (and the Swift one) read the timescale 4 bytes later than the
-        // ISO spec places it; the layout here follows what they expect.
-        mdhd.extend(if version == 1 { vec![0u8; 20] } else { vec![0u8; 12] });
+        mdhd.extend(if version == 1 { vec![0u8; 16] } else { vec![0u8; 8] });
         mdhd.extend(be32([44100, 48000, 0][rng.below(3)]));
         mdhd.extend([0u8; 8]);
         let mut hdlr = vec![0u8, 0, 0, 0, 0, 0, 0, 0];

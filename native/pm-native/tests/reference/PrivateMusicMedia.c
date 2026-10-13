@@ -1597,7 +1597,7 @@ static bool pm_cmaf_parse_mdhd_timescale(
         return false;
     }
     const uint8_t version = data[body];
-    const int32_t scale_offset = version == 1 ? body + 24 : body + 16;
+    const int32_t scale_offset = version == 1 ? body + 20 : body + 12;
     if (!pm_cmaf_fits(scale_offset, 4, end)
         || !pm_cmaf_fits(scale_offset, 4, length)) {
         return false;
