@@ -50,6 +50,16 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
+    # Installed before CodeQL starts tracing: the traced shell runs under
+    # Rosetta, where Homebrew refuses to install into /opt/homebrew.
+    - name: Prepare Xcode project
+      if: matrix.build-mode == 'manual'
+      shell: bash
+      run: |
+        sudo xcode-select -s /Applications/Xcode_26.5.app
+        brew install xcodegen
+        xcodegen generate
+
     - name: Initialize CodeQL
       uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
       with:
@@ -62,9 +72,6 @@ jobs:
       shell: bash
       run: |
         set -o pipefail
-        sudo xcode-select -s /Applications/Xcode_26.5.app
-        brew install xcodegen
-        xcodegen generate
         xcodebuild \
           -project PrivateMusic.xcodeproj \
           -scheme PrivateMusic \

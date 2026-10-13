@@ -424,6 +424,7 @@ for header in (
     "PrivateMusicDSP.h",
     "PrivateMusicCore.h",
     "PrivateMusicMedia.h",
+    "PrivateMusicHLS.h",
 ):
     if header not in bridging_header_text:
         fail(f"bridging header must import {header}")
@@ -468,6 +469,15 @@ if "pm_aes128_cbc_decrypt(" not in hls_exporter_source:
     fail("HLSSegmentExporter must decrypt AES-128 segments through the native module")
 if "CCCrypt(" in hls_exporter_source or "import CommonCrypto" in hls_exporter_source:
     fail("HLS AES-128 decrypt must live in the native media module, not Swift")
+hls_native_source = ROOT / "native" / "pm-native" / "src" / "hls.rs"
+if not hls_native_source.is_file():
+    fail("HLS playlist parsing must live in native/pm-native/src/hls.rs")
+if "pm_hls_parse_media(" not in (
+    SOURCE / "Services" / "HLSNativePlaylist.swift"
+).read_text(encoding="utf-8"):
+    fail("HLSNativePlaylist must parse media playlists through pm_hls_parse_media")
+if "func parseAttributeList" in hls_exporter_source:
+    fail("HLS attribute lists must be parsed by the native playlist module")
 track_share_source = (
     SOURCE / "Features" / "Player" / "TrackShareSheet.swift"
 ).read_text(encoding="utf-8")
