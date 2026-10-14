@@ -1018,3 +1018,10 @@
 "context.evening" = "Спокойный вечер";
 "queue.removed" = "Удалено из очереди";
 "collections.pin_limit" = "Можно закрепить до 24 коллекций";
+
+"settings.group.interface" = "Интерфейс";
+"settings.group.playback" = "Звук и воспроизведение";
+"settings.group.library" = "Медиатека и рекомендации";
+"settings.group.connection" = "Подключение и сервисы";
+"home.selected_mixes" = "Новые открытия";
+"home.selected_mixes_subtitle" = "Подборки музыки и настройка своей станции";

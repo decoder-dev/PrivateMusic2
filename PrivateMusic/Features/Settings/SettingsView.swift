@@ -107,53 +107,51 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BubbleSpacing.section) {
-                AppGroupedSurface {
-                    settingsDestination(
-                        title: "appearance",
-                        systemImage: "paintpalette"
-                    ) { AppearanceSettingsView() }
-                    Divider().padding(.leading, 54)
-                    settingsDestination(
-                        title: "player_audio",
-                        systemImage: "waveform"
-                    ) { PlayerAudioSettingsView() }
-                    Divider().padding(.leading, 54)
-                    settingsDestination(
-                        title: "equalizer",
-                        systemImage: "slider.horizontal.3"
-                    ) { EqualizerSettingsView() }
-                    if OfflineDownloadsFeature.showsControls,
-                       !environment.isShareSessionActive {
-                        Divider().padding(.leading, 54)
-                        settingsDestination(
-                            title: "offline_storage",
-                            systemImage: "externaldrive"
-                        ) { OfflineStorageSettingsView() }
+                AppGroupedSection(title: "settings.group.interface") {
+                    settingsDestination(title: "appearance", systemImage: "paintpalette") {
+                        AppearanceSettingsView()
+                    }
+                }
+
+                AppGroupedSection(title: "settings.group.playback") {
+                    settingsDestination(title: "player_audio", systemImage: "waveform") {
+                        PlayerAudioSettingsView()
                     }
                     Divider().padding(.leading, 54)
-                    settingsDestination(
-                        title: "sleep_timer",
-                        systemImage: "moon.zzz"
-                    ) { SleepTimerSettingsView() }
+                    settingsDestination(title: "equalizer", systemImage: "slider.horizontal.3") {
+                        EqualizerSettingsView()
+                    }
                     Divider().padding(.leading, 54)
-                    settingsDestination(
-                        title: "connection",
-                        systemImage: "network"
-                    ) { ConnectionSettingsView() }
+                    settingsDestination(title: "sleep_timer", systemImage: "moon.zzz") {
+                        SleepTimerSettingsView()
+                    }
+                }
+
+                AppGroupedSection(title: "settings.group.library") {
+                    if OfflineDownloadsFeature.showsControls,
+                       !environment.isShareSessionActive {
+                        settingsDestination(title: "offline_storage", systemImage: "externaldrive") {
+                            OfflineStorageSettingsView()
+                        }
+                        Divider().padding(.leading, 54)
+                    }
+                    settingsDestination(title: "mix_filters", systemImage: "line.3.horizontal.decrease.circle") {
+                        MixFiltersSettingsView()
+                    }
+                    Divider().padding(.leading, 54)
+                    settingsDestination(title: "hidden_in_mixes", systemImage: "hand.thumbsdown") {
+                        MixFeedbackManagerView()
+                    }
+                }
+
+                AppGroupedSection(title: "settings.group.connection") {
+                    settingsDestination(title: "connection", systemImage: "network") {
+                        ConnectionSettingsView()
+                    }
                     Divider().padding(.leading, 54)
                     settingsDestination(title: "features.vk.settings", systemImage: "antenna.radiowaves.left.and.right") {
                         VKIntegrationSettingsView()
                     }
-                    Divider().padding(.leading, 54)
-                    settingsDestination(
-                        title: "mix_filters",
-                        systemImage: "line.3.horizontal.decrease.circle"
-                    ) { MixFiltersSettingsView() }
-                    Divider().padding(.leading, 54)
-                    settingsDestination(
-                        title: "hidden_in_mixes",
-                        systemImage: "hand.thumbsdown"
-                    ) { MixFeedbackManagerView() }
                 }
 
                 if DeveloperFeature.isUnlocked {

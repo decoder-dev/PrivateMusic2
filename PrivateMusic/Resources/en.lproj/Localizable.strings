@@ -1018,3 +1018,10 @@
 "context.evening" = "Quiet evening";
 "queue.removed" = "Removed from queue";
 "collections.pin_limit" = "You can pin up to 24 collections";
+
+"settings.group.interface" = "Interface";
+"settings.group.playback" = "Sound & playback";
+"settings.group.library" = "Library & recommendations";
+"settings.group.connection" = "Connection & services";
+"home.selected_mixes" = "Discover your next mix";
+"home.selected_mixes_subtitle" = "Explore more music and tune your station";

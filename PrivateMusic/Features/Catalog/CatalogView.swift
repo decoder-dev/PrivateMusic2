@@ -22,10 +22,8 @@ struct CatalogView: View {
     @State private var isNextStepLaunching = false
     @State private var pendingHiddenArtist: HomeNextStepCandidate?
     @State private var openingMixID: String?
-    @State private var startingMood: MixMoodPreference?
     /// The mood / activity chips VK itself offers for the personal mix.
     @State private var vkTuning: MixTuning?
-    @State private var startingTuningOptionID: String?
     @State private var containerWidth: CGFloat = 390
     @State private var topSafeAreaInset: CGFloat = 0
     @State private var nextStepCandidate: HomeNextStepCandidate?
@@ -39,21 +37,24 @@ struct CatalogView: View {
                 )
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: BubbleSpacing.section) {
-                    HomeQuickAccessView()
-                        .padding(.top, heroForegroundTopOrigin)
-                        .id(MainTabScrollDestination.home)
                     if settings.homeStageEnabled {
                         HomeStageView(
                             width: containerWidth,
                             horizontalPadding: metrics.horizontalPadding,
-                            foregroundTopOrigin: BubbleSpacing.m
+                            foregroundTopOrigin: heroForegroundTopOrigin
                         )
+                        .id(MainTabScrollDestination.home)
                     } else {
                         welcomeHeader
+                            .padding(.top, heroForegroundTopOrigin)
+                            .id(MainTabScrollDestination.home)
+                        if highlight.currentTrackID != nil, !highlight.isPlaying {
+                            ContinueListeningView()
+                        }
                     }
 
-                    if highlight.currentTrackID != nil, !highlight.isPlaying {
-                        ContinueListeningView()
+                    if !history.entries.isEmpty {
+                        recentlyPlayedSection(metrics: metrics)
                     }
                     ListeningContextsView(tuning: vkTuning)
 
@@ -68,10 +69,7 @@ struct CatalogView: View {
                     if homeCatalog.errorMessage != nil, homeCatalog.isEmpty {
                         retryRow
                     }
-                    musicAndMoodSection(metrics: metrics)
-                    if !history.entries.isEmpty {
-                        recentlyPlayedSection(metrics: metrics)
-                    }
+                    selectedMixesSection(metrics: metrics)
                 }
                 .padding(.horizontal, metrics.horizontalPadding)
                 .padding(.top, BubbleSpacing.xs)
@@ -110,8 +108,8 @@ struct CatalogView: View {
             // this in `tabScreen`.
             .softBottomScrollEdge()
             .clearsMiniPlayer()
-            // The first row owns the resolved top inset; the stage below
-            // must not reserve it again. Only the background reaches chrome.
+            // The stage (or welcome header) owns the foreground inset;
+            // only its atmosphere extends behind the navigation chrome.
             .ignoresSafeArea(edges: .top)
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .home else { return }
@@ -558,60 +556,19 @@ struct CatalogView: View {
 
     /// Everything for choosing what to listen to — moods and VK mixes —
     /// in one place on Home, with the full Explore screen one tap away.
-    private func musicAndMoodSection(metrics: HomeMetrics) -> some View {
+    private func selectedMixesSection(metrics: HomeMetrics) -> some View {
         let tileWidth: CGFloat = 124
         let mixes = homeCatalog.mixes
             .filter { mix in
-                // Mood tiles are the chips above; do not list them twice.
+                // Detailed mood tuning lives in Explore; this shelf is for mixes.
                 !(mix.streamOptions?.contains("vibes") ?? false)
             }
             .prefix(10)
         return VStack(alignment: .leading, spacing: BubbleSpacing.m) {
             PremiumSectionHeader(
-                "home.music_mood_title",
-                subtitle: "home.music_mood_subtitle"
+                "home.selected_mixes",
+                subtitle: "home.selected_mixes_subtitle"
             )
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    if let tuning = vkTuning, !vkChips(tuning).isEmpty {
-                        // VK's own chips, in VK's order and wording.
-                        ForEach(vkChips(tuning), id: \.key) { chip in
-                            ExploreChip(
-                                title: chip.option.title,
-                                systemImage: chip.mood?.chipSymbol
-                                    ?? "sparkles",
-                                tint: chip.mood.map { $0.tint(for: settings.theme, on: settings.palette) },
-                                isLoading: startingTuningOptionID == chip.key
-                            ) {
-                                startVKChip(chip, tuning: tuning)
-                            }
-                        }
-                    } else {
-                        ForEach(
-                            MixMoodPreference.allCases.filter { $0 != .any }
-                        ) { mood in
-                            ExploreChip(
-                                title: mood.title,
-                                systemImage: mood.chipSymbol,
-                                tint: mood.tint(for: settings.theme, on: settings.palette),
-                                isLoading: startingMood == mood
-                            ) {
-                                guard startingMood == nil else { return }
-                                Haptics.selection()
-                                startingMood = mood
-                                Task {
-                                    await environment.startMoodStation(
-                                        mood,
-                                        in: homeCatalog.mixes
-                                    )
-                                    startingMood = nil
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .scrollsToCardEdges()
             if !mixes.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: metrics.cardSpacing) {
@@ -648,48 +605,6 @@ struct CatalogView: View {
         }
     }
 
-    private struct VKChip {
-        let category: MixTuningCategory
-        let option: MixTuningOption
-        let mood: MixMoodPreference?
-        var key: String { category.id + "/" + option.id }
-    }
-
-    /// The first rows VK reports (mood, then activity), capped so the strip
-    /// stays one swipe long.
-    private func vkChips(_ tuning: MixTuning) -> [VKChip] {
-        var chips: [VKChip] = []
-        for category in tuning.categories.prefix(2) {
-            for option in category.options {
-                let mood = MixMoodPreference.allCases.first {
-                    $0 != .any
-                        && MixQueueFilter.shelfMoodMatchScore(
-                            option.title,
-                            mood: $0
-                        ) > 0
-                }
-                chips.append(
-                    VKChip(category: category, option: option, mood: mood)
-                )
-            }
-        }
-        return Array(chips.prefix(12))
-    }
-
-    private func startVKChip(_ chip: VKChip, tuning: MixTuning) {
-        guard startingTuningOptionID == nil else { return }
-        Haptics.selection()
-        startingTuningOptionID = chip.key
-        let tuned = tuning.mix(
-            applying: [chip.category.id: [chip.option.id]],
-            to: .common
-        )
-        Task {
-            await environment.startCatalogMix(tuned)
-            startingTuningOptionID = nil
-        }
-    }
-
     private func loadVKTuning() async {
         guard sessionStore.accessToken != nil, vkTuning == nil else { return }
         do {
@@ -701,7 +616,7 @@ struct CatalogView: View {
             }
             if !tuning.isEmpty { vkTuning = tuning }
         } catch {
-            // The fixed mood chips stay; nothing to tell the listener.
+            // Context cards fall back to the available mixes and mood stations.
         }
     }
 

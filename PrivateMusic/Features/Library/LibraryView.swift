@@ -77,7 +77,10 @@ struct LibraryView: View {
                         pinnedCollectionsSection
                         listenLaterSection
                     }
-                    if !environment.isShareSessionActive {
+                    // Storage is an overview action. Collection filters and
+                    // search should open directly on their matching content.
+                    if section == .all, normalizedTrackQuery.isEmpty,
+                       !environment.isShareSessionActive {
                         OfflineLibrarySummary().librarySectionSpacing()
                     }
                     if section == .playlists || section == .albums {

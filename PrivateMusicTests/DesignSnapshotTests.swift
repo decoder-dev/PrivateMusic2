@@ -118,10 +118,12 @@ final class DesignSnapshotTests: XCTestCase {
                     environment: environment, settings: settings)
             capture(NavigationStack { ListeningContextsView(tuning: nil).padding(16).environment(\.dynamicTypeSize, .accessibility3) },
                     name: "contexts-AX-\(theme.rawValue)", width: 320, environment: environment, settings: settings)
-            capture(NavigationStack { HomeQuickAccessView().padding(16) }, name: "quick-access-\(theme.rawValue)",
-                    environment: environment, settings: settings)
-            capture(NavigationStack { HomeQuickAccessView().padding(16).environment(\.dynamicTypeSize, .accessibility3) },
-                    name: "quick-access-AX-\(theme.rawValue)", width: 320, environment: environment, settings: settings)
+            capture(NavigationStack { SettingsView() }, name: "settings-full-\(theme.rawValue)",
+                    height: 1600, environment: environment, settings: settings)
+            capture(NavigationStack { CatalogView() }, name: "home-hierarchy-\(theme.rawValue)",
+                    height: 1800, environment: environment, settings: settings)
+            capture(NavigationStack { SettingsView() }.dynamicTypeSize(.accessibility3),
+                    name: "settings-AX-\(theme.rawValue)", width: 320, environment: environment, settings: settings)
             capture(NavigationStack { LibraryView(section: .albums) }, name: "library-albums-\(theme.rawValue)",
                     environment: environment, settings: settings)
             capture(NavigationStack { LibraryView(playlistModel: playlistModel) }, name: "library-pinned-\(theme.rawValue)",
@@ -321,7 +323,6 @@ final class DesignSnapshotTests: XCTestCase {
     private func homeComposition(width: CGFloat) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BubbleSpacing.section) {
-                HomeQuickAccessView()
                 HomeStageView(width: width, horizontalPadding: 16, foregroundTopOrigin: 16)
                 PremiumSectionHeader("recently_played")
                 AppGroupedSurface {
