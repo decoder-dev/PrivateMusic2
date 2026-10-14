@@ -6,6 +6,7 @@ struct ProfileView: View {
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showingLogoutConfirmation = false
 
     var body: some View {
@@ -74,7 +75,7 @@ struct ProfileView: View {
                         ?? L10n.text("listener")
                 )
                 .font(.title2.weight(.semibold))
-                .lineLimit(2)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 .fixedSize(horizontal: false, vertical: true)
                 Text(L10n.text("private_music"))
                     .font(.subheadline)
@@ -177,7 +178,7 @@ struct ProfileView: View {
                     Text(title)
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(foregroundStyle)
-                        .lineLimit(2)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                         .fixedSize(horizontal: false, vertical: true)
                     if let subtitle {
                         Text(subtitle)
@@ -185,7 +186,7 @@ struct ProfileView: View {
                             .foregroundStyle(
                                 isDestructive ? .red.opacity(0.82) : .secondary
                             )
-                            .lineLimit(3)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
