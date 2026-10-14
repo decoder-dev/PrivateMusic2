@@ -296,6 +296,11 @@ final class AudioPlayer {
     /// Track IDs inserted via `playNext` — preserved across radio refills.
     private var pinnedPlayNextIDs = Set<String>()
     private var lastNowPlayingSecond = -1
+    /// The latest seek still in flight. The periodic time observer can
+    /// report a time from before the seek lands, which would drag the
+    /// scrubber back to where the finger just left it.
+    private var seekGeneration = 0
+    private var pendingSeekDeadline: Date?
     private var playbackIntended = false
     private var pausedForMinimumVolume = false
     private var pausedForAppVolumeZero = false
@@ -1184,11 +1189,33 @@ final class AudioPlayer {
         let tolerance = PlaybackSeekTolerancePolicy.tolerance(
             isOffline: isOffline
         )
+        seekGeneration += 1
+        let generation = seekGeneration
+        let requestedAt = Date()
+        pendingSeekDeadline = requestedAt.addingTimeInterval(3)
+        let trackID = currentTrack?.id ?? "-"
+        AppLog.shared.info(
+            .player,
+            "seek requested track=\(trackID) to=\(String(format: "%.1f", targetSeconds)) duration=\(String(format: "%.1f", duration)) offline=\(isOffline) itemStatus=\(player.currentItem?.status.rawValue ?? -1)"
+        )
         player.seek(
             to: target,
             toleranceBefore: tolerance,
             toleranceAfter: tolerance
-        )
+        ) { [weak self] finished in
+            Task { @MainActor [weak self] in
+                guard let self, self.seekGeneration == generation else { return }
+                self.pendingSeekDeadline = nil
+                let landed = self.player.currentTime().seconds
+                AppLog.shared.info(
+                    .player,
+                    "seek done track=\(trackID) finished=\(finished) took=\(String(format: "%.2f", Date().timeIntervalSince(requestedAt)))s now=\(landed.isFinite ? String(format: "%.1f", landed) : "nan")"
+                )
+                if finished, landed.isFinite {
+                    self.updateElapsedTime(landed, forceProgressPublish: true)
+                }
+            }
+        }
         updateElapsedTime(targetSeconds, forceProgressPublish: true)
         persistPlayback()
         publishPlaybackState(force: true)
@@ -2289,7 +2316,11 @@ final class AudioPlayer {
                     0,
                     time.seconds.isFinite ? time.seconds : 0
                 )
-                self.updateElapsedTime(newElapsed)
+                if let deadline = self.pendingSeekDeadline, Date() < deadline {
+                    // A seek is still landing: this tick may predate it.
+                } else {
+                    self.updateElapsedTime(newElapsed)
+                }
                 if let seconds = self.player.currentItem?.duration.seconds,
                    seconds.isFinite,
                    abs(self.duration - seconds) >= 0.25 {
@@ -4147,6 +4178,8 @@ final class AudioPlayer {
     }
 
     private func resetProgressForTrackTransition() {
+        seekGeneration += 1
+        pendingSeekDeadline = nil
         loadedTrackID = nil
         loadedOfflineTrackID = nil
         updateElapsedTime(0, forceProgressPublish: true)
