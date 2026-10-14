@@ -50,7 +50,10 @@ struct HomeStageAtmosphereLayer: View {
         .mask {
             LinearGradient(
                 stops: [
-                    .init(color: .black, location: 0),
+                    // The stage can follow shortcuts: blend into the page at
+                    // both edges instead of starting with a hard colour seam.
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: 0.12),
                     .init(color: .black.opacity(0.25), location: 0.55),
                     .init(color: .clear, location: 1)
                 ],

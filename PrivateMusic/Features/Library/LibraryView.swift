@@ -510,7 +510,7 @@ struct LibraryView: View {
                 }
                 ForEach(pinnedAlbums) { album in
                     NavigationLink { AlbumDetailView(album: album) } label: {
-                        collectionRow(title: album.title, subtitle: album.artistText) {
+                        collectionRow(title: Album.isUsableTitle(album.title) ? album.title : L10n.text("album"), subtitle: album.artistText) {
                             AsyncArtwork(url: album.artworkURL, size: 56)
                         }
                     }
@@ -523,23 +523,34 @@ struct LibraryView: View {
     }
 
     private var libraryFilters: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BubbleSpacing.xs) {
-                ForEach(LibrarySection.allCases, id: \.self) { item in
-                    Button { section = item } label: {
-                        Text(item.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(section == item ? settings.onAccent : Color.primary)
-                            .padding(.horizontal, 14)
-                            .frame(minHeight: PremiumLayout.minimumTapTarget)
-                            .background(section == item ? settings.accent : Color.primary.opacity(0.06), in: Capsule())
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BubbleSpacing.xs) {
+                    ForEach(LibrarySection.allCases, id: \.self) { item in
+                        Button { section = item } label: {
+                            Text(item.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(section == item ? settings.onAccent : Color.primary)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: PremiumLayout.minimumTapTarget)
+                                .background(section == item ? settings.accent : Color.primary.opacity(0.06), in: Capsule())
+                        }
+                        .id(item)
+                        .buttonStyle(PremiumPressStyle())
+                        .accessibilityAddTraits(section == item ? .isSelected : [])
                     }
-                    .buttonStyle(PremiumPressStyle())
-                    .accessibilityAddTraits(section == item ? .isSelected : [])
                 }
+            }
+            .task(id: section) {
+                // Wait for the HStack's initial layout before positioning a
+                // preselected filter, including large accessibility text.
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+                proxy.scrollTo(section, anchor: .center)
             }
         }
     }
+
 
     @ViewBuilder
     private func collectionResults(width: CGFloat) -> some View {
