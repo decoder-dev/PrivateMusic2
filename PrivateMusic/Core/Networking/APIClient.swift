@@ -126,6 +126,60 @@ enum RequestCoalescingPolicy {
     }
 }
 
+/// The API session carries the access token in the request body. A 307/308
+/// redirect would replay that body at whatever host the response names, so
+/// only a same-host https redirect is followed; anything else is delivered
+/// as the redirect response and fails as an ordinary HTTP status.
+final class VKAPIRedirectPolicy: NSObject, URLSessionTaskDelegate, Sendable {
+    static func allowsRedirect(from original: URL?, to target: URL?) -> Bool {
+        guard let original, let target,
+              target.scheme?.lowercased() == "https",
+              target.user == nil, target.password == nil,
+              let originalHost = original.host?.lowercased(),
+              let targetHost = target.host?.lowercased() else { return false }
+        return originalHost == targetHost
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+        let allowed = Self.allowsRedirect(from: task.originalRequest?.url, to: request.url)
+        completionHandler(allowed ? request : nil)
+    }
+}
+
+enum APIRequestPolicy {
+    /// `URL(string:relativeTo:)` ignores the base when the string is itself
+    /// absolute, which would send the token body to an arbitrary host. Every
+    /// caller passes a method path, so anything that resolves elsewhere is a
+    /// programming error and is refused before a request exists.
+    static func resolve(path: String, against baseURL: URL) -> URL? {
+        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL,
+              url.scheme?.lowercased() == "https",
+              url.user == nil, url.password == nil,
+              let host = url.host?.lowercased(),
+              host == baseURL.host?.lowercased() else { return nil }
+        return url
+    }
+
+    /// Seconds to wait before a retry. `Retry-After` is server-controlled
+    /// text: `Double("nan")` parses, and a NaN duration traps inside
+    /// `Task.sleep`, so only a finite, non-negative delta is believed.
+    static func retryDelay(
+        attempt: Int,
+        retryAfter: String?,
+        jitter: Double = Double.random(in: 0.85...1.15)
+    ) -> TimeInterval {
+        let announced = retryAfter
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .flatMap(Double.init)
+            .flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+        let exponential = min(pow(2, Double(max(attempt, 0))) * 0.55, 4)
+        return min(max(announced ?? exponential * jitter, 0.2), 8)
+    }
+}
+
 actor APIClient {
     private let baseURL: URL
     private let session: URLSession
@@ -158,7 +212,11 @@ actor APIClient {
             configuration.httpCookieStorage = nil
             configuration.httpShouldSetCookies = false
             configuration.urlCache = nil
-            self.session = URLSession(configuration: configuration)
+            self.session = URLSession(
+                configuration: configuration,
+                delegate: VKAPIRedirectPolicy(),
+                delegateQueue: nil
+            )
         }
 
         self.decoder = JSONDecoder()
@@ -238,7 +296,7 @@ actor APIClient {
         form: [String: String],
         retryPolicy: RequestRetryPolicy
     ) async throws -> Data {
-        guard let url = URL(string: path, relativeTo: baseURL) else {
+        guard let url = APIRequestPolicy.resolve(path: path, against: baseURL) else {
             throw APIError.invalidRequest
         }
         // Already asked this session and told the method does not exist.
@@ -440,10 +498,10 @@ actor APIClient {
         attempt: Int,
         retryAfter: String?
     ) async throws {
-        let serverDelay = retryAfter.flatMap(Double.init)
-        let exponential = min(pow(2, Double(attempt)) * 0.55, 4)
-        let jitter = Double.random(in: 0.85...1.15)
-        let delay = min(max(serverDelay ?? exponential * jitter, 0.2), 8)
+        let delay = APIRequestPolicy.retryDelay(
+            attempt: attempt,
+            retryAfter: retryAfter
+        )
         try await Task.sleep(for: .seconds(delay))
     }
 

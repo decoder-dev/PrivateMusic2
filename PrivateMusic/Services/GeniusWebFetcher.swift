@@ -27,6 +27,7 @@ final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
     }
 
     private func load(_ url: URL, kind: Kind) async throws -> Data {
+        guard url.scheme?.lowercased() == "https" else { throw APIError.invalidRequest }
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = Self.store
         let view = WKWebView(
@@ -98,6 +99,18 @@ final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         didFinish = true
+    }
+
+    /// The page and the Cloudflare challenge in front of it are all https.
+    /// A redirect to `http:`, `file:` or an app scheme is not part of either
+    /// and is refused instead of being opened inside a script-enabled view.
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        let scheme = navigationAction.request.url?.scheme?.lowercased()
+        decisionHandler(scheme == "https" || scheme == "about" ? .allow : .cancel)
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {

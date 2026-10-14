@@ -4104,7 +4104,9 @@ final class AudioPlayer {
         _ value: TimeInterval,
         forceProgressPublish: Bool = false
     ) {
-        let sanitized = max(value, 0)
+        // `CMTime.seconds` is NaN for an indefinite time and a stale defaults
+        // value can be anything; `Int(elapsedTime)` below traps on both.
+        let sanitized = value.isFinite ? min(max(value, 0), 1_000_000) : 0
         elapsedTime = sanitized
         if forceProgressPublish {
             progress.reset(to: sanitized)
