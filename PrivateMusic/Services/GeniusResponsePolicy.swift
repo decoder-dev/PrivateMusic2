@@ -10,13 +10,13 @@ enum GeniusResponsePolicy {
             }
             return object["response"] is [String: Any]
         case .html:
-            let lower = text.lowercased()
-            guard !lower.contains("cloudflare_error.challenge"),
-                  !lower.contains("just a moment"), !lower.contains("challenge-platform") else {
-                return false
-            }
-            return lower.contains("data-lyrics-container") || lower.contains("lyrics__container")
-                || lower.range(of: #"class\s*=\s*["'][^"']*\blyrics\b"#, options: .regularExpression) != nil
+            // Require a real container tag. A song can legitimately contain
+            // “Just a moment”, and Cloudflare can inject its script into an
+            // otherwise usable page; neither should hide available lyrics.
+            return text.range(
+                of: #"<div\b[^>]*(?:\bdata-lyrics-container\s*=\s*["']true["']|\bclass\s*=\s*["'][^"']*(?:Lyrics__Container|\blyrics\b))"#,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil
         }
     }
 

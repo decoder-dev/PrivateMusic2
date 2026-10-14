@@ -54,17 +54,22 @@ struct GeniusLyricsService: Sendable {
             GeniusMatcher.titleOnlyQuery(title: track.title)
         ]
         var seen = Set<String>()
+        var searched = false
+        var lastError: Error?
         for query in queries where !query.isEmpty && seen.insert(query).inserted {
             // One query failing (a changed reply shape, a hiccup) must not
             // stop the next one from being tried.
             let candidates: [GeniusMatcher.Candidate]
             do {
                 candidates = try await search(query)
+                searched = true
             } catch is CancellationError {
                 throw CancellationError()
             } catch let error as GeniusLookupError {
                 throw error
             } catch {
+                try Task.checkCancellation()
+                lastError = error
                 AppLog.shared.info(
                     .network,
                     "genius search failed: \(AppLogRedaction.redact(error.localizedDescription))"
@@ -80,6 +85,7 @@ struct GeniusLyricsService: Sendable {
                 return url
             }
         }
+        if !searched, let lastError { throw lastError }
         throw APIError.server(
             code: 404,
             message: L10n.text("lyrics_were_not_found_on_genius")

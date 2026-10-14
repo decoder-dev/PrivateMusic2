@@ -2,6 +2,13 @@ import XCTest
 @testable import PrivateMusic
 
 @MainActor final class GeniusLyricsServiceTests: XCTestCase {
+    func testValidLyricsAreNotHiddenByChallengeWordsOrInjectedCloudflareScript() {
+        let html = #"<div data-lyrics-container="true">Just a moment<br>Verse</div><script src="/cdn-cgi/challenge-platform/check.js"></script>"#
+        XCTAssertTrue(GeniusResponsePolicy.isUsable(html, kind: .html))
+        XCTAssertNotNil(GeniusLyricsService.extractLyrics(from: html))
+        XCTAssertFalse(GeniusResponsePolicy.isUsable("<script>data-lyrics-container</script>", kind: .html))
+    }
+
     func testSongAndMultiSearchResponsesBothDecodeAndSkipMalformedHits() throws {
         let hit = #"{"type":"song","result":{"title":"Song","url":"https://genius.com/Artist-song-lyrics","primary_artist":{"name":"Artist"}}}"#
         for payload in ["{\"hits\":[{}," + hit + "]}", "{\"sections\":[{}, {\"hits\":[" + hit + "]}]}"] {
