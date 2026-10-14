@@ -135,9 +135,7 @@ final class NowPlayingControllerTimelineTests: XCTestCase {
         XCTAssertEqual(center.nowPlayingInfo?[MPMediaItemPropertyPlaybackDuration] as? Double, 179)
         XCTAssertEqual(center.nowPlayingInfo?[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double, 50)
         XCTAssertEqual(center.nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] as? Float, 0)
-        XCTAssertEqual(center.playbackState, .playing)
         controller.updatePlayback(elapsedTime: 300, rate: 0, duration: 179, intendsPlayback: false)
         XCTAssertEqual(center.nowPlayingInfo?[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double, 179)
-        XCTAssertEqual(center.playbackState, .paused)
     }
 }

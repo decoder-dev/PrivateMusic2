@@ -767,6 +767,7 @@ final class AudioPlayer {
     }
 
     func playNext(_ track: Track) {
+        queueUndoID = nil
         guard let currentIndex, let currentTrack else {
             play(track, in: [track])
             return
@@ -792,6 +793,7 @@ final class AudioPlayer {
     /// Appends `track` at the end of the queue (Play Last). Starts playback
     /// when nothing is queued yet.
     func playLast(_ track: Track) {
+        queueUndoID = nil
         guard let currentIndex, let currentTrack else {
             play(track, in: [track])
             return
@@ -873,6 +875,7 @@ final class AudioPlayer {
     }
 
     func removeFromQueue(at index: Int) {
+        queueUndoID = nil
         guard queue.indices.contains(index),
               let currentIndex,
               queue.indices.contains(currentIndex) else {
@@ -957,6 +960,7 @@ final class AudioPlayer {
     }
 
     func jump(to index: Int) {
+        queueUndoID = nil
         guard queue.indices.contains(index) else { return }
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
@@ -974,6 +978,7 @@ final class AudioPlayer {
     }
 
     func toggleShuffle() {
+        queueUndoID = nil
         cancelContinuation()
         cancelMixRadioRefill()
         shuffleEnabled.toggle()
@@ -1190,6 +1195,7 @@ final class AudioPlayer {
     }
 
     func next() {
+        queueUndoID = nil
         cancelCrossfade()
         guard let currentIndex, !queue.isEmpty else { return }
         let nextIndex = queue.index(after: currentIndex)
@@ -1223,6 +1229,7 @@ final class AudioPlayer {
     }
 
     func previous() {
+        queueUndoID = nil
         cancelCrossfade()
         if elapsedTime > 4 {
             seek(to: 0)
