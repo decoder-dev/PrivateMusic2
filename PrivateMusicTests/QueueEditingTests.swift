@@ -69,6 +69,14 @@ final class QueueEditingPlayerTests: XCTestCase {
         }
     }
 
+    func testStaleRowCannotRemoveAnotherTrack() {
+        withPlayer { player, _ in
+            player.play(tracks[0], in: tracks, source: .library)
+            XCTAssertNil(player.removeFromQueueUndoable(at: 1, expectedTrackID: tracks[2].id))
+            XCTAssertEqual(player.queue.map(\.trackID), [1, 2, 3, 4])
+        }
+    }
+
     func testUndoRestoresUpcomingTrackOnceWithoutChangingCurrentTrack() {
         withPlayer { player, _ in
             player.play(tracks[0], in: tracks, source: .library)

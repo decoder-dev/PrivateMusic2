@@ -77,6 +77,14 @@ final class PinnedCollectionsStoreTests: XCTestCase {
 }
 
 final class ListeningContextTests: XCTestCase {
+    func testActivityWordsDoNotSelectUnrelatedCollections() {
+        XCTAssertFalse(ListeningContext.work.matches("Workout"))
+        XCTAssertFalse(ListeningContext.road.matches("Broadway"))
+        XCTAssertTrue(ListeningContext.work.matches("Music for Work"))
+        XCTAssertTrue(ListeningContext.road.matches("Driving"))
+        XCTAssertTrue(ListeningContext.work.matches("Для РАБОТЫ"))
+    }
+
     func testServerActivitySettingWinsOverFallbackMood() {
         let tuning = MixTuning(categories: [MixTuningCategory(id: "activity", title: "Activity", allowsMultiple: false,
                           options: [MixTuningOption(id: "road-id", title: "В дороге", isSelected: false)])])

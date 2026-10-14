@@ -216,7 +216,7 @@ struct QueueView: View {
         .accessibilityAction(
             named: L10n.text("remove_from_queue")
         ) {
-            removeFromQueue(at: index)
+            removeFromQueue(at: index, expectedTrackID: track.id)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             if !isCurrent {
@@ -235,7 +235,7 @@ struct QueueView: View {
         // A full swipe on the playing row would skip the song by accident.
         .swipeActions(edge: .trailing, allowsFullSwipe: !isCurrent) {
             Button(role: .destructive) {
-                removeFromQueue(at: index)
+                removeFromQueue(at: index, expectedTrackID: track.id)
             } label: {
                 Label(
                     L10n.text("remove_from_queue"),
@@ -245,9 +245,9 @@ struct QueueView: View {
         }
     }
 
-    private func removeFromQueue(at index: Int) {
+    private func removeFromQueue(at index: Int, expectedTrackID: String) {
         Haptics.selection()
-        pendingUndo = player.removeFromQueueUndoable(at: index)
+        pendingUndo = player.removeFromQueueUndoable(at: index, expectedTrackID: expectedTrackID)
         undoDismissTask?.cancel()
         undoDismissTask = Task {
             do { try await Task.sleep(for: .seconds(8)) } catch { return }

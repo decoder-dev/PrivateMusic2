@@ -812,8 +812,10 @@ final class AudioPlayer {
         scheduleNeighborPreloads()
     }
 
-    func removeFromQueueUndoable(at index: Int) -> QueueRemovalUndo? {
-        guard queue.indices.contains(index), let oldIndex = currentIndex,
+    func removeFromQueueUndoable(at index: Int, expectedTrackID: String? = nil) -> QueueRemovalUndo? {
+        guard queue.indices.contains(index),
+              expectedTrackID == nil || queue[index].id == expectedTrackID,
+              let oldIndex = currentIndex,
               queue.indices.contains(oldIndex) else { return nil }
         let oldQueue = queue
         let oldOrder = sourceOrderedQueue

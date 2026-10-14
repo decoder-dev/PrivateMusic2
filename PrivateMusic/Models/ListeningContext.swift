@@ -22,7 +22,12 @@ enum ListeningContext: String, CaseIterable, Identifiable {
         }
     }
     func matches(_ title: String) -> Bool {
-        markers.contains { title.localizedCaseInsensitiveContains($0) }
+        let words = title.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
+        return markers.contains { marker in
+            // "Work" is a word; "Workout" and "Broadway" are different contexts.
+            if marker.utf8.allSatisfy({ $0 < 128 }) { return words.contains(marker) }
+            return title.localizedCaseInsensitiveContains(marker)
+        }
     }
 
     func selection(tuning: MixTuning?, mixes: [MusicMix]) -> ListeningContextSelection {
