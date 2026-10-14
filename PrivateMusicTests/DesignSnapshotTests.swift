@@ -67,6 +67,10 @@ final class DesignSnapshotTests: XCTestCase {
                     name: "appearance-\(theme.rawValue)", environment: environment, settings: settings)
             capture(homeComposition(width: 390), name: "home-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            capture(NavigationStack { CatalogView() }, name: "home-full-layout-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { CatalogView().environment(\.dynamicTypeSize, .accessibility3) },
+                    name: "home-full-layout-AX-\(theme.rawValue)", width: 320, environment: environment, settings: settings)
             capture(discoveryPreview(track), name: "discovery-\(theme.rawValue)",
                     environment: environment, settings: settings)
             capture(discoveryPreview(track), name: "discovery-full-\(theme.rawValue)",
@@ -350,6 +354,7 @@ final class DesignSnapshotTests: XCTestCase {
             .environment(environment.offlineStore)
             .environment(environment.historyStore)
             .environment(environment.homeCatalogStore)
+            .environment(environment.homePersonalizationStore)
             .environment(environment.networkMonitor)
             .environment(environment.pinnedMixStore)
             .environment(environment.mixFeedbackStore)

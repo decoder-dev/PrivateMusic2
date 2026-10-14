@@ -87,7 +87,7 @@ final class ListeningContextTests: XCTestCase {
     }
 
     func testContextUsesAvailableCatalogMixAndExplicitMoodFallback() {
-        let mix = MusicMix(id: "focus", title: "Для работы", subtitle: "")
+        let mix = MusicMix(id: "focus", title: "Для работы", subtitle: "", artworkURL: nil)
         guard case .catalog(let selected) = ListeningContext.work.selection(tuning: nil, mixes: [mix]) else {
             return XCTFail("Expected the available catalog mix")
         }
