@@ -181,6 +181,10 @@ final class DesignSnapshotTests: XCTestCase {
                 width: 320, height: 700, environment: environment, settings: settings)
         capture(VPNInstructionsView().dynamicTypeSize(.accessibility3), name: "vpn-instructions-accessibility",
                 width: 320, height: 1000, environment: environment, settings: settings)
+        capture(NavigationStack { ProfileView() }, name: "profile-compact",
+                width: 320, height: 900, environment: environment, settings: settings)
+        capture(NavigationStack { ProfileView() }.dynamicTypeSize(.accessibility3), name: "profile-accessibility",
+                width: 320, height: 1600, environment: environment, settings: settings)
         capture(ConnectionBanner(icon: "exclamationmark.circle.fill",
                 message: "vk_rejected_the_saved_sign_in_connect_your_account_again",
                 tint: BubbleGamut.warning.color, retry: {}, actionTitle: "connect_vk").dynamicTypeSize(.accessibility3),

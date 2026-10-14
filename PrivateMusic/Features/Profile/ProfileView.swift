@@ -190,6 +190,7 @@ struct ProfileView: View {
                     }
                 }
             }
+            .padding(.vertical, BubbleSpacing.m)
         } trailing: {
             if let trailing {
                 Image(systemName: trailing)
