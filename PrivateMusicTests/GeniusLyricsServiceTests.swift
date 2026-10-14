@@ -2,6 +2,42 @@ import XCTest
 @testable import PrivateMusic
 
 @MainActor final class GeniusLyricsServiceTests: XCTestCase {
+    func testSongAndMultiSearchResponsesBothDecodeAndSkipMalformedHits() throws {
+        let hit = #"{"type":"song","result":{"title":"Song","url":"https://genius.com/Artist-song-lyrics","primary_artist":{"name":"Artist"}}}"#
+        for payload in ["{\"hits\":[{}," + hit + "]}", "{\"sections\":[{}, {\"hits\":[" + hit + "]}]}"] {
+            let data = Data(("{\"response\":" + payload + "}").utf8)
+            let results = try GeniusLyricsService.searchCandidates(from: data)
+            XCTAssertEqual(results.count, 1)
+            XCTAssertEqual(results.first?.title, "Song")
+        }
+    }
+
+    func testLookupFindsSongThroughSongEndpointThenExtractsPage() async throws {
+        let service = GeniusLyricsService { url in
+            if url.path == "/api/search/song" {
+                return Data(#"{"response":{"hits":[{"type":"song","result":{"title":"Song","url":"https://genius.com/Artist-song-lyrics","primary_artist":{"name":"Artist"}}}]}}"#.utf8)
+            }
+            XCTAssertEqual(url.path, "/Artist-song-lyrics")
+            return Data(#"<div data-lyrics-container="true">Verse<br>Chorus</div>"#.utf8)
+        }
+        let track = Track(trackID: 1, ownerID: 1, title: "Song", artist: "Artist", duration: 180, streamURL: nil, artworkURL: nil)
+        let lyrics = try await service.lyrics(for: track)
+        XCTAssertTrue(lyrics.text.contains("Verse"))
+        XCTAssertTrue(lyrics.text.contains("Chorus"))
+        XCTAssertEqual(lyrics.sourceURL?.path, "/Artist-song-lyrics")
+    }
+
+    func testBlockedLookupIsReportedAsAccessRestrictionInsteadOfMissingSong() async {
+        let service = GeniusLyricsService { _ in throw GeniusLookupError.accessRestricted }
+        let track = Track(trackID: 1, ownerID: 1, title: "Song", artist: "Artist", duration: 180, streamURL: nil, artworkURL: nil)
+        do {
+            _ = try await service.lyrics(for: track)
+            XCTFail("Blocked lookup must not succeed")
+        } catch is GeniusLookupError {
+            // A browser action can recover this, unlike a genuine missing song.
+        } catch { XCTFail("Unexpected error: \(error)") }
+    }
+
     func testChallengeAndErrorBodiesAreNotAcceptedAsLyrics() {
         XCTAssertFalse(GeniusResponsePolicy.isUsable("<title>Just a moment</title>", kind: .html))
         XCTAssertFalse(GeniusResponsePolicy.isUsable("<html>Artist lyrics unavailable</html>", kind: .html))

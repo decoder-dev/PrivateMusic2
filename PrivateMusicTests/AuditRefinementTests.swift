@@ -35,7 +35,13 @@ final class AuditRefinementTests: XCTestCase {
         history.record(track(1))
         history.configure(accountID: 20)
         history.record(track(2))
-        try await Task.sleep(for: .milliseconds(500))
+        // Await the actual deferred write rather than assuming the simulator
+        // will schedule the background encoder within a fixed 500 ms.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while preferences.data(forKey: "listening.history.v2.20") == nil && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        XCTAssertNotNil(preferences.data(forKey: "listening.history.v2.20"))
         let first = ListeningHistoryStore(defaults: preferences, accountID: 10)
         let second = ListeningHistoryStore(defaults: preferences, accountID: 20)
         XCTAssertEqual(first.entries.map(\.track.trackID), [1])

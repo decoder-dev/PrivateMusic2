@@ -2,10 +2,8 @@ import Foundation
 import UIKit
 import WebKit
 
-/// Loads a Genius URL in a real WebKit engine. Genius sits behind a
-/// Cloudflare check that rejects plain `URLSession` requests with 403, while
-/// a browser engine clears the check on its own. The data store is shared for
-/// the app run so the clearance cookie is reused by later requests.
+/// Loads Genius through WebKit and shares its session with the visible lyrics
+/// browser. An interactive challenge cannot be completed by this hidden view.
 @MainActor
 final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
     enum Kind: Sendable {
@@ -13,8 +11,8 @@ final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
         case html
     }
 
-    private static let store = WKWebsiteDataStore.nonPersistent()
-    private static let userAgent =
+    static let store = WKWebsiteDataStore.nonPersistent()
+    static let userAgent =
         "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) "
         + "AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1"
 
@@ -86,7 +84,7 @@ final class GeniusWebFetcher: NSObject, WKNavigationDelegate {
             .network,
             "genius web load gave up finished=\(didFinish) page=\(state ?? "unavailable")"
         )
-        throw APIError.invalidResponse
+        throw GeniusLookupError.accessRestricted
     }
 
     func webView(

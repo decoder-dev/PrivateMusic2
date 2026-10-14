@@ -2,6 +2,19 @@ import XCTest
 @testable import PrivateMusic
 
 final class LibraryFeaturesTests: XCTestCase {
+    func testVKLyricsUseThePlayingTracksExactLyricsIdentifier() async throws {
+        let service = service { request in
+            XCTAssertEqual(request.url?.path, "/method/audio.getLyrics")
+            XCTAssertEqual(Self.form(request)["lyrics_id"], "42")
+            return #"{"response":{"lyrics_id":42,"text":"  Verse\nChorus  "}}"#
+        }
+        let track = Track(trackID: 1, ownerID: 1, title: "Song", artist: "Artist",
+                          duration: 180, streamURL: nil, artworkURL: nil, lyricsID: 42)
+        let lyrics = try await service.lyrics(for: track, accessToken: "test")
+        XCTAssertEqual(lyrics.text, "Verse\nChorus")
+        XCTAssertEqual(lyrics.source, "VK")
+    }
+
     func testFriendsPageUsesExactOffsetAndPreservesTotal() async throws {
         let service = service { request in
             XCTAssertEqual(request.url?.path, "/method/friends.get")

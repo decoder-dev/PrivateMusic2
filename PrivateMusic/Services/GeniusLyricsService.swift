@@ -1,8 +1,14 @@
 import Foundation
 
 struct GeniusLyricsService: Sendable {
+    private let fetch: (@Sendable (URL) async throws -> Data)?
+
+    init(fetch: (@Sendable (URL) async throws -> Data)? = nil) {
+        self.fetch = fetch
+    }
+
     private let searchEndpoint = URL(
-        string: "https://genius.com/api/search/multi"
+        string: "https://genius.com/api/search/song"
     )!
 
     func lyrics(for track: Track) async throws -> Lyrics {
@@ -56,6 +62,8 @@ struct GeniusLyricsService: Sendable {
                 candidates = try await search(query)
             } catch is CancellationError {
                 throw CancellationError()
+            } catch let error as GeniusLookupError {
+                throw error
             } catch {
                 AppLog.shared.info(
                     .network,
@@ -95,30 +103,21 @@ struct GeniusLyricsService: Sendable {
             accept: "application/json",
             kind: .json
         )
-        let response = try JSONDecoder().decode(
-            GeniusSearchResponse.self,
-            from: data
-        )
-        return response.response.sections
-            .flatMap(\.hits)
+        return try Self.searchCandidates(from: data)
+    }
+
+    static func searchCandidates(from data: Data) throws -> [GeniusMatcher.Candidate] {
+        let response = try JSONDecoder().decode(GeniusSearchResponse.self, from: data)
+        return (response.response.hits + response.response.sections.flatMap(\.hits))
             .filter { hit in
                 guard let type = hit.type else { return true }
                 return ["song", "lyric", "top_hit"].contains(type)
             }
-            .compactMap { hit -> GeniusMatcher.Candidate? in
-                let result = hit.result
-                // Song pages end in «-lyrics»; artist and album pages do not.
-                guard let title = result.title,
-                      let url = result.url,
+            .compactMap { hit in
+                guard let title = hit.result.title, let url = hit.result.url,
                       GeniusResponsePolicy.songURL(url) != nil,
-                      let artist = result.primaryArtist?.name else {
-                    return nil
-                }
-                return GeniusMatcher.Candidate(
-                    title: title,
-                    artist: artist,
-                    url: url
-                )
+                      let artist = hit.result.primaryArtist?.name else { return nil }
+                return GeniusMatcher.Candidate(title: title, artist: artist, url: url)
             }
     }
 
@@ -139,6 +138,7 @@ struct GeniusLyricsService: Sendable {
         accept: String,
         kind: GeniusWebFetcher.Kind
     ) async throws -> Data {
+        if let fetch { return try await fetch(url) }
         do {
             let data = try await directData(url, accept: accept)
             guard let text = String(data: data, encoding: .utf8),
@@ -155,8 +155,8 @@ struct GeniusLyricsService: Sendable {
                    .networkConnectionLost].contains(error.code) {
             throw error
         } catch {
-            // Cloudflare answers plain HTTP clients with 403; a browser
-            // engine passes the same check.
+            // WebKit may succeed when the HTTP client is rejected. If it
+            // needs interaction, offer the visible browser in LyricsView.
             return try await GeniusWebFetcher.fetch(url, kind: kind)
         }
     }
@@ -312,11 +312,13 @@ private struct GeniusSearchResponse: Decodable {
 /// whole search.
 private struct GeniusSearchPayload: Decodable {
     let sections: [GeniusSearchSection]
+    let hits: [GeniusSearchHit]
 
-    enum CodingKeys: String, CodingKey { case sections }
+    enum CodingKeys: String, CodingKey { case sections, hits }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        hits = ((try? container.decode([GeniusLossy<GeniusSearchHit>].self, forKey: .hits)) ?? []).compactMap(\.value)
         sections = ((try? container.decode(
             [GeniusLossy<GeniusSearchSection>].self,
             forKey: .sections
@@ -365,4 +367,10 @@ private struct GeniusSongResult: Decodable {
 
 private struct GeniusArtist: Decodable {
     let name: String?
+}
+
+enum GeniusLookupError: Error, LocalizedError {
+    case accessRestricted
+
+    var errorDescription: String? { L10n.text("lyrics.genius_access_restricted") }
 }

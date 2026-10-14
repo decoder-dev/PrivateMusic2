@@ -19,6 +19,10 @@ struct LyricsView: View {
     @State private var activeLineIndex = 0
     @State private var followsPlayback = true
     @State private var reloadID = UUID()
+    @State private var showsGeniusBrowser = false
+    @State private var geniusBrowserURL: URL?
+    @State private var acceptedBrowserLyrics = false
+    @State private var browserAccountID: Int?
 
     init(track: Track, initialLyrics: Lyrics? = nil) {
         self.track = track
@@ -94,7 +98,7 @@ struct LyricsView: View {
             }
         }
         .task(id: reloadID) {
-            if initialLyrics == nil { await load() }
+            if initialLyrics == nil && !acceptedBrowserLyrics { await load() }
         }
         .task(id: copiedFeedbackID) {
             guard copiedLineID != nil else { return }
@@ -102,6 +106,17 @@ struct LyricsView: View {
                 try await Task.sleep(for: .seconds(1.5))
                 copiedLineID = nil
             } catch { return }
+        }
+        .sheet(isPresented: $showsGeniusBrowser) {
+            GeniusLyricsBrowser(url: geniusBrowserURL ?? GeniusLyricsService.searchPageURL(for: track)) { found in
+                guard browserAccountID == sessionStore.resolvedOfflineAccountID else { return }
+                acceptedBrowserLyrics = true
+                reloadID = UUID() // Cancel any older automatic lookup before it can overwrite this choice.
+                lyrics = found
+                isLoading = false
+                errorMessage = nil
+                environment.savedLyricsStore.save(found, for: track)
+            }
         }
         .presentationDragIndicator(.visible)
     }
@@ -211,10 +226,11 @@ struct LyricsView: View {
         title: String,
         destination: URL? = nil
     ) -> some View {
-        Link(
-            destination: destination
-                ?? GeniusLyricsService.searchPageURL(for: track)
-        ) {
+        Button {
+            geniusBrowserURL = destination ?? GeniusLyricsService.searchPageURL(for: track)
+            browserAccountID = sessionStore.resolvedOfflineAccountID
+            showsGeniusBrowser = true
+        } label: {
             Label {
                 Text(L10n.text(title))
             } icon: {

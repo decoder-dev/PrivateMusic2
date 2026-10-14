@@ -991,3 +991,5 @@
 
 "playlist_import.stopped" = "Import stopped. Tracks not processed: %d. The created playlist and tracks already added remain in VK.";
 "playlist_import.stopping" = "Finishing the current request…";
+
+"lyrics.genius_access_restricted" = "Genius blocked automatic lookup. Open the search below and choose the song to bring its lyrics into the player.";
