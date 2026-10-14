@@ -489,10 +489,8 @@ struct LibraryView: View {
 
     @ViewBuilder
     private var pinnedCollectionsSection: some View {
-        let livePlaylistIDs = Set(shelfPlaylists.map(\.libraryIdentity))
-        let liveAlbumIDs = Set(likedAlbumsStore.albums.map(\.compositeID))
-        let allPlaylists = shelfPlaylists + pins.playlistSnapshots.filter { !livePlaylistIDs.contains($0.libraryIdentity) }
-        let allAlbums = likedAlbumsStore.albums + pins.albumSnapshots.filter { !liveAlbumIDs.contains($0.compositeID) }
+        let allPlaylists = pins.availablePlaylists(shelfPlaylists)
+        let allAlbums = pins.availableAlbums(likedAlbumsStore.albums)
         let pinnedPlaylists = pins.ordered(allPlaylists, identity: PinnedCollectionsStore.playlistKey)
             .filter { pins.contains(PinnedCollectionsStore.playlistKey($0)) }
         let pinnedAlbums = pins.ordered(allAlbums, identity: PinnedCollectionsStore.albumKey)
@@ -546,10 +544,10 @@ struct LibraryView: View {
     @ViewBuilder
     private func collectionResults(width: CGFloat) -> some View {
         let query = normalizedTrackQuery
-        let visiblePlaylists = pins.ordered(shelfPlaylists, identity: PinnedCollectionsStore.playlistKey).filter {
+        let visiblePlaylists = pins.ordered(pins.availablePlaylists(shelfPlaylists), identity: PinnedCollectionsStore.playlistKey).filter {
             query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
         }
-        let visibleAlbums = pins.ordered(likedAlbumsStore.albums, identity: PinnedCollectionsStore.albumKey).filter {
+        let visibleAlbums = pins.ordered(pins.availableAlbums(likedAlbumsStore.albums), identity: PinnedCollectionsStore.albumKey).filter {
             query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
                 || $0.artistText.localizedCaseInsensitiveContains(query)
         }

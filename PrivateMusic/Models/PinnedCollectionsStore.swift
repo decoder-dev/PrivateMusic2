@@ -105,6 +105,16 @@ final class PinnedCollectionsStore {
         }
     }
 
+    func availablePlaylists(_ live: [Playlist]) -> [Playlist] {
+        let ids = Set(live.map(\.libraryIdentity))
+        return live + playlistSnapshots.filter { !ids.contains($0.libraryIdentity) && contains(Self.playlistKey($0)) }
+    }
+
+    func availableAlbums(_ live: [Album]) -> [Album] {
+        let ids = Set(live.map(\.compositeID))
+        return live + albumSnapshots.filter { !ids.contains($0.compositeID) && contains(Self.albumKey($0)) }
+    }
+
     func ordered<T>(_ values: [T], identity: (T) -> String) -> [T] {
         let ranks = Dictionary(uniqueKeysWithValues: identities.enumerated().map { ($0.element, $0.offset) })
         return values.enumerated().sorted {
