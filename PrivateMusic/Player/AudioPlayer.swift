@@ -223,6 +223,8 @@ final class AudioPlayer {
     private var sleepTask: Task<Void, Never>?
     private var streamUserAgent: String?
     private var itemStatusObservation: NSKeyValueObservation?
+    private var timeControlObservation: NSKeyValueObservation?
+    private var durationObservation: NSKeyValueObservation?
     /// The item a `.failed` transition has already been reported for.
     ///
     /// AVFoundation can deliver the `.status == .failed` KVO change and the
@@ -266,6 +268,7 @@ final class AudioPlayer {
     private var streamCredentialRevision: Int?
     private var audioSessionConfigured = false
     private var restoredTrackIDs = Set<String>()
+    @ObservationIgnored private var queueUndoID: UUID?
     private var loadedTrackID: String?
     private var resumeOnBluetoothConnection = true
     private var pauseAtMinimumVolume = true
@@ -297,11 +300,13 @@ final class AudioPlayer {
     /// Track IDs inserted via `playNext` — preserved across radio refills.
     private var pinnedPlayNextIDs = Set<String>()
     private var lastNowPlayingSecond = -1
+    private var lastNowPlayingRate: Float?
+    private var lastNowPlayingDuration: TimeInterval?
     /// The latest seek still in flight. The periodic time observer can
     /// report a time from before the seek lands, which would drag the
     /// scrubber back to where the finger just left it.
     private var seekGeneration = 0
-    private var pendingSeekDeadline: Date?
+    private var pendingSeekGeneration: Int?
     private var playbackIntended = false
     private var pausedForMinimumVolume = false
     private var pausedForAppVolumeZero = false
@@ -646,6 +651,7 @@ final class AudioPlayer {
         allowsContinuation: Bool = true,
         shuffle intent: PlaybackShuffleIntent = .followPreference
     ) {
+        queueUndoID = nil
         resumeAfterRouteTransfer = false
         routeDisconnectPending = false
         playbackIntended = true
@@ -722,7 +728,7 @@ final class AudioPlayer {
             )
         }
         resetProgressForTrackTransition()
-        persistPlayback()
+        persistPlayback(forceFullSnapshot: true)
         continuationPrefetchInThreshold = false
         logPlayback(
             "play trackID=\(track.id) title=\"\(track.title)\" artist=\"\(track.artist)\" queue=\(queue.count) index=\(currentIndex ?? -1) source=\(String(describing: source)) shuffle=\(shuffleEnabled)"
@@ -804,6 +810,68 @@ final class AudioPlayer {
         scheduleNeighborPreloads()
     }
 
+    func removeFromQueueUndoable(at index: Int) -> QueueRemovalUndo? {
+        guard queue.indices.contains(index), let oldIndex = currentIndex,
+              queue.indices.contains(oldIndex) else { return nil }
+        let oldQueue = queue
+        let oldOrder = sourceOrderedQueue
+        let oldElapsed = elapsedTime
+        let wasPlaying = isPlaying
+        let oldSource = queueSource
+        let shuffled = shuffleEnabled
+        let suppressed = continuationSuppressedByUser
+        let oldPinned = pinnedPlayNextIDs
+        let oldRestored = restoredTrackIDs
+        removeFromQueue(at: index)
+        let id = UUID()
+        queueUndoID = id
+        return QueueRemovalUndo(id: id, queue: oldQueue, sourceOrder: oldOrder,
+                                index: oldIndex, elapsed: oldElapsed, wasPlaying: wasPlaying,
+                                source: oldSource, shuffled: shuffled, continuationSuppressed: suppressed, pinnedNextIDs: oldPinned,
+                                restoredIDs: oldRestored, expectedQueueIDs: queue.map(\.id),
+                                expectedCurrentID: currentTrack?.id)
+    }
+
+    func canUndoQueueRemoval(_ undo: QueueRemovalUndo) -> Bool {
+        queueUndoID == undo.id && queue.map(\.id) == undo.expectedQueueIDs
+            && currentTrack?.id == undo.expectedCurrentID
+    }
+
+    @discardableResult
+    func undoQueueRemoval(_ undo: QueueRemovalUndo) -> Bool {
+        guard canUndoQueueRemoval(undo) else { return false }
+        queueUndoID = nil
+        let needsReload = currentTrack?.id != undo.queue[undo.index].id
+        cancelCrossfade()
+        cancelContinuation()
+        cancelMixRadioRefill()
+        invalidatePreloadedPlayback()
+        queue = undo.queue
+        sourceOrderedQueue = undo.sourceOrder
+        currentIndex = undo.index
+        queueSource = undo.source
+        shuffleEnabled = undo.shuffled
+        continuationSuppressedByUser = undo.continuationSuppressed
+        defaults.set(undo.continuationSuppressed, forKey: "player.continuationSuppressed")
+        pinnedPlayNextIDs = undo.pinnedNextIDs
+        restoredTrackIDs = undo.restoredIDs
+        if needsReload {
+            playbackIntended = undo.wasPlaying
+            resumeAfterRouteTransfer = false
+            routeDisconnectPending = false
+            cancelStreamRefresh()
+            requiresStreamRefresh = false
+            didAttemptStreamRefresh = false
+            resetProgressForTrackTransition()
+            loadCurrent(autoplay: undo.wasPlaying, startAt: undo.elapsed)
+        }
+        publishRemoteModes()
+        persistPlayback()
+        publishNowPlayingQueue()
+        scheduleNeighborPreloads()
+        return true
+    }
+
     func removeFromQueue(at index: Int) {
         guard queue.indices.contains(index),
               let currentIndex,
@@ -870,6 +938,7 @@ final class AudioPlayer {
     }
 
     func clearUpcoming() {
+        queueUndoID = nil
         guard let currentIndex, queue.indices.contains(currentIndex) else { return }
         cancelContinuation()
         cancelMixRadioRefill()
@@ -1177,8 +1246,9 @@ final class AudioPlayer {
     }
 
     func seek(to seconds: TimeInterval) {
+        guard seconds.isFinite else { return }
         cancelCrossfade()
-        let upperBound = duration > 0 ? duration : seconds
+        let upperBound = duration.isFinite && duration > 0 ? duration : max(0, seconds)
         let targetSeconds = min(max(0, seconds), upperBound)
         lastListeningElapsedTime = targetSeconds
         let target = CMTime(
@@ -1193,7 +1263,9 @@ final class AudioPlayer {
         seekGeneration += 1
         let generation = seekGeneration
         let requestedAt = Date()
-        pendingSeekDeadline = requestedAt.addingTimeInterval(3)
+        let seekingPlayer = player
+        let seekingItem = player.currentItem
+        pendingSeekGeneration = seekingItem == nil ? nil : generation
         let trackID = currentTrack?.id ?? "-"
         AppLog.shared.info(
             .player,
@@ -1205,15 +1277,18 @@ final class AudioPlayer {
             toleranceAfter: tolerance
         ) { [weak self] finished in
             Task { @MainActor [weak self] in
-                guard let self, self.seekGeneration == generation else { return }
-                self.pendingSeekDeadline = nil
+                guard let self, self.seekGeneration == generation,
+                      self.player === seekingPlayer,
+                      self.player.currentItem === seekingItem else { return }
+                self.pendingSeekGeneration = nil
                 let landed = self.player.currentTime().seconds
                 AppLog.shared.info(
                     .player,
                     "seek done track=\(trackID) finished=\(finished) took=\(String(format: "%.2f", Date().timeIntervalSince(requestedAt)))s now=\(landed.isFinite ? String(format: "%.1f", landed) : "nan")"
                 )
-                if finished, landed.isFinite {
+                if landed.isFinite {
                     self.updateElapsedTime(landed, forceProgressPublish: true)
+                    self.publishPlaybackState(force: true)
                 }
             }
         }
@@ -1223,6 +1298,9 @@ final class AudioPlayer {
     }
 
     func stop() {
+        seekGeneration += 1
+        pendingSeekGeneration = nil
+        queueUndoID = nil
         cancelCrossfade()
         errorMessage = nil
         pausedForMinimumVolume = false
@@ -1254,6 +1332,8 @@ final class AudioPlayer {
         player.replaceCurrentItem(with: nil)
         itemStatusObservation?.invalidate()
         itemStatusObservation = nil
+        durationObservation?.invalidate()
+        durationObservation = nil
         lastFailedItemIdentifier = nil
         queue = []
         sourceOrderedQueue = []
@@ -1397,7 +1477,7 @@ final class AudioPlayer {
                 elapsedTime: 0,
                 rate: 0,
                 queueCount: queue.count,
-                queueIndex: currentIndex ?? 0
+                queueIndex: currentIndex ?? 0, duration: duration, intendsPlayback: isPlaying
             )
             return
         }
@@ -1421,6 +1501,7 @@ final class AudioPlayer {
         item.audioMix = AVMutableAudioMix()
         itemStatusObservation?.invalidate()
         lastFailedItemIdentifier = nil
+        observeDuration(of: item)
         itemStatusObservation = item.observe(
             \.status,
             options: [.initial, .new]
@@ -1433,6 +1514,9 @@ final class AudioPlayer {
                 }
                 switch item.status {
                 case .readyToPlay:
+                    let measuredDuration = item.duration.seconds
+                    if measuredDuration.isFinite && measuredDuration > 0 { self.duration = measuredDuration }
+                    self.publishPlaybackState(force: true)
                     self.isBuffering = false
                     self.streamRecoveryAttempts = 0
                     self.didAttemptStreamRefresh = false
@@ -1485,9 +1569,9 @@ final class AudioPlayer {
         nowPlaying.update(
             track: track,
             elapsedTime: position,
-            rate: shouldAutoplay ? 1 : 0,
+            rate: nowPlayingRate,
             queueCount: queue.count,
-            queueIndex: currentIndex ?? 0
+            queueIndex: currentIndex ?? 0, duration: duration, intendsPlayback: isPlaying
         )
         persistPlayback()
     }
@@ -2101,7 +2185,38 @@ final class AudioPlayer {
         }
     }
 
+    private func observeDuration(of item: AVPlayerItem) {
+        durationObservation?.invalidate()
+        durationObservation = item.observe(\.duration, options: [.new]) { [weak self] item, _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.player.currentItem === item,
+                      self.loadedTrackID == self.currentTrack?.id else { return }
+                let seconds = item.duration.seconds
+                guard seconds.isFinite, seconds > 0,
+                      abs(self.duration - seconds) >= 0.25 else { return }
+                self.duration = seconds
+                self.publishPlaybackState(force: true)
+            }
+        }
+    }
+
     private func configurePlayerInstance() {
+        timeControlObservation?.invalidate()
+        let observedPlayer = player
+        timeControlObservation = observedPlayer.observe(\.timeControlStatus, options: [.new]) { [weak self, weak observedPlayer] _, _ in
+            Task { @MainActor [weak self, weak observedPlayer] in
+                guard let self, let observedPlayer, self.player === observedPlayer,
+                      self.loadedTrackID == self.currentTrack?.id,
+                      observedPlayer.currentItem != nil else { return }
+                if self.pendingSeekGeneration == nil {
+                    let position = observedPlayer.currentTime().seconds
+                    if position.isFinite { self.updateElapsedTime(position) }
+                }
+                self.isBuffering = self.isPlaying && observedPlayer.timeControlStatus == .waitingToPlayAtSpecifiedRate
+                // A stalled media clock may stop periodic callbacks completely.
+                self.publishPlaybackState(force: true)
+            }
+        }
         player.automaticallyWaitsToMinimizeStalling = true
         player.volume = 1
         player.allowsExternalPlayback = AudioProcessingRoutePolicy
@@ -2338,7 +2453,7 @@ final class AudioPlayer {
                     0,
                     time.seconds.isFinite ? time.seconds : 0
                 )
-                if let deadline = self.pendingSeekDeadline, Date() < deadline {
+                if self.pendingSeekGeneration != nil {
                     // A seek is still landing: this tick may predate it.
                 } else {
                     self.updateElapsedTime(newElapsed)
@@ -3227,6 +3342,7 @@ final class AudioPlayer {
         loadedTrackID = upcoming.track.id
         loadedOfflineTrackID = upcoming.isOffline ? upcoming.track.id : nil
         persistPlayback()
+        if let item = player.currentItem { observeDuration(of: item) }
         if let item = player.currentItem,
            shouldAttachAudioProcessing(
             url: upcoming.url,
@@ -3238,9 +3354,9 @@ final class AudioPlayer {
         nowPlaying.update(
             track: upcoming.track,
             elapsedTime: elapsedTime,
-            rate: isPlaying ? 1 : 0,
+            rate: nowPlayingRate,
             queueCount: queue.count,
-            queueIndex: upcoming.index
+            queueIndex: upcoming.index, duration: duration, intendsPlayback: isPlaying
         )
         scheduleNeighborPreloads()
         prunePinnedPlayNextIDs()
@@ -3329,20 +3445,28 @@ final class AudioPlayer {
         }
     }
 
+    private var nowPlayingRate: Float {
+        NowPlayingTimelinePolicy.rate(intendsPlayback: isPlaying,
+                                      isAdvancing: player.timeControlStatus == .playing,
+                                      playerRate: player.rate)
+    }
+
     private func publishPlaybackState(force: Bool = false) {
         let second = Int(elapsedTime.rounded(.down))
+        let rate = nowPlayingRate
+        let timelineChanged = rate != lastNowPlayingRate || duration != lastNowPlayingDuration
         guard NowPlayingDriftPolicy.shouldPublish(
             elapsedSeconds: second,
             lastPublishedSecond: lastNowPlayingSecond,
-            force: force
+            force: force || timelineChanged
         ) else {
             return
         }
         lastNowPlayingSecond = second
-        nowPlaying.updatePlayback(
-            elapsedTime: elapsedTime,
-            rate: isPlaying ? 1 : 0
-        )
+        lastNowPlayingRate = rate
+        lastNowPlayingDuration = duration
+        nowPlaying.updatePlayback(elapsedTime: elapsedTime, rate: rate,
+                                  duration: duration, intendsPlayback: isPlaying)
     }
 
     private func publishNowPlayingQueue() {
@@ -4191,7 +4315,8 @@ final class AudioPlayer {
             elapsedTime: elapsedTime,
             mixID: queueSource?.mixID,
             mixTitle: queueSource?.mixTitle,
-            mixRadioMode: mixRadioMode.rawValue
+            mixRadioMode: mixRadioMode.rawValue,
+            source: queueSource
         )
         let data: Data
         do {
@@ -4209,7 +4334,7 @@ final class AudioPlayer {
 
     private func resetProgressForTrackTransition() {
         seekGeneration += 1
-        pendingSeekDeadline = nil
+        pendingSeekGeneration = nil
         loadedTrackID = nil
         loadedOfflineTrackID = nil
         updateElapsedTime(0, forceProgressPublish: true)
@@ -4311,7 +4436,9 @@ final class AudioPlayer {
         sourceOrderedQueue = snapshot.queue
         restoredTrackIDs = Set(snapshot.queue.map(\.id))
         currentIndex = snapshot.currentIndex
-        if let mixID = snapshot.mixID, let mixTitle = snapshot.mixTitle {
+        if let source = snapshot.source {
+            queueSource = source
+        } else if let mixID = snapshot.mixID, let mixTitle = snapshot.mixTitle {
             queueSource = .mix(id: mixID, title: mixTitle)
         } else if let mixTitle = snapshot.mixTitle {
             // v1 snapshots only had a title — keep mix behaviour alive
@@ -4341,7 +4468,7 @@ final class AudioPlayer {
                 elapsedTime: elapsedTime,
                 rate: 0,
                 queueCount: queue.count,
-                queueIndex: currentIndex ?? 0
+                queueIndex: currentIndex ?? 0, duration: duration, intendsPlayback: isPlaying
             )
         }
     }
@@ -4358,4 +4485,5 @@ private struct PlaybackSnapshot: Codable {
     var mixID: String? = nil
     var mixTitle: String? = nil
     var mixRadioMode: String? = nil
+    var source: QueueSource? = nil
 }

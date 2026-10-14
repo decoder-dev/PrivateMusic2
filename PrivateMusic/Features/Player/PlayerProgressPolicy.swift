@@ -10,21 +10,27 @@ enum PlayerProgressPolicy {
     static let sliderTouchHeight: CGFloat = 44
     static let thumbDiameter: CGFloat = 12
 
+    static func shouldAnimateStep(from previous: TimeInterval, to next: TimeInterval, reduceMotion: Bool) -> Bool {
+        !reduceMotion && previous.isFinite && next.isFinite && next > previous && next - previous <= 1
+    }
+
     static func displayedElapsed(
         scrubPosition: TimeInterval?,
         elapsedTime: TimeInterval
     ) -> TimeInterval {
-        scrubPosition ?? elapsedTime
+        let value = scrubPosition ?? elapsedTime
+        return value.isFinite ? max(0, value) : 0
     }
 
     static func remainingTime(
         elapsed: TimeInterval,
         duration: TimeInterval
     ) -> TimeInterval {
-        max(duration - elapsed, 0)
+        guard duration.isFinite, duration > 0 else { return 0 }
+        return max(duration - (elapsed.isFinite ? max(0, elapsed) : 0), 0)
     }
 
     static func sliderRange(duration: TimeInterval) -> ClosedRange<TimeInterval> {
-        0 ... max(duration, 1)
+        0 ... (duration.isFinite ? max(duration, 1) : 1)
     }
 }

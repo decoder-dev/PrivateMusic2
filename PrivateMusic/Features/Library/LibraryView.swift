@@ -73,7 +73,13 @@ struct LibraryView: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     libraryFilters
                         .librarySectionSpacing()
-                    if section == .all { listenLaterSection }
+                    if section == .all {
+                        pinnedCollectionsSection
+                        listenLaterSection
+                    }
+                    if !environment.isShareSessionActive {
+                        OfflineLibrarySummary().librarySectionSpacing()
+                    }
                     if section == .playlists || section == .albums {
                         collectionResults(width: shelfWidth)
                     }
@@ -459,6 +465,65 @@ struct LibraryView: View {
         }
     }
 
+    private var pins: PinnedCollectionsStore { environment.pinnedCollectionsStore }
+
+    @ViewBuilder
+    private func pinButton(_ identity: String) -> some View {
+        Button {
+            if let playlist = shelfPlaylists.first(where: { PinnedCollectionsStore.playlistKey($0) == identity })
+                ?? pins.playlistSnapshots.first(where: { PinnedCollectionsStore.playlistKey($0) == identity }) {
+                pins.toggle(playlist: playlist)
+            } else if let album = likedAlbumsStore.albums.first(where: { PinnedCollectionsStore.albumKey($0) == identity })
+                ?? pins.albumSnapshots.first(where: { PinnedCollectionsStore.albumKey($0) == identity }) {
+                pins.toggle(album: album)
+            } else { pins.toggle(identity) }
+        } label: {
+            Label(L10n.text(pins.contains(identity) ? "collections.unpin" : "collections.pin"),
+                  systemImage: pins.contains(identity) ? "pin.slash" : "pin")
+        }
+        .disabled(!pins.contains(identity) && pins.identities.count >= PinnedCollectionsStore.limit)
+        if !pins.contains(identity) && pins.identities.count >= PinnedCollectionsStore.limit {
+            Text(L10n.text("collections.pin_limit"))
+        }
+    }
+
+    @ViewBuilder
+    private var pinnedCollectionsSection: some View {
+        let livePlaylistIDs = Set(shelfPlaylists.map(\.libraryIdentity))
+        let liveAlbumIDs = Set(likedAlbumsStore.albums.map(\.compositeID))
+        let allPlaylists = shelfPlaylists + pins.playlistSnapshots.filter { !livePlaylistIDs.contains($0.libraryIdentity) }
+        let allAlbums = likedAlbumsStore.albums + pins.albumSnapshots.filter { !liveAlbumIDs.contains($0.compositeID) }
+        let pinnedPlaylists = pins.ordered(allPlaylists, identity: PinnedCollectionsStore.playlistKey)
+            .filter { pins.contains(PinnedCollectionsStore.playlistKey($0)) }
+        let pinnedAlbums = pins.ordered(allAlbums, identity: PinnedCollectionsStore.albumKey)
+            .filter { pins.contains(PinnedCollectionsStore.albumKey($0)) }
+        if !pinnedPlaylists.isEmpty || !pinnedAlbums.isEmpty {
+            VStack(alignment: .leading, spacing: BubbleSpacing.xs) {
+                Label(L10n.text("collections.pinned"), systemImage: "pin.fill").font(BubbleType.section)
+                    .padding(.bottom, BubbleSpacing.xs)
+                ForEach(pinnedPlaylists, id: \.libraryIdentity) { playlist in
+                    NavigationLink { PlaylistDetailView(playlist: playlist) } label: {
+                        collectionRow(title: playlist.title, subtitle: L10n.trackCount(playlist.count)) {
+                            PlaylistArtworkView(playlist: playlist, size: 56)
+                        }
+                    }
+                    .buttonStyle(PremiumPressStyle())
+                    .contextMenu { pinButton(PinnedCollectionsStore.playlistKey(playlist)) }
+                }
+                ForEach(pinnedAlbums) { album in
+                    NavigationLink { AlbumDetailView(album: album) } label: {
+                        collectionRow(title: album.title, subtitle: album.artistText) {
+                            AsyncArtwork(url: album.artworkURL, size: 56)
+                        }
+                    }
+                    .buttonStyle(PremiumPressStyle())
+                    .contextMenu { pinButton(PinnedCollectionsStore.albumKey(album)) }
+                }
+            }
+            .librarySectionSpacing()
+        }
+    }
+
     private var libraryFilters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: BubbleSpacing.xs) {
@@ -481,10 +546,10 @@ struct LibraryView: View {
     @ViewBuilder
     private func collectionResults(width: CGFloat) -> some View {
         let query = normalizedTrackQuery
-        let visiblePlaylists = shelfPlaylists.filter {
+        let visiblePlaylists = pins.ordered(shelfPlaylists, identity: PinnedCollectionsStore.playlistKey).filter {
             query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
         }
-        let visibleAlbums = likedAlbumsStore.albums.filter {
+        let visibleAlbums = pins.ordered(likedAlbumsStore.albums, identity: PinnedCollectionsStore.albumKey).filter {
             query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
                 || $0.artistText.localizedCaseInsensitiveContains(query)
         }
@@ -537,6 +602,7 @@ struct LibraryView: View {
                 }
                 .buttonStyle(PremiumPressStyle())
                 .contextMenu {
+                    pinButton(PinnedCollectionsStore.playlistKey(playlist))
                     Button(role: .destructive) { playlistPendingDeletion = playlist } label: {
                         Label(playlistDeleteActionTitle(for: playlist), systemImage: "trash")
                     }
@@ -551,6 +617,7 @@ struct LibraryView: View {
                     }
                 }
                 .buttonStyle(PremiumPressStyle())
+                .contextMenu { pinButton(PinnedCollectionsStore.albumKey(album)) }
             }
         }
         // A query can match only on a page not yet loaded. Offer pagination even
@@ -886,6 +953,8 @@ struct LibraryView: View {
                 )
             }
             offlinePlaylists.remove(playlist)
+            let pinID = PinnedCollectionsStore.playlistKey(playlist)
+            if pins.contains(pinID) { pins.toggle(pinID) }
             playlists.removeLocally(playlist)
             MusicLibraryEvents.postPlaylistsChanged(removed: playlist)
             Haptics.success()
@@ -1020,6 +1089,7 @@ struct LibraryView: View {
             alignment: .topLeading
         )
         .contextMenu {
+            pinButton(PinnedCollectionsStore.playlistKey(playlist))
             Button {
                 performPlaylistPlaybackAction(
                     playlistPlaybackAction(for: playlist),
@@ -1155,6 +1225,7 @@ struct LibraryView: View {
             ),
             alignment: .topLeading
         )
+        .contextMenu { pinButton(PinnedCollectionsStore.albumKey(album)) }
     }
 
     private func albumPlayChip(_ album: Album) -> some View {

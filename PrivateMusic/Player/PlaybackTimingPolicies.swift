@@ -27,8 +27,8 @@ enum NowPlayingDriftPolicy {
         force: Bool
     ) -> Bool {
         if force { return true }
-        guard elapsedSeconds != lastPublishedSecond else { return false }
-        return elapsedSeconds % correctionIntervalSeconds == 0
+        if lastPublishedSecond < 0 { return true }
+        return abs(elapsedSeconds - lastPublishedSecond) >= correctionIntervalSeconds
     }
 }
 

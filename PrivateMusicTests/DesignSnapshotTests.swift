@@ -55,6 +55,9 @@ final class DesignSnapshotTests: XCTestCase {
             Playlist(id: 2, ownerID: 1, title: "Музыка для долгих вечерних прогулок", count: 42),
             Playlist(id: 1, ownerID: 2, title: "Любимые открытия", count: 18)]
         await playlistModel.load { _ in MusicPage(items: libraryPlaylists, totalCount: 3, nextOffset: nil) }
+        environment.pinnedCollectionsStore.configure(accountID: -187)
+        environment.pinnedCollectionsStore.toggle(PinnedCollectionsStore.playlistKey(playlist))
+        defer { environment.pinnedCollectionsStore.toggle(PinnedCollectionsStore.playlistKey(playlist)) }
         for theme in AppTheme.allCases {
             settings.theme = theme
             settings.appearance = theme == .dark ? .dark : .light
@@ -105,11 +108,19 @@ final class DesignSnapshotTests: XCTestCase {
                     environment: environment, settings: settings)
             capture(NavigationStack { LibraryView() }, name: "library-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            capture(NavigationStack { ContinueListeningView().padding(16) }, name: "continue-listening-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { ListeningContextsView(tuning: nil).padding(16) }, name: "contexts-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { ListeningContextsView(tuning: nil).padding(16).environment(\.dynamicTypeSize, .accessibility3) },
+                    name: "contexts-AX-\(theme.rawValue)", width: 320, environment: environment, settings: settings)
             capture(NavigationStack { HomeQuickAccessView().padding(16) }, name: "quick-access-\(theme.rawValue)",
                     environment: environment, settings: settings)
             capture(NavigationStack { HomeQuickAccessView().padding(16).environment(\.dynamicTypeSize, .accessibility3) },
                     name: "quick-access-AX-\(theme.rawValue)", width: 320, environment: environment, settings: settings)
             capture(NavigationStack { LibraryView(section: .albums) }, name: "library-albums-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { LibraryView(playlistModel: playlistModel) }, name: "library-pinned-\(theme.rawValue)",
                     environment: environment, settings: settings)
             defaults.set(true, forKey: "library.collectionGrid")
             capture(NavigationStack { LibraryView(section: .playlists, playlistModel: playlistModel) }.defaultAppStorage(defaults),

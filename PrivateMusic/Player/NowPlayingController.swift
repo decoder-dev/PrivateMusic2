@@ -18,13 +18,15 @@ final class NowPlayingController {
         elapsedTime: TimeInterval,
         rate: Float,
         queueCount: Int,
-        queueIndex: Int
+        queueIndex: Int,
+        duration: TimeInterval? = nil,
+        intendsPlayback: Bool? = nil
     ) {
+        let resolvedDuration = NowPlayingTimelinePolicy.duration(actual: duration, fallback: track.duration)
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
             MPMediaItemPropertyArtist: track.artist,
-            MPMediaItemPropertyPlaybackDuration: track.duration,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsedTime,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: NowPlayingTimelinePolicy.elapsed(elapsedTime, duration: resolvedDuration),
             MPNowPlayingInfoPropertyPlaybackRate: rate,
             MPNowPlayingInfoPropertyDefaultPlaybackRate: 1,
             MPNowPlayingInfoPropertyMediaType:
@@ -37,12 +39,13 @@ final class NowPlayingController {
                 max(queueCount - 1, 0)
             )
         ]
+        if let resolvedDuration { info[MPMediaItemPropertyPlaybackDuration] = resolvedDuration }
         if let albumTitle = track.albumTitle, !albumTitle.isEmpty {
             info[MPMediaItemPropertyAlbumTitle] = albumTitle
         }
 
         center.nowPlayingInfo = info
-        center.playbackState = rate > 0 ? .playing : .paused
+        center.playbackState = (intendsPlayback ?? (rate > 0)) ? .playing : .paused
         MPRemoteCommandCenter.shared().likeCommand.isActive =
             likedState?(track) ?? false
         publishUserActivity(for: track)
@@ -79,12 +82,16 @@ final class NowPlayingController {
         }
     }
 
-    func updatePlayback(elapsedTime: TimeInterval, rate: Float) {
+    func updatePlayback(elapsedTime: TimeInterval, rate: Float, duration: TimeInterval? = nil, intendsPlayback: Bool? = nil) {
         guard var info = center.nowPlayingInfo else { return }
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedTime
+        let resolvedDuration = NowPlayingTimelinePolicy.duration(
+            actual: duration, fallback: info[MPMediaItemPropertyPlaybackDuration] as? Double ?? 0)
+        if let resolvedDuration { info[MPMediaItemPropertyPlaybackDuration] = resolvedDuration }
+        else { info.removeValue(forKey: MPMediaItemPropertyPlaybackDuration) }
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = NowPlayingTimelinePolicy.elapsed(elapsedTime, duration: resolvedDuration)
         info[MPNowPlayingInfoPropertyPlaybackRate] = rate
         center.nowPlayingInfo = info
-        center.playbackState = rate > 0 ? .playing : .paused
+        center.playbackState = (intendsPlayback ?? (rate > 0)) ? .playing : .paused
     }
 
     func updateQueue(count: Int, index: Int) {

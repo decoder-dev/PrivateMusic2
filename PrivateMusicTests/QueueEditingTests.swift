@@ -69,6 +69,58 @@ final class QueueEditingPlayerTests: XCTestCase {
         }
     }
 
+    func testUndoRestoresUpcomingTrackOnceWithoutChangingCurrentTrack() {
+        withPlayer { player, _ in
+            player.play(tracks[0], in: tracks, source: .library)
+            guard let undo = player.removeFromQueueUndoable(at: 2) else { return XCTFail("Missing undo") }
+            XCTAssertEqual(player.queue.map(\.trackID), [1, 2, 4])
+            XCTAssertTrue(player.undoQueueRemoval(undo))
+            XCTAssertEqual(player.queue.map(\.trackID), [1, 2, 3, 4])
+            XCTAssertEqual(player.currentTrack?.id, tracks[0].id)
+            XCTAssertFalse(player.undoQueueRemoval(undo))
+        }
+    }
+
+    func testUndoCannotReplaceANewPlaybackSessionEvenWithTheSameTracks() {
+        withPlayer { player, _ in
+            player.play(tracks[0], in: tracks, source: .library)
+            guard let undo = player.removeFromQueueUndoable(at: 2) else { return XCTFail("Missing undo") }
+            let edited = player.queue
+            player.play(tracks[0], in: edited, source: .playlist(title: "New session"))
+            XCTAssertFalse(player.undoQueueRemoval(undo))
+            XCTAssertEqual(player.queue.map(\.trackID), [1, 2, 4])
+        }
+    }
+
+    func testUndoAfterRemovingTheLastTrackAndExplicitStopInvalidation() {
+        withPlayer { player, _ in
+            player.play(tracks[0], in: [tracks[0]], source: .library)
+            guard let undo = player.removeFromQueueUndoable(at: 0) else { return XCTFail("Missing undo") }
+            XCTAssertTrue(player.queue.isEmpty)
+            XCTAssertTrue(player.undoQueueRemoval(undo))
+            XCTAssertEqual(player.currentTrack?.id, tracks[0].id)
+            guard let second = player.removeFromQueueUndoable(at: 0) else { return XCTFail("Missing undo") }
+            player.stop()
+            XCTAssertFalse(player.undoQueueRemoval(second))
+        }
+    }
+
+    func testResumePreservesQueueSourceOrderAndPositionAfterRelaunch() {
+        withPlayer { player, defaults in
+            player.play(tracks[1], in: tracks, source: .playlist(title: "Дорога"))
+            player.pause()
+            defaults.set(47.5, forKey: "player.playback.elapsed.v1")
+            let restored = AudioPlayer(settings: AppSettings(defaults: defaults),
+                                       historyStore: ListeningHistoryStore(defaults: defaults), defaults: defaults)
+            defer { restored.stop() }
+            XCTAssertEqual(restored.queue.map(\.trackID), [1, 2, 3, 4])
+            XCTAssertEqual(restored.currentIndex, 1)
+            XCTAssertEqual(restored.queueSource, .playlist(title: "Дорога"))
+            XCTAssertEqual(restored.elapsedTime, 47.5, accuracy: 0.01)
+            XCTAssertFalse(restored.isPlaying)
+        }
+    }
+
     func testReorderingDoesNotChangeThePlayingTrack() {
         withPlayer { player, _ in
             player.play(tracks[0], in: tracks, source: .library)

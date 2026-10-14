@@ -1002,3 +1002,19 @@
 "library.collections.empty" = "Сохранённые коллекции появятся здесь. Попробуйте изменить запрос или добавить музыку.";
 "library.collections.more" = "Загрузить ещё плейлисты";
 "home.quick.mixes" = "Миксы для вас";
+
+// Listening shortcuts
+"collections.pin" = "Закрепить";
+"collections.unpin" = "Открепить";
+"collections.pinned" = "Закреплено";
+"home.continue" = "Продолжить слушать";
+"home.continue.position" = "С позиции %@ · %@";
+"offline.summary.title" = "Музыка без интернета";
+"offline.summary.disconnected" = "Нет сети";
+"offline.summary.detail" = "%@ на устройстве · %@";
+"context.title" = "Музыка к моменту";
+"context.road" = "Для дороги";
+"context.work" = "Для работы";
+"context.evening" = "Спокойный вечер";
+"queue.removed" = "Удалено из очереди";
+"collections.pin_limit" = "Можно закрепить до 24 коллекций";

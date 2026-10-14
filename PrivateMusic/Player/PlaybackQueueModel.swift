@@ -34,7 +34,7 @@ enum SleepTimerMode: Equatable, Sendable {
 /// artist tracks, offline files, an "open player" context-menu action, …)
 /// is left `nil` and treated as an implicit automix seeded by the tapped
 /// track — see `AudioPlayer.queueContextTitle`.
-enum QueueSource: Equatable {
+enum QueueSource: Equatable, Codable {
     /// A mix session. `id` is the stable identity (catalog mix id, or a
     /// synthetic id for artist radio / my-music / seed mixes); `title` is
     /// display-only. Comparing queues by title alone used to rerank the

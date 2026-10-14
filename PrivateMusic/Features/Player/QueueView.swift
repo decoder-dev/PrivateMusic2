@@ -7,6 +7,8 @@ struct QueueView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var editMode: EditMode = .inactive
     @State private var confirmsClear = false
+    @State private var pendingUndo: QueueRemovalUndo?
+    @State private var undoDismissTask: Task<Void, Never>?
 
     private var showsCatalogMixRadio: Bool {
         if case .mix = player.queueSource {
@@ -33,6 +35,15 @@ struct QueueView: View {
                     )
                 } else {
                     queueList
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if let pendingUndo, player.canUndoQueueRemoval(pendingUndo) {
+                    UndoBanner(message: L10n.text("queue.removed"), actionTitle: L10n.text("action.undo")) {
+                        player.undoQueueRemoval(pendingUndo)
+                        self.pendingUndo = nil
+                        undoDismissTask?.cancel()
+                    }
                 }
             }
             .background(ThemeBackground())
@@ -71,6 +82,7 @@ struct QueueView: View {
         } message: {
             Text(L10n.text("queue.clear_upcoming_detail"))
         }
+        .onDisappear { undoDismissTask?.cancel(); pendingUndo = nil }
         .presentationDragIndicator(.visible)
     }
 
@@ -235,9 +247,11 @@ struct QueueView: View {
 
     private func removeFromQueue(at index: Int) {
         Haptics.selection()
-        player.removeFromQueue(at: index)
-        if player.queue.isEmpty {
-            dismiss()
+        pendingUndo = player.removeFromQueueUndoable(at: index)
+        undoDismissTask?.cancel()
+        undoDismissTask = Task {
+            do { try await Task.sleep(for: .seconds(8)) } catch { return }
+            pendingUndo = nil
         }
     }
 

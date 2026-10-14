@@ -5,6 +5,7 @@ import UIKit
 /// transport ticks rebuild only this subtree, not artwork and controls.
 struct PlayerProgressControls: View {
     @Environment(PlaybackProgressModel.self) private var progress
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let duration: TimeInterval
     let foreground: Color
     let secondary: Color
@@ -39,6 +40,7 @@ struct PlayerProgressControls: View {
                 ),
                 range: PlayerProgressPolicy.sliderRange(duration: duration),
                 tintColor: UIColor(trackTint ?? foreground),
+                reduceMotion: reduceMotion,
                 onEditingBegan: {
                     scrubPosition = progress.elapsedTime
                 },
@@ -106,6 +108,7 @@ private struct PlayerCompactSlider: UIViewRepresentable {
     @Binding var value: TimeInterval
     let range: ClosedRange<TimeInterval>
     let tintColor: UIColor
+    let reduceMotion: Bool
     let onEditingBegan: () -> Void
     let onCommit: (TimeInterval) -> Void
 
@@ -146,7 +149,8 @@ private struct PlayerCompactSlider: UIViewRepresentable {
         let safeValue = value.isFinite ? value : range.lowerBound
         let next = Float(min(max(safeValue, range.lowerBound), range.upperBound))
         if abs(slider.value - next) >= 0.05 {
-            slider.setValue(next, animated: false)
+            slider.setValue(next, animated: PlayerProgressPolicy.shouldAnimateStep(
+                from: TimeInterval(slider.value), to: TimeInterval(next), reduceMotion: reduceMotion))
         }
     }
 

@@ -52,6 +52,11 @@ struct CatalogView: View {
                         welcomeHeader
                     }
 
+                    if highlight.currentTrackID != nil, !highlight.isPlaying {
+                        ContinueListeningView()
+                    }
+                    ListeningContextsView(tuning: vkTuning)
+
                     if let nextStepCandidate {
                         nextStepSection(
                             nextStepCandidate,

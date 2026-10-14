@@ -1002,3 +1002,19 @@
 "library.collections.empty" = "Saved collections appear here. Try a different search or save some music.";
 "library.collections.more" = "Load more playlists";
 "home.quick.mixes" = "Your mixes";
+
+// Listening shortcuts
+"collections.pin" = "Pin collection";
+"collections.unpin" = "Unpin collection";
+"collections.pinned" = "Pinned";
+"home.continue" = "Continue listening";
+"home.continue.position" = "From %@ · %@";
+"offline.summary.title" = "Music without internet";
+"offline.summary.disconnected" = "No internet connection";
+"offline.summary.detail" = "%@ on this device · %@";
+"context.title" = "Music for the moment";
+"context.road" = "On the road";
+"context.work" = "For focus";
+"context.evening" = "Quiet evening";
+"queue.removed" = "Removed from queue";
+"collections.pin_limit" = "You can pin up to 24 collections";

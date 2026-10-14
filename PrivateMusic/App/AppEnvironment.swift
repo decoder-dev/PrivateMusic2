@@ -16,6 +16,7 @@ final class AppEnvironment {
     let homeCatalogStore: HomeCatalogStore
     let likedAlbumsStore: LikedAlbumsStore
     let offlineStore: OfflineTrackStore
+    let pinnedCollectionsStore = PinnedCollectionsStore()
     let pinnedMixStore: PinnedMixStore
     let mixFeedbackStore: MixFeedbackStore
     let homePersonalizationStore: HomePersonalizationStore
@@ -103,6 +104,7 @@ final class AppEnvironment {
             accountID: sessionStore.resolvedOfflineAccountID
         )
         self.pinnedMixStore = pinnedMixStore
+        pinnedCollectionsStore.configure(accountID: sessionStore.resolvedOfflineAccountID)
         let mixFeedbackStore = MixFeedbackStore()
         mixFeedbackStore.configure(
             accountID: sessionStore.resolvedOfflineAccountID
@@ -395,6 +397,7 @@ final class AppEnvironment {
         offlineStore.configure(accountID: accountID)
         OfflinePlaylistStore.shared.configure(accountID: accountID)
         pinnedMixStore.configure(accountID: accountID)
+        pinnedCollectionsStore.configure(accountID: accountID)
         mixFeedbackStore.configure(accountID: accountID)
         homePersonalizationStore.configure(accountID: accountID)
     }
