@@ -42,11 +42,8 @@ struct ListeningStatsView: View {
         }
     }
 
-    private var summary: ListeningSummary {
-        ListeningSummary.make(from: data, period: period)
-    }
-
     var body: some View {
+        let summary = ListeningSummary.make(from: data, period: period)
         ScrollView {
             VStack(alignment: .leading, spacing: BubbleSpacing.section) {
                 Picker(L10n.text("stats.period.picker"), selection: $scope) {
@@ -67,10 +64,10 @@ struct ListeningStatsView: View {
                         descriptionIsLocalizedKey: false
                     )
                 } else {
-                    totals
-                    if !summary.topArtists.isEmpty { topArtists }
-                    if !summary.topTracks.isEmpty { topTracks }
-                    habits
+                    totals(summary)
+                    if !summary.topArtists.isEmpty { topArtists(summary) }
+                    if !summary.topTracks.isEmpty { topTracks(summary) }
+                    habits(summary)
                 }
 
                 Text(L10n.text("stats.privacy_footer"))
@@ -174,7 +171,7 @@ struct ListeningStatsView: View {
 
     // MARK: Sections
 
-    private var totals: some View {
+    private func totals(_ summary: ListeningSummary) -> some View {
         VStack(alignment: .leading, spacing: BubbleSpacing.l) {
             VStack(alignment: .leading, spacing: BubbleSpacing.xs) {
                 Text(L10n.text("stats.total_time"))
@@ -210,7 +207,7 @@ struct ListeningStatsView: View {
         }
     }
 
-    private var topArtists: some View {
+    private func topArtists(_ summary: ListeningSummary) -> some View {
         AppGroupedSection(title: "stats.top_artists") {
             ForEach(Array(summary.topArtists.enumerated()), id: \.element.id) { index, entry in
                 if index > 0 { Divider().padding(.leading, 54) }
@@ -219,7 +216,7 @@ struct ListeningStatsView: View {
         }
     }
 
-    private var topTracks: some View {
+    private func topTracks(_ summary: ListeningSummary) -> some View {
         AppGroupedSection(title: "stats.top_tracks") {
             ForEach(Array(summary.topTracks.enumerated()), id: \.element.id) { index, entry in
                 if index > 0 { Divider().padding(.leading, 54) }
@@ -264,10 +261,10 @@ struct ListeningStatsView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var habits: some View {
+    private func habits(_ summary: ListeningSummary) -> some View {
         AppGroupedSection(title: "stats.when") {
             VStack(alignment: .leading, spacing: BubbleSpacing.m) {
-                hourChart
+                hourChart(summary)
                 if let hour = summary.peakHour {
                     Label(
                         L10n.format("stats.peak_hour", String(format: "%02d:00", hour)),
@@ -293,7 +290,7 @@ struct ListeningStatsView: View {
         }
     }
 
-    private var hourChart: some View {
+    private func hourChart(_ summary: ListeningSummary) -> some View {
         let peak = max(summary.hourSeconds.max() ?? 0, 1)
         return VStack(spacing: BubbleSpacing.xs) {
             HStack(alignment: .bottom, spacing: 3) {

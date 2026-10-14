@@ -52,7 +52,7 @@ enum AppLogRedaction {
             (#"(?i)((?:extra|sig|sid|secret|password)=)[^&\s]+"#, "$1<redacted>"),
             // The same keys when a body is logged as JSON.
             (
-                #"(?i)("(?:access_token|refresh_token|token|access_key|secret|password|remixsid|sid|extra)"\s*:\s*")[^"]*"#,
+                #"(?i)("(?:access_token|refresh_token|token|access_key|secret|password|remixsid|sid|extra)"\s*:\s*")(?:\\.|[^"\\])*"#,
                 "$1<redacted>"
             ),
             (#"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}"#, "$1<redacted>"),

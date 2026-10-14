@@ -111,8 +111,22 @@ enum PlaybackClockPolicy {
     static let activeInterval: TimeInterval = 0.5
     static let backgroundInterval: TimeInterval = 2
 
-    /// A crossfade is armed from the clock, so it keeps the fast tick: a 2 s
-    /// tick could step over a sub-second fade window entirely.
+    /// Only a feasible, approaching crossfade needs the fast background clock.
+    /// One coarse tick of headroom prevents stepping over its preparation window.
+    static func needsFastCrossfadeClock(
+        eligible: Bool,
+        remaining: TimeInterval,
+        fadeSeconds: TimeInterval
+    ) -> Bool {
+        guard eligible, remaining.isFinite, remaining > 0 else { return false }
+        let preparation = max(
+            PlaybackTransitionPolicy.prepareLeadIn,
+            PlaybackTransitionPolicy.normalizedDuration(fadeSeconds) + 0.7
+        )
+        return remaining <= preparation + backgroundInterval
+    }
+
+    /// The caller passes actual crossfade eligibility, not the saved preference.
     static func interval(
         interfaceActive: Bool,
         crossfadeEnabled: Bool

@@ -115,7 +115,7 @@ struct PremiumSecondaryButtonStyle: ButtonStyle {
                     .stroke(Color.primary.opacity(0.1), lineWidth: 1)
             }
             .contentShape(RoundedRectangle(cornerRadius: PremiumLayout.controlRadius))
-            .opacity(isEnabled ? 1 : 0.5)
+            .opacity(!isEnabled ? 0.5 : configuration.isPressed ? 0.85 : 1)
     }
 }
 

@@ -38,18 +38,18 @@ struct CatalogView: View {
                     reportedTopSafeAreaInset: topSafeAreaInset
                 )
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: BubbleSpacing.xxl) {
+                LazyVStack(alignment: .leading, spacing: BubbleSpacing.section) {
+                    HomeQuickAccessView()
+                        .padding(.top, heroForegroundTopOrigin)
+                        .id(MainTabScrollDestination.home)
                     if settings.homeStageEnabled {
                         HomeStageView(
                             width: containerWidth,
                             horizontalPadding: metrics.horizontalPadding,
-                            foregroundTopOrigin: heroForegroundTopOrigin
+                            foregroundTopOrigin: BubbleSpacing.m
                         )
-                        .id(MainTabScrollDestination.home)
                     } else {
                         welcomeHeader
-                            .padding(.top, heroForegroundTopOrigin)
-                            .id(MainTabScrollDestination.home)
                     }
 
                     if let nextStepCandidate {
@@ -105,13 +105,8 @@ struct CatalogView: View {
             // this in `tabScreen`.
             .softBottomScrollEdge()
             .clearsMiniPlayer()
-            // Gives up its own top safe-area reservation so the stage's
-            // artwork-derived atmosphere can paint behind the status bar
-            // and the compact nav title instead of stopping at a hard
-            // edge there. `HomeStageView` (and the plain welcome header)
-            // reintroduce that same inset as top padding on their own
-            // foreground content, so nothing actually moves under the
-            // Dynamic Island — only the background reaches it.
+            // The first row owns the resolved top inset; the stage below
+            // must not reserve it again. Only the background reaches chrome.
             .ignoresSafeArea(edges: .top)
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .home else { return }

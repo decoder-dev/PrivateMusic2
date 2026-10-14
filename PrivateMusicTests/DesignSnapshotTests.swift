@@ -50,6 +50,11 @@ final class DesignSnapshotTests: XCTestCase {
         XCTAssertTrue(failedSearchModel.failureOffersVPNHelp)
         let album = Album(id: 1, ownerID: 1, title: "Тихий вечер", count: 1, artists: ["Private Music"])
         let playlist = Playlist(id: 1, ownerID: 1, title: "Вечерняя музыка", count: 1)
+        let playlistModel = PlaylistLibraryViewModel()
+        let libraryPlaylists = [playlist,
+            Playlist(id: 2, ownerID: 1, title: "Музыка для долгих вечерних прогулок", count: 42),
+            Playlist(id: 1, ownerID: 2, title: "Любимые открытия", count: 18)]
+        await playlistModel.load { _ in MusicPage(items: libraryPlaylists, totalCount: 3, nextOffset: nil) }
         for theme in AppTheme.allCases {
             settings.theme = theme
             settings.appearance = theme == .dark ? .dark : .light
@@ -100,6 +105,22 @@ final class DesignSnapshotTests: XCTestCase {
                     environment: environment, settings: settings)
             capture(NavigationStack { LibraryView() }, name: "library-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            capture(NavigationStack { HomeQuickAccessView().padding(16) }, name: "quick-access-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { HomeQuickAccessView().padding(16).environment(\.dynamicTypeSize, .accessibility3) },
+                    name: "quick-access-AX-\(theme.rawValue)", width: 320, environment: environment, settings: settings)
+            capture(NavigationStack { LibraryView(section: .albums) }, name: "library-albums-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            defaults.set(true, forKey: "library.collectionGrid")
+            capture(NavigationStack { LibraryView(section: .playlists, playlistModel: playlistModel) }.defaultAppStorage(defaults),
+                    name: "library-grid-\(theme.rawValue)", width: 320, environment: environment, settings: settings)
+            defaults.set(false, forKey: "library.collectionGrid")
+            capture(NavigationStack { LibraryView(section: .playlists, playlistModel: playlistModel) }.defaultAppStorage(defaults),
+                    name: "library-list-\(theme.rawValue)", environment: environment, settings: settings)
+            defaults.set(true, forKey: "library.collectionGrid")
+            capture(NavigationStack { LibraryView(section: .playlists, playlistModel: playlistModel) }
+                    .defaultAppStorage(defaults).environment(\.dynamicTypeSize, .accessibility3),
+                    name: "library-collections-AX-\(theme.rawValue)", width: 320, environment: environment, settings: settings)
             capture(NavigationStack { AlbumDetailView(album: album, loadedTracks: [track]) }, name: "album-\(theme.rawValue)",
                     environment: environment, settings: settings)
             capture(NavigationStack { ArtistView(artist: "Private Music") }, name: "artist-\(theme.rawValue)",
@@ -285,6 +306,7 @@ final class DesignSnapshotTests: XCTestCase {
     private func homeComposition(width: CGFloat) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BubbleSpacing.section) {
+                HomeQuickAccessView()
                 HomeStageView(width: width, horizontalPadding: 16, foregroundTopOrigin: 16)
                 PremiumSectionHeader("recently_played")
                 AppGroupedSurface {

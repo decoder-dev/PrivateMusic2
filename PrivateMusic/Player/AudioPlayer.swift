@@ -135,6 +135,7 @@ final class AudioPlayer {
         didSet { syncHighlight() }
     }
     @ObservationIgnored private var isInterfaceActive = true
+    @ObservationIgnored private var lastListeningClockInterval = PlaybackClockPolicy.activeInterval
     private var playbackBackgroundTask: UIBackgroundTaskIdentifier = .invalid
 
     private(set) var isBuffering = false {
@@ -2292,15 +2293,36 @@ final class AudioPlayer {
     private var timeObserverInterval: TimeInterval {
         PlaybackClockPolicy.interval(
             interfaceActive: isInterfaceActive,
-            crossfadeEnabled: settings.crossfadeEnabled
+            crossfadeEnabled: !isInterfaceActive && needsFastCrossfadeClock
+        )
+    }
+
+    private var needsFastCrossfadeClock: Bool {
+        guard crossfadeEnabled, isPlaying,
+              duration > PlaybackTransitionPolicy.normalizedDuration(settings.crossfadeDuration) * 3 else { return false }
+        if isCrossfading { return true }
+        // Do not resolve queue URLs throughout the whole track.
+        guard PlaybackClockPolicy.needsFastCrossfadeClock(
+            eligible: true, remaining: duration - elapsedTime,
+            fadeSeconds: settings.crossfadeDuration
+        ), let upcoming = upcomingPlayback() else { return false }
+        let currentURL = (player.currentItem?.asset as? AVURLAsset)?.url
+            ?? activePlaybackURL
+        return PlaybackTransitionPolicy.allowsCrossfade(
+            userEnabled: crossfadeEnabled,
+            currentURL: currentURL, nextURL: upcoming.url,
+            requiresAudioTap: equalizer.requiresAudioTap,
+            lowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled,
+            thermalState: ProcessInfo.processInfo.thermalState
         )
     }
 
     private func installPeriodicTimeObserver() {
         let observedPlayer = player
+        let installedInterval = timeObserverInterval
         let token = observedPlayer.addPeriodicTimeObserver(
             forInterval: CMTime(
-                seconds: timeObserverInterval,
+                seconds: installedInterval,
                 preferredTimescale: 600
             ),
             queue: .main
@@ -2326,7 +2348,7 @@ final class AudioPlayer {
                    abs(self.duration - seconds) >= 0.25 {
                     self.duration = seconds
                 }
-                self.sampleListeningProgress()
+                self.sampleListeningProgress(interval: installedInterval)
                 self.sampleBufferHealth()
                 self.maybeAdvanceWithCrossfade()
                 let buffering = self.isPlaying
@@ -2360,6 +2382,11 @@ final class AudioPlayer {
                 ) {
                     self.lastPersistedSecond = wholeSecond
                     self.persistPlayback()
+                }
+                if self.player === observedPlayer,
+                   self.timeObserverInterval != installedInterval {
+                    self.registrations.removePeriodicTime()
+                    self.installPeriodicTimeObserver()
                 }
             }
         }
@@ -3059,7 +3086,10 @@ final class AudioPlayer {
     private func maybeAdvanceWithCrossfade() {
         guard isPlaying, !isCrossfading, duration > 0 else { return }
         let remaining = duration - elapsedTime
-        guard let upcoming = upcomingPlayback() else { return }
+        guard PlaybackClockPolicy.needsFastCrossfadeClock(
+            eligible: crossfadeEnabled, remaining: remaining,
+            fadeSeconds: settings.crossfadeDuration
+        ), let upcoming = upcomingPlayback() else { return }
         let currentURL = (player.currentItem?.asset as? AVURLAsset)?.url
             ?? activePlaybackURL
         guard PlaybackTransitionPolicy.allowsCrossfade(
@@ -4193,9 +4223,12 @@ final class AudioPlayer {
         bufferHealthEstimator.reset()
     }
 
-    private func sampleListeningProgress() {
+    private func sampleListeningProgress(interval: TimeInterval) {
         let sample = elapsedTime
-        defer { lastListeningElapsedTime = sample }
+        defer {
+            lastListeningElapsedTime = sample
+            lastListeningClockInterval = interval
+        }
         guard isPlaying,
               player.timeControlStatus == .playing,
               let previous = lastListeningElapsedTime else {
@@ -4204,7 +4237,7 @@ final class AudioPlayer {
         let delta = sample - previous
         guard delta > 0,
               delta <= PlaybackClockPolicy.maximumListenDelta(
-                forInterval: timeObserverInterval
+                forInterval: max(interval, lastListeningClockInterval)
               ) else { return }
         listenedPlaybackDuration += delta
         if let track = currentTrack {

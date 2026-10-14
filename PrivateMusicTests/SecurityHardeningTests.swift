@@ -60,6 +60,14 @@ final class SecurityHardeningTests: XCTestCase {
 
     // MARK: Log redaction
 
+    func testRedactionConsumesEscapedJSONSecrets() {
+        let input = #"{"password":"prefix\"suffix","access_token":"a\\b\"tail","user_id":12}"#
+        let redacted = AppLogRedaction.redact(input)
+        XCTAssertEqual(redacted, #"{"password":"<redacted>","access_token":"<redacted>","user_id":12}"#)
+        XCTAssertFalse(redacted.contains("suffix"))
+        XCTAssertFalse(redacted.contains("tail"))
+    }
+
     func testRedactionCoversSignedURLsAndJSONBodies() {
         let samples: [(String, String)] = [
             ("https://cs1.vkuseraudio.net/a/index.m3u8?extra=SECRETVALUE123&siren=1", "SECRETVALUE123"),

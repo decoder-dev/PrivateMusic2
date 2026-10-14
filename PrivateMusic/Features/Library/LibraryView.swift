@@ -1,5 +1,11 @@
 import SwiftUI
 
+enum LibrarySection: String, CaseIterable {
+    case all, tracks, playlists, albums
+
+    var title: String { L10n.text(self == .all ? "library.filter.all" : "library.\(rawValue)") }
+}
+
 struct LibraryView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SessionStore.self) private var sessionStore
@@ -22,6 +28,9 @@ struct LibraryView: View {
     @State private var tracks = TrackCollectionViewModel(source: .library)
     @State private var playlists = PlaylistLibraryViewModel()
     @State private var trackSearchQuery = ""
+    @State private var section: LibrarySection
+    @AppStorage("library.collectionGrid") private var collectionGrid = true
+
     @State private var showingEditor = false
     @State private var showingUpload = false
     @State private var showingImport = false
@@ -48,6 +57,11 @@ struct LibraryView: View {
     /// (same sticky-scroll bug Home and Explore already fixed).
     @State private var containerWidth: CGFloat = 390
 
+    init(section: LibrarySection = .all, playlistModel: PlaylistLibraryViewModel? = nil) {
+        _section = State(initialValue: section)
+        _playlists = State(initialValue: playlistModel ?? PlaylistLibraryViewModel())
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             let shelfWidth = containerWidth
@@ -57,113 +71,123 @@ struct LibraryView: View {
                 // stack recycles them out of order), so stack spacing would
                 // also push every row and divider 24pt apart.
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    listenLaterSection
+                    libraryFilters
+                        .librarySectionSpacing()
+                    if section == .all { listenLaterSection }
+                    if section == .playlists || section == .albums {
+                        collectionResults(width: shelfWidth)
+                    }
 
                     // Filtered once per pass: while searching, every reference
                     // below used to re-filter the whole library (and once per
                     // visible row for the divider test).
-                    let visible = filteredTracks
+                    let visible = searchesTracks ? filteredTracks : []
 
-                    if playlists.isLoading && playlists.playlists.isEmpty {
-                        playlistSkeleton(width: shelfWidth)
-                            .librarySectionSpacing()
-                    } else if !playlists.playlists.isEmpty,
-                              !shelfPlaylists.isEmpty {
-                        playlistShelf(width: shelfWidth)
-                            .librarySectionSpacing()
-                    }
-                    if !likedAlbumsStore.albums.isEmpty {
-                        albumShelf(width: shelfWidth)
-                            .librarySectionSpacing()
-                    }
-
-                    HStack(spacing: 12) {
-                        Text(L10n.text("library.tracks"))
-                            .font(BubbleType.section)
-                        Spacer()
-                        Text("\(tracks.totalCount)")
-                            .font(.subheadline.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                        shuffleLibraryButton
-                    }
-                    .padding(.bottom, LibraryShelfMetrics.headerSpacing)
-
-                    if tracks.isLoading && tracks.tracks.isEmpty {
-                        trackSkeleton
-                    } else if let error = tracks.errorMessage,
-                              tracks.tracks.isEmpty {
-                        VStack(spacing: 14) {
-                            EmptyStateView(
-                                title: "could_not_load_tracks",
-                                systemImage: "wifi.exclamationmark",
-                                description: error,
-                                descriptionIsLocalizedKey: false
-                            )
-                            Button(L10n.text("action.retry")) {
-                                Task { await loadTracks(force: true) }
-                            }
-                            .buttonStyle(PremiumProminentButtonStyle())
+                    if section == .all {
+                        if playlists.isLoading && playlists.playlists.isEmpty {
+                            playlistSkeleton(width: shelfWidth)
+                                .librarySectionSpacing()
+                        } else if !playlists.playlists.isEmpty,
+                                  !shelfPlaylists.isEmpty {
+                            playlistShelf(width: shelfWidth)
+                                .librarySectionSpacing()
                         }
-                        .frame(minHeight: 260)
-                    } else if tracks.tracks.isEmpty && !isSearchingLibrary {
-                        EmptyStateView(
-                            title: "your_library_is_empty",
-                            systemImage: "music.note",
-                            description: "tracks_added_to_your_vk_library_will_appear_here"
-                        )
-                        .frame(minHeight: 260)
-                    } else if visible.isEmpty && isSearchingLibrary {
-                        ProgressView(L10n.text("searching"))
-                            .frame(maxWidth: .infinity, minHeight: 220)
-                    } else if visible.isEmpty && tracks.errorMessage == nil {
-                        EmptyStateView(
-                            title: "no_results",
-                            systemImage: "magnifyingglass",
-                            description: "try_changing_your_query"
-                        )
-                        .frame(minHeight: 220)
-                    } else {
-                        // Keep tracks in the same LazyVStack as the shelves —
-                        // a nested LazyVStack inside ScrollView recycles rows
-                        // out of order and looks like a scrambled library.
-                        ForEach(
-                            Array(visible.enumerated()),
-                            id: \.element.id
-                        ) { index, track in
-                            libraryRow(track)
-                                .onAppear {
-                                    loadMoreIfNeeded(after: track)
-                                }
-                            if index < visible.count - 1 {
-                                Divider().padding(.leading, 66)
-                            }
+                        if !likedAlbumsStore.albums.isEmpty {
+                            albumShelf(width: shelfWidth)
+                                .librarySectionSpacing()
                         }
+
                     }
-                    if let error = tracks.errorMessage, !tracks.tracks.isEmpty {
-                        VStack(spacing: 10) {
-                            Text(error)
-                                .font(.footnote)
+
+                    if section == .all || section == .tracks {
+                        HStack(spacing: 12) {
+                            Text(L10n.text("library.tracks"))
+                                .font(BubbleType.section)
+                            Spacer()
+                            Text("\(tracks.totalCount)")
+                                .font(.subheadline.monospacedDigit())
                                 .foregroundStyle(.secondary)
-                            Button(L10n.text("action.retry")) {
-                                Task {
-                                    if tracks.nextPageOffset == nil {
-                                        await loadTracks(force: true)
+                            shuffleLibraryButton
+                        }
+                        .padding(.bottom, LibraryShelfMetrics.headerSpacing)
+
+                        if tracks.isLoading && tracks.tracks.isEmpty {
+                            trackSkeleton
+                        } else if let error = tracks.errorMessage,
+                                  tracks.tracks.isEmpty {
+                            VStack(spacing: 14) {
+                                EmptyStateView(
+                                    title: "could_not_load_tracks",
+                                    systemImage: "wifi.exclamationmark",
+                                    description: error,
+                                    descriptionIsLocalizedKey: false
+                                )
+                                Button(L10n.text("action.retry")) {
+                                    Task { await loadTracks(force: true) }
+                                }
+                                .buttonStyle(PremiumProminentButtonStyle())
+                            }
+                            .frame(minHeight: 260)
+                        } else if tracks.tracks.isEmpty && !isSearchingLibrary {
+                            EmptyStateView(
+                                title: "your_library_is_empty",
+                                systemImage: "music.note",
+                                description: "tracks_added_to_your_vk_library_will_appear_here"
+                            )
+                            .frame(minHeight: 260)
+                        } else if visible.isEmpty && isSearchingLibrary {
+                            ProgressView(L10n.text("searching"))
+                                .frame(maxWidth: .infinity, minHeight: 220)
+                        } else if visible.isEmpty && tracks.errorMessage == nil {
+                            EmptyStateView(
+                                title: "no_results",
+                                systemImage: "magnifyingglass",
+                                description: "try_changing_your_query"
+                            )
+                            .frame(minHeight: 220)
+                        } else {
+                            // Keep tracks in the same LazyVStack as the shelves —
+                            // a nested LazyVStack inside ScrollView recycles rows
+                            // out of order and looks like a scrambled library.
+                            ForEach(
+                                Array(visible.enumerated()),
+                                id: \.element.id
+                            ) { index, track in
+                                libraryRow(track)
+                                    .onAppear {
+                                        loadMoreIfNeeded(after: track)
                                     }
-                                    if normalizedTrackQuery.isEmpty {
-                                        await loadNextTrackPage()
-                                    } else {
-                                        await searchRemainingLibrary()
-                                    }
+                                if index < visible.count - 1 {
+                                    Divider().padding(.leading, 66)
                                 }
                             }
-                            .buttonStyle(.bordered)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                    } else if !visible.isEmpty && isSearchingLibrary {
-                        ProgressView(L10n.text("searching"))
+                        if let error = tracks.errorMessage, !tracks.tracks.isEmpty {
+                            VStack(spacing: 10) {
+                                Text(error)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                Button(L10n.text("action.retry")) {
+                                    Task {
+                                        if tracks.nextPageOffset == nil {
+                                            await loadTracks(force: true)
+                                        }
+                                        if normalizedTrackQuery.isEmpty {
+                                            await loadNextTrackPage()
+                                        } else {
+                                            await searchRemainingLibrary()
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                            }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
+                        } else if !visible.isEmpty && isSearchingLibrary {
+                            ProgressView(L10n.text("searching"))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                        }
                     }
                 }
                 .id(MainTabScrollDestination.library)
@@ -211,7 +235,7 @@ struct LibraryView: View {
         .searchable(
             text: $trackSearchQuery,
             placement: .navigationBarDrawer(displayMode: .always),
-            prompt: L10n.text("track_or_artist")
+            prompt: L10n.text(section == .playlists || section == .albums ? "library.search.collections" : "track_or_artist")
         )
         .trackShareSheet(track: $sharingTrack)
         .toolbar {
@@ -334,8 +358,8 @@ struct LibraryView: View {
         .task(id: sessionStore.accessToken) {
             await load(force: true)
         }
-        .task(id: LibrarySearchRequest(query: normalizedTrackQuery, revision: tracks.revision)) {
-            guard !normalizedTrackQuery.isEmpty else { return }
+        .task(id: LibrarySearchRequest(query: searchesTracks ? normalizedTrackQuery : "", revision: tracks.revision)) {
+            guard searchesTracks, !normalizedTrackQuery.isEmpty else { return }
             do { try await Task.sleep(for: .milliseconds(300)) }
             catch { return }
             await searchRemainingLibrary()
@@ -433,6 +457,126 @@ struct LibraryView: View {
         } message: {
             Text(playlistDeleteErrorMessage ?? "")
         }
+    }
+
+    private var libraryFilters: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BubbleSpacing.xs) {
+                ForEach(LibrarySection.allCases, id: \.self) { item in
+                    Button { section = item } label: {
+                        Text(item.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(section == item ? settings.onAccent : Color.primary)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: PremiumLayout.minimumTapTarget)
+                            .background(section == item ? settings.accent : Color.primary.opacity(0.06), in: Capsule())
+                    }
+                    .buttonStyle(PremiumPressStyle())
+                    .accessibilityAddTraits(section == item ? .isSelected : [])
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func collectionResults(width: CGFloat) -> some View {
+        let query = normalizedTrackQuery
+        let visiblePlaylists = shelfPlaylists.filter {
+            query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
+        }
+        let visibleAlbums = likedAlbumsStore.albums.filter {
+            query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
+                || $0.artistText.localizedCaseInsensitiveContains(query)
+        }
+        let isPlaylists = section == .playlists
+        let count = isPlaylists ? visiblePlaylists.count : visibleAlbums.count
+        HStack {
+            Text(section.title).font(BubbleType.section)
+            Spacer()
+            if !dynamicTypeSize.isAccessibilitySize {
+                Button { collectionGrid.toggle() } label: {
+                    Image(systemName: collectionGrid ? "list.bullet" : "square.grid.2x2")
+                        .frame(width: PremiumLayout.minimumTapTarget, height: PremiumLayout.minimumTapTarget)
+                }
+                .buttonStyle(PremiumPressStyle())
+                .accessibilityLabel(L10n.text(collectionGrid ? "library.layout.list" : "library.layout.grid"))
+            }
+        }
+        .padding(.bottom, LibraryShelfMetrics.headerSpacing)
+        if count == 0 && !(isPlaylists && playlists.canLoadMore) {
+            if isPlaylists && playlists.isLoading {
+                ProgressView().frame(maxWidth: .infinity, minHeight: 180)
+            } else if isPlaylists, let error = playlists.errorMessage {
+                Text(error).font(.callout).foregroundStyle(.secondary)
+                Button(L10n.text("action.retry")) { Task { await load(force: true) } }
+                    .buttonStyle(PremiumSecondaryButtonStyle())
+            } else {
+                EmptyStateView(title: "no_results", systemImage: isPlaylists ? "music.note.list" : "square.stack",
+                               description: "library.collections.empty")
+                    .frame(minHeight: 220)
+            }
+        }
+        if collectionGrid && !dynamicTypeSize.isAccessibilitySize {
+            // Fixed, resolved artwork sizes preserve the same cover rhythm as shelves.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: LibraryShelfMetrics.cardWidth(for: width)), alignment: .topLeading)],
+                      alignment: .leading, spacing: BubbleSpacing.l) {
+                if isPlaylists {
+                    ForEach(Array(visiblePlaylists.enumerated()), id: \.element.libraryIdentity) { index, playlist in
+                        playlistCard(playlist, index: index, isLast: index == visiblePlaylists.count - 1, width: width)
+                    }
+                } else {
+                    ForEach(visibleAlbums) { album in albumCard(album, width: width) }
+                }
+            }
+        } else if isPlaylists {
+            ForEach(visiblePlaylists, id: \.libraryIdentity) { playlist in
+                NavigationLink { PlaylistDetailView(playlist: playlist) } label: {
+                    collectionRow(title: playlist.title, subtitle: L10n.trackCount(playlist.count)) {
+                        PlaylistArtworkView(playlist: playlist, size: 56)
+                    }
+                }
+                .buttonStyle(PremiumPressStyle())
+                .contextMenu {
+                    Button(role: .destructive) { playlistPendingDeletion = playlist } label: {
+                        Label(playlistDeleteActionTitle(for: playlist), systemImage: "trash")
+                    }
+                }
+                .onAppear { if playlist.libraryIdentity == visiblePlaylists.last?.libraryIdentity { loadMorePlaylistsIfNeeded() } }
+            }
+        } else {
+            ForEach(visibleAlbums) { album in
+                NavigationLink { AlbumDetailView(album: album) } label: {
+                    collectionRow(title: Album.isUsableTitle(album.title) ? album.title : L10n.text("album"), subtitle: album.artistText) {
+                        AsyncArtwork(url: album.artworkURL, size: 56)
+                    }
+                }
+                .buttonStyle(PremiumPressStyle())
+            }
+        }
+        // A query can match only on a page not yet loaded. Offer pagination even
+        // when filtering removed the last card that normally triggers it.
+        if isPlaylists && playlists.canLoadMore {
+            Button(L10n.text("library.collections.more")) { loadMorePlaylistsIfNeeded() }
+                .buttonStyle(PremiumSecondaryButtonStyle())
+                .padding(.top, BubbleSpacing.m)
+        }
+    }
+
+    private func collectionRow<Artwork: View>(title: String, subtitle: String, @ViewBuilder artwork: () -> Artwork) -> some View {
+        HStack(spacing: BubbleSpacing.m) {
+            artwork()
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -549,6 +693,8 @@ struct LibraryView: View {
             allowsContinuation: LibrarySearchPolicy.allowsContinuation(query: trackSearchQuery)
         )
     }
+
+    private var searchesTracks: Bool { section == .all || section == .tracks }
 
     private var normalizedTrackQuery: String {
         LibrarySearchPolicy.normalized(trackSearchQuery)

@@ -20,6 +20,28 @@ final class PlaybackClockPolicyTests: XCTestCase {
         )
     }
 
+    func testCrossfadeClockOnlyArmsNearTheEndWithLookahead() {
+        XCTAssertFalse(PlaybackClockPolicy.needsFastCrossfadeClock(eligible: true, remaining: 120, fadeSeconds: 0.55))
+        XCTAssertTrue(PlaybackClockPolicy.needsFastCrossfadeClock(eligible: true, remaining: 3.25, fadeSeconds: 0.55))
+        XCTAssertFalse(PlaybackClockPolicy.needsFastCrossfadeClock(eligible: false, remaining: 1, fadeSeconds: 0.55))
+        XCTAssertFalse(PlaybackClockPolicy.needsFastCrossfadeClock(eligible: true, remaining: .nan, fadeSeconds: 0.55))
+        XCTAssertFalse(PlaybackClockPolicy.needsFastCrossfadeClock(eligible: true, remaining: 0, fadeSeconds: 0.55))
+        XCTAssertTrue(PlaybackClockPolicy.needsFastCrossfadeClock(eligible: true, remaining: 12.7, fadeSeconds: 10))
+        XCTAssertFalse(PlaybackClockPolicy.needsFastCrossfadeClock(eligible: true, remaining: 12.8, fadeSeconds: 10))
+    }
+
+    func testCoarseTickCannotSkipPreparationForSupportedFadeDurations() {
+        for fade in [0.5, 0.55, 2, 5, 10] {
+            let preparation = max(PlaybackTransitionPolicy.prepareLeadIn, fade + 0.7)
+            // The last coarse tick outside the arm window advances at most 2 s.
+            let nextRemaining = preparation + PlaybackClockPolicy.backgroundInterval + 0.01
+                - PlaybackClockPolicy.backgroundInterval
+            XCTAssertTrue(PlaybackClockPolicy.needsFastCrossfadeClock(
+                eligible: true, remaining: nextRemaining, fadeSeconds: fade))
+            XCTAssertGreaterThan(nextRemaining, fade)
+        }
+    }
+
     func testSlowClockStillCreditsListenedTime() {
         let tick = PlaybackClockPolicy.backgroundInterval
         XCTAssertGreaterThanOrEqual(

@@ -8,6 +8,7 @@ final class PlaylistLibraryViewModel {
     private(set) var isLoadingMore = false
     var errorMessage: String?
     private var nextOffset: Int?
+    var canLoadMore: Bool { nextOffset != nil }
     private var ownerID: Int?
     /// A prefetch cut short by cancellation (tab switch, token change) must
     /// not count as done: without this the next unforced load saw a
