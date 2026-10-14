@@ -3244,6 +3244,9 @@ final class AudioPlayer {
             return
         }
         if repeatMode == .one {
+            historyStore.stats.commitPending()
+            listenedTrackID = nil
+            listenedPlaybackDuration = 0
             seek(to: 0)
             resume()
         } else {

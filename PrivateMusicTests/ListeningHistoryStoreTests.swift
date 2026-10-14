@@ -3,6 +3,22 @@ import XCTest
 
 @MainActor
 final class ListeningHistoryStoreTests: XCTestCase {
+    func testRepeatedListeningCountsPlaysWhileHistoryKeepsOneRow() {
+        let suite = "ListeningHistoryStoreTests.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ListeningHistoryStore(defaults: defaults)
+        // Keep the stats test out of the user's persistent account files.
+        store.configure(accountID: -999_999)
+        store.stats.clear()
+        defer { store.stats.clear() }
+        let repeated = track(id: 1)
+        store.record(repeated)
+        store.record(repeated)
+        XCTAssertEqual(store.entries.count, 1)
+        XCTAssertEqual(ListeningSummary.make(from: store.stats.data, period: .allTime).plays, 2)
+    }
+
     func testConsecutiveSameTrackRecordIsIgnored() {
         let suite = "ListeningHistoryStoreTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

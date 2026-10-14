@@ -51,6 +51,10 @@ struct PlaylistImportView: View {
                             .font(.headline)
                         Text(L10n.format("playlist_import.done_detail", added, failed))
                             .foregroundStyle(.secondary)
+                        if model.wasStopped {
+                            Text(L10n.format("playlist_import.stopped", model.remainingCount))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     Button { dismiss() } label: {
                         Text(L10n.text("done")).frame(maxWidth: .infinity)
@@ -68,8 +72,12 @@ struct PlaylistImportView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L10n.text("action.cancel")) {
-                        operation?.cancel()
-                        dismiss()
+                        if model.stage == .creating {
+                            model.requestStop()
+                        } else {
+                            operation?.cancel()
+                            dismiss()
+                        }
                     }
                 }
             }
@@ -82,6 +90,7 @@ struct PlaylistImportView: View {
                 case .failure(let failure): fileError = failure.localizedDescription
                 }
             }
+            .interactiveDismissDisabled(model.stage == .creating)
             .onDisappear { operation?.cancel() }
             .onChange(of: sessionStore.resolvedOfflineAccountID) { _, _ in
                 operation?.cancel()
@@ -125,11 +134,16 @@ struct PlaylistImportView: View {
 
     private func progressSection(_ title: String) -> some View {
         Section {
-            ProgressView(title)
+            ProgressView(model.stopRequested ? L10n.text("playlist_import.stopping") : title)
             Button(L10n.text("action.cancel"), role: .cancel) {
-                operation?.cancel()
-                model.cancelToReview()
+                if model.stage == .creating {
+                    model.requestStop()
+                } else {
+                    operation?.cancel()
+                    model.cancelToReview()
+                }
             }
+            .disabled(model.stopRequested)
         }
     }
 
@@ -276,6 +290,15 @@ final class PlaylistImportModel {
     var rows: [Row] = []
     private(set) var progress = 0
     private(set) var error: String?
+    private(set) var wasStopped = false
+    private(set) var remainingCount = 0
+    private(set) var stopRequested = false
+    private var createdPlaylist: Playlist?
+
+    func requestStop() {
+        guard stage == .creating else { return }
+        stopRequested = true
+    }
 
     private static let requestSpacing: Duration = .milliseconds(380)
     private static let consecutiveFailureLimit = 5
@@ -305,6 +328,7 @@ final class PlaylistImportModel {
                         count: 10
                     )
                 }
+                guard !Task.isCancelled, stage == .matching else { return }
                 failures = 0
                 if let match = PlaylistImportMatcher.best(
                     for: items[index],
@@ -337,44 +361,59 @@ final class PlaylistImportModel {
         ownerID: Int,
         environment: AppEnvironment
     ) async {
+        await create(makePlaylist: {
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.createPlaylist(
+                    title: title, description: "", ownerID: ownerID, accessToken: token
+                )
+            }
+        }, addTrack: { track, playlist in
+            try await environment.withAuthorizedToken { token in
+                try await environment.musicService.add(track, to: playlist, accessToken: token)
+            }
+        })
+    }
+
+    /// Stop between writes: cancelling a request cannot undo a write VK
+    /// already accepted. Keep its result and report the partial playlist.
+    func create(
+        makePlaylist: () async throws -> Playlist,
+        addTrack: (Track, Playlist) async throws -> Void,
+        spacing: Duration = PlaylistImportModel.requestSpacing
+    ) async {
+        guard stage != .creating, createdPlaylist == nil, !Task.isCancelled else { return }
         let chosen = rows.compactMap { $0.include ? $0.match?.track : nil }
         guard !chosen.isEmpty else { return }
         error = nil
         progress = 0
+        stopRequested = false
+        wasStopped = false
+        remainingCount = chosen.count
         stage = .creating
+        var added = 0
+        var failed = 0
+        var completed = 0
         do {
-            let playlist = try await environment.withAuthorizedToken { token in
-                try await environment.musicService.createPlaylist(
-                    title: title,
-                    description: "",
-                    ownerID: ownerID,
-                    accessToken: token
-                )
-            }
-            var added = 0
-            var failed = 0
-            for (index, track) in chosen.enumerated() {
-                if Task.isCancelled { return }
-                progress = index
+            let playlist = try await makePlaylist()
+            createdPlaylist = playlist
+            for track in chosen {
+                if stopRequested || Task.isCancelled { break }
                 do {
-                    try await environment.withAuthorizedToken { token in
-                        try await environment.musicService.add(
-                            track,
-                            to: playlist,
-                            accessToken: token
-                        )
-                    }
+                    try await addTrack(track, playlist)
                     added += 1
-                } catch is CancellationError {
-                    return
                 } catch {
+                    if Task.isCancelled || error is CancellationError { break }
                     failed += 1
                 }
-                try? await Task.sleep(for: Self.requestSpacing)
+                completed += 1
+                progress = completed
+                remainingCount = chosen.count - completed
+                if stopRequested || Task.isCancelled { break }
+                try? await Task.sleep(for: spacing)
             }
+            remainingCount = chosen.count - completed
+            wasStopped = stopRequested || Task.isCancelled
             stage = .done(added: added, failed: failed)
-        } catch is CancellationError {
-            return
         } catch {
             self.error = error.localizedDescription
             stage = .review

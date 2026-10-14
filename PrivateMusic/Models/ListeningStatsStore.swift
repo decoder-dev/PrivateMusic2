@@ -28,6 +28,7 @@ final class ListeningStatsStore {
     @ObservationIgnored private var pendingSince: Date?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var isDirty = false
+    @ObservationIgnored private var pendingWrites: [URL: ListeningStatsData] = [:]
 
     init(
         directory: URL? = nil,
@@ -44,7 +45,9 @@ final class ListeningStatsStore {
         // removed.
         for name in [
             UIApplication.didEnterBackgroundNotification,
-            UIApplication.willTerminateNotification
+            UIApplication.willTerminateNotification,
+            UIApplication.protectedDataDidBecomeAvailableNotification,
+            UIApplication.willEnterForegroundNotification
         ] {
             NotificationCenter.default.addObserver(
                 forName: name,
@@ -69,6 +72,12 @@ final class ListeningStatsStore {
         isDirty = false
         data = ListeningStatsData()
         guard let url = fileURL else { return }
+        if let pending = pendingWrites[url] {
+            data = pending
+            isDirty = true
+            scheduleSave()
+            return
+        }
         guard let stored = try? Data(contentsOf: url) else { return }
         do {
             data = try JSONDecoder().decode(ListeningStatsData.self, from: stored)
@@ -133,6 +142,7 @@ final class ListeningStatsStore {
         isDirty = false
         data = ListeningStatsData()
         if let url = fileURL {
+            pendingWrites.removeValue(forKey: url)
             try? fileManager.removeItem(at: url)
         }
     }
@@ -143,16 +153,21 @@ final class ListeningStatsStore {
         commitPending()
         saveTask?.cancel()
         saveTask = nil
-        guard isDirty, let url = fileURL else { return }
-        isDirty = false
-        Self.write(data, to: url, fileManager: fileManager)
+        if isDirty, let url = fileURL { pendingWrites[url] = data }
+        for (url, snapshot) in Array(pendingWrites) {
+            if Self.write(snapshot, to: url, fileManager: fileManager) {
+                pendingWrites.removeValue(forKey: url)
+                if url == fileURL { isDirty = false }
+            }
+        }
+        if !pendingWrites.isEmpty { scheduleSave(delay: .seconds(30), markDirty: false) }
     }
 
-    private func scheduleSave() {
-        isDirty = true
+    private func scheduleSave(delay: Duration = ListeningStatsStore.saveDelay, markDirty: Bool = true) {
+        if markDirty { isDirty = true }
         guard saveTask == nil else { return }
         saveTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.saveDelay)
+            try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
             self?.saveTask = nil
             self?.saveNow()
@@ -178,16 +193,18 @@ final class ListeningStatsStore {
         _ data: ListeningStatsData,
         to url: URL,
         fileManager: FileManager
-    ) {
+    ) -> Bool {
         do {
             try fileManager.createDirectory(
                 at: url.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
             let encoded = try JSONEncoder().encode(data)
-            try encoded.write(to: url, options: [.atomic, .completeFileProtection])
+            try encoded.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return true
         } catch {
             AppLog.shared.failure(.app, "Write listening stats", error)
+            return false
         }
     }
 

@@ -988,3 +988,6 @@
 "share_card.preparing" = "Preparing the card…";
 "share_card.failed" = "Could not prepare the card";
 "share_card.preview" = "Track card preview";
+
+"playlist_import.stopped" = "Import stopped. Tracks not processed: %d. The created playlist and tracks already added remain in VK.";
+"playlist_import.stopping" = "Finishing the current request…";

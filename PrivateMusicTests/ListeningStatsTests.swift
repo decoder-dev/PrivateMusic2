@@ -2,6 +2,48 @@ import XCTest
 @testable import PrivateMusic
 
 final class ListeningStatsTests: XCTestCase {
+    @MainActor
+    func testFailedSaveRetriesWithoutNewListeningAndPreservesPreviousAccount() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("blocked-stats-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // A regular file where a directory is needed makes the write fail.
+        try Data([1]).write(to: directory)
+        let store = ListeningStatsStore(directory: directory)
+        let track = Track(trackID: 1, ownerID: 1, title: "Song", artist: "Band",
+                          duration: 200, streamURL: nil, artworkURL: nil)
+        store.configure(accountID: 7)
+        store.recordListening(seconds: 12, track: track)
+        store.saveNow()
+        store.configure(accountID: 8)
+        store.recordListening(seconds: 15, track: track)
+        store.saveNow()
+
+        try FileManager.default.removeItem(at: directory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        store.saveNow() // No new listening event: both failed writes must retry.
+        let restored = ListeningStatsStore(directory: directory)
+        restored.configure(accountID: 7)
+        XCTAssertEqual(ListeningSummary.make(from: restored.data, period: .allTime).totalSeconds, 12)
+        restored.configure(accountID: 8)
+        XCTAssertEqual(ListeningSummary.make(from: restored.data, period: .allTime).totalSeconds, 15)
+    }
+
+    @MainActor
+    func testClearingStatisticsDiscardsAFailedPendingWrite() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("cleared-stats-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data([1]).write(to: directory)
+        let store = ListeningStatsStore(directory: directory)
+        store.configure(accountID: 7)
+        store.recordPlay(Track(trackID: 1, ownerID: 1, title: "Song", artist: "Band",
+                               duration: 200, streamURL: nil, artworkURL: nil))
+        store.saveNow()
+        store.clear()
+        try FileManager.default.removeItem(at: directory)
+        store.saveNow()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("listening-7.json").path))
+    }
+
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
