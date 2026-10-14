@@ -96,6 +96,7 @@ struct OfflineDeleteAllPresentation: Equatable {
 }
 
 struct SettingsView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(AppEnvironment.self) private var environment
     @Environment(AppSettings.self) private var settings
     @Environment(AudioPlayer.self) private var player
@@ -210,15 +211,7 @@ struct SettingsView: View {
                 developerUnlockFlash = false
             }
         } label: {
-            AppGroupedRow {
-                Text(L10n.text("version"))
-                    .font(.callout.weight(.semibold))
-            } trailing: {
-                Text(version)
-                    .font(BubbleType.metadata)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
+            labeledValueRow(title: L10n.text("version"), value: version)
         }
         .buttonStyle(.plain)
         .disabled(DeveloperFeature.isUnlocked)
@@ -243,29 +236,61 @@ struct SettingsView: View {
             destination()
         } label: {
             AppGroupedRow {
-                Label(L10n.text(title), systemImage: systemImage)
-                    .font(.callout.weight(.semibold))
+                if dynamicTypeSize.isAccessibilitySize {
+                    // Preserve the whole row width for large text; decorative
+                    // symbols must not force each word into narrow fragments.
+                    VStack(alignment: .leading, spacing: BubbleSpacing.s) {
+                        Image(systemName: systemImage)
+                            .font(.system(size: 22, weight: .semibold))
+                            .accessibilityHidden(true)
+                        Text(L10n.text(title))
+                            .font(.callout.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, BubbleSpacing.m)
                     .foregroundStyle(.primary)
+                } else {
+                    Label(L10n.text(title), systemImage: systemImage)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
             } trailing: {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
             }
         }
         .buttonStyle(.plain)
     }
 
+    @ViewBuilder
     private func labeledValueRow(title: String, value: String) -> some View {
-        AppGroupedRow {
-            Text(title)
-                .font(.callout.weight(.semibold))
-        } trailing: {
-            Text(value)
-                .font(BubbleType.metadata)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
+        if dynamicTypeSize.isAccessibilitySize {
+            AppGroupedRow {
+                VStack(alignment: .leading, spacing: BubbleSpacing.xs) {
+                    Text(title).font(.callout.weight(.semibold))
+                    Text(value).font(BubbleType.metadata).foregroundStyle(.secondary)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, BubbleSpacing.m)
+            }
+        } else {
+            AppGroupedRow {
+                Text(title).font(.callout.weight(.semibold))
+            } trailing: {
+                Text(value)
+                    .font(BubbleType.metadata)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
         }
     }
+
 }
 
 // MARK: - Appearance

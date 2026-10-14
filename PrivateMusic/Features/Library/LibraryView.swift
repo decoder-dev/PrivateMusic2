@@ -29,6 +29,7 @@ struct LibraryView: View {
     @State private var playlists = PlaylistLibraryViewModel()
     @State private var trackSearchQuery = ""
     @State private var section: LibrarySection
+    @State private var visibleLibraryFilter: LibrarySection?
     @AppStorage("library.collectionGrid") private var collectionGrid = true
 
     @State private var showingEditor = false
@@ -59,6 +60,7 @@ struct LibraryView: View {
 
     init(section: LibrarySection = .all, playlistModel: PlaylistLibraryViewModel? = nil) {
         _section = State(initialValue: section)
+        _visibleLibraryFilter = State(initialValue: section)
         _playlists = State(initialValue: playlistModel ?? PlaylistLibraryViewModel())
     }
 
@@ -526,7 +528,6 @@ struct LibraryView: View {
     }
 
     private var libraryFilters: some View {
-        ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: BubbleSpacing.xs) {
                     ForEach(LibrarySection.allCases, id: \.self) { item in
@@ -543,17 +544,13 @@ struct LibraryView: View {
                         .accessibilityAddTraits(section == item ? .isSelected : [])
                     }
                 }
+                .scrollTargetLayout()
             }
-            .task(id: section) {
-                // Wait for the HStack's initial layout before positioning a
-                // preselected filter, including large accessibility text.
-                await Task.yield()
-                guard !Task.isCancelled else { return }
-                proxy.scrollTo(section, anchor: .center)
+            .scrollPosition(id: $visibleLibraryFilter, anchor: .center)
+            .onChange(of: section) { _, selected in
+                visibleLibraryFilter = selected
             }
-        }
     }
-
 
     @ViewBuilder
     private func collectionResults(width: CGFloat) -> some View {

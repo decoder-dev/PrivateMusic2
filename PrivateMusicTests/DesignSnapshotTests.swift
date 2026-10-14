@@ -122,6 +122,10 @@ final class DesignSnapshotTests: XCTestCase {
                     height: 1600, environment: environment, settings: settings)
             capture(NavigationStack { CatalogView() }, name: "home-hierarchy-\(theme.rawValue)",
                     height: 1800, environment: environment, settings: settings)
+            settings.homeStageEnabled = false
+            capture(NavigationStack { CatalogView() }, name: "home-without-stage-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            settings.homeStageEnabled = true
             capture(NavigationStack { SettingsView() }.dynamicTypeSize(.accessibility3),
                     name: "settings-AX-\(theme.rawValue)", width: 320, environment: environment, settings: settings)
             capture(NavigationStack { LibraryView(section: .albums) }, name: "library-albums-\(theme.rawValue)",
