@@ -527,7 +527,41 @@ struct LibraryView: View {
         }
     }
 
+    @ViewBuilder
     private var libraryFilters: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            // A horizontal strip cannot show long categories at large text
+            // sizes. Keep the current category readable and offer all others
+            // in the native menu instead of requiring sideways scrolling.
+            Menu {
+                ForEach(LibrarySection.allCases, id: \.self) { item in
+                    Button { section = item } label: {
+                        if section == item {
+                            Label(item.title, systemImage: "checkmark")
+                        } else {
+                            Text(item.title)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: BubbleSpacing.m) {
+                    Text(section.title)
+                        .font(.subheadline.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: BubbleSpacing.s)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 18, weight: .semibold))
+                        .accessibilityHidden(true)
+                }
+                .foregroundStyle(.primary)
+                .padding(BubbleSpacing.m)
+                .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget, alignment: .leading)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: PremiumLayout.compactRadius))
+                .contentShape(Rectangle())
+            }
+            .accessibilityLabel(L10n.text("tab.library"))
+            .accessibilityValue(section.title)
+        } else {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: BubbleSpacing.xs) {
                     ForEach(LibrarySection.allCases, id: \.self) { item in
@@ -550,6 +584,7 @@ struct LibraryView: View {
             .onChange(of: section) { _, selected in
                 visibleLibraryFilter = selected
             }
+        }
     }
 
     @ViewBuilder
