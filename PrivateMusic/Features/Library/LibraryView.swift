@@ -13,7 +13,6 @@ struct LibraryView: View {
     @Environment(NetworkMonitor.self) private var networkMonitor
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(PinnedMixStore.self) private var pinnedMixStore
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Default 40pt is two caption lines at the standard text size.
     /// Accessibility sizes grow the shelf instead of clipping the titles.
@@ -123,7 +122,6 @@ struct LibraryView: View {
                             description: "try_changing_your_query"
                         )
                         .frame(minHeight: 220)
-                        .premiumAppear()
                     } else {
                         // Keep tracks in the same LazyVStack as the shelves —
                         // a nested LazyVStack inside ScrollView recycles rows
@@ -184,13 +182,8 @@ struct LibraryView: View {
                         actionTitle: L10n.text("action.undo"),
                         onUndo: undoRemoval
                     )
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .animation(
-                reduceMotion ? nil : .easeOut(duration: 0.2),
-                value: removedTracks.map(\.id)
-            )
             .softBottomScrollEdge()
             .clearsMiniPlayer()
             .background {
@@ -209,16 +202,7 @@ struct LibraryView: View {
             }
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .library else { return }
-                if reduceMotion {
-                    proxy.scrollTo(MainTabScrollDestination.library, anchor: .top)
-                } else {
-                    withAnimation(.easeOut(duration: 0.28)) {
-                        proxy.scrollTo(
-                            MainTabScrollDestination.library,
-                            anchor: .top
-                        )
-                    }
-                }
+                proxy.scrollTo(MainTabScrollDestination.library, anchor: .top)
             }
         }
         .background(ThemeBackground())
@@ -889,7 +873,6 @@ struct LibraryView: View {
             ),
             alignment: .topLeading
         )
-        .premiumAppear(delay: min(Double(index) * 0.025, 0.2))
         .contextMenu {
             Button {
                 performPlaylistPlaybackAction(

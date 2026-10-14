@@ -14,7 +14,6 @@ struct HomeStageView: View {
     @Environment(MusicLibraryStore.self) private var libraryStore
     @Environment(ListeningHistoryStore.self) private var history
     @Environment(HomeCatalogStore.self) private var homeCatalog
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var isInLibrary = false
     /// Tracks with a library mutation in flight. A set rather than one id:
@@ -41,10 +40,6 @@ struct HomeStageView: View {
         )
     }
 
-    private var stageMotion: Animation? {
-        BubbleMotion.state(reduceMotion: reduceMotion)
-    }
-
     private var showsContextRail: Bool {
         HomeStageContextBuilder.resolveRailContexts(
             hasCurrentTrack: highlight.currentTrackID != nil,
@@ -62,15 +57,12 @@ struct HomeStageView: View {
             contextChip
                 .frame(minHeight: HomeStageMetrics.chipHeight)
                 .padding(.bottom, HomeStageMetrics.belowChip)
-                .animation(stageMotion, value: presentation)
 
             headline
                 .padding(.bottom, HomeStageMetrics.belowHeadline)
-                .animation(stageMotion, value: presentation)
 
             artwork
                 .padding(.bottom, HomeStageMetrics.belowArtwork)
-                .animation(stageMotion, value: presentation)
 
             controls
                 .padding(
@@ -79,7 +71,6 @@ struct HomeStageView: View {
                         ? HomeStageMetrics.belowTransport
                         : BubbleSpacing.m
                 )
-                .animation(stageMotion, value: presentation)
 
             HomeStageBubbleRail(
                 width: width,

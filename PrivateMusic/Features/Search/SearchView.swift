@@ -27,7 +27,6 @@ struct SearchView: View {
     @Environment(MusicLibraryStore.self) private var libraryStore
     @Environment(LikedAlbumsStore.self) private var likedAlbumsStore
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var model = SearchViewModel()
     @State private var scope: Scope = .tracks
@@ -98,19 +97,7 @@ struct SearchView: View {
                     guard request?.destination == .search else { return }
                     isSearchFocused = false
                     isSystemSearchPresented = false
-                    if reduceMotion {
-                        proxy.scrollTo(
-                            MainTabScrollDestination.search,
-                            anchor: .top
-                        )
-                    } else {
-                        withAnimation(.easeOut(duration: 0.28)) {
-                            proxy.scrollTo(
-                                MainTabScrollDestination.search,
-                                anchor: .top
-                            )
-                        }
-                    }
+                    proxy.scrollTo(MainTabScrollDestination.search, anchor: .top)
                 }
         }
     }
@@ -663,7 +650,6 @@ struct SearchView: View {
                 .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 6, leading: PremiumLayout.screenPadding,
                                              bottom: 6, trailing: PremiumLayout.screenPadding))
-                .premiumAppear(delay: min(Double(index) * 0.025, 0.2))
                 .onAppear {
                     if playlist.searchIdentity
                         == model.playlists.last?.searchIdentity {

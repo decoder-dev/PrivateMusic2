@@ -96,7 +96,6 @@ struct OfflineDeleteAllPresentation: Equatable {
 }
 
 struct SettingsView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppEnvironment.self) private var environment
     @Environment(AppSettings.self) private var settings
     @Environment(AudioPlayer.self) private var player
@@ -199,10 +198,8 @@ struct SettingsView: View {
                     .padding(.vertical, 10)
                     .background(.ultraThinMaterial, in: Capsule())
                     .padding(.bottom, 24)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: developerUnlockFlash)
     }
 
     private var versionRow: some View {
@@ -358,11 +355,7 @@ struct AppearanceSettingsView: View {
                     isOn: Binding(
                         get: { settings.hapticsEnabled },
                         set: { newValue in
-                            BubbleMotion.animate(
-                                .spring(response: 0.3, dampingFraction: 0.8)
-                            ) {
-                                settings.hapticsEnabled = newValue
-                            }
+                            settings.hapticsEnabled = newValue
                         }
                     )
                 ) {
@@ -386,9 +379,7 @@ struct AppearanceSettingsView: View {
             titleVisibility: .visible
         ) {
             Button(L10n.text("reset_appearance"), role: .destructive) {
-                BubbleMotion.animate(.easeInOut(duration: 0.25)) {
-                    settings.resetAppearance()
-                }
+                settings.resetAppearance()
             }
             Button(L10n.text("action.cancel"), role: .cancel) {}
         } message: {
@@ -441,12 +432,10 @@ struct AppearanceSettingsView: View {
         ) {
             ForEach(AppPalette.allCases) { palette in
                 Button {
-                    BubbleMotion.animate(.easeInOut(duration: 0.25)) {
-                        settings.palette = palette
-                        // A palette ships with its accent; the listener can
-                        // still choose another one below.
-                        settings.accentChoice = palette.accent
-                    }
+                    settings.palette = palette
+                    // A palette ships with its accent; the listener can
+                    // still choose another one below.
+                    settings.accentChoice = palette.accent
                     Haptics.selection()
                 } label: {
                     VStack(spacing: 7) {
@@ -513,9 +502,7 @@ struct AppearanceSettingsView: View {
         ) {
             ForEach(AppAccent.allCases) { accent in
                 Button {
-                    BubbleMotion.animate(.easeInOut(duration: 0.2)) {
-                        settings.accentChoice = accent
-                    }
+                    settings.accentChoice = accent
                     Haptics.selection()
                 } label: {
                     VStack(spacing: 7) {
@@ -579,10 +566,8 @@ struct AppearanceSettingsView: View {
                        settings.palette.background(for: .dark)[0].color]
                     : settings.palette.background(for: theme).map(\.color)
                 Button {
-                    BubbleMotion.animate(.easeInOut(duration: 0.25)) {
-                        settings.appearance = mode
-                        if mode != .system { settings.theme = theme }
-                    }
+                    settings.appearance = mode
+                    if mode != .system { settings.theme = theme }
                 } label: {
                     VStack(spacing: 7) {
                         Circle()
@@ -989,7 +974,6 @@ struct EqualizerSettingsView: View {
 // MARK: - Offline & Storage
 
 struct OfflineStorageSettingsView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppEnvironment.self) private var environment
     @Environment(AppSettings.self) private var settings
     @Environment(OfflineTrackStore.self) private var offlineStore
@@ -1065,10 +1049,6 @@ struct OfflineStorageSettingsView: View {
                                         )
                                     }
                                 }
-                                .animation(
-                                    reduceMotion ? nil : .easeInOut(duration: 0.4),
-                                    value: usage.totalBytes
-                                )
                             }
                         }
                     }

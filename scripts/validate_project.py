@@ -1224,14 +1224,14 @@ if re.search(
 if ".simultaneousGesture(miniPlayerGesture)" not in mini_player_source:
     fail("mini-player swipe gesture must not intercept its open button")
 if "SystemPlaybackAccessory" in main_tab_source and (
-    "MiniPlayerView(playerNamespace: playerNamespace)"
+    "MiniPlayerView()"
     not in main_tab_source
 ):
     fail("system accessory must reuse MiniPlayerView when expanded")
 if "SystemPlaybackAccessory" in main_tab_source:
     for required_accessory_symbol in (
         "tabViewBottomAccessoryPlacement",
-        "InlineMiniPlayerView(playerNamespace: playerNamespace)",
+        "InlineMiniPlayerView()",
         "MiniPlayerAccessoryMode",
         "@unknown default",
     ):
@@ -1254,13 +1254,11 @@ for required_inline_symbol in (
             f"inline mini-player is missing symbol: {required_inline_symbol}"
         )
 if "struct MiniPlayerArtworkView" not in all_source:
-    fail("MiniPlayerArtworkView must provide real artwork crossfade")
+    fail("MiniPlayerArtworkView must keep the previous artwork until the next is ready")
 if "axisDominanceRatio" not in all_source:
     fail("mini-player gestures must require axis dominance")
 if "enum MiniPlayerAccessoryPolicy" not in all_source:
     fail("MiniPlayerAccessoryPolicy must exist for unit-tested accessory layout")
-if "reduceMotionCrossfadeDuration" not in all_source:
-    fail("artwork crossfade must honor Reduce Motion duration")
 if "loadedIdentity == loadIdentity ? image : nil" not in cached_image_source:
     fail("cached artwork must never display a stale request identity")
 if "Text(track.duration.formattedDuration)" not in library_view_source:
@@ -2047,6 +2045,39 @@ def require_motion_respects_reduce_motion() -> None:
 
 
 require_motion_respects_reduce_motion()
+
+
+def require_flat_interface() -> None:
+    """The interface is flat: no decorative animation in app sources.
+
+    System motion (sheets, navigation, scrolling, finger-driven gestures)
+    stays; anything the app animates on its own does not. A deliberate
+    exception carries `// motion-allowed: <reason>` on the same line.
+    """
+    forbidden = re.compile(
+        r"withAnimation\(|\.animation\(|\.transition\(|\.repeatForever|"
+        r"TimelineView\(\.animation|matchedGeometryEffect|matchedTransitionSource|"
+        r"navigationTransition|symbolEffect|contentTransition|phaseAnimator|"
+        r"keyframeAnimator"
+    )
+    offenders = []
+    for path in swift_files:
+        relative = path.relative_to(ROOT).as_posix()
+        for number, line in enumerate(
+            path.read_text(encoding="utf-8").split("\n"), start=1
+        ):
+            code = line.split("//", 1)[0]
+            if forbidden.search(code) and "motion-allowed:" not in line:
+                offenders.append(f"{relative}:{number}")
+    if offenders:
+        fail(
+            "decorative animation in a flat interface (add "
+            "`// motion-allowed: reason` only for a real need): "
+            + ", ".join(offenders)
+        )
+
+
+require_flat_interface()
 
 
 def require_ranking_lives_in_a_tested_policy() -> None:

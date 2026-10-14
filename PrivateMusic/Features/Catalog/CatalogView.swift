@@ -14,7 +14,6 @@ struct CatalogView: View {
     @Environment(MixFeedbackStore.self) private var mixFeedback
     @Environment(HomePersonalizationStore.self) private var personalization
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var actionErrorMessage: String?
     @State private var sharingTrack: Track?
     @State private var selectedAlbum: Album?
@@ -227,13 +226,7 @@ struct CatalogView: View {
         _ proxy: ScrollViewProxy,
         destination: MainTabScrollDestination
     ) {
-        if reduceMotion {
-            proxy.scrollTo(destination, anchor: .top)
-        } else {
-            withAnimation(.easeOut(duration: 0.28)) {
-                proxy.scrollTo(destination, anchor: .top)
-            }
-        }
+        proxy.scrollTo(destination, anchor: .top)
     }
 
     private var nextStepRefreshKey: HomeNextStepRefreshKey {

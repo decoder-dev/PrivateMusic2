@@ -59,7 +59,6 @@ struct MainTabView: View {
     @Environment(SessionStore.self) private var sessionStore
     @Environment(AppSettings.self) private var settings
     @Environment(AudioPlayer.self) private var player
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     /// Read once per body rather than stored: the idiom cannot change
     /// while the app runs, and `UIDevice` is main-actor state.
@@ -69,7 +68,6 @@ struct MainTabView: View {
     @State private var selectedTab: MainTab = .home
     @State private var scrollCoordinator = MainTabScrollCoordinator()
     @State private var dockHeight: CGFloat = 0
-    let playerNamespace: Namespace.ID
 
     var body: some View {
         Group {
@@ -79,10 +77,7 @@ struct MainTabView: View {
             ) {
                 regularWidthSplitView
             } else if #available(iOS 26.0, *), !settings.classicChrome {
-                SystemLiquidGlassTabView(
-                    selection: $selectedTab,
-                    playerNamespace: playerNamespace
-                )
+                SystemLiquidGlassTabView(selection: $selectedTab)
             } else {
                 // Also the iOS 26 path when the classic look is pinned: the
                 // system tab bar and its floating `tabViewBottomAccessory`
@@ -128,9 +123,7 @@ struct MainTabView: View {
             regularTabDetail
                 .environment(\.playbackDockReservesContent, true)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    RegularWidthPlaybackBar(
-                        playerNamespace: playerNamespace
-                    )
+                    RegularWidthPlaybackBar()
                 }
         }
     }
@@ -198,10 +191,7 @@ struct MainTabView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            PlaybackTabDock(
-                selection: $selectedTab,
-                playerNamespace: playerNamespace
-            )
+            PlaybackTabDock(selection: $selectedTab)
             .background(
                 GeometryReader { proxy in
                     Color.clear.preference(
@@ -213,14 +203,10 @@ struct MainTabView: View {
         }
         .onPreferenceChange(PlaybackDockHeightKey.self) { height in
             let rounded = height.rounded()
-            // Ignore sub-point spring intermediates so tab safe-area insets
-            // do not thrash every animation frame when the mini player appears.
+            // Ignore sub-point differences so tab safe-area insets do not
+            // thrash when the mini player appears.
             guard abs(rounded - dockHeight) >= 1 else { return }
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                dockHeight = rounded
-            }
+            dockHeight = rounded
         }
     }
 
@@ -254,10 +240,6 @@ struct MainTabView: View {
             .accessibilityHidden(selectedTab != tab)
             .zIndex(selectedTab == tab ? 1 : 0)
             .environment(\.playbackDockReservesContent, true)
-            .animation(
-                reduceMotion ? nil : .easeInOut(duration: 0.18),
-                value: selectedTab
-            )
     }
 }
 
@@ -267,7 +249,6 @@ struct MainTabView: View {
 private struct SystemLiquidGlassTabView: View {
     @Environment(AudioPlayer.self) private var player
     @Binding var selection: MainTab
-    let playerNamespace: Namespace.ID
 
     var body: some View {
         TabView(selection: $selection) {
@@ -312,10 +293,7 @@ private struct SystemLiquidGlassTabView: View {
         }
         .tabBarMinimizeBehavior(.onScrollDown)
         .modifier(
-            PlaybackAccessoryModifier(
-                isEnabled: player.currentTrack != nil,
-                playerNamespace: playerNamespace
-            )
+            PlaybackAccessoryModifier(isEnabled: player.currentTrack != nil)
         )
     }
 }
@@ -325,18 +303,17 @@ private struct SystemLiquidGlassTabView: View {
 @available(iOS 26.0, *)
 private struct PlaybackAccessoryModifier: ViewModifier {
     let isEnabled: Bool
-    let playerNamespace: Namespace.ID
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.1, *) {
             content.tabViewBottomAccessory(isEnabled: isEnabled) {
-                SystemPlaybackAccessory(playerNamespace: playerNamespace)
+                SystemPlaybackAccessory()
             }
         } else {
             content.tabViewBottomAccessory {
                 if isEnabled {
-                    SystemPlaybackAccessory(playerNamespace: playerNamespace)
+                    SystemPlaybackAccessory()
                 }
             }
         }
@@ -347,7 +324,6 @@ private struct PlaybackAccessoryModifier: ViewModifier {
 private struct SystemPlaybackAccessory: View {
     @Environment(AudioPlayer.self) private var player
     @Environment(\.tabViewBottomAccessoryPlacement) private var accessoryPlacement
-    let playerNamespace: Namespace.ID
 
     var body: some View {
         switch MiniPlayerAccessoryPolicy.presentation(
@@ -360,7 +336,6 @@ private struct SystemPlaybackAccessory: View {
             // System accessory already supplies Liquid Glass — don't stack
             // a second glass plate (looks like a floating black pill).
             MiniPlayerView(
-                playerNamespace: playerNamespace,
                 showsOwnGlassChrome: false,
                 fillsAccessorySlot: true
             )
@@ -369,7 +344,7 @@ private struct SystemPlaybackAccessory: View {
             .clipped()
         case .inline:
             // Compact chrome sized for the minimized system tab bar.
-            InlineMiniPlayerView(playerNamespace: playerNamespace)
+            InlineMiniPlayerView()
         }
     }
 }
@@ -397,30 +372,16 @@ private extension MiniPlayerAccessoryMode {
 
 private struct RegularWidthPlaybackBar: View {
     @Environment(AudioPlayer.self) private var player
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let playerNamespace: Namespace.ID
 
     var body: some View {
         VStack(spacing: 0) {
             if player.currentTrack != nil {
-                MiniPlayerView(playerNamespace: playerNamespace)
+                MiniPlayerView()
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
                     .padding(.bottom, 5)
-                    .transition(
-                        .move(edge: .bottom).combined(with: .opacity)
-                    )
             }
         }
-        .animation(
-            reduceMotion
-                ? nil
-                : .spring(response: 0.34, dampingFraction: 0.86),
-            // Presence only: keyed on the track id, every skip sprang the
-            // whole dock (title, artwork, controls) instead of just the
-            // mini player sliding in the first time.
-            value: player.currentTrack != nil
-        )
     }
 }
 
@@ -430,10 +391,8 @@ private struct PlaybackTabDock: View {
     @Environment(AudioPlayer.self) private var player
     @Environment(AppSettings.self) private var settings
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Binding var selection: MainTab
-    let playerNamespace: Namespace.ID
 
     var body: some View {
         // Do NOT wrap mini-player + tab capsule + search in one
@@ -446,10 +405,7 @@ private struct PlaybackTabDock: View {
         // wastes usable screen when it floats high.
         VStack(spacing: 12) {
             if player.currentTrack != nil {
-                MiniPlayerView(playerNamespace: playerNamespace)
-                    .transition(
-                        .move(edge: .bottom).combined(with: .opacity)
-                    )
+                MiniPlayerView()
             }
 
             HStack(spacing: 10) {
@@ -472,15 +428,6 @@ private struct PlaybackTabDock: View {
         .padding(.horizontal, 12)
         .padding(.top, 6)
         .padding(.bottom, 0)
-        .animation(
-            reduceMotion
-                ? nil
-                : .spring(response: 0.34, dampingFraction: 0.86),
-            // Presence only: keyed on the track id, every skip sprang the
-            // whole dock (title, artwork, controls) instead of just the
-            // mini player sliding in the first time.
-            value: player.currentTrack != nil
-        )
     }
 
     private var primaryTabs: [MainTab] {
@@ -536,9 +483,8 @@ private struct PlaybackTabDock: View {
             VStack(spacing: BubbleSpacing.xs - 1) {
                 Image(systemName: tab.image)
                     .font(.system(size: 19, weight: .semibold))
-                    // Deliberately small: the selection surface carries the
-                    // state, so the row never reflows as tabs change.
-                    .scaleEffect(selection == tab ? 1.02 : 1)
+                    // The selection surface carries the state, so the row
+                    // never reflows or scales as tabs change.
                     .frame(width: 34, height: 26)
                     .background {
                         if selection == tab {
@@ -556,10 +502,6 @@ private struct PlaybackTabDock: View {
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     .minimumScaleFactor(0.78)
             }
-            .animation(
-                BubbleMotion.state(reduceMotion: reduceMotion),
-                value: selection
-            )
             .foregroundStyle(
                 selection == tab
                     ? selectedColor
@@ -583,15 +525,7 @@ private struct PlaybackTabDock: View {
             scrollCoordinator.scrollToTop(tab.scrollDestination)
             return
         }
-        if reduceMotion {
-            selection = tab
-        } else {
-            withAnimation(
-                .spring(response: 0.32, dampingFraction: 0.82)
-            ) {
-                selection = tab
-            }
-        }
+        selection = tab
     }
 
     private var selectedColor: Color {

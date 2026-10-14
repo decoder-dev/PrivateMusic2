@@ -4,7 +4,6 @@ import SwiftUI
 /// listen at, from the counters kept on this device.
 struct ListeningStatsView: View {
     @Environment(AppEnvironment.self) private var environment
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var scope: Scope = .month
     @State private var chosenMonth: String?
     @State private var chosenYear: Int?
@@ -110,7 +109,6 @@ struct ListeningStatsView: View {
         } message: {
             Text(L10n.text("stats.reset_confirm_message"))
         }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: scope)
     }
 
     // MARK: Period

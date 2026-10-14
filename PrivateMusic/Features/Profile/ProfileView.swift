@@ -5,7 +5,6 @@ struct ProfileView: View {
     @Environment(SessionStore.self) private var sessionStore
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(\.openURL) private var openURL
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showingLogoutConfirmation = false
 
@@ -26,16 +25,7 @@ struct ProfileView: View {
             .clearsMiniPlayer()
             .onChange(of: scrollCoordinator.request) { _, request in
                 guard request?.destination == .profile else { return }
-                if reduceMotion {
-                    proxy.scrollTo(MainTabScrollDestination.profile, anchor: .top)
-                } else {
-                    withAnimation(.easeOut(duration: 0.28)) {
-                        proxy.scrollTo(
-                            MainTabScrollDestination.profile,
-                            anchor: .top
-                        )
-                    }
-                }
+                proxy.scrollTo(MainTabScrollDestination.profile, anchor: .top)
             }
         }
         .background(ThemeBackground())

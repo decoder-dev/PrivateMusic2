@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct OfflineDownloadsView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppEnvironment.self) private var environment
     /// Highlight only: observing `AudioPlayer` here would rebuild the whole
     /// downloads list on every buffering / duration tick. Playback actions go
@@ -98,7 +97,6 @@ struct OfflineDownloadsView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: contentSnapshot)
         .background(ThemeBackground())
         .scrollContentBackground(.hidden)
         .clearsMiniPlayer(includingWhenDockReservesSpace: true)
@@ -140,9 +138,7 @@ struct OfflineDownloadsView: View {
                 } else if section != .playlists,
                           !recordsForCurrentSection.isEmpty {
                     Button(L10n.text("select")) {
-                        BubbleMotion.animate(.easeInOut(duration: 0.2)) {
-                            selection = []
-                        }
+                        selection = []
                     }
                 }
             }
@@ -362,12 +358,6 @@ struct OfflineDownloadsView: View {
         )
     }
 
-    private var contentSnapshot: [String] {
-        validRecords.map(\.id)
-            + activeSections.map(\.id)
-            + downloadedSections.map(\.id)
-    }
-
     // MARK: - Sections
 
     @ViewBuilder
@@ -435,7 +425,6 @@ struct OfflineDownloadsView: View {
                 Section {
                     ForEach(active) { section in
                         activeDownloadRow(section)
-                            .transition(.opacity)
                     }
                 } header: {
                     Text(L10n.text("active_downloads"))
@@ -445,7 +434,6 @@ struct OfflineDownloadsView: View {
                 Section {
                     ForEach(done) { section in
                         downloadedPlaylistRow(section)
-                            .transition(.opacity)
                     }
                 } header: {
                     Text(L10n.text("downloaded_playlists"))
@@ -513,9 +501,7 @@ struct OfflineDownloadsView: View {
             },
             onLongPress: {
                 guard selection == nil else { return }
-                BubbleMotion.animate(.easeInOut(duration: 0.2)) {
-                    selection = [record.track.id]
-                }
+                selection = [record.track.id]
                 Haptics.selection()
             },
             onToggleSelection: {
@@ -564,7 +550,7 @@ struct OfflineDownloadsView: View {
                 .accessibilityLabel(L10n.text("cancel_download"))
             }
             if let progress = status.progress {
-                AnimatedProgressView(progress: progress)
+                DownloadProgressView(progress: progress)
                     .padding(.leading, 56)
             }
         }
@@ -832,16 +818,12 @@ struct OfflineDownloadsView: View {
         } else {
             current.insert(track.id)
         }
-        BubbleMotion.animate(.easeInOut(duration: 0.2)) {
-            selection = current
-        }
+        selection = current
         Haptics.selection()
     }
 
     private func exitSelection() {
-        BubbleMotion.animate(.easeInOut(duration: 0.2)) {
-            selection = nil
-        }
+        selection = nil
     }
 
     private func removeSelectedTracks() {
@@ -1181,14 +1163,11 @@ private struct DownloadStorageSummary: View {
     }
 }
 
-// MARK: - Animated Progress
+// MARK: - Download Progress
 
-private struct AnimatedProgressView: View {
+private struct DownloadProgressView: View {
     let progress: Double
     @Environment(AppSettings.self) private var settings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    @State private var animatedProgress: Double = 0
 
     var body: some View {
         HStack(spacing: 6) {
@@ -1201,26 +1180,16 @@ private struct AnimatedProgressView: View {
                         .fill(settings.accent)
                         .frame(
                             width: proxy.size.width
-                                * animatedProgress,
+                                * boundedProgress,
                             height: 4
-                        )
-                        .animation(
-                            reduceMotion ? nil : .easeInOut(duration: 0.4),
-                            value: animatedProgress
                         )
                 }
             }
             .frame(width: 50, height: 4)
-            Text("\(Int(animatedProgress * 100))%")
+            Text("\(Int(boundedProgress * 100))%")
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .frame(width: 32, alignment: .trailing)
-        }
-        .onAppear {
-            animatedProgress = boundedProgress
-        }
-        .onChange(of: boundedProgress) { _, newProgress in
-            animatedProgress = newProgress
         }
     }
 

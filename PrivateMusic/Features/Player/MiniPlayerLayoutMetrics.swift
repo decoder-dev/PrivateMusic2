@@ -43,6 +43,4 @@ enum MiniPlayerLayoutMetrics {
     static let containerShadowRadius: CGFloat = 8
     static let containerShadowY: CGFloat = 3
     static let glassTintOpacity: CGFloat = 0.03
-    static let trackCrossfadeDuration: TimeInterval = 0.32
-    static let reduceMotionCrossfadeDuration: TimeInterval = 0.08
 }

@@ -1,11 +1,14 @@
 import SwiftUI
 
+/// Four still bars while playing, a pause glyph otherwise. It does not
+/// move: an equalizer that dances on every visible row costs frames and
+/// battery for no information the play state does not already give.
 struct PlaybackIndicatorView: View {
     let isPlaying: Bool
     var color: Color?
     @Environment(AppSettings.self) private var settings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.scenePhase) private var scenePhase
+
+    private static let barHeights: [CGFloat] = [0.46, 0.88, 0.66, 0.38]
 
     private var resolvedColor: Color {
         color ?? settings.accent
@@ -14,14 +17,7 @@ struct PlaybackIndicatorView: View {
     var body: some View {
         Group {
             if isPlaying {
-                if !reduceMotion && scenePhase == .active && !ProcessInfo.processInfo.isLowPowerModeEnabled {
-                    TimelineView(.animation(minimumInterval: 0.12)) { context in
-                        bars(elapsed: context.date.timeIntervalSinceReferenceDate, animated: true)
-                            .animation(.linear(duration: 0.12), value: context.date)
-                    }
-                } else {
-                    bars(elapsed: 0, animated: false)
-                }
+                bars
             } else {
                 Image(systemName: "pause.fill")
             }
@@ -33,13 +29,11 @@ struct PlaybackIndicatorView: View {
         )
     }
 
-    private func bars(elapsed: TimeInterval, animated: Bool) -> some View {
+    private var bars: some View {
         HStack(alignment: .bottom, spacing: 2) {
-            ForEach(0..<4, id: \.self) { bar in
+            ForEach(Self.barHeights.indices, id: \.self) { bar in
                 Capsule()
-                    .frame(width: 3, height: CGFloat(16 * PlaybackIndicatorMotion.heightFraction(
-                        bar: bar, elapsed: elapsed, animated: animated
-                    )))
+                    .frame(width: 3, height: 16 * Self.barHeights[bar])
             }
         }
         .frame(width: 18, height: 16)

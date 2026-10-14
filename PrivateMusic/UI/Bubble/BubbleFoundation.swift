@@ -77,66 +77,12 @@ enum BubbleType {
     static let bubbleTitle = Font.system(size: 15, weight: .semibold)
 }
 
-/// Motion is short, damped and optional. Nothing in Bubble UI floats on
-/// its own: ambient animation on a screen that is always on display is
-/// what put this app on the heat-and-battery path once already.
-enum BubbleMotion {
-    static let pressScale: CGFloat = 0.97
-
-    static var press: Animation {
-        .spring(response: 0.22, dampingFraction: 0.86)
-    }
-
-    static var state: Animation {
-        .spring(response: 0.28, dampingFraction: 0.88)
-    }
-
-    /// Returns `nil` under Reduce Motion so callers can pass it straight
-    /// into `.animation(_:value:)` without branching at every call site.
-    static func state(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : state
-    }
-
-    static func press(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : press
-    }
-
-    /// The imperative twin of `state(reduceMotion:)`, for the changes made
-    /// from an action rather than declared on a view.
-    ///
-    /// `withAnimation` is called from closures and plain methods that have
-    /// no view to read `\.accessibilityReduceMotion` from, and threading
-    /// the environment down to each of them buys nothing: the setting is
-    /// the same switch either way. So this reads it from UIAccessibility
-    /// and applies the change with no animation at all when it is on.
-    @MainActor
-    static func animate<Result>(
-        _ animation: Animation,
-        _ body: () throws -> Result
-    ) rethrows -> Result {
-        guard !UIAccessibility.isReduceMotionEnabled else {
-            return try body()
-        }
-        return try withAnimation(animation, body)
-    }
-}
-
-/// Press feedback for bubbles. Slightly softer than `PremiumPressStyle`
-/// because a circle reads a scale change more strongly than a card does.
+/// Press feedback for bubbles: a dim while the finger is down. Nothing
+/// moves, scales or animates; ambient motion on a screen that is always on
+/// display is what put this app on the heat-and-battery path once already.
 struct BubblePressStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(
-                reduceMotion || !configuration.isPressed
-                    ? 1
-                    : BubbleMotion.pressScale
-            )
             .opacity(configuration.isPressed ? 0.88 : 1)
-            .animation(
-                BubbleMotion.press(reduceMotion: reduceMotion),
-                value: configuration.isPressed
-            )
     }
 }

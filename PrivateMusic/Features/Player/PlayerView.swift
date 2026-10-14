@@ -9,11 +9,9 @@ struct PlayerView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(MusicLibraryStore.self) private var libraryStore
     @Environment(OfflineTrackStore.self) private var offlineStore
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    @GestureState private var artworkDrag: CGSize = .zero
     @State private var presentedSheet: PlayerSheet?
     @State private var deferredPlayerAction: DeferredPlayerAction?
     @State private var isInLibrary = false
@@ -120,11 +118,8 @@ struct PlayerView: View {
                         .adaptiveGlass(in: Capsule())
                 }
             }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
             .padding(.bottom, 40)
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: showCopiedToast)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: showRouteHint)
     }
 
     private var artworkBackground: some View {
@@ -453,25 +448,9 @@ struct PlayerView: View {
                     .stroke(playerForeground.opacity(0.08), lineWidth: 0.7)
                 }
                 .shadow(color: .black.opacity(0.42), radius: 26, y: 14)
-                .offset(
-                    x: reduceMotion ? 0 : artworkDrag.width * 0.16,
-                    y: reduceMotion ? 0 : artworkDrag.height * 0.08
-                )
-                .rotationEffect(
-                    .degrees(reduceMotion ? 0 : artworkDrag.width / 65)
-                )
         }
             .frame(width: size, height: size)
             .contentShape(Rectangle())
-            .offset(
-                x: reduceMotion ? 0 : artworkDrag.width * 0.03
-            )
-            .animation(
-                reduceMotion
-                    ? nil
-                    : .spring(response: 0.3, dampingFraction: 0.82),
-                value: artworkDrag == .zero
-            )
             .gesture(artworkGesture)
             .accessibilityLabel(
                 L10n.format(
@@ -853,7 +832,6 @@ struct PlayerView: View {
         if #available(iOS 26.0, *), usesGlassChrome {
             Button(action: action) {
                 Image(systemName: image)
-                    .controlFeedback(isActive: active)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(active ? settings.accent : playerForeground.opacity(0.55))
                     .frame(width: 44, height: 44)
@@ -866,7 +844,6 @@ struct PlayerView: View {
         } else {
             Button(action: action) {
                 Image(systemName: image)
-                    .controlFeedback(isActive: active)
                     .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(
                         active
@@ -1056,9 +1033,6 @@ struct PlayerView: View {
 
     private var artworkGesture: some Gesture {
         DragGesture(minimumDistance: 20)
-            .updating($artworkDrag) { value, state, _ in
-                state = value.translation
-            }
             .onEnded { value in
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
@@ -2172,24 +2146,12 @@ private struct AirPlayRoutePicker: UIViewRepresentable {
 }
 
 private struct PlayerControlStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(AppSettings.self) private var settings
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(settings.theme == .light ? .black : .white)
-            .scaleEffect(
-                reduceMotion
-                    ? 1
-                    : (configuration.isPressed ? 0.96 : 1)
-            )
             .opacity(configuration.isPressed ? 0.78 : 1)
-            .animation(
-                reduceMotion
-                    ? nil
-                    : .easeOut(duration: 0.1),
-                value: configuration.isPressed
-            )
     }
 }
 
@@ -2222,12 +2184,7 @@ extension View {
                 AudioProcessingRouteHintBanner()
                     .padding(.horizontal, 16)
                     .padding(.bottom, bottomPadding)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(
-            .easeInOut(duration: 0.3),
-            value: isPresented.wrappedValue
-        )
     }
 }

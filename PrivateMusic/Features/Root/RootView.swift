@@ -20,7 +20,6 @@ struct RootView: View {
     /// When the session was last confirmed with VK; coming back from
     /// Control Center must not cost a request each time.
     @State private var lastValidationAt: Date?
-    @Namespace private var playerNamespace
 
     var body: some View {
         @Bindable var player = player
@@ -28,12 +27,11 @@ struct RootView: View {
             if sessionStore.session == nil {
                 ConnectView()
             } else {
-                MainTabView(playerNamespace: playerNamespace)
+                MainTabView()
                     .id(sessionStore.accountRevision)
                     .fullScreenCover(isPresented: $player.isPlayerPresented) {
                         PlayerView()
                             .playerPresentationBackground()
-                            .playerZoomTransition(from: playerNamespace)
                     }
                     .safeAreaInset(edge: .top, spacing: 0) {
                         connectionBanner
@@ -434,32 +432,11 @@ struct ConnectionBanner: View {
 
 }
 
-enum PlayerZoomTransition {
-    /// Shared matched-transition ID between MiniPlayerView (the source)
-    /// and PlayerView (the destination) so the mini player morphs into
-    /// the full-screen player instead of just sliding up underneath it.
-    static let sourceID = "miniPlayer"
-}
-
 private extension View {
     @ViewBuilder
     func playerPresentationBackground() -> some View {
         if #available(iOS 16.4, *) {
             presentationBackground(.clear)
-        } else {
-            self
-        }
-    }
-
-    @ViewBuilder
-    func playerZoomTransition(from namespace: Namespace.ID) -> some View {
-        if #available(iOS 18.0, *) {
-            navigationTransition(
-                .zoom(
-                    sourceID: PlayerZoomTransition.sourceID,
-                    in: namespace
-                )
-            )
         } else {
             self
         }

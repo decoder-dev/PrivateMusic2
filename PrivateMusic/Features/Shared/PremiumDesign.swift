@@ -64,27 +64,16 @@ struct PremiumCardModifier: ViewModifier {
 }
 
 struct PremiumPressStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .contentShape(Rectangle())
-            .scaleEffect(
-                reduceMotion || !isEnabled || !configuration.isPressed ? 1 : 0.985
-            )
             .opacity(!isEnabled ? 0.5 : configuration.isPressed ? 0.85 : 1)
-            .animation(
-                reduceMotion
-                    ? nil
-                    : .easeOut(duration: 0.12),
-                value: configuration.isPressed
-            )
     }
 }
 
 struct PremiumProminentButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.isEnabled) private var isEnabled
     @Environment(AppSettings.self) private var settings
 
@@ -105,26 +94,13 @@ struct PremiumProminentButtonStyle: ButtonStyle {
                         y: 4
                     )
             }
-            .scaleEffect(
-                reduceMotion || !isEnabled || !configuration.isPressed ? 1 : 0.98
-            )
             .opacity(!isEnabled ? 0.5 : configuration.isPressed ? 0.85 : 1)
-            .animation(
-                reduceMotion
-                    ? nil
-                    : .spring(response: 0.22, dampingFraction: 0.82),
-                value: configuration.isPressed
-            )
     }
 }
 
-/// A section's entrance: a short fade, nothing else. It used to scale and
-/// slide up with a spring and a stagger, and in lazy lists every row that
-/// scrolled back into view replayed it — the "twitching" while scrolling.
 struct PremiumSecondaryButtonStyle: ButtonStyle {
     @Environment(AppSettings.self) private var settings
     @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -140,29 +116,6 @@ struct PremiumSecondaryButtonStyle: ButtonStyle {
             }
             .contentShape(RoundedRectangle(cornerRadius: PremiumLayout.controlRadius))
             .opacity(isEnabled ? 1 : 0.5)
-            .scaleEffect(reduceMotion || !configuration.isPressed ? 1 : 0.985)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
-    }
-}
-
-struct PremiumAppearModifier: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var appeared = false
-    let delay: Double
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(reduceMotion || appeared ? 1 : 0)
-            .onAppear {
-                guard !appeared else { return }
-                if reduceMotion {
-                    appeared = true
-                } else {
-                    withAnimation(.easeOut(duration: 0.18)) {
-                        appeared = true
-                    }
-                }
-            }
     }
 }
 
@@ -504,10 +457,6 @@ extension View {
 
     func premiumCard(interactive: Bool = false) -> some View {
         modifier(PremiumCardModifier(interactive: interactive))
-    }
-
-    func premiumAppear(delay: Double = 0) -> some View {
-        modifier(PremiumAppearModifier(delay: delay))
     }
 }
 

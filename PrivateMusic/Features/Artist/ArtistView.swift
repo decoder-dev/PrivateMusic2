@@ -7,7 +7,6 @@ struct ArtistView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(LikedAlbumsStore.self) private var likedAlbumsStore
     @Environment(PlaybackHighlightModel.self) private var highlight
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let artist: String
     @State private var tracks: [Track] = []
     @State private var albums: [Album] = []
@@ -39,7 +38,6 @@ struct ArtistView: View {
                     trackContent
                 }
             }
-            .transition(.opacity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ThemeBackground())
@@ -48,10 +46,6 @@ struct ArtistView: View {
         .toolbar(.hidden, for: .navigationBar)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
-        .animation(
-            reduceMotion ? nil : .easeOut(duration: 0.18),
-            value: isLoading
-        )
         .sheet(item: $selectedAlbum) { album in
             NavigationStack { AlbumDetailView(album: album) }
         }

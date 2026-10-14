@@ -7,7 +7,6 @@ struct LyricsView: View {
     @Environment(AudioPlayer.self) private var player
     @Environment(PlaybackProgressModel.self) private var progress
     @Environment(AppSettings.self) private var settings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     let track: Track
     private let initialLyrics: Lyrics?
@@ -199,13 +198,7 @@ struct LyricsView: View {
     private func scrollToActiveLine(in lyrics: Lyrics, proxy: ScrollViewProxy) {
         guard lyrics.lines.indices.contains(activeLineIndex) else { return }
         let id = lyrics.lines[activeLineIndex].id
-        if reduceMotion {
-            proxy.scrollTo(id, anchor: .center)
-        } else {
-            withAnimation(.easeInOut(duration: 0.35)) {
-                proxy.scrollTo(id, anchor: .center)
-            }
-        }
+        proxy.scrollTo(id, anchor: .center)
     }
 
     private func source(_ lyrics: Lyrics) -> some View {

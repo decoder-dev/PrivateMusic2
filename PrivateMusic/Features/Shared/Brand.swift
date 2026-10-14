@@ -7,7 +7,6 @@ enum Brand {
 
 struct PrimaryButtonStyle: ButtonStyle {
     @Environment(AppSettings.self) private var settings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -28,12 +27,6 @@ struct PrimaryButtonStyle: ButtonStyle {
                     style: .continuous
                 )
             )
-            .scaleEffect(
-                reduceMotion || !configuration.isPressed ? 1 : 0.98
-            )
-            .animation(
-                reduceMotion ? nil : .easeOut(duration: 0.12),
-                value: configuration.isPressed
-            )
+            .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }

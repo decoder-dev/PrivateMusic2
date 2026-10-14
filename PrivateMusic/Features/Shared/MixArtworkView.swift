@@ -35,7 +35,6 @@ struct MixArtworkView: View {
     var cornerRadius: CGFloat? = nil
     @State private var backdrop: MixBackdropPalette?
     @State private var backdropResolved = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -101,10 +100,6 @@ struct MixArtworkView: View {
             backdropResolved = true
         }
         // One calm cross-fade when a better cover arrives, never a jump.
-        .animation(
-            reduceMotion ? nil : .easeOut(duration: 0.25),
-            value: coverStage
-        )
         .frame(width: size, height: resolvedHeight)
         .clipShape(
             RoundedRectangle(

@@ -21,7 +21,6 @@ struct MixesHubView: View {
     @Environment(MixFeedbackStore.self) private var mixFeedbackStore
     @Environment(MusicLibraryStore.self) private var libraryStore
     @Environment(AppSettings.self) private var settings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var mixes: [MusicMix] = []
@@ -134,13 +133,8 @@ struct MixesHubView: View {
                         )
                         .padding(.horizontal, metrics.horizontalPadding)
                         .padding(.top, 6)
-                        .transition(.opacity)
                 }
             }
-            .animation(
-                reduceMotion ? nil : .easeInOut(duration: 0.2),
-                value: actionError
-            )
             .background {
                 GeometryReader { geometry in
                     Color.clear.preference(
@@ -313,7 +307,6 @@ struct MixesHubView: View {
                     vkMagazineShelves(metrics: metrics)
                     if !homeCatalog.newReleases.isEmpty {
                         newReleasesLink
-                            .premiumAppear(delay: 0.14)
                     }
                 }
             )
@@ -347,13 +340,10 @@ struct MixesHubView: View {
                 metrics: metrics,
                 subtitle: heroSubtitle
             )
-            .premiumAppear(delay: 0.02)
 
             mixMetadataStrip(mix: mix, tracks: tracks)
-                .premiumAppear(delay: 0.04)
 
             controlsPanel(mix: mix, tracks: tracks)
-                .premiumAppear(delay: 0.08)
 
             // Browsing comes before the explanation: mood, other mixes,
             // artists and shelves answer "what else?", while the rationale
@@ -361,11 +351,9 @@ struct MixesHubView: View {
             picker()
 
             mixUtilityLinks(mix: mix, tracks: tracks)
-                .premiumAppear(delay: 0.12)
 
             if !rationale.isEmpty {
                 rationaleBlock(rationale, title: rationaleTitle)
-                    .premiumAppear(delay: 0.14)
             }
 
             if !tracks.isEmpty {
@@ -375,7 +363,6 @@ struct MixesHubView: View {
                     subtitle: tracksSubtitle,
                     metrics: metrics
                 )
-                .premiumAppear(delay: 0.16)
             }
         }
     }
@@ -404,7 +391,6 @@ struct MixesHubView: View {
             }
         }
         .padding(.top, 4)
-        .premiumAppear(delay: 0.12)
     }
 
     private func mixPickerCard(
@@ -1312,7 +1298,6 @@ struct MixesHubView: View {
                 }
                 .scrollsToCardEdges()
             }
-            .premiumAppear(delay: 0.11)
         }
     }
 
@@ -1357,7 +1342,6 @@ struct MixesHubView: View {
             }
             .scrollsToCardEdges()
         }
-        .premiumAppear(delay: 0.1)
     }
 
     private var hasActiveMixFilters: Bool {
@@ -1834,16 +1818,7 @@ struct MixesHubView: View {
     // MARK: - Actions
 
     private func scrollHubToTop(proxy: ScrollViewProxy) {
-        if reduceMotion {
-            proxy.scrollTo(MainTabScrollDestination.mix, anchor: .top)
-        } else {
-            withAnimation(.easeOut(duration: 0.28)) {
-                proxy.scrollTo(
-                    MainTabScrollDestination.mix,
-                    anchor: .top
-                )
-            }
-        }
+        proxy.scrollTo(MainTabScrollDestination.mix, anchor: .top)
     }
 
     private func mixTypeTitle(for mix: MusicMix) -> String {

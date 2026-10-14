@@ -10,7 +10,6 @@ struct MiniPlayerView: View {
     /// When the progress strip last saw a drag. The card gesture runs at the
     /// same time, so a scrub across the strip must not also skip the track.
     @State private var lastProgressDragAt: Date?
-    let playerNamespace: Namespace.ID
     /// Legacy floating dock needs its own glass plate. The iOS 26.1+
     /// `tabViewBottomAccessory` already provides system chrome — stacking
     /// another plate reads as a detached black pill over the tab bar.
@@ -60,15 +59,7 @@ struct MiniPlayerView: View {
                 )
             )
             .tint(artworkTintColor)
-            .miniPlayerTransitionSource(playerNamespace)
             .offset(liveDragOffset)
-            .animation(
-                reduceMotion
-                    ? .easeOut(duration: 0.12)
-                    : .spring(response: 0.32, dampingFraction: 0.86),
-                value: dragOffset == .zero
-            )
-            .transition(appearanceTransition)
             .simultaneousGesture(miniPlayerGesture)
             .accessibilityElement(children: .contain)
         }
@@ -138,17 +129,6 @@ struct MiniPlayerView: View {
             showsShadow: true
         )
         .id(track.id)
-        .transition(
-            reduceMotion
-                ? .opacity
-                : .opacity.combined(with: .scale(scale: 0.92))
-        )
-        .animation(
-            reduceMotion
-                ? .easeOut(duration: 0.12)
-                : .spring(response: 0.34, dampingFraction: 0.84),
-            value: track.id
-        )
     }
 
     private func trackMetadata(_ track: Track) -> some View {
@@ -387,16 +367,6 @@ struct MiniPlayerView: View {
         )
     }
 
-    private var appearanceTransition: AnyTransition {
-        if reduceMotion {
-            return .opacity
-        }
-        return .asymmetric(
-            insertion: .opacity.combined(with: .move(edge: .bottom)),
-            removal: .opacity.combined(with: .move(edge: .bottom))
-        )
-    }
-
     private var containerShape: RoundedRectangle {
         RoundedRectangle(
             cornerRadius: MiniPlayerLayoutMetrics.cornerRadius,
@@ -448,25 +418,6 @@ private struct MiniPlayerChromeModifier<S: Shape>: ViewModifier {
                 )
         } else {
             content
-        }
-    }
-}
-
-extension View {
-    /// Marks the mini player as the visual origin for the zoom transition
-    /// into PlayerView (see RootView.playerZoomTransition). No-op below
-    /// iOS 18, where the full-screen cover just slides up as before.
-    @ViewBuilder
-    func miniPlayerTransitionSource(
-        _ namespace: Namespace.ID
-    ) -> some View {
-        if #available(iOS 18.0, *) {
-            matchedTransitionSource(
-                id: PlayerZoomTransition.sourceID,
-                in: namespace
-            )
-        } else {
-            self
         }
     }
 }

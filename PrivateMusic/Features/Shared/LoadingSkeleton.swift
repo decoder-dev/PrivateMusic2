@@ -85,21 +85,10 @@ struct LoadingShelf: View {
 }
 
 private struct SkeletonLoadingModifier: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var isDimmed = false
     let label: String
-
-    private var animates: Bool {
-        !reduceMotion && scenePhase == .active && !ProcessInfo.processInfo.isLowPowerModeEnabled
-    }
 
     func body(content: Content) -> some View {
         content
-            .opacity(isDimmed ? 0.65 : 1)
-            .animation(animates ? .easeInOut(duration: 1.2).repeatForever(autoreverses: true) : nil,
-                       value: isDimmed)
-            .task(id: animates) { isDimmed = animates }
             .allowsHitTesting(false)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(L10n.text(label))

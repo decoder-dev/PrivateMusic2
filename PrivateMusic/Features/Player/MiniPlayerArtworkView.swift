@@ -2,10 +2,10 @@ import SwiftUI
 import UIKit
 
 /// Artwork that keeps the previous bitmap visible until the next image is
-/// ready, then crossfades — avoiding the placeholder flash of `.id(track.id)`.
+/// ready, then swaps it in place — avoiding the placeholder flash of
+/// `.id(track.id)`. The swap is immediate; there is no crossfade.
 struct MiniPlayerArtworkView: View {
     @Environment(AppSettings.self) private var settings
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
 
     let url: URL?
@@ -14,8 +14,6 @@ struct MiniPlayerArtworkView: View {
     var showsShadow: Bool = true
 
     @State private var displayedImage: UIImage?
-    @State private var incomingImage: UIImage?
-    @State private var incomingOpacity: Double = 0
     @State private var loadGeneration = 0
     @State private var displayedURL: URL?
 
@@ -26,22 +24,12 @@ struct MiniPlayerArtworkView: View {
         )
 
         ZStack {
-            if displayedImage == nil, incomingImage == nil {
-                placeholder
-            }
-
             if let displayedImage {
                 Image(uiImage: displayedImage)
                     .resizable()
                     .scaledToFill()
-                    .opacity(incomingImage == nil ? 1 : 1 - incomingOpacity)
-            }
-
-            if let incomingImage {
-                Image(uiImage: incomingImage)
-                    .resizable()
-                    .scaledToFill()
-                    .opacity(incomingOpacity)
+            } else {
+                placeholder
             }
         }
         .frame(width: size, height: size)
@@ -91,10 +79,7 @@ struct MiniPlayerArtworkView: View {
             return
         }
 
-        // Abort any in-flight crossfade; keep the last settled frame visible.
-        incomingImage = nil
-        incomingOpacity = 0
-
+        // Keep the last settled frame visible until the new one is ready.
         if let cached = ArtworkImageCache.shared.image(
             for: url,
             maxPixelSize: pixelSize
@@ -155,54 +140,14 @@ struct MiniPlayerArtworkView: View {
     ) async {
         guard generation == loadGeneration else { return }
         BubbleTintCache.shared.recordArtwork(image, for: url)
-
-        if displayedImage == nil {
-            displayedImage = image
-            displayedURL = url
-            incomingImage = nil
-            incomingOpacity = 0
-            return
-        }
-
-        if displayedURL == url {
-            displayedImage = image
-            return
-        }
-
-        incomingImage = image
-        incomingOpacity = 0
-        let duration = reduceMotion
-            ? MiniPlayerLayoutMetrics.reduceMotionCrossfadeDuration
-            : MiniPlayerLayoutMetrics.trackCrossfadeDuration
-        withAnimation(.easeInOut(duration: duration)) {
-            incomingOpacity = 1
-        }
-        let nanoseconds = UInt64(max(duration, 0) * 1_000_000_000)
-        try? await Task.sleep(nanoseconds: nanoseconds)
-        guard generation == loadGeneration else { return }
         displayedImage = image
         displayedURL = url
-        incomingImage = nil
-        incomingOpacity = 0
     }
 
     @MainActor
     private func clearToPlaceholder(generation: Int) async {
         guard generation == loadGeneration else { return }
-        if displayedImage == nil {
-            displayedURL = nil
-            incomingImage = nil
-            incomingOpacity = 0
-            return
-        }
-        let duration = reduceMotion
-            ? MiniPlayerLayoutMetrics.reduceMotionCrossfadeDuration
-            : MiniPlayerLayoutMetrics.trackCrossfadeDuration
-        withAnimation(.easeInOut(duration: duration)) {
-            incomingOpacity = 0
-            displayedImage = nil
-        }
+        displayedImage = nil
         displayedURL = nil
-        incomingImage = nil
     }
 }

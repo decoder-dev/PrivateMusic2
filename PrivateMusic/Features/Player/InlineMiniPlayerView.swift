@@ -4,7 +4,6 @@ import SwiftUI
 /// to the inline placement. Relies on system chrome — no own glass plate.
 struct InlineMiniPlayerView: View {
     @Environment(AudioPlayer.self) private var player
-    let playerNamespace: Namespace.ID
 
     var body: some View {
         if let track = player.currentTrack {
@@ -17,7 +16,6 @@ struct InlineMiniPlayerView: View {
             .padding(.vertical, MiniPlayerLayoutMetrics.inlineVerticalPadding)
             .frame(maxWidth: .infinity, minHeight: MiniPlayerLayoutMetrics.tapTarget)
             .contentShape(Rectangle())
-            .miniPlayerTransitionSource(playerNamespace)
             .accessibilityElement(children: .contain)
         }
     }

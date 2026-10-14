@@ -47,9 +47,7 @@ extension View {
                 let threshold = CollapsingNavMetrics.titleRevealThreshold
                 let shouldShow = minY < threshold
                 guard shouldShow != isVisible.wrappedValue else { return }
-                BubbleMotion.animate(.easeInOut(duration: 0.18)) {
-                    isVisible.wrappedValue = shouldShow
-                }
+                isVisible.wrappedValue = shouldShow
             }
     }
 }
