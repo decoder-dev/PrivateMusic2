@@ -8,10 +8,39 @@ final class PinnedCollectionsStore {
     private(set) var identities: [String] = []
     private(set) var playlistSnapshots: [Playlist] = []
     private(set) var albumSnapshots: [Album] = []
+    /// API albums decode VK's schema; the local format uses its own symmetric codec.
+    private struct StoredAlbum: Codable {
+        let id: Int
+        let ownerID: Int
+        let title: String
+        let description: String?
+        let count: Int
+        let artworkURL: URL?
+        let accessKey: String?
+        let artists: [String]
+        let releaseDate: Date?
+        let releaseYear: Int?
+        let isFollowed: Bool
+        let followHash: String?
+
+        init(_ album: Album) {
+            id = album.albumID; ownerID = album.ownerID; title = album.title
+            description = album.description; count = album.count; artworkURL = album.artworkURL
+            accessKey = album.accessKey; artists = album.artists; releaseDate = album.releaseDate
+            releaseYear = album.releaseYear; isFollowed = album.isFollowed; followHash = album.followHash
+        }
+
+        var album: Album {
+            Album(id: id, ownerID: ownerID, title: title, description: description, count: count,
+                  artworkURL: artworkURL, accessKey: accessKey, artists: artists, releaseDate: releaseDate,
+                  releaseYear: releaseYear, isFollowed: isFollowed, followHash: followHash)
+        }
+    }
+
     private struct Snapshot: Codable {
         let identities: [String]
         let playlists: [Playlist]
-        let albums: [Album]
+        let albums: [StoredAlbum]
     }
     private let defaults: UserDefaults
     private var accountID: Int?
@@ -29,7 +58,7 @@ final class PinnedCollectionsStore {
             .flatMap { try? JSONDecoder().decode(Snapshot.self, from: $0) }
         let stored = snapshot?.identities ?? key.flatMap { defaults.stringArray(forKey: $0) } ?? []
         playlistSnapshots = snapshot?.playlists ?? []
-        albumSnapshots = snapshot?.albums ?? []
+        albumSnapshots = snapshot?.albums.map(\.album) ?? []
         var seen = Set<String>()
         identities = Array(stored.filter { seen.insert($0).inserted }.prefix(Self.limit))
     }
@@ -71,7 +100,7 @@ final class PinnedCollectionsStore {
     }
 
     private func persist(key: String) {
-        if let data = try? JSONEncoder().encode(Snapshot(identities: identities, playlists: playlistSnapshots, albums: albumSnapshots)) {
+        if let data = try? JSONEncoder().encode(Snapshot(identities: identities, playlists: playlistSnapshots, albums: albumSnapshots.map(StoredAlbum.init))) {
             defaults.set(data, forKey: key)
         }
     }
