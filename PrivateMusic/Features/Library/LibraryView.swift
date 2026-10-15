@@ -29,7 +29,6 @@ struct LibraryView: View {
     @State private var playlists = PlaylistLibraryViewModel()
     @State private var trackSearchQuery = ""
     @State private var section: LibrarySection
-    @State private var visibleLibraryFilter: LibrarySection?
     @AppStorage("library.collectionGrid") private var collectionGrid = true
 
     @State private var showingEditor = false
@@ -60,7 +59,6 @@ struct LibraryView: View {
 
     init(section: LibrarySection = .all, playlistModel: PlaylistLibraryViewModel? = nil) {
         _section = State(initialValue: section)
-        _visibleLibraryFilter = State(initialValue: section)
         _playlists = State(initialValue: playlistModel ?? PlaylistLibraryViewModel())
     }
 
@@ -563,28 +561,8 @@ struct LibraryView: View {
             .accessibilityLabel(L10n.text("tab.library"))
             .accessibilityValue(section.title)
         } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: BubbleSpacing.xs) {
-                    ForEach(LibrarySection.allCases, id: \.self) { item in
-                        Button { section = item } label: {
-                            Text(item.title)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(section == item ? settings.onAccent : Color.primary)
-                                .padding(.horizontal, 14)
-                                .frame(minHeight: PremiumLayout.minimumTapTarget)
-                                .background(section == item ? settings.accent : Color.primary.opacity(0.06), in: Capsule())
-                        }
-                        .id(item)
-                        .buttonStyle(PremiumPressStyle())
-                        .accessibilityAddTraits(section == item ? .isSelected : [])
-                    }
-                }
-                .scrollTargetLayout()
-            }
-            .scrollPosition(id: $visibleLibraryFilter, anchor: .center)
-            .onChange(of: section) { _, selected in
-                visibleLibraryFilter = selected
-            }
+            AdaptiveCategoryPicker(items: LibrarySection.allCases, title: { $0.title },
+                                   label: L10n.text("tab.library"), selection: $section)
         }
     }
 

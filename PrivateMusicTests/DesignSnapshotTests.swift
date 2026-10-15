@@ -229,6 +229,11 @@ final class DesignSnapshotTests: XCTestCase {
                 selection: .constant("Исполнители")).dynamicTypeSize(.xxxLarge).padding(16).background(ThemeBackground()),
                 name: "search-categories-ru-large-\(theme.rawValue)", width: 320, height: 340,
                 environment: environment, settings: settings)
+            let libraryCategories = ["Всё", "Треки", "Плейлисты", "Альбомы"]
+            capture(AdaptiveCategoryPicker(items: libraryCategories, title: { $0 }, label: "Медиатека",
+                selection: .constant("Плейлисты")).padding(16).background(ThemeBackground()),
+                name: "library-categories-ru-\(theme.rawValue)", width: 320, height: 240,
+                environment: environment, settings: settings)
             settings.classicChrome = true
             capture(NavigationStack { SearchView(isActive: false, model: searchModel) },
                     name: "search-classic-short-\(theme.rawValue)", width: 320, height: 430,
