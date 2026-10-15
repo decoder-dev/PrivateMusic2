@@ -4023,7 +4023,8 @@ final class AudioPlayer {
     /// still leave us under the threshold, so `scheduleNeighborPreloads` is
     /// allowed to chain another request after the current one completes.
     private func maybeStartContinuationPrefetch() {
-        guard activeContinuationProvider != nil,
+        guard playbackIntended,
+              activeContinuationProvider != nil,
               continuationPrefetchTask == nil,
               continuationTask == nil else {
             return
@@ -4031,7 +4032,12 @@ final class AudioPlayer {
         let should = ContinuationPrefetchPolicy.shouldPrefetch(
             currentIndex: currentIndex,
             queueCount: queue.count,
+            // Only a dedicated library-page cursor may fill the large library
+            // window. After restoration only the default recommendations
+            // provider survives; treating it as library paging polls VK until
+            // thousands of unrelated tracks have been appended, even at launch.
             libraryQueue: LibraryQueuePolicy.isLibraryQueue(queueSource)
+                && activeContinuationPrefetchProvider != nil
         )
         continuationPrefetchInThreshold = should
         guard should else { return }

@@ -218,6 +218,45 @@ final class LibraryQueueCapacityTests: XCTestCase {
         XCTAssertEqual(context.player.currentTrack?.id, loadedPage[0].id)
     }
 
+    func testLibraryWithoutPagingCursorDoesNotFillWithRecommendations() async throws {
+        let context = makePlayer()
+        defer { context.tearDown() }
+        let loaded = tracks(count: 100)
+        var requests = 0
+        context.player.configureContinuation {
+            requests += 1
+            return self.tracks(count: 100, idOffset: requests * 100)
+        }
+        context.player.play(loaded[0], in: loaded, source: .library)
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertEqual(requests, 0)
+        XCTAssertEqual(context.player.queue.count, 100)
+    }
+
+    func testRestoredPausedLibraryDoesNotRequestRecommendationsOnConfiguration() async throws {
+        let context = makePlayer()
+        defer { context.tearDown() }
+        let loaded = tracks(count: 1)
+        context.player.play(loaded[0], in: loaded, source: .library)
+        context.player.pause()
+        let restored = AudioPlayer(
+            settings: AppSettings(defaults: context.defaults),
+            historyStore: ListeningHistoryStore(defaults: context.defaults),
+            defaults: context.defaults
+        )
+        var requests = 0
+        restored.configureContinuation {
+            requests += 1
+            return self.tracks(count: 100, idOffset: requests * 100)
+        }
+        restored.configurePreloading(isAllowed: { false }, artworkPrefetch: { _ in })
+        restored.configureNetwork(userAgent: nil)
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertEqual(restored.currentTrack?.id, loaded[0].id)
+        XCTAssertEqual(requests, 0)
+        XCTAssertEqual(restored.queue.count, 1)
+    }
+
     func testMixPrefetchStillWaitsUntilTheNearEndWindow() {
         XCTAssertFalse(
             ContinuationPrefetchPolicy.shouldPrefetch(
