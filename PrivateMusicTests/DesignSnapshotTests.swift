@@ -257,6 +257,25 @@ final class DesignSnapshotTests: XCTestCase {
                     environment: environment, settings: settings)
             settings.classicChrome = false
         }
+        settings.palette = .banana
+        settings.accentChoice = .banana
+        for theme in AppTheme.allCases {
+            settings.theme = theme
+            settings.appearance = theme == .dark ? .dark : .light
+            capture(AdaptiveCategoryPicker(items: russianCategories, title: { $0 }, label: "Тип поиска",
+                selection: .constant("Треки")).padding(16).background(ThemeBackground()),
+                name: "search-categories-banana-\(theme.rawValue)", width: 393, height: 180,
+                environment: environment, settings: settings)
+            capture(NavigationStack { SearchView(isActive: false, model: searchModel) },
+                    name: "search-results-banana-\(theme.rawValue)", width: 393,
+                    environment: environment, settings: settings)
+            defaults.set(true, forKey: "library.collectionGrid")
+            capture(NavigationStack { LibraryView(section: .playlists, playlistModel: playlistModel) }
+                    .defaultAppStorage(defaults), name: "library-grid-banana-\(theme.rawValue)", width: 393,
+                    environment: environment, settings: settings)
+        }
+        settings.palette = .classic
+        settings.accentChoice = .blue
         settings.classicChrome = true
         capture(NavigationStack { AlbumDetailView(album: album, loadedTracks: [track]) }, name: "album-classic",
                 width: 320, height: 700, environment: environment, settings: settings)
