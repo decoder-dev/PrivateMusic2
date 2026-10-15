@@ -855,22 +855,15 @@ struct PlayerView: View {
     }
 
     private var playerBackground: Color {
-        settings.theme == .light ? .white : .black
+        settings.pageColors.last ?? (settings.theme == .light ? .white : .black)
     }
 
     private var backgroundGradient: [Color] {
+        let background = playerBackground
         if settings.theme == .light {
-            return [
-                .white.opacity(0.28),
-                .white.opacity(0.72),
-                .white.opacity(0.98),
-            ]
+            return [background.opacity(0.28), background.opacity(0.72), background.opacity(0.98)]
         }
-        return [
-            .black.opacity(0.18),
-            .black.opacity(0.42),
-            .black.opacity(0.92),
-        ]
+        return [background.opacity(0.18), background.opacity(0.42), background.opacity(0.92)]
     }
 
     @ViewBuilder
