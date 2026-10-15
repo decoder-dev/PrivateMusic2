@@ -338,21 +338,27 @@ struct SearchView: View {
     }
 
     private var searchLoading: some View {
-        VStack(alignment: .leading, spacing: BubbleSpacing.m) {
-            Text(L10n.text("search.searching"))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(model.normalizedQuery)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            LoadingTrackList(label: "searching")
+        ScrollView {
+            VStack(alignment: .leading, spacing: BubbleSpacing.m) {
+                Text(L10n.text("search.searching"))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(model.normalizedQuery)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                LoadingTrackList(label: "searching")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(L10n.text("searching"))
+            .accessibilityValue(model.normalizedQuery)
+                .padding(.horizontal, PremiumLayout.screenPadding)
+                .padding(.top, BubbleSpacing.s)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(L10n.text("searching"))
-        .accessibilityValue(model.normalizedQuery)
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private var searchResults: some View {
