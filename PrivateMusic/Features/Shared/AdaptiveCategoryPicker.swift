@@ -21,21 +21,8 @@ struct AdaptiveCategoryPicker<Value: Hashable>: View {
             .pickerStyle(.menu)
             .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget, alignment: .leading)
         } else {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(items, id: \.self) { button($0) }
-                }
-                Grid(horizontalSpacing: 8, verticalSpacing: 8) {
-                    ForEach(Array(stride(from: 0, to: items.count, by: 2)), id: \.self) { index in
-                        GridRow {
-                            button(items[index])
-                            if index + 1 < items.count { button(items[index + 1]) }
-                        }
-                    }
-                }
-                VStack(spacing: 8) {
-                    ForEach(items, id: \.self) { button($0) }
-                }
+            CategoryGridLayout {
+                ForEach(items, id: \.self) { button($0) }
             }
             .frame(maxWidth: .infinity)
             .accessibilityElement(children: .contain)
@@ -56,5 +43,44 @@ struct AdaptiveCategoryPicker<Value: Hashable>: View {
         }
         .buttonStyle(PremiumPressStyle())
         .accessibilityAddTraits(selection == item ? .isSelected : [])
+    }
+}
+
+/// Measure the actual localized labels before assigning equal-width cells.
+/// A flexible container alone can report a fitting width while its text
+/// still overflows; require the full intrinsic width of every button.
+private struct CategoryGridLayout: Layout {
+    private let spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let plan = metrics(width: proposal.width, subviews: subviews)
+        return CGSize(width: plan.width, height: plan.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let plan = metrics(width: bounds.width, subviews: subviews)
+        for (index, subview) in subviews.enumerated() {
+            subview.place(at: CGPoint(x: bounds.minX + CGFloat(index % plan.columns) * (plan.cellWidth + spacing),
+                                     y: bounds.minY + CGFloat(index / plan.columns) * (plan.cellHeight + spacing)),
+                          anchor: .topLeading, proposal: ProposedViewSize(width: plan.cellWidth, height: plan.cellHeight))
+        }
+    }
+
+    private func metrics(width proposed: CGFloat?, subviews: Subviews) ->
+        (width: CGFloat, height: CGFloat, columns: Int, cellWidth: CGFloat, cellHeight: CGFloat) {
+        let ideal = subviews.map { $0.sizeThatFits(.unspecified) }
+        let minimumWidth = ideal.map(\.width).max() ?? 0
+        let naturalWidth = CGFloat(subviews.count) * minimumWidth + CGFloat(max(0, subviews.count - 1)) * spacing
+        let width = proposed.flatMap { $0.isFinite ? max(0, $0) : nil } ?? naturalWidth
+        let columns = [4, 2, 1].first {
+            $0 <= max(1, subviews.count) && CGFloat($0) * minimumWidth + CGFloat($0 - 1) * spacing <= width
+        } ?? 1
+        let cellWidth = max(0, (width - CGFloat(columns - 1) * spacing) / CGFloat(columns))
+        let cellHeight = subviews.map {
+            $0.sizeThatFits(ProposedViewSize(width: cellWidth, height: nil)).height
+        }.max() ?? 0
+        let rows = (subviews.count + columns - 1) / columns
+        return (width, CGFloat(rows) * cellHeight + CGFloat(max(0, rows - 1)) * spacing,
+                columns, cellWidth, cellHeight)
     }
 }
