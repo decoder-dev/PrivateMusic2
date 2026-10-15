@@ -1030,3 +1030,4 @@
 "palette.halloween.footnote" = "Pumpkin-orange accents on an ink-dark background with plum surfaces.";
 "artist.albums.load_error" = "Could not load this artist’s albums.";
 "palette.halloween.label" = "Dark seasonal palette";
+"artist.tracks.loaded" = "Loaded: %@";

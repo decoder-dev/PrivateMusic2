@@ -1030,3 +1030,4 @@
 "palette.halloween.footnote" = "Тыквенно-оранжевый акцент на чернильном фоне со сливовыми поверхностями.";
 "artist.albums.load_error" = "Не удалось загрузить альбомы исполнителя.";
 "palette.halloween.label" = "Тёмная сезонная палитра";
+"artist.tracks.loaded" = "Загружено: %@";

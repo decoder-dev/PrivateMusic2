@@ -21,6 +21,7 @@ struct ArtistView: View {
     @State private var albumLoadError: String?
     @State private var loadingAlbumID: String?
     @State private var albumPlaybackTask: Task<Void, Never>?
+    @State private var retryTask: Task<Void, Never>?
     @State private var errorMessage: String?
     @State private var selectedAlbum: Album?
     @State private var showsAllTracks = false
@@ -90,6 +91,7 @@ struct ArtistView: View {
         .onDisappear {
             loadMoreTracksTask?.cancel()
             albumPlaybackTask?.cancel()
+            retryTask?.cancel()
         }
         .task(id: artist) {
             guard !isDesignPreview else { return }
@@ -110,7 +112,7 @@ struct ArtistView: View {
                 if let errorMessage {
                     ArtistInlineError(
                         message: errorMessage,
-                        retry: { Task { await load(resetContent: false) } }
+                        retry: { retryArtist() }
                     )
                     .padding(.horizontal, PremiumLayout.screenPadding)
                     .padding(.bottom, 10)
@@ -129,6 +131,7 @@ struct ArtistView: View {
         }
         .scrollIndicators(.hidden)
         .refreshable {
+            guard retryTask == nil else { return }
             await load(resetContent: false)
             guard !Task.isCancelled else { return }
             await loadAlbums()
@@ -201,7 +204,8 @@ struct ArtistView: View {
                         .font(BubbleType.section)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
-                    Text(L10n.trackCount(tracks.count))
+                    Text(nextTracksOffset == nil ? L10n.trackCount(tracks.count)
+                         : L10n.format("artist.tracks.loaded", L10n.trackCount(tracks.count)))
                         .font(BubbleType.metadata).foregroundStyle(.secondary)
                 }
                 if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
@@ -252,7 +256,7 @@ struct ArtistView: View {
                 .frame(height: albumCardWidth + LibraryShelfMetrics.captionSpacing + albumCaptionHeight)
             }
             if let albumLoadError {
-                ArtistInlineError(message: albumLoadError, retry: { Task { await loadAlbums() } })
+                ArtistInlineError(message: albumLoadError, retry: { retryArtist(albumsOnly: true) })
                     .padding(.horizontal, PremiumLayout.screenPadding)
             }
         }
@@ -501,12 +505,22 @@ struct ArtistView: View {
                     description: errorMessage
                         ?? L10n.text("vk_did_not_return_any_available_tracks_for_this_artist"),
                     systemImage: errorMessage == nil ? "music.note.list" : "exclamationmark.circle",
-                    retry: sessionStore.accessToken == nil ? nil : { Task { await load(resetContent: true) } }
+                    retry: sessionStore.accessToken == nil ? nil : { retryArtist() }
                 )
                 .frame(minHeight: 240)
             }
         }
         .scrollIndicators(.hidden)
+    }
+
+    private func retryArtist(albumsOnly: Bool = false) {
+        guard retryTask == nil else { return }
+        retryTask = Task {
+            defer { retryTask = nil }
+            if !albumsOnly { await load(resetContent: tracks.isEmpty) }
+            guard !Task.isCancelled else { return }
+            await loadAlbums()
+        }
     }
 
     @MainActor
