@@ -52,9 +52,8 @@ struct LibraryView: View {
     @State private var removedTracks: [Track] = []
     @State private var undoDismissTask: Task<Void, Never>?
     @State private var undoErrorMessage: String?
-    /// Viewport width from a background GeometryReader — wrapping the
-    /// ScrollView itself re-laid the whole library on every scroll frame
-    /// (same sticky-scroll bug Home and Explore already fixed).
+    /// Observe width only, never the scroll offset. Flexible grid columns
+    /// keep the content from expanding this measurement on narrow phones.
     @State private var containerWidth: CGFloat = 390
 
     init(section: LibrarySection = .all, playlistModel: PlaylistLibraryViewModel? = nil) {
@@ -219,18 +218,11 @@ struct LibraryView: View {
             }
             .softBottomScrollEdge()
             .clearsMiniPlayer()
-            .background {
-                GeometryReader { geometry in
-                    Color.clear.preference(
-                        key: LibraryWidthKey.self,
-                        value: geometry.size.width
-                    )
-                }
-            }
-            .onPreferenceChange(LibraryWidthKey.self) { width in
-                let rounded = width.rounded()
-                if rounded > 0, abs(rounded - containerWidth) >= 1 {
-                    containerWidth = rounded
+            .onGeometryChange(for: CGFloat.self) { geometry in
+                geometry.size.width.rounded()
+            } action: { width in
+                if width > 0, abs(width - containerWidth) >= 1 {
+                    containerWidth = width
                 }
             }
             .onChange(of: scrollCoordinator.request) { _, request in
@@ -571,7 +563,7 @@ struct LibraryView: View {
         }
         if collectionGrid && !dynamicTypeSize.isAccessibilitySize {
             let edge = LibraryShelfMetrics.gridArtworkSize(for: width)
-            let columns = Array(repeating: GridItem(.fixed(edge), spacing: LibraryShelfMetrics.cardSpacing,
+            let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: LibraryShelfMetrics.cardSpacing,
                                                    alignment: .topLeading),
                                 count: AdaptiveLayout.columnCount(for: width))
             LazyVGrid(columns: columns, alignment: .leading, spacing: BubbleSpacing.l) {
@@ -1667,10 +1659,4 @@ struct LibraryView: View {
     }
 }
 
-private struct LibraryWidthKey: PreferenceKey {
-    static var defaultValue: CGFloat { 0 }
 
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
