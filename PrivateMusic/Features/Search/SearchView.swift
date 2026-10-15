@@ -117,6 +117,12 @@ struct SearchView: View {
                     .padding(.bottom, BubbleSpacing.m)
             }
 
+            if model.normalizedQuery.count >= SearchViewModel.minimumQueryLength {
+                scopePicker
+                    .padding(.horizontal, PremiumLayout.screenPadding)
+                    .padding(.bottom, BubbleSpacing.s)
+            }
+
             VStack(spacing: 0) {
                 content
             }
@@ -351,10 +357,6 @@ struct SearchView: View {
 
     private var searchResults: some View {
         VStack(spacing: 0) {
-            scopePicker
-            .padding(.horizontal, PremiumLayout.screenPadding)
-            .padding(.bottom, BubbleSpacing.s)
-
             if scope == .tracks, let error = model.errorMessage {
                 inlineRetry(message: error, offersVPNHelp: model.trackOffersVPNHelp, action: submitSearch)
                     .padding(.horizontal, PremiumLayout.screenPadding)

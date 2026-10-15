@@ -41,6 +41,14 @@ final class DesignSnapshotTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(lyricSearchModel.state, .empty)
+        let loadingSearchModel = SearchViewModel(defaults: defaults, debounceDuration: .seconds(600))
+        loadingSearchModel.query = "Вечер"
+        loadingSearchModel.schedule { _, _, _ in MusicPage(items: [], totalCount: 0, nextOffset: nil) }
+        XCTAssertEqual(loadingSearchModel.state, .loading)
+        defer {
+            loadingSearchModel.query = ""
+            loadingSearchModel.submit { _, _, _ in MusicPage(items: [], totalCount: 0, nextOffset: nil) }
+        }
         let failedSearchModel = SearchViewModel(defaults: defaults, debounceDuration: .zero)
         failedSearchModel.query = "Вечер"
         failedSearchModel.submit { _, _, _ in throw APIError.timedOut }
@@ -229,6 +237,9 @@ final class DesignSnapshotTests: XCTestCase {
                 selection: .constant("Исполнители")).dynamicTypeSize(.xxxLarge).padding(16).background(ThemeBackground()),
                 name: "search-categories-ru-large-\(theme.rawValue)", width: 320, height: 340,
                 environment: environment, settings: settings)
+            capture(NavigationStack { SearchView(isActive: false, model: loadingSearchModel) },
+                    name: "search-categories-loading-\(theme.rawValue)", width: 320, height: 560,
+                    environment: environment, settings: settings)
             let libraryCategories = ["Всё", "Треки", "Плейлисты", "Альбомы"]
             capture(AdaptiveCategoryPicker(items: libraryCategories, title: { $0 }, label: "Медиатека",
                 selection: .constant("Плейлисты")).padding(16).background(ThemeBackground()),
