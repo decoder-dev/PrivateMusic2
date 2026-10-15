@@ -213,6 +213,28 @@ final class DesignSnapshotTests: XCTestCase {
                                                onPlay: {}, onShare: {}, onDelete: {}),
                     name: "download-details-\(theme.rawValue)", environment: environment, settings: settings)
         }
+        let russianCategories = ["Треки", "Исполнители", "Альбомы", "Плейлисты"]
+        for theme in AppTheme.allCases {
+            settings.theme = theme
+            settings.appearance = theme == .dark ? .dark : .light
+            for width in [CGFloat(320), CGFloat(393), CGFloat(768)] {
+                for selected in ["Треки", "Плейлисты"] {
+                    capture(AdaptiveCategoryPicker(items: russianCategories, title: { $0 }, label: "Тип поиска",
+                        selection: .constant(selected)).padding(16).background(ThemeBackground()),
+                        name: "search-categories-ru-\(Int(width))-\(selected == "Треки" ? "tracks" : "playlists")-\(theme.rawValue)",
+                        width: width, height: 240, environment: environment, settings: settings)
+                }
+            }
+            capture(AdaptiveCategoryPicker(items: russianCategories, title: { $0 }, label: "Тип поиска",
+                selection: .constant("Исполнители")).dynamicTypeSize(.xxxLarge).padding(16).background(ThemeBackground()),
+                name: "search-categories-ru-large-\(theme.rawValue)", width: 320, height: 340,
+                environment: environment, settings: settings)
+            settings.classicChrome = true
+            capture(NavigationStack { SearchView(isActive: false, model: searchModel) },
+                    name: "search-classic-short-\(theme.rawValue)", width: 320, height: 430,
+                    environment: environment, settings: settings)
+            settings.classicChrome = false
+        }
         settings.classicChrome = true
         capture(NavigationStack { AlbumDetailView(album: album, loadedTracks: [track]) }, name: "album-classic",
                 width: 320, height: 700, environment: environment, settings: settings)

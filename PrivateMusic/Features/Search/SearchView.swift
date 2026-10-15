@@ -17,7 +17,6 @@ struct SearchView: View {
     @Environment(MusicLibraryStore.self) private var libraryStore
     @Environment(LikedAlbumsStore.self) private var likedAlbumsStore
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var model = SearchViewModel()
     @State private var scope: Scope = .tracks
     @State private var pendingLibraryTrackIDs = Set<String>()
@@ -41,6 +40,7 @@ struct SearchView: View {
             .background(ThemeBackground())
             .navigationTitle(L10n.text("tab.search"))
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .modifier(SystemSearchTabModifier(
                 query: $model.query,
                 isPresented: $isSystemSearchPresented,
@@ -430,33 +430,9 @@ struct SearchView: View {
         }
     }
 
-    @ViewBuilder
     private var scopePicker: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            Picker(L10n.text("search_type"), selection: $scope) {
-                ForEach(Scope.allCases, id: \.self) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.menu)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: BubbleSpacing.xs) {
-                    ForEach(Scope.allCases, id: \.self) { item in
-                        Button { scope = item } label: {
-                            Text(item.title)
-                                .font(.subheadline.weight(.semibold))
-                                .fixedSize(horizontal: true, vertical: false)
-                                .foregroundStyle(scope == item ? settings.onAccent : .primary)
-                                .padding(.horizontal, 14)
-                                .frame(minHeight: PremiumLayout.minimumTapTarget)
-                                .background(scope == item ? settings.accent : Color.primary.opacity(0.06), in: Capsule())
-                        }
-                        .buttonStyle(PremiumPressStyle())
-                        .accessibilityAddTraits(scope == item ? .isSelected : [])
-                    }
-                }
-            }
-        }
+        AdaptiveCategoryPicker(items: Scope.allCases, title: { $0.title },
+                               label: L10n.text("search_type"), selection: $scope)
     }
 
     private var trackResults: some View {
