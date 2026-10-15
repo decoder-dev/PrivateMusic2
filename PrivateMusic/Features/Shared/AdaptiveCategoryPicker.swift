@@ -64,7 +64,7 @@ struct AdaptiveCategoryPicker<Value: Hashable>: View {
                 .fixedSize(horizontal: true, vertical: true)
                 .foregroundStyle(selection == item ? settings.accent : .secondary)
                 .padding(.horizontal, BubbleSpacing.s)
-                .frame(minHeight: PremiumLayout.minimumTapTarget)
+                .frame(minWidth: PremiumLayout.minimumTapTarget, minHeight: PremiumLayout.minimumTapTarget)
                 .overlay(alignment: .bottom) {
                     Capsule()
                         .fill(selection == item ? settings.accent : .clear)
