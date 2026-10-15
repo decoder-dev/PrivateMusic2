@@ -72,9 +72,15 @@ private struct CategoryGridLayout: Layout {
         let minimumWidth = ideal.map(\.width).max() ?? 0
         let naturalWidth = CGFloat(subviews.count) * minimumWidth + CGFloat(max(0, subviews.count - 1)) * spacing
         let width = proposed.flatMap { $0.isFinite ? max(0, $0) : nil } ?? naturalWidth
-        let columns = [4, 2, 1].first {
-            $0 <= max(1, subviews.count) && CGFloat($0) * minimumWidth + CGFloat($0 - 1) * spacing <= width
-        } ?? 1
+        var columns = 1
+        for candidate in [4, 2] where candidate <= subviews.count {
+            let contentWidth = CGFloat(candidate) * minimumWidth
+            let gapWidth = CGFloat(candidate - 1) * spacing
+            if contentWidth + gapWidth <= width {
+                columns = candidate
+                break
+            }
+        }
         let cellWidth = max(0, (width - CGFloat(columns - 1) * spacing) / CGFloat(columns))
         let cellHeight = subviews.map {
             $0.sizeThatFits(ProposedViewSize(width: cellWidth, height: nil)).height
