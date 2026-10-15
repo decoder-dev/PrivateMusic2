@@ -268,23 +268,26 @@ struct ArtistView: View {
             Haptics.selection()
             selectedAlbum = album
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: LibraryShelfMetrics.captionSpacing) {
                 AsyncArtwork(url: album.artworkURL, size: albumCardWidth)
-                Text(
-                    Album.isUsableTitle(album.title)
-                        ? album.title
-                        : L10n.text("album")
-                )
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(height: albumCaptionHeight * 2 / 3, alignment: .topLeading)
-                Text(L10n.trackCount(album.count))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(
+                        Album.isUsableTitle(album.title)
+                            ? album.title
+                            : L10n.text("album")
+                    )
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(L10n.trackCount(album.count))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                // Keep spare space below the whole caption, never between its labels.
+                .frame(height: albumCaptionHeight, alignment: .topLeading)
             }
             .frame(width: albumCardWidth,
                    height: albumCardWidth + LibraryShelfMetrics.captionSpacing + albumCaptionHeight,
