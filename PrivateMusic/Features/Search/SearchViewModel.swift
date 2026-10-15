@@ -351,6 +351,11 @@ final class SearchViewModel {
             nextOffset = nil
             activeQuery = ""
             albumSearchTask?.cancel()
+            playlistSearchTask?.cancel()
+            albumSearchRevision += 1
+            playlistSearchRevision += 1
+            isLoadingMoreAlbums = false
+            isLoadingMorePlaylists = false
             albums = []
             albumNextOffset = nil
             activeAlbumQuery = ""
@@ -371,6 +376,8 @@ final class SearchViewModel {
         }
         if requestedQuery != activeAlbumQuery {
             albumSearchTask?.cancel()
+            albumSearchRevision += 1
+            isLoadingMoreAlbums = false
             albums = []
             albumNextOffset = nil
             activeAlbumQuery = ""
@@ -379,6 +386,8 @@ final class SearchViewModel {
         }
         if requestedQuery != activePlaylistQuery {
             playlistSearchTask?.cancel()
+            playlistSearchRevision += 1
+            isLoadingMorePlaylists = false
             playlists = []
             playlistNextOffset = nil
             activePlaylistQuery = ""

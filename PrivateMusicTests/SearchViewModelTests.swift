@@ -59,6 +59,51 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertNil(context.model.errorMessage)
     }
 
+    func testClearingQueryCancelsHiddenCollectionsAndRejectsLateResponses() async {
+        let context = makeModel(debounce: .zero)
+        defer { context.defaults.removePersistentDomain(forName: context.suite) }
+        var albumReply: CheckedContinuation<MusicPage<Album>, Never>?
+        var playlistReply: CheckedContinuation<MusicPage<Playlist>, Never>?
+        var albumsCancelled = false
+        var playlistsCancelled = false
+        var finished = 0
+        context.model.query = "music"
+        context.model.submitAlbums { _, _, _ in
+            let page = await withCheckedContinuation { albumReply = $0 }
+            albumsCancelled = Task.isCancelled
+            finished += 1
+            return page
+        }
+        context.model.submitPlaylists { _, _, _ in
+            let page = await withCheckedContinuation { playlistReply = $0 }
+            playlistsCancelled = Task.isCancelled
+            finished += 1
+            return page
+        }
+        await waitUntil { albumReply != nil && playlistReply != nil }
+        XCTAssertNotNil(albumReply)
+        XCTAssertNotNil(playlistReply)
+        context.model.query = ""
+        context.model.submit { _, _, _ in
+            XCTFail("An empty query must not start a track request")
+            return Self.page(items: [])
+        }
+        albumReply?.resume(returning: MusicPage(items: [Album(id: 1, ownerID: 10,
+            title: "Old", count: 1)], totalCount: 1, nextOffset: nil))
+        playlistReply?.resume(returning: Self.playlistPage(items: [Self.playlist(id: 1, title: "Old")]))
+        await waitUntil { finished == 2 }
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertTrue(albumsCancelled)
+        XCTAssertTrue(playlistsCancelled)
+        XCTAssertTrue(context.model.albums.isEmpty)
+        XCTAssertTrue(context.model.playlists.isEmpty)
+        XCTAssertFalse(context.model.isLoadingAlbums)
+        XCTAssertFalse(context.model.isLoadingPlaylists)
+        XCTAssertNil(context.model.albumErrorMessage)
+        XCTAssertNil(context.model.playlistErrorMessage)
+        XCTAssertEqual(context.model.state, .idle)
+    }
+
     func testNewQueryCancelsInFlightSearchAndKeepsLatestResults() async {
         let context = makeModel(debounce: .zero)
         defer {
