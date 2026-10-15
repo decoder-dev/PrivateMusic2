@@ -143,6 +143,12 @@ final class DesignSnapshotTests: XCTestCase {
             defaults.set(true, forKey: "library.collectionGrid")
             capture(NavigationStack { LibraryView(section: .playlists, playlistModel: playlistModel) }.defaultAppStorage(defaults),
                     name: "library-grid-\(theme.rawValue)", width: 320, environment: environment, settings: settings)
+            for gridWidth in [CGFloat(393), CGFloat(768)] {
+                capture(NavigationStack { LibraryView(section: .playlists, playlistModel: playlistModel) }
+                        .defaultAppStorage(defaults),
+                        name: "library-grid-\(Int(gridWidth))-\(theme.rawValue)", width: gridWidth,
+                        environment: environment, settings: settings)
+            }
             defaults.set(false, forKey: "library.collectionGrid")
             capture(NavigationStack { LibraryView(section: .playlists, playlistModel: playlistModel) }.defaultAppStorage(defaults),
                     name: "library-list-\(theme.rawValue)", environment: environment, settings: settings)

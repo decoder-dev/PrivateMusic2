@@ -20,9 +20,9 @@ struct LibraryView: View {
     @Environment(MainTabScrollCoordinator.self) private var scrollCoordinator
     @Environment(PinnedMixStore.self) private var pinnedMixStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    /// Default 40pt is two caption lines at the standard text size.
+    /// Reserve two title lines and a metadata line for every collection.
     /// Accessibility sizes grow the shelf instead of clipping the titles.
-    @ScaledMetric(relativeTo: .subheadline) private var shelfCaptionHeight: CGFloat = 40
+    @ScaledMetric(relativeTo: .subheadline) private var shelfCaptionHeight: CGFloat = 60
     private let offlinePlaylists =
         OfflinePlaylistStore.shared
     @State private var tracks = TrackCollectionViewModel(source: .library)
@@ -526,44 +526,9 @@ struct LibraryView: View {
         }
     }
 
-    @ViewBuilder
     private var libraryFilters: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            // A horizontal strip cannot show long categories at large text
-            // sizes. Keep the current category readable and offer all others
-            // in the native menu instead of requiring sideways scrolling.
-            Menu {
-                ForEach(LibrarySection.allCases, id: \.self) { item in
-                    Button { section = item } label: {
-                        if section == item {
-                            Label(item.title, systemImage: "checkmark")
-                        } else {
-                            Text(item.title)
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: BubbleSpacing.m) {
-                    Text(section.title)
-                        .font(.subheadline.weight(.semibold))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: BubbleSpacing.s)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 18, weight: .semibold))
-                        .accessibilityHidden(true)
-                }
-                .foregroundStyle(.primary)
-                .padding(BubbleSpacing.m)
-                .frame(maxWidth: .infinity, minHeight: PremiumLayout.minimumTapTarget, alignment: .leading)
-                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: PremiumLayout.compactRadius))
-                .contentShape(Rectangle())
-            }
-            .accessibilityLabel(L10n.text("tab.library"))
-            .accessibilityValue(section.title)
-        } else {
-            AdaptiveCategoryPicker(items: LibrarySection.allCases, title: { $0.title },
-                                   label: L10n.text("tab.library"), selection: $section)
-        }
+        AdaptiveCategoryPicker(items: LibrarySection.allCases, title: { $0.title },
+                               label: L10n.text("tab.library"), selection: $section)
     }
 
     @ViewBuilder
@@ -605,15 +570,18 @@ struct LibraryView: View {
             }
         }
         if collectionGrid && !dynamicTypeSize.isAccessibilitySize {
-            // Fixed, resolved artwork sizes preserve the same cover rhythm as shelves.
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: LibraryShelfMetrics.cardWidth(for: width)), alignment: .topLeading)],
-                      alignment: .leading, spacing: BubbleSpacing.l) {
+            let edge = LibraryShelfMetrics.gridArtworkSize(for: width)
+            let columns = Array(repeating: GridItem(.fixed(edge), spacing: LibraryShelfMetrics.cardSpacing,
+                                                   alignment: .topLeading),
+                                count: AdaptiveLayout.columnCount(for: width))
+            LazyVGrid(columns: columns, alignment: .leading, spacing: BubbleSpacing.l) {
                 if isPlaylists {
                     ForEach(Array(visiblePlaylists.enumerated()), id: \.element.libraryIdentity) { index, playlist in
-                        playlistCard(playlist, index: index, isLast: index == visiblePlaylists.count - 1, width: width)
+                        playlistCard(playlist, index: index, isLast: index == visiblePlaylists.count - 1,
+                                     width: width, artworkSize: edge)
                     }
                 } else {
-                    ForEach(visibleAlbums) { album in albumCard(album, width: width) }
+                    ForEach(visibleAlbums) { album in albumCard(album, width: width, artworkSize: edge) }
                 }
             }
         } else if isPlaylists {
@@ -1063,9 +1031,11 @@ struct LibraryView: View {
         _ playlist: Playlist,
         index: Int,
         isLast: Bool,
-        width: CGFloat
+        width: CGFloat,
+        artworkSize: CGFloat? = nil
     ) -> some View {
-        VStack(
+        let edge = artworkSize ?? LibraryShelfMetrics.artworkSize(for: width)
+        return VStack(
             alignment: .leading,
             spacing: LibraryShelfMetrics.captionSpacing
         ) {
@@ -1075,7 +1045,7 @@ struct LibraryView: View {
                 } label: {
                     PlaylistArtworkView(
                         playlist: playlist,
-                        size: LibraryShelfMetrics.artworkSize(for: width)
+                        size: edge
                     )
                 }
                 .buttonStyle(PremiumPressStyle())
@@ -1089,7 +1059,8 @@ struct LibraryView: View {
                     Text(playlist.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .frame(height: shelfCaptionHeight * 2 / 3, alignment: .topLeading)
                     Text(L10n.trackCount(playlist.count))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -1104,11 +1075,8 @@ struct LibraryView: View {
             .buttonStyle(.plain)
         }
         .frame(
-            width: LibraryShelfMetrics.cardWidth(for: width),
-            height: LibraryShelfMetrics.cardHeight(
-                for: width,
-                captionHeight: shelfCaptionHeight
-            ),
+            width: edge,
+            height: edge + LibraryShelfMetrics.captionSpacing + shelfCaptionHeight,
             alignment: .topLeading
         )
         .contextMenu {
@@ -1197,8 +1165,9 @@ struct LibraryView: View {
         }
     }
 
-    private func albumCard(_ album: Album, width: CGFloat) -> some View {
-        VStack(
+    private func albumCard(_ album: Album, width: CGFloat, artworkSize: CGFloat? = nil) -> some View {
+        let edge = artworkSize ?? LibraryShelfMetrics.artworkSize(for: width)
+        return VStack(
             alignment: .leading,
             spacing: LibraryShelfMetrics.captionSpacing
         ) {
@@ -1208,7 +1177,7 @@ struct LibraryView: View {
                 } label: {
                     AsyncArtwork(
                         url: album.artworkURL,
-                        size: LibraryShelfMetrics.artworkSize(for: width)
+                        size: edge
                     )
                 }
                 .buttonStyle(PremiumPressStyle())
@@ -1226,7 +1195,8 @@ struct LibraryView: View {
                     )
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .frame(height: shelfCaptionHeight * 2 / 3, alignment: .topLeading)
                     Text(album.artistText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -1241,11 +1211,8 @@ struct LibraryView: View {
             .buttonStyle(.plain)
         }
         .frame(
-            width: LibraryShelfMetrics.cardWidth(for: width),
-            height: LibraryShelfMetrics.cardHeight(
-                for: width,
-                captionHeight: shelfCaptionHeight
-            ),
+            width: edge,
+            height: edge + LibraryShelfMetrics.captionSpacing + shelfCaptionHeight,
             alignment: .topLeading
         )
         .contextMenu { pinButton(PinnedCollectionsStore.albumKey(album)) }

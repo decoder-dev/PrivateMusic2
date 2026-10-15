@@ -18,10 +18,10 @@ enum LibraryShelfMetrics {
     static let cardSpacing: CGFloat = BubbleSpacing.m
     /// Gap between artwork and the title/subtitle block.
     static let captionSpacing: CGFloat = 8
-    /// Two lines at the default text size (title + count/artist).
+    /// Two title lines and one metadata line at the default text size.
     /// Callers scale this with Dynamic Type so accessibility sizes grow
     /// the caption instead of clipping it.
-    static let captionHeight: CGFloat = 40
+    static let captionHeight: CGFloat = 60
     /// Slack around the row for the pressed-card scale effect.
     static let shelfPadding: CGFloat = 2
     /// Breathing room between the navigation chrome and the first section.
@@ -53,6 +53,15 @@ enum LibraryShelfMetrics {
             compactMax: artworkSize,
             regularMax: AdaptiveLayout.regularCardWidthCap
         )
+    }
+
+    /// Resolve covers against the same gutters and gaps as the grid.
+    /// Shelf covers stay fixed; grid covers fill their entire column.
+    static func gridArtworkSize(for width: CGFloat) -> CGFloat {
+        let columns = AdaptiveLayout.columnCount(for: width)
+        let contentWidth = max(0, width - PremiumLayout.screenPadding * 2)
+        let gaps = CGFloat(columns - 1) * cardSpacing
+        return max(0, (contentWidth - gaps) / CGFloat(columns))
     }
 
     static func cardWidth(for width: CGFloat) -> CGFloat {

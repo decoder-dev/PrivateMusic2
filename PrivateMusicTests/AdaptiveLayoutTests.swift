@@ -13,6 +13,17 @@ final class AdaptiveLayoutTests: XCTestCase {
         XCTAssertEqual(AdaptiveLayout.horizontalPadding(for: iPadWidth), 24)
     }
 
+    func testCollectionGridFillsAvailableWidthWithoutOverflow() {
+        for width in [CGFloat(320), 390, 430, 500, 768, 1024] {
+            let count = AdaptiveLayout.columnCount(for: width)
+            let edge = LibraryShelfMetrics.gridArtworkSize(for: width)
+            let covers = CGFloat(count) * edge
+            let gaps = CGFloat(count - 1) * LibraryShelfMetrics.cardSpacing
+            XCTAssertGreaterThan(edge, 0)
+            XCTAssertEqual(covers + gaps + 2 * PremiumLayout.screenPadding, width, accuracy: 0.01)
+        }
+    }
+
     func testRegularWidthThresholdIsSevenHundred() {
         XCTAssertFalse(AdaptiveLayout.isRegularWidth(390))
         XCTAssertFalse(AdaptiveLayout.isRegularWidth(699))
