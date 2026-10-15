@@ -205,6 +205,10 @@ final class AudioPlayer {
     #if DEBUG
     /// Read-only engine identity for native regression tests.
     var currentPlaybackItemForDiagnostics: AVPlayerItem? { player.currentItem }
+    var hasSpeculativeWorkForDiagnostics: Bool {
+        preloadedPlayback != nil || preloadAssetTask != nil
+            || preloadStreamRefreshTask != nil || artworkPrefetchTask != nil
+    }
     #endif
     private let nowPlaying = NowPlayingController()
     /// Library actions behind the system Like button; the app environment
@@ -1144,6 +1148,7 @@ final class AudioPlayer {
         player.play()
         isPlaying = true
         publishPlaybackState(force: true)
+        scheduleNeighborPreloads()
         handleOutputVolume(
             AVAudioSession.sharedInstance().outputVolume
         )
@@ -1192,6 +1197,8 @@ final class AudioPlayer {
     private func pausePreservingIntent() {
         player.pause()
         isPlaying = false
+        cancelPreloading()
+        cancelContinuation()
         historyStore.stats.commitPending()
         // Pausing at 0:44 and being killed must not resume from 0:30.
         persistPlayback()
@@ -1683,6 +1690,11 @@ final class AudioPlayer {
     }
 
     private func scheduleNeighborPreloads() {
+        guard playbackIntended, !isAudioInterrupted,
+              DecorativeWorkPolicy.allowsSpeculativeWork else {
+            cancelPreloading()
+            return
+        }
         maybeStartContinuationPrefetch()
         let lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
         let remotePreloadingAllowed = canPreloadPlayback()
@@ -4023,7 +4035,9 @@ final class AudioPlayer {
     /// still leave us under the threshold, so `scheduleNeighborPreloads` is
     /// allowed to chain another request after the current one completes.
     private func maybeStartContinuationPrefetch() {
-        guard playbackIntended,
+        guard playbackIntended, !isAudioInterrupted,
+              DecorativeWorkPolicy.allowsSpeculativeWork,
+              canPreloadPlayback(),
               activeContinuationProvider != nil,
               continuationPrefetchTask == nil,
               continuationTask == nil else {

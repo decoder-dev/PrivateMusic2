@@ -5,6 +5,45 @@ import XCTest
 
 @MainActor
 final class ThermalAuditRegressionTests: XCTestCase {
+    func testPauseCancelsArtworkPreparationAndNetworkChangesCannotRestartIt() async throws {
+        let suite = "PausedPreload-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults)
+        settings.crossfadeEnabled = false
+        let player = AudioPlayer(settings: settings,
+            historyStore: ListeningHistoryStore(defaults: defaults), defaults: defaults)
+        defer { player.stop() }
+        var started = 0
+        var cancelled = 0
+        player.configurePreloading(isAllowed: { true }, artworkPrefetch: { _ in
+            started += 1
+            do { try await Task.sleep(for: .seconds(10)) }
+            catch { cancelled += 1 }
+        })
+        let tracks = (1...2).map {
+            Track(trackID: $0, ownerID: 1, title: "Fixture", artist: "Audit",
+                  duration: 180, streamURL: nil, artworkURL: nil)
+        }
+        player.play(tracks[0], in: tracks, allowsContinuation: false)
+        player.resumePreloading()
+        for _ in 0..<100 where started == 0 {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertEqual(started, 1)
+        XCTAssertTrue(player.hasSpeculativeWorkForDiagnostics)
+        player.pause()
+        XCTAssertFalse(player.hasSpeculativeWorkForDiagnostics)
+        player.configureNetwork(userAgent: nil)
+        player.resumePreloading()
+        for _ in 0..<100 where cancelled == 0 {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertEqual(cancelled, 1)
+        XCTAssertEqual(started, 1)
+        XCTAssertFalse(player.hasSpeculativeWorkForDiagnostics)
+    }
+
     func testOptionalArtworkWorkYieldsToLowPowerAndThermalPressure() {
         XCTAssertTrue(DecorativeWorkPolicy.allowsSpeculativeWork(lowPowerMode: false, thermalState: .nominal))
         XCTAssertTrue(DecorativeWorkPolicy.allowsSpeculativeWork(lowPowerMode: false, thermalState: .fair))

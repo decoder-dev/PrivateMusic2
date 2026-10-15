@@ -73,58 +73,16 @@ struct CachedRemoteImage<
             return
         }
 
-        do {
-            let data: Data
-            if url.isFileURL {
-                data = try await Task.detached(priority: .utility) {
-                    try Data(contentsOf: url, options: .mappedIfSafe)
-                }.value
-            } else {
-                let (remoteData, response) = try await ArtworkImageCache
-                    .shared.session.data(from: url)
-                guard let http = response as? HTTPURLResponse,
-                      (200..<300).contains(http.statusCode) else {
-                    throw URLError(.badServerResponse)
-                }
-                data = remoteData
-            }
-            guard !Task.isCancelled,
-                  loadIdentity == identity else {
-                return
-            }
-            guard let loaded = await ArtworkImageCache.downsample(
-                    data,
-                    maxPixelSize: pixelSize
-                  ) else { return }
-            guard !Task.isCancelled, loadIdentity == identity else { return }
-            ArtworkImageCache.shared.insert(
-                loaded,
-                for: url,
-                maxPixelSize: pixelSize
-            )
-            image = loaded
-            loadedIdentity = identity
-            fallbackImage = nil
-            if loadingIdentity == identity {
-                loadingIdentity = nil
-            }
-            BubbleTintCache.shared.recordArtwork(loaded, for: url)
-        } catch is CancellationError {
-            if loadingIdentity == identity {
-                loadingIdentity = nil
-                fallbackImage = nil
-            }
-            return
-        } catch {
-            guard loadIdentity == identity else { return }
-            image = nil
-            fallbackImage = nil
-            loadedIdentity = nil
-            if loadingIdentity == identity {
-                loadingIdentity = nil
-            }
-            return
-        }
+        // Visible artwork and speculative prefetch share the same request and
+        // decode. Several rows showing one cover must not each decode it.
+        let loaded = await ArtworkImageCache.shared.loadImage(
+            url: url,
+            maxPixelSize: pixelSize
+        )
+        guard !Task.isCancelled, loadIdentity == identity else { return }
+        image = loaded
+        loadedIdentity = loaded == nil ? nil : identity
+        fallbackImage = nil
     }
 
     private struct LoadIdentity: Hashable {
@@ -140,7 +98,6 @@ private actor ArtworkPrefetchRegistry {
         var waiters: Set<UUID>
     }
 
-    static let shared = ArtworkPrefetchRegistry()
     private var entries: [String: Entry] = [:]
 
     func prefetch(
@@ -219,8 +176,9 @@ final class ArtworkImageCache: @unchecked Sendable {
 
     let session: URLSession
     private let cache = NSCache<NSString, UIImage>()
+    private let prefetchRegistry = ArtworkPrefetchRegistry()
 
-    private init() {
+    init(session suppliedSession: URLSession? = nil) {
         cache.countLimit = 180
         cache.totalCostLimit = 96 * 1_024 * 1_024
 
@@ -232,7 +190,7 @@ final class ArtworkImageCache: @unchecked Sendable {
             diskCapacity: 192 * 1_024 * 1_024,
             diskPath: "PrivateMusic.Artwork"
         )
-        session = URLSession(configuration: configuration)
+        session = suppliedSession ?? URLSession(configuration: configuration)
     }
 
     func image(for url: URL, maxPixelSize: CGFloat) -> UIImage? {
@@ -254,12 +212,15 @@ final class ArtworkImageCache: @unchecked Sendable {
     }
 
     func prefetch(url: URL?, maxPixelSize: CGFloat) async {
-        guard let url else { return }
-        await ArtworkPrefetchRegistry.shared.prefetch(
-            cache: self,
-            url: url,
-            maxPixelSize: maxPixelSize
-        )
+        _ = await loadImage(url: url, maxPixelSize: maxPixelSize)
+    }
+
+    func loadImage(url: URL?, maxPixelSize: CGFloat) async -> UIImage? {
+        guard let url, !Task.isCancelled else { return nil }
+        if let cached = image(for: url, maxPixelSize: maxPixelSize) { return cached }
+        await prefetchRegistry.prefetch(cache: self, url: url, maxPixelSize: maxPixelSize)
+        guard !Task.isCancelled else { return nil }
+        return image(for: url, maxPixelSize: maxPixelSize)
     }
 
     fileprivate func performPrefetch(
@@ -290,6 +251,7 @@ final class ArtworkImageCache: @unchecked Sendable {
                   ) else {
                 return
             }
+            guard !Task.isCancelled else { return }
             insert(artwork, for: url, maxPixelSize: maxPixelSize)
             await MainActor.run {
                 BubbleTintCache.shared.recordArtwork(artwork, for: url)
