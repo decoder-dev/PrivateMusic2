@@ -144,8 +144,28 @@ final class DesignSnapshotTests: XCTestCase {
                     name: "library-collections-AX-\(theme.rawValue)", width: 320, environment: environment, settings: settings)
             capture(NavigationStack { AlbumDetailView(album: album, loadedTracks: [track]) }, name: "album-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            let backdropURL = URL(string: "https://artwork.invalid/native-backdrop-fixture")!
+            let bitmap = UIGraphicsImageRenderer(size: CGSize(width: 256, height: 256)).image { context in
+                UIColor.systemOrange.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 256, height: 256))
+                UIColor.systemIndigo.setFill()
+                context.fill(CGRect(x: 128, y: 0, width: 128, height: 256))
+            }
+            ArtworkImageCache.shared.insert(bitmap, for: backdropURL, maxPixelSize: PlayerArtworkBackgroundPolicy.maxPixelSize)
+            capture(PlayerArtworkBackdrop(artworkURL: backdropURL, background: theme == .dark ? .black : .white,
+                    gradient: [.clear, .black.opacity(0.7)], isLight: theme == .light, reduceTransparency: false),
+                    name: "player-backdrop-raster-\(theme.rawValue)", environment: environment, settings: settings)
             capture(NavigationStack { ArtistView(artist: "Private Music") }, name: "artist-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            let artistTracks = (1...12).map { index in
+                Track(trackID: index + 100, ownerID: 1, title: index == 1 ? "Очень длинное название трека исполнителя" : "Трек \(index)",
+                      artist: "ATL", duration: 200, streamURL: nil, artworkURL: nil)
+            }
+            capture(NavigationStack { ArtistView(artist: "ATL", loadedTracks: artistTracks, loadedAlbums: [album]) },
+                    name: "artist-filled-\(theme.rawValue)", width: 320, height: 1200, environment: environment, settings: settings)
+            capture(NavigationStack { ArtistView(artist: "ATL", loadedTracks: artistTracks, loadedAlbums: [album]) }
+                    .dynamicTypeSize(.accessibility3), name: "artist-filled-AX-\(theme.rawValue)", width: 320,
+                    height: 1400, environment: environment, settings: settings)
             capture(NavigationStack { PlaylistDetailView(playlist: playlist, loadedTracks: [track]) }, name: "playlist-\(theme.rawValue)",
                     environment: environment, settings: settings)
             capture(NavigationStack { ProfileView() }, name: "profile-\(theme.rawValue)",

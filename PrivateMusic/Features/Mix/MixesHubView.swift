@@ -75,9 +75,7 @@ struct MixesHubView: View {
     @State private var tunedMixes: [MusicMix] = []
 
     private let defaultPreviewTrackLimit = 15
-    /// Unfiltered tracks to gather for a mix before the page stops asking VK
-    /// for more; leaves a full «For You» row after filtering.
-    private static let forYouTarget = 40
+    /// Maximum already-loaded tracks shown after explicit expansion.
     private let expandedPreviewTrackLimit = 60
 
     private let isDesignPreview: Bool
@@ -2000,20 +1998,22 @@ struct MixesHubView: View {
                 && mix.backdropURL?.pathExtension.lowercased() != "json"
                 && vkTrackCache[mix.id] == nil
                 && coverPreviews[mix.id] == nil
-        }.prefix(12)
+        }.prefix(3)
         guard !pending.isEmpty else { return }
         // One at a time: a dozen parallel stream requests would look like
         // abuse to VK and the covers are not urgent.
         coverPreviewTask = Task {
             for mix in pending {
-                if Task.isCancelled { return }
+                guard !Task.isCancelled,
+                      DecorativeWorkPolicy.allowsSpeculativeWork
+                else { return }
                 let tracks = try? await environment.withAuthorizedToken {
                     token in
                     try await environment.musicService.mixTracks(
                         mix,
                         accessToken: token,
                         startingOffset: 0,
-                        pages: 2
+                        pages: 1
                     )
                 }
                 let covered = (tracks ?? []).filter { $0.artworkURL != nil }
@@ -2141,34 +2141,11 @@ struct MixesHubView: View {
                     let base = baseTracks(for: mix)
                     return base.isEmpty ? tracks(for: mix) : base
                 }
-                var collected = mergeUnfiltered(seed, more)
-                let firstBatch = collected
-                await MainActor.run {
-                    storeTracks(firstBatch, for: mix)
-                }
-                // VK hands a stream mix out in small batches, so one page
-                // leaves «For You» nearly empty once hidden tracks and the
-                // language/familiarity filters are applied. Keep asking
-                // (a few rounds at most) until there is a full row to show.
-                var rounds = 0
-                while collected.count < Self.forYouTarget, rounds < 4 {
-                    rounds += 1
-                    let next = try await environment.withAuthorizedToken {
-                        token in
-                        try await cursor.next(
-                            accessToken: token,
-                            musicService: environment.musicService
-                        )
-                    }
-                    guard !Task.isCancelled else { return }
-                    let merged = mergeUnfiltered(collected, next)
-                    if merged.count == collected.count { break }
-                    collected = merged
-                    let snapshot = merged
-                    await MainActor.run {
-                        storeTracks(snapshot, for: mix)
-                    }
-                }
+                let firstBatch = mergeUnfiltered(seed, more)
+                await MainActor.run { storeTracks(firstBatch, for: mix) }
+                // A browse preview gets one bootstrap and one continuation.
+                // Live playback refills on demand through its own cursor;
+                // do not fetch another twelve pages merely to fill a shelf.
             } catch is CancellationError {
                 return
             } catch {

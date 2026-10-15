@@ -10,6 +10,7 @@ struct SavedLyricsRecord: Codable, Identifiable, Sendable {
 @Observable
 final class SavedLyricsStore {
     private(set) var records: [SavedLyricsRecord] = []
+    @ObservationIgnored private var cachedSearch: (query: String, results: [SavedLyricsRecord])?
     private let defaults: UserDefaults
     private var accountID: Int?
     private var key: String? { accountID.map { "lyrics.saved.v1.\($0)" } }
@@ -18,6 +19,7 @@ final class SavedLyricsStore {
 
     func configure(accountID: Int?) {
         guard self.accountID != accountID else { return }
+        cachedSearch = nil
         self.accountID = accountID
         records = key.flatMap { defaults.data(forKey: $0) }
             .flatMap { try? JSONDecoder().decode([SavedLyricsRecord].self, from: $0) } ?? []
@@ -30,6 +32,7 @@ final class SavedLyricsStore {
         let safe = Track(trackID: track.trackID, ownerID: track.ownerID, title: track.title,
                          artist: track.artist, albumTitle: track.albumTitle, duration: track.duration,
                          streamURL: nil, artworkURL: track.artworkURL)
+        cachedSearch = nil
         records.removeAll { $0.id == track.id }
         records.insert(SavedLyricsRecord(track: safe, lyrics: lyrics), at: 0)
         records = Array(records.prefix(150))
@@ -39,12 +42,22 @@ final class SavedLyricsStore {
     func lyrics(for track: Track) -> Lyrics? { records.first { $0.id == track.id }?.lyrics }
 
     func search(_ query: String) -> [SavedLyricsRecord] {
-        let words = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            .split(whereSeparator: \.isWhitespace).map(String.init)
-        guard query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2, !words.isEmpty else { return [] }
-        return records.filter { record in
-            let text = "\(record.track.artist) \(record.track.title) \(record.lyrics.text)"
-            return words.allSatisfy { text.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+        // Keep Observation subscribed even when this query hits the cache.
+        let currentRecords = records
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let cachedSearch, cachedSearch.query == trimmed { return cachedSearch.results }
+        let words = trimmed.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard trimmed.count >= 2, !words.isEmpty else { return [] }
+        let results = currentRecords.filter { record in
+            words.allSatisfy { word in
+                // Search fields independently instead of allocating one copy
+                // of every complete lyric on each keystroke/body evaluation.
+                [record.track.artist, record.track.title, record.lyrics.text].contains {
+                    $0.range(of: word, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+                }
+            }
         }
+        cachedSearch = (trimmed, results)
+        return results
     }
 }

@@ -7,7 +7,10 @@ struct ArtistView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(LikedAlbumsStore.self) private var likedAlbumsStore
     @Environment(PlaybackHighlightModel.self) private var highlight
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let artist: String
+    let isPresentedModally: Bool
+    private let isDesignPreview: Bool
     @State private var tracks: [Track] = []
     @State private var albums: [Album] = []
     @State private var resolvedArtist: VKArtist?
@@ -24,27 +27,40 @@ struct ArtistView: View {
     @State private var isLoadingMoreTracks = false
     @State private var loadMoreTracksTask: Task<Void, Never>?
 
-    var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            Divider()
+    init(artist: String, isPresentedModally: Bool = false,
+         loadedTracks: [Track]? = nil, loadedAlbums: [Album] = []) {
+        self.artist = artist
+        self.isPresentedModally = isPresentedModally
+        isDesignPreview = loadedTracks != nil
+        _tracks = State(initialValue: loadedTracks ?? [])
+        _albums = State(initialValue: loadedAlbums)
+        _isLoading = State(initialValue: loadedTracks == nil)
+    }
 
-            Group {
-                if isLoading && tracks.isEmpty {
-                    ArtistLoadingView(artist: artist)
-                } else if tracks.isEmpty {
-                    emptyContent
-                } else {
-                    trackContent
-                }
+    var body: some View {
+        Group {
+            if isLoading && tracks.isEmpty {
+                ArtistLoadingView(artist: artist)
+            } else if tracks.isEmpty {
+                emptyContent
+            } else {
+                trackContent
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ThemeBackground())
         .clearsMiniPlayer(includingWhenDockReservesSpace: true)
-        .navigationBarBackButtonHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
-        .presentationDetents([.medium, .large])
+        .navigationTitle(L10n.text("artist"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbar {
+            if isPresentedModally {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.text("action.close"), systemImage: "xmark") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .sheet(item: $selectedAlbum) { album in
             NavigationStack { AlbumDetailView(album: album) }
@@ -62,6 +78,7 @@ struct ArtistView: View {
         }
         .onDisappear { loadMoreTracksTask?.cancel() }
         .task(id: artist) {
+            guard !isDesignPreview else { return }
             resolvedArtist = nil
             if sessionStore.accessToken != nil {
                 resolvedArtist = try? await resolveArtist(named: artist)
@@ -71,39 +88,6 @@ struct ArtistView: View {
             await load(resetContent: true)
             await loadAlbums()
         }
-    }
-
-    private var topBar: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(L10n.text("artist"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(artist)
-                    .font(.headline)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 12)
-
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .frame(width: 34, height: 34)
-                    .background(
-                        Color(uiColor: .tertiarySystemFill),
-                        in: Circle()
-                    )
-                    .minimumHitTarget(visualSize: 34)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(L10n.text("action.close"))
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-        .frame(minHeight: 58)
     }
 
     private var trackContent: some View {
@@ -116,7 +100,7 @@ struct ArtistView: View {
                         message: errorMessage,
                         retry: { Task { await load(resetContent: false) } }
                     )
-                    .padding(.horizontal, 18)
+                    .padding(.horizontal, PremiumLayout.screenPadding)
                     .padding(.bottom, 10)
                 }
 
@@ -182,69 +166,59 @@ struct ArtistView: View {
         }
     }
 
-    private static let trackPreviewLimit = 16
+    private static let trackPreviewLimit = 6
 
     private var previewTracks: [Track] {
         Array(tracks.prefix(Self.trackPreviewLimit))
     }
 
-    private var trackGridRows: [GridItem] {
-        Array(repeating: GridItem(.fixed(60), spacing: 4), count: 4)
-    }
-
     private var tracksSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(L10n.text("artist_tracks"))
-                    .font(.headline)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Spacer(minLength: 8)
-                Text(L10n.trackCount(tracks.count))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                if tracks.count > Self.trackPreviewLimit
-                    || nextTracksOffset != nil {
-                    Button {
-                        showsAllTracks = true
-                    } label: {
-                        HStack(spacing: 2) {
-                            Text(L10n.text("see_all"))
-                            Image(systemName: "chevron.right")
-                                .font(.caption2.weight(.semibold))
-                        }
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(settings.accent)
+        VStack(alignment: .leading, spacing: BubbleSpacing.s) {
+            HStack(alignment: .center, spacing: BubbleSpacing.m) {
+                VStack(alignment: .leading, spacing: BubbleSpacing.xs) {
+                    Text(L10n.text("artist_tracks"))
+                        .font(BubbleType.section)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(L10n.trackCount(tracks.count))
+                        .font(BubbleType.metadata).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                if tracks.count > Self.trackPreviewLimit || nextTracksOffset != nil {
+                    Button { showsAllTracks = true } label: {
+                        Label(L10n.text("see_all"), systemImage: "chevron.right")
+                            .font(.subheadline.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(minHeight: PremiumLayout.minimumTapTarget)
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(settings.accent)
                 }
             }
-            .padding(.horizontal, 18)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHGrid(rows: trackGridRows, spacing: 4) {
-                    ForEach(previewTracks) { track in
-                        TrackRow(track: track, queue: tracks)
-                            .frame(width: 264)
-                    }
-                }
-                .padding(.horizontal, 18)
+            ForEach(previewTracks) { track in
+                TrackRow(track: track, queue: tracks)
+                    .padding(.vertical, BubbleSpacing.xs)
             }
         }
+        .padding(.horizontal, PremiumLayout.screenPadding)
+    }
+
+    private var albumCardWidth: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 196 : 136
     }
 
     private var albumsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(L10n.text("library.albums"))
                 .font(.headline)
-                .padding(.horizontal, 18)
+                .padding(.horizontal, PremiumLayout.screenPadding)
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 14) {
                     ForEach(albums) { album in
                         artistAlbumCard(album)
                     }
                 }
-                .padding(.horizontal, 18)
+                .padding(.horizontal, PremiumLayout.screenPadding)
             }
         }
         .padding(.bottom, 4)
@@ -256,7 +230,7 @@ struct ArtistView: View {
             selectedAlbum = album
         } label: {
             VStack(alignment: .leading, spacing: 8) {
-                AsyncArtwork(url: album.artworkURL, size: 116)
+                AsyncArtwork(url: album.artworkURL, size: albumCardWidth)
                 Text(
                     Album.isUsableTitle(album.title)
                         ? album.title
@@ -264,13 +238,15 @@ struct ArtistView: View {
                 )
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(L10n.trackCount(album.count))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(width: 116, alignment: .leading)
+            .frame(width: albumCardWidth, alignment: .leading)
         }
         .buttonStyle(PremiumPressStyle())
         .contextMenu {
@@ -404,6 +380,7 @@ struct ArtistView: View {
                 url: resolvedArtist?.photoURL ?? tracks.first?.artworkURL,
                 size: 88
             )
+            .clipShape(Circle())
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(artist)
@@ -422,7 +399,7 @@ struct ArtistView: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, PremiumLayout.screenPadding)
         .padding(.top, 18)
         .padding(.bottom, 14)
     }
@@ -818,7 +795,7 @@ private struct ArtistLoadingView: View {
 
                     Spacer()
                 }
-                .padding(.horizontal, 18)
+                .padding(.horizontal, PremiumLayout.screenPadding)
                 .padding(.vertical, 18)
 
                 HStack {
@@ -829,12 +806,12 @@ private struct ArtistLoadingView: View {
                     ProgressView()
                         .controlSize(.small)
                 }
-                .padding(.horizontal, 18)
+                .padding(.horizontal, PremiumLayout.screenPadding)
                 .padding(.bottom, 10)
 
                 ForEach(0..<4, id: \.self) { _ in
                     ArtistLoadingRow()
-                        .padding(.horizontal, 18)
+                        .padding(.horizontal, PremiumLayout.screenPadding)
                         .padding(.vertical, 5)
                 }
             }

@@ -123,34 +123,11 @@ struct PlayerView: View {
     }
 
     private var artworkBackground: some View {
-        ZStack {
-            playerBackground
-            if let artworkURL = player.currentTrack?.artworkURL {
-                CachedRemoteImage(
-                    url: artworkURL,
-                    maxPixelSize: PlayerArtworkBackgroundPolicy.maxPixelSize
-                ) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .scaleEffect(1.28)
-                        .blur(radius: PlayerArtworkBackgroundPolicy.blurRadius)
-                        .saturation(1.12)
-                        .opacity(settings.theme == .light ? 0.18 : 1)
-                } placeholder: {
-                    Color.clear
-                }
-                .id(player.currentTrack?.id)
-            }
-            playerBackground.opacity(settings.theme == .light ? 0.72 : 0.56)
-            LinearGradient(
-                colors: backgroundGradient,
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-        .drawingGroup(opaque: true)
-        .ignoresSafeArea()
+        PlayerArtworkBackdrop(artworkURL: player.currentTrack?.artworkURL,
+                              background: playerBackground, gradient: backgroundGradient,
+                              isLight: settings.theme == .light,
+                              reduceTransparency: reduceTransparency || colorSchemeContrast == .increased)
+            .equatable()
     }
 
     @ViewBuilder
@@ -905,7 +882,7 @@ struct PlayerView: View {
         case let .lyrics(track):
             LyricsView(track: track)
         case let .artist(artist):
-            ArtistView(artist: artist)
+            NavigationStack { ArtistView(artist: artist, isPresentedModally: true) }
         case let .playlists(track):
             AddToPlaylistView(track: track)
         case .settings:
@@ -1566,6 +1543,7 @@ enum PlayerArtworkCarouselPolicy {
 }
 
 enum PlayerArtworkBackgroundPolicy {
+    static let rasterSide: CGFloat = 240
     static let maxPixelSize: CGFloat = 320
     static let blurRadius: CGFloat = 44
 }

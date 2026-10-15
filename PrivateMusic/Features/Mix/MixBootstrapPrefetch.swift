@@ -6,19 +6,28 @@ enum MixBootstrapPrefetch {
     /// `AudioPlayer` (next-only) to avoid stream spam.
     static func artwork(
         for tracks: [Track],
-        limit: Int = 8,
+        limit: Int = 4,
         maxPixelSize: CGFloat = 512
     ) {
-        let urls = tracks.prefix(limit).compactMap(\.artworkURL)
+        guard DecorativeWorkPolicy.allowsSpeculativeWork
+        else { return }
+        var seen = Set<URL>()
+        let urls = tracks.prefix(limit).compactMap(\.artworkURL).filter { seen.insert($0).inserted }
         guard !urls.isEmpty else { return }
         Task {
             await withTaskGroup(of: Void.self) { group in
-                for url in urls {
-                    group.addTask {
-                        await ArtworkImageCache.shared.prefetch(
-                            url: url,
-                            maxPixelSize: maxPixelSize
-                        )
+                var iterator = urls.makeIterator()
+                for _ in 0..<min(2, urls.count) {
+                    if let url = iterator.next() {
+                        group.addTask { await ArtworkImageCache.shared.prefetch(url: url, maxPixelSize: maxPixelSize) }
+                    }
+                }
+                for await _ in group {
+                    guard !Task.isCancelled,
+                          DecorativeWorkPolicy.allowsSpeculativeWork
+                    else { group.cancelAll(); return }
+                    if let url = iterator.next() {
+                        group.addTask { await ArtworkImageCache.shared.prefetch(url: url, maxPixelSize: maxPixelSize) }
                     }
                 }
             }

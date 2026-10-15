@@ -22,10 +22,10 @@ struct CachedRemoteImage<
             ?? (loadingIdentity == loadIdentity ? fallbackImage : nil)
 
         ZStack {
-            placeholder()
-                .opacity(visibleImage == nil ? 1 : 0)
             if let image = visibleImage {
                 content(Image(uiImage: image))
+            } else {
+                placeholder()
             }
         }
         .task(id: loadIdentity) {

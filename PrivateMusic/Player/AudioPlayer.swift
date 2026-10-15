@@ -102,7 +102,8 @@ final class AudioPlayer {
     private(set) var queue: [Track] = [] {
         didSet {
             syncHighlight()
-            if PlaybackPreloadPolicy.hasQueueChanged(oldValue, queue) {
+            if PlaybackPreloadPolicy.shouldInvalidateNeighbor(oldQueue: oldValue, newQueue: queue,
+                                                             currentIndex: currentIndex, repeatMode: repeatMode) {
                 invalidatePreloadedPlayback()
             }
         }
@@ -201,6 +202,10 @@ final class AudioPlayer {
     private var shufflePreference: Bool
 
     private var player = AVPlayer()
+    #if DEBUG
+    /// Read-only engine identity for native regression tests.
+    var currentPlaybackItemForDiagnostics: AVPlayerItem? { player.currentItem }
+    #endif
     private let nowPlaying = NowPlayingController()
     /// Library actions behind the system Like button; the app environment
     /// owns the VK session, so it wires these in.
@@ -363,9 +368,6 @@ final class AudioPlayer {
     /// by an item already playing, which keeps whatever buffer
     /// AVFoundation already negotiated.
     private var currentNetworkCondition: NetworkCondition = .nominal
-    /// Rolling C estimator fed from `loadedTimeRanges` on the periodic
-    /// time observer. Reset on every new item so tracks do not blend.
-    private let bufferHealthEstimator = BufferHealthEstimator()
 
     var currentTrack: Track? {
         guard let currentIndex, queue.indices.contains(currentIndex) else {
@@ -1690,7 +1692,7 @@ final class AudioPlayer {
             artworkPrefetchTask?.cancel()
             artworkPrefetchTask = nil
         }
-        guard !lowPowerMode,
+        guard !lowPowerMode, DecorativeWorkPolicy.allowsSpeculativeWork,
               let nextIndex = PlaybackPreloadPolicy.nextIndex(
                 queueCount: queue.count,
                 currentIndex: currentIndex,
@@ -2235,7 +2237,21 @@ final class AudioPlayer {
     }
 
     private func observeSettings() {
-        settingsObservation = ObservationLoop.start { [weak self] in
+        settingsObservation = ObservationLoop.start(observing: { [weak self] in
+            guard let self else { return }
+            _ = self.settings.equalizerEnabled
+            _ = self.settings.equalizerGains
+            _ = self.settings.equalizerPreamp
+            _ = self.settings.loudnessNormalization
+            _ = self.settings.dynamicRangeCompression
+            _ = self.settings.spatialAudioEnabled
+            _ = self.settings.spatialAudioIntensity
+            _ = self.settings.resumeOnBluetoothConnection
+            _ = self.settings.pauseAtMinimumVolume
+            _ = self.settings.advanceOnPlaybackError
+            _ = self.settings.preferHighQuality
+            _ = self.settings.crossfadeEnabled
+        }, apply: { [weak self] in
             guard let self else { return }
             let enabled = self.settings.equalizerEnabled
             let gains = self.settings.equalizerGains
@@ -2285,7 +2301,7 @@ final class AudioPlayer {
                     self.applyStreamQualityPreference()
                 }
             }
-        }
+        })
     }
 
     private func observePlayer() {
@@ -2473,7 +2489,6 @@ final class AudioPlayer {
                     self.duration = seconds
                 }
                 self.sampleListeningProgress(interval: installedInterval)
-                self.sampleBufferHealth()
                 self.maybeAdvanceWithCrossfade()
                 let buffering = self.isPlaying
                     && self.player.timeControlStatus
@@ -3149,13 +3164,21 @@ final class AudioPlayer {
     }
 
     private func handlePlaybackResourceConstraintsChanged() {
-        guard currentTrack != nil, player.currentItem != nil else { return }
+        guard let track = currentTrack, let item = player.currentItem else { return }
+        AppLog.shared.info(.player,
+            "resource constraints thermal=\(ProcessInfo.processInfo.thermalState.rawValue) lowPower=\(ProcessInfo.processInfo.isLowPowerModeEnabled)")
         if !PlaybackResourcePolicy.allowOverlappingPlayback(
-            userEnabled: crossfadeEnabled,
-            requiresAudioTap: equalizer.requiresAudioTap
-        ) {
-            cancelCrossfade()
-        }
+            userEnabled: crossfadeEnabled, requiresAudioTap: equalizer.requiresAudioTap
+        ) { cancelCrossfade() }
+        if !DecorativeWorkPolicy.allowsSpeculativeWork { cancelPreloading() }
+        let offline = loadedOfflineTrackID == track.id
+        let currentURL = (item.asset as? AVURLAsset)?.url
+        let candidateURL = offline ? currentURL : track.streamURL.map { resolvePlaybackURL(from: $0) } ?? currentURL
+        let needsTap = candidateURL.map { shouldAttachAudioProcessing(url: $0, isOffline: offline) } ?? false
+        let hasTap = item.audioMix?.inputParameters.contains { $0.audioTapProcessor != nil } ?? false
+        // A thermal/Low Power notification is not itself a reason to tear down
+        // a playing stream. Reload only if the effective processing changes.
+        guard hasTap != needsTap else { return }
         reloadCurrentItemForAudioProcessing()
     }
 
@@ -4354,7 +4377,6 @@ final class AudioPlayer {
         listenedTrackID = nil
         listenedPlaybackDuration = 0
         lastListeningElapsedTime = nil
-        bufferHealthEstimator.reset()
     }
 
     private func sampleListeningProgress(interval: TimeInterval) {
@@ -4378,39 +4400,6 @@ final class AudioPlayer {
             historyStore.stats.recordListening(seconds: delta, track: track)
         }
         markCurrentTrackListenedIfNeeded()
-    }
-
-    /// Fold `loadedTimeRanges` in C and feed the rolling buffer-health
-    /// estimator. The observer must not allocate an Array or walk
-    /// `CMTimeSubtract` in Swift.
-    private func sampleBufferHealth() {
-        guard let item = player.currentItem else { return }
-        let ranges = item.loadedTimeRanges
-        guard !ranges.isEmpty else { return }
-        let position = item.currentTime()
-        guard CMTIME_IS_NUMERIC(position) else { return }
-        let positionSeconds = CMTimeGetSeconds(position)
-        let count = min(ranges.count, 32)
-        let loadedAhead = withUnsafeTemporaryAllocation(
-            of: Double.self,
-            capacity: count
-        ) { ends -> Double in
-            for index in 0..<count {
-                let end = CMTimeRangeGetEnd(ranges[index].timeRangeValue)
-                ends[index] = CMTIME_IS_NUMERIC(end)
-                    ? CMTimeGetSeconds(end)
-                    : Double.nan
-            }
-            return pm_buffer_max_loaded_ahead(
-                positionSeconds,
-                ends.baseAddress,
-                Int32(count)
-            )
-        }
-        bufferHealthEstimator.observe(
-            now: ProcessInfo.processInfo.systemUptime,
-            loadedAheadSeconds: loadedAhead
-        )
     }
 
     private func markCurrentTrackListenedIfNeeded() {

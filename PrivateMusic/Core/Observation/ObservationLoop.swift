@@ -7,6 +7,7 @@ enum ObservationLoop {
     final class Token {
         var isCancelled = false
         fileprivate var apply: (() -> Void)?
+        fileprivate var afterTracking: (() -> Void)?
 
         fileprivate func tick() {
             guard !isCancelled, let apply else { return }
@@ -14,10 +15,9 @@ enum ObservationLoop {
                 guard !isCancelled else { return }
                 apply()
             } onChange: { [weak self] in
-                Task { @MainActor [weak self] in
-                    self?.tick()
-                }
+                Task { @MainActor [weak self] in self?.tick() }
             }
+            if !isCancelled { afterTracking?() }
         }
     }
 
@@ -30,4 +30,16 @@ enum ObservationLoop {
         token.tick()
         return token
     }
+    /// Only explicit inputs become dependencies. Side effects may inspect other
+    /// observable stores without subscribing this loop to all of their changes.
+    @MainActor
+    static func start(observing: @escaping @MainActor () -> Void,
+                      apply: @escaping @MainActor () -> Void) -> Token {
+        let token = Token()
+        token.apply = observing
+        token.afterTracking = apply
+        token.tick()
+        return token
+    }
+
 }

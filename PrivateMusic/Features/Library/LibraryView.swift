@@ -253,7 +253,8 @@ struct LibraryView: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 Group {
                     if OfflineDownloadsFeature.showsControls,
-                       !environment.isShareSessionActive {
+                       !environment.isShareSessionActive,
+                       section != .all || !normalizedTrackQuery.isEmpty {
                         NavigationLink {
                             OfflineDownloadsView()
                         } label: {

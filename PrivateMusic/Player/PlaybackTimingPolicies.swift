@@ -85,6 +85,17 @@ enum PlaybackPreloadPolicy {
             && now.timeIntervalSince(preparedAt) < maximumAge
     }
 
+    /// Extending the tail must not throw away the already warmed next item.
+    static func shouldInvalidateNeighbor(oldQueue: [Track], newQueue: [Track],
+                                         currentIndex: Int?, repeatMode: RepeatMode) -> Bool {
+        guard hasQueueChanged(oldQueue, newQueue) else { return false }
+        guard let oldNext = nextIndex(queueCount: oldQueue.count, currentIndex: currentIndex, repeatMode: repeatMode),
+              let newNext = nextIndex(queueCount: newQueue.count, currentIndex: currentIndex, repeatMode: repeatMode)
+        else { return true }
+        return oldQueue[oldNext].id != newQueue[newNext].id
+            || oldQueue[oldNext].streamURL != newQueue[newNext].streamURL
+    }
+
     static func hasQueueChanged(_ lhs: [Track], _ rhs: [Track]) -> Bool {
         guard lhs.count == rhs.count else { return true }
         return zip(lhs, rhs).contains { left, right in

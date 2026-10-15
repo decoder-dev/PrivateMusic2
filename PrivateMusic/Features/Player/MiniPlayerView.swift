@@ -2,7 +2,6 @@ import SwiftUI
 
 struct MiniPlayerView: View {
     @Environment(AudioPlayer.self) private var player
-    @Environment(PlaybackProgressModel.self) private var progress
     @Environment(AppSettings.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @GestureState private var dragOffset: CGSize = .zero
@@ -243,6 +242,106 @@ struct MiniPlayerView: View {
     }
 
     private var progressBar: some View {
+        MiniPlayerProgressStrip(fillsAccessorySlot: fillsAccessorySlot,
+                                lastProgressDragAt: $lastProgressDragAt)
+    }
+
+    // MARK: - Gestures / chrome
+
+    private var miniPlayerGesture: some Gesture {
+        DragGesture(
+            minimumDistance: MiniPlayerGesturePolicy.minimumDistance
+        )
+        .updating($dragOffset) { value, state, _ in
+            state = value.translation
+        }
+        .onEnded { value in
+            if let last = lastProgressDragAt,
+               Date().timeIntervalSince(last) < 0.6 {
+                return
+            }
+            guard let action = MiniPlayerGesturePolicy.action(
+                translation: value.translation,
+                predictedEndTranslation: value.predictedEndTranslation
+            ) else {
+                return
+            }
+            switch action {
+            case .openPlayer:
+                Haptics.open()
+                player.presentPlayer()
+            case .next:
+                Haptics.trackChange()
+                player.next()
+            case .previous:
+                Haptics.trackChange()
+                player.previous()
+            }
+        }
+    }
+
+    private var liveDragOffset: CGSize {
+        MiniPlayerGesturePolicy.dragOffset(
+            translation: dragOffset,
+            reduceMotion: reduceMotion
+        )
+    }
+
+    private var containerShape: RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: MiniPlayerLayoutMetrics.cornerRadius,
+            style: .continuous
+        )
+    }
+
+    private var playbackAccessibilityValue: String {
+        if player.isBuffering {
+            return "buffering"
+        }
+        if player.isPlaying {
+            return "playing"
+        }
+        return "paused"
+    }
+}
+
+/// Optional own glass plate for the mini player. System tab accessories
+/// already provide Liquid Glass; stacking another plate looks broken.
+private struct MiniPlayerChromeModifier<S: Shape>: ViewModifier {
+    let showsOwnGlassChrome: Bool
+    let shape: S
+    let tint: Color
+    let shadowOpacity: Double
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if showsOwnGlassChrome {
+            content
+                .adaptiveGlass(
+                    in: shape,
+                    interactive: true,
+                    tint: tint
+                )
+                .shadow(
+                    color: .black.opacity(shadowOpacity),
+                    radius: MiniPlayerLayoutMetrics.containerShadowRadius,
+                    y: MiniPlayerLayoutMetrics.containerShadowY
+                )
+        } else {
+            content
+        }
+    }
+}
+
+/// The 2 Hz clock updates only this thin strip, not the artwork, text,
+/// transport controls and live material of the entire mini player.
+private struct MiniPlayerProgressStrip: View {
+    @Environment(AudioPlayer.self) private var player
+    @Environment(PlaybackProgressModel.self) private var progress
+    @Environment(AppSettings.self) private var settings
+    let fillsAccessorySlot: Bool
+    @Binding var lastProgressDragAt: Date?
+    var body: some View {
         GeometryReader { proxy in
             Capsule()
                 .fill(.primary.opacity(0.12))
@@ -326,54 +425,6 @@ struct MiniPlayerView: View {
         player.seek(to: time)
     }
 
-    // MARK: - Gestures / chrome
-
-    private var miniPlayerGesture: some Gesture {
-        DragGesture(
-            minimumDistance: MiniPlayerGesturePolicy.minimumDistance
-        )
-        .updating($dragOffset) { value, state, _ in
-            state = value.translation
-        }
-        .onEnded { value in
-            if let last = lastProgressDragAt,
-               Date().timeIntervalSince(last) < 0.6 {
-                return
-            }
-            guard let action = MiniPlayerGesturePolicy.action(
-                translation: value.translation,
-                predictedEndTranslation: value.predictedEndTranslation
-            ) else {
-                return
-            }
-            switch action {
-            case .openPlayer:
-                Haptics.open()
-                player.presentPlayer()
-            case .next:
-                Haptics.trackChange()
-                player.next()
-            case .previous:
-                Haptics.trackChange()
-                player.previous()
-            }
-        }
-    }
-
-    private var liveDragOffset: CGSize {
-        MiniPlayerGesturePolicy.dragOffset(
-            translation: dragOffset,
-            reduceMotion: reduceMotion
-        )
-    }
-
-    private var containerShape: RoundedRectangle {
-        RoundedRectangle(
-            cornerRadius: MiniPlayerLayoutMetrics.cornerRadius,
-            style: .continuous
-        )
-    }
-
     private var progressFraction: CGFloat {
         CGFloat(
             MiniPlayerProgressPolicy.progress(
@@ -383,41 +434,4 @@ struct MiniPlayerView: View {
         )
     }
 
-    private var playbackAccessibilityValue: String {
-        if player.isBuffering {
-            return "buffering"
-        }
-        if player.isPlaying {
-            return "playing"
-        }
-        return "paused"
-    }
-}
-
-/// Optional own glass plate for the mini player. System tab accessories
-/// already provide Liquid Glass; stacking another plate looks broken.
-private struct MiniPlayerChromeModifier<S: Shape>: ViewModifier {
-    let showsOwnGlassChrome: Bool
-    let shape: S
-    let tint: Color
-    let shadowOpacity: Double
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if showsOwnGlassChrome {
-            content
-                .adaptiveGlass(
-                    in: shape,
-                    interactive: true,
-                    tint: tint
-                )
-                .shadow(
-                    color: .black.opacity(shadowOpacity),
-                    radius: MiniPlayerLayoutMetrics.containerShadowRadius,
-                    y: MiniPlayerLayoutMetrics.containerShadowY
-                )
-        } else {
-            content
-        }
-    }
 }

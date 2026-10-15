@@ -52,7 +52,7 @@ struct TrackRow: View {
         .trackShareSheet(track: $sharingTrack)
         .sheet(item: $destination) { target in
             switch target {
-            case .artist: ArtistView(artist: track.artist)
+            case .artist: NavigationStack { ArtistView(artist: track.artist, isPresentedModally: true) }
             case .playlist: AddToPlaylistView(track: track)
             }
         }

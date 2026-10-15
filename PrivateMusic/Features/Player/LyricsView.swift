@@ -179,10 +179,9 @@ struct LyricsView: View {
                     followsPlayback = false
                 }
             )
-            .onChange(of: progress.elapsedTime) { _ in
-                let next = resolvedActiveLineIndex(in: lyrics)
-                guard next != activeLineIndex else { return }
-                activeLineIndex = next
+            .background {
+                LyricsPlaybackLineClock(trackID: track.id, lines: lyrics.lines,
+                                        activeIndex: $activeLineIndex)
             }
             .onChange(of: activeLineIndex) { _ in
                 guard followsPlayback else { return }
@@ -277,5 +276,28 @@ struct LyricsView: View {
             guard !Task.isCancelled else { return }
             if lyrics == nil { errorMessage = error.localizedDescription }
         }
+    }
+}
+
+/// Subscribe to the playback clock in this tiny child; rebuilding a long
+/// lyrics ScrollView twice a second is unnecessary when the line is unchanged.
+private struct LyricsPlaybackLineClock: View {
+    @Environment(PlaybackProgressModel.self) private var progress
+    @Environment(PlaybackHighlightModel.self) private var highlight
+    let trackID: String
+    let lines: [LyricLine]
+    @Binding var activeIndex: Int
+
+    var body: some View {
+        Color.clear
+            .accessibilityHidden(true)
+            .onChange(of: progress.elapsedTime, initial: true) { _, _ in update() }
+            .onChange(of: highlight.currentTrackID) { _, _ in update() }
+    }
+
+    private func update() {
+        let elapsed = highlight.currentTrackID == trackID ? progress.elapsedTime : 0
+        let next = lines.lastIndex { $0.time <= elapsed } ?? -1
+        if next != activeIndex { activeIndex = next }
     }
 }

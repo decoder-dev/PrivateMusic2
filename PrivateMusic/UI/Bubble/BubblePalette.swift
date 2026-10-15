@@ -133,7 +133,10 @@ enum BubbleArtworkTint {
     /// saturation, so a mostly-black cover still yields its accent rather
     /// than reporting "black".
     static func extract(rgba: [UInt8]) -> BubbleColorComponents? {
-        if let metal = ArtworkTintGPU.extract(rgba: rgba) {
+        // The live artwork sample is only 8×8. A Metal dispatch plus a
+        // synchronous GPU wait costs more than reducing 64 pixels in native
+        // code and stalls the main actor during image loading.
+        if rgba.count >= 4 * 4_096, let metal = ArtworkTintGPU.extract(rgba: rgba) {
             return metal
         }
         return extractNative(rgba: rgba)

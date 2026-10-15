@@ -8,16 +8,6 @@ struct SearchView: View {
         case playlists = "library.playlists"
 
         var title: String { L10n.text(rawValue) }
-
-        /// Segmented picker clips the full artist label on compact widths.
-        var compactTitle: String {
-            switch self {
-            case .tracks, .albums, .playlists:
-                return title
-            case .artists:
-                return L10n.text("artists_2")
-            }
-        }
     }
 
     @Environment(AppEnvironment.self) private var environment
@@ -229,10 +219,11 @@ struct SearchView: View {
     private var savedLyricsSection: some View {
         let records = savedRecords
         if !records.isEmpty {
+            let resolvedQueue = records.map { resolveSavedTrack($0.track) }
             Section {
-                ForEach(records) { record in
-                    SavedLyricsResultRow(record: record, track: resolveSavedTrack(record.track),
-                                         queue: records.map { resolveSavedTrack($0.track) }, query: model.query)
+                ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                    SavedLyricsResultRow(record: record, track: resolvedQueue[index],
+                                         queue: resolvedQueue, query: model.query)
                         .listRowBackground(settings.surfaceColor)
                 }
             } header: {
@@ -360,11 +351,7 @@ struct SearchView: View {
 
     private var searchResults: some View {
         VStack(spacing: 0) {
-            AppGroupedSurface {
-                scopePicker
-                .padding(.horizontal, BubbleSpacing.xs)
-                .padding(.vertical, BubbleSpacing.xs)
-            }
+            scopePicker
             .padding(.horizontal, PremiumLayout.screenPadding)
             .padding(.bottom, BubbleSpacing.s)
 
@@ -447,19 +434,28 @@ struct SearchView: View {
     private var scopePicker: some View {
         if dynamicTypeSize.isAccessibilitySize {
             Picker(L10n.text("search_type"), selection: $scope) {
-                ForEach(Scope.allCases, id: \.self) {
-                    Text($0.title).tag($0)
-                }
+                ForEach(Scope.allCases, id: \.self) { Text($0.title).tag($0) }
             }
             .pickerStyle(.menu)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         } else {
-            Picker(L10n.text("search_type"), selection: $scope) {
-                ForEach(Scope.allCases, id: \.self) {
-                    Text($0.compactTitle).tag($0)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BubbleSpacing.xs) {
+                    ForEach(Scope.allCases, id: \.self) { item in
+                        Button { scope = item } label: {
+                            Text(item.title)
+                                .font(.subheadline.weight(.semibold))
+                                .fixedSize(horizontal: true, vertical: false)
+                                .foregroundStyle(scope == item ? settings.onAccent : .primary)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: PremiumLayout.minimumTapTarget)
+                                .background(scope == item ? settings.accent : Color.primary.opacity(0.06), in: Capsule())
+                        }
+                        .buttonStyle(PremiumPressStyle())
+                        .accessibilityAddTraits(scope == item ? .isSelected : [])
+                    }
                 }
             }
-            .pickerStyle(.segmented)
         }
     }
 

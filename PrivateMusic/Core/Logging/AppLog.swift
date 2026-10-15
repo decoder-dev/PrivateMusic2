@@ -224,10 +224,9 @@ final class AppLog: @unchecked Sendable {
         level: AppLogLevel,
         message: String
     ) {
-        guard shouldPersist(level: level) else {
-            loggers[category]?.log(level: level.osLogType, "\(message, privacy: .public)")
-            return
-        }
+        // Verbosity governs both sinks. Forwarding suppressed debug text to
+        // OSLog skipped redaction and still did work when logging was off.
+        guard shouldPersist(level: level) else { return }
         let redacted = AppLogRedaction.redact(message)
         let line = Self.formatLine(
             category: category,

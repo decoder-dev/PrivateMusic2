@@ -498,8 +498,8 @@ if "pm_vk_unmask(" not in vk_resolver_source:
     fail("VKAudioURLResolver must unmask through pm_vk_unmask")
 if "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN0PQRSTUVWXYZO123456789+/=" in vk_resolver_source:
     fail("VK unmask alphabet/decode/shuffle must stay in the native media module")
-if "pm_buffer_max_loaded_ahead(" not in audio_player_source:
-    fail("AudioPlayer must fold loadedTimeRanges through pm_buffer_max_loaded_ahead")
+if "sampleBufferHealth()" in audio_player_source:
+    fail("AudioPlayer must not sample unused buffer-health telemetry on every clock tick")
 if audio_player_source.count("shouldRefreshHLSBeforePlay(") < 2:
     fail("AudioPlayer must refresh remaining HLS before both play and neighbor preload")
 if "CMTimeSubtract(end, position)" in audio_player_source:
@@ -1655,7 +1655,7 @@ for required_setting in (
     'iOS: "17.0"',
     'watchOS: "10.0"',
     'SWIFT_VERSION: "5.10"',
-    "CURRENT_PROJECT_VERSION: 187",
+    "CURRENT_PROJECT_VERSION: 188",
     "MARKETING_VERSION: 3.30.16",
     "DEBUG_INFORMATION_FORMAT: dwarf-with-dsym",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2",

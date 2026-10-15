@@ -267,7 +267,9 @@ final class OfflineTrackStore {
 
     func configureStorage(limitGB: Int) {
         let clamped = min(max(limitGB, 5), 100)
-        storageLimitBytes = Int64(clamped) * 1_000_000_000
+        let newLimit = Int64(clamped) * 1_000_000_000
+        guard newLimit != storageLimitBytes else { return }
+        storageLimitBytes = newLimit
         evictAutomaticCacheIfNeeded()
     }
 
@@ -355,16 +357,18 @@ final class OfflineTrackStore {
     }
 
     var storageUsage: StorageUsage {
-        StorageUsage(
-            manualBytes: manualDownloadsByteCount,
-            automaticBytes: automaticCacheByteCount,
+        // One validated inventory pass, not six filesystem walks per render.
+        let available = availableRecords
+        let manual = available.filter { $0.resolvedRetention == .manual }
+        let automatic = available.filter { $0.resolvedRetention == .automaticCache }
+        return StorageUsage(
+            manualBytes: manual.reduce(0) { $0 + $1.byteCount },
+            automaticBytes: automatic.reduce(0) { $0 + $1.byteCount },
             artworkBytes: auxiliaryUsage.artworkBytes,
             stagingBytes: auxiliaryUsage.stagingBytes,
             orphanBytes: auxiliaryUsage.orphanBytes,
-            manualCount: manualDownloads.count,
-            automaticCount: automaticCacheTracks.count,
-            totalCount: availableRecords.count,
-            limitBytes: storageLimitBytes
+            manualCount: manual.count, automaticCount: automatic.count,
+            totalCount: available.count, limitBytes: storageLimitBytes
         )
     }
 

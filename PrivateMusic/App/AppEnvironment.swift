@@ -209,7 +209,13 @@ final class AppEnvironment {
             guard !isOffline else { return }
             self?.scheduleAutomaticCache(for: track)
         }
-        settingsObservation = ObservationLoop.start { [weak self] in
+        settingsObservation = ObservationLoop.start(observing: { [weak self] in
+            guard let self else { return }
+            _ = self.settings.offlineStorageLimitGB
+            _ = self.networkMonitor.state
+            _ = self.networkMonitor.condition
+            _ = self.networkMonitor.revision
+        }, apply: { [weak self] in
             guard let self else { return }
             let limitGB = self.settings.offlineStorageLimitGB
             self.offlineStore.configureStorage(limitGB: limitGB)
@@ -221,7 +227,7 @@ final class AppEnvironment {
             }
             _ = self.networkMonitor.revision
             self.player.updateNetworkCondition(self.networkMonitor.condition)
-        }
+        })
 
         cacheObservation = ObservationLoop.start { [weak self] in
             guard let self else { return }

@@ -28,6 +28,8 @@ struct DeveloperDiagnosticsSnapshot: Codable, Equatable, Sendable {
     let fileLoggingEnabled: Bool
     let verboseLoggingEnabled: Bool
     let settings: DeveloperSettingsSnapshot
+    var thermalState: String? = nil
+    var lowPowerModeEnabled: Bool? = nil
 }
 
 struct DeveloperSettingsSnapshot: Codable, Equatable, Sendable {
@@ -48,6 +50,8 @@ struct DeveloperSettingsSnapshot: Codable, Equatable, Sendable {
     let automaticOfflineCacheEnabled: Bool
     let hapticsEnabled: Bool
     let advanceOnPlaybackError: Bool
+    var spatialAudioEnabled: Bool? = nil
+    var dynamicRangeCompressionEnabled: Bool? = nil
 }
 
 enum DeveloperDiagnosticsBuilder {
@@ -78,7 +82,7 @@ enum DeveloperDiagnosticsBuilder {
         localeIdentifier: String = Locale.current.identifier,
         capturedAt: Date = Date()
     ) -> DeveloperDiagnosticsSnapshot {
-        DeveloperDiagnosticsSnapshot(
+        var snapshot = DeveloperDiagnosticsSnapshot(
             capturedAt: capturedAt,
             appVersion: bundle.object(
                 forInfoDictionaryKey: "CFBundleShortVersionString"
@@ -111,11 +115,20 @@ enum DeveloperDiagnosticsBuilder {
             verboseLoggingEnabled: verboseLoggingEnabled,
             settings: settings
         )
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal: snapshot.thermalState = "nominal"
+        case .fair: snapshot.thermalState = "fair"
+        case .serious: snapshot.thermalState = "serious"
+        case .critical: snapshot.thermalState = "critical"
+        @unknown default: snapshot.thermalState = "unknown"
+        }
+        snapshot.lowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+        return snapshot
     }
 
     @MainActor
     static func settingsSnapshot(from settings: AppSettings) -> DeveloperSettingsSnapshot {
-        DeveloperSettingsSnapshot(
+        var snapshot = DeveloperSettingsSnapshot(
             appearance: settings.appearance.rawValue,
             theme: settings.theme.rawValue,
             textScale: settings.textScale.rawValue,
@@ -134,6 +147,9 @@ enum DeveloperDiagnosticsBuilder {
             hapticsEnabled: settings.hapticsEnabled,
             advanceOnPlaybackError: settings.advanceOnPlaybackError
         )
+        snapshot.spatialAudioEnabled = settings.spatialAudioEnabled
+        snapshot.dynamicRangeCompressionEnabled = settings.dynamicRangeCompression
+        return snapshot
     }
 
     private static func deviceModelIdentifier() -> String {
