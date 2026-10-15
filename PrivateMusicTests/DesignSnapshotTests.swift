@@ -373,9 +373,11 @@ final class DesignSnapshotTests: XCTestCase {
             UIBezierPath(ovalIn: CGRect(x: 66, y: 34, width: 124, height: 124)).fill()
             UIBezierPath(ovalIn: CGRect(x: 12, y: 154, width: 232, height: 220)).fill()
         }
-        for pixels in [CGFloat(128), 256, 512, 1024] {
+        for pixels in [CGFloat(128), 256, 384, 512] {
             ArtworkImageCache.shared.insert(portrait, for: portraitURL, maxPixelSize: pixels)
         }
+        XCTAssertNotNil(ArtworkImageCache.shared.image(for: portraitURL, maxPixelSize: 88 * 3),
+                        "The portrait fixture must cover the 3x Retina decode bucket")
         let artist = VKArtist(id: "fixture", name: "ATL", photoURL: portraitURL)
         let tracks = (1...12).map { index in
             Track(trackID: 600 + index, ownerID: 1, title: index == 1 ? "Последняя ночь октября" : "Трек \(index)",
