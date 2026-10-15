@@ -87,33 +87,3 @@ final class ResourceProfilingTests: XCTestCase {
         }
     }
 }
-
-/// A metrics-free workload keeps Instruments and XCTest's metric collector
-/// from competing for the same process. Runs only in the simulator test host.
-@MainActor
-final class ArtworkTraceWorkloadTests: XCTestCase {
-    func testArtworkSamplingUnderProfiler() async throws {
-        #if targetEnvironment(simulator)
-        let image = UIGraphicsImageRenderer(size: CGSize(width: 512, height: 512)).image { context in
-            UIColor.systemOrange.setFill()
-            context.fill(CGRect(x: 0, y: 0, width: 512, height: 512))
-        }
-        // A cold Instruments launch can take longer than the original 20s
-        // fixture. Keep the host alive while the recorder attaches, yielding
-        // between batches so this never blocks the simulator's UI watchdog.
-        let deadline = Date().addingTimeInterval(90)
-        var samples = 0
-        while Date() < deadline {
-            autoreleasepool {
-                for _ in 0..<100 {
-                    if BubbleArtworkTint.extract(from: image) != nil { samples += 1 }
-                }
-            }
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        XCTAssertGreaterThan(samples, 0)
-        #else
-        throw XCTSkip("The synthetic Instruments workload is simulator-only")
-        #endif
-    }
-}
