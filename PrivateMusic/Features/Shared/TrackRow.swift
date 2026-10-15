@@ -14,6 +14,7 @@ struct TrackRow: View {
     let track: Track
     let queue: [Track]
     var source: QueueSource? = nil
+    var allowsContinuation = true
     var showsOfflineState = true
     var showsLikedBadge = true
     var showsDuration = true
@@ -24,7 +25,7 @@ struct TrackRow: View {
     var body: some View {
         Button {
             Haptics.selection()
-            environment.player.play(track, in: queue, source: source)
+            environment.player.play(track, in: queue, source: source, allowsContinuation: allowsContinuation)
         } label: {
             TrackRowContent(
                 artworkURL: track.artworkURL,
@@ -86,7 +87,7 @@ struct TrackRow: View {
                 }
                 Button {
                     Haptics.open()
-                    environment.player.play(track, in: queue, source: source)
+                    environment.player.play(track, in: queue, source: source, allowsContinuation: allowsContinuation)
                     environment.player.presentPlayer()
                 } label: {
                     Label(L10n.text("open_player"), systemImage: "play.circle")

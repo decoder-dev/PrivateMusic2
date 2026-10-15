@@ -354,6 +354,86 @@ final class DesignSnapshotTests: XCTestCase {
                 )), name: "lyrics-synced", environment: environment, settings: settings)
     }
 
+    func testHalloweenPaletteAndArtistComposition() async throws {
+        let suite = "HalloweenDesignSnapshots-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let settings = AppSettings(defaults: defaults)
+        let environment = AppEnvironment(keychain: KeychainStore(service: suite))
+        let player = AudioPlayer(settings: settings, historyStore: ListeningHistoryStore(defaults: defaults), defaults: defaults)
+        snapshotPlayer = player
+        defer { player.stop(); snapshotPlayer = nil; defaults.removePersistentDomain(forName: suite) }
+        settings.palette = .halloween
+        settings.accentChoice = .orange
+        defaults.set(true, forKey: "library.collectionGrid")
+        let portraitURL = URL(string: "https://artwork.invalid/halloween-portrait-fixture")!
+        let portrait = UIGraphicsImageRenderer(size: CGSize(width: 256, height: 256)).image { context in
+            UIColor(red: 0.25, green: 0.12, blue: 0.36, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 256, height: 256))
+            UIColor.systemOrange.setFill()
+            UIBezierPath(ovalIn: CGRect(x: 66, y: 34, width: 124, height: 124)).fill()
+            UIBezierPath(ovalIn: CGRect(x: 12, y: 154, width: 232, height: 220)).fill()
+        }
+        for pixels in [CGFloat(128), 256, 512, 1024] {
+            ArtworkImageCache.shared.insert(portrait, for: portraitURL, maxPixelSize: pixels)
+        }
+        let artist = VKArtist(id: "fixture", name: "ATL", photoURL: portraitURL)
+        let tracks = (1...12).map { index in
+            Track(trackID: 600 + index, ownerID: 1, title: index == 1 ? "Последняя ночь октября" : "Трек \(index)",
+                  artist: artist.name, duration: 210, streamURL: nil, artworkURL: nil)
+        }
+        let albums = [Album(id: 601, ownerID: 1, title: "Тёмная сторона осени", count: 12, artists: [artist.name]),
+                      Album(id: 602, ownerID: 1, title: "Марабу", count: 8, artists: [artist.name])]
+        let playlists = PlaylistLibraryViewModel()
+        await playlists.load { _ in MusicPage(items: [
+            Playlist(id: 601, ownerID: 1, title: "После полуночи", count: 42),
+            Playlist(id: 602, ownerID: 1, title: "Тёмная сторона осени", count: 18)
+        ], totalCount: 2, nextOffset: nil) }
+        let search = SearchViewModel(defaults: defaults, debounceDuration: .zero)
+        search.query = "Ночь"
+        search.submit { _, _, _ in MusicPage(items: Array(tracks.prefix(5)), totalCount: 5, nextOffset: nil) }
+        for _ in 0..<200 where search.isLoading { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(search.state, .results)
+        player.play(tracks[0], in: tracks, source: .artist(name: artist.name), allowsContinuation: false)
+        player.pause()
+        for theme in AppTheme.allCases {
+            settings.theme = theme
+            settings.appearance = theme == .dark ? .dark : .light
+            capture(NavigationStack { AppearanceSettingsView() }, name: "halloween-appearance-\(theme.rawValue)",
+                    width: 393, height: 1400, environment: environment, settings: settings)
+            for width in [CGFloat(320), 393, 768] {
+                capture(NavigationStack { ArtistView(artist: artist.name, loadedTracks: tracks,
+                        loadedAlbums: albums, loadedArtist: artist) }, name: "halloween-artist-\(Int(width))-\(theme.rawValue)",
+                        width: width, height: 1200, environment: environment, settings: settings)
+            }
+            capture(NavigationStack { ArtistView(artist: "Очень длинное имя музыкального исполнителя", loadedTracks: tracks,
+                    loadedAlbums: albums) }.dynamicTypeSize(.accessibility3), name: "halloween-artist-AX-\(theme.rawValue)",
+                    width: 320, height: 2400, environment: environment, settings: settings)
+            capture(ArtistHeaderCard(name: "Кино", photoURL: nil, subtitle: "Исполнитель", playbackAction: .pause)
+                    .padding(16).background(ThemeBackground()), name: "halloween-artist-fallback-\(theme.rawValue)",
+                    width: 320, height: 360, environment: environment, settings: settings)
+            capture(NavigationStack { ArtistLoadingView(artist: artist.name) }, name: "halloween-artist-loading-\(theme.rawValue)",
+                    width: 320, height: 1000, environment: environment, settings: settings)
+            capture(NavigationStack { ArtistView(artist: artist.name, loadedTracks: [], loadedArtist: artist) },
+                    name: "halloween-artist-empty-\(theme.rawValue)", width: 320, height: 1000,
+                    environment: environment, settings: settings)
+            capture(NavigationStack { ArtistView(artist: artist.name, loadedTracks: [], loadedAlbums: albums, loadedArtist: artist) },
+                    name: "halloween-artist-albums-only-\(theme.rawValue)", width: 320, height: 1000,
+                    environment: environment, settings: settings)
+            capture(ArtistInlineError(message: "Не удалось загрузить альбомы исполнителя. Попробуйте ещё раз.", retry: {})
+                    .dynamicTypeSize(.accessibility3).padding(16).background(ThemeBackground()),
+                    name: "halloween-artist-error-AX-\(theme.rawValue)", width: 320, height: 500,
+                    environment: environment, settings: settings)
+            capture(NavigationStack { LibraryView(section: .playlists, playlistModel: playlists) }.defaultAppStorage(defaults),
+                    name: "halloween-library-\(theme.rawValue)", width: 393, environment: environment, settings: settings)
+            capture(NavigationStack { SearchView(isActive: false, model: search) }, name: "halloween-search-\(theme.rawValue)",
+                    width: 393, environment: environment, settings: settings)
+            capture(PlayerView(), name: "halloween-player-\(theme.rawValue)", width: 393,
+                    environment: environment, settings: settings)
+            capture(NavigationStack { CatalogView() }, name: "halloween-home-\(theme.rawValue)", width: 393,
+                    environment: environment, settings: settings)
+        }
+    }
+
     private func widgetPreview() -> some View {
         VStack {
             RecentMusicWidgetView(entry: RecentMusicEntry(date: Date(), snapshot: RecentWidgetSnapshot(

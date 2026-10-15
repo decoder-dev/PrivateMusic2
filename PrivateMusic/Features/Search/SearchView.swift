@@ -684,17 +684,19 @@ struct SearchView: View {
     }
 
     private func searchArtistRow(_ artist: String) -> some View {
-        AppGroupedRow {
+        AppGroupedRow(minHeight: 64) {
             HStack(spacing: BubbleSpacing.m) {
-                Image(systemName: "person.wave.2.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(settings.accent)
-                    .frame(width: 24)
-                Text(artist)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                ArtistArtwork(name: artist)
+                VStack(alignment: .leading, spacing: BubbleSpacing.xs) {
+                    Text(artist)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(L10n.text("artist"))
+                        .font(BubbleType.metadata)
+                        .foregroundStyle(.secondary)
+                }
             }
         } trailing: {
             Image(systemName: "chevron.right")

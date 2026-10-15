@@ -12,6 +12,7 @@ enum AppPalette: String, CaseIterable, Identifiable {
     case forest
     case rose
     case mocha
+    case halloween
 
     var id: String { rawValue }
 
@@ -23,6 +24,7 @@ enum AppPalette: String, CaseIterable, Identifiable {
         case .forest: L10n.text("palette.forest")
         case .rose: L10n.text("palette.rose")
         case .mocha: L10n.text("palette.mocha")
+        case .halloween: L10n.text("palette.halloween")
         }
     }
 
@@ -35,7 +37,7 @@ enum AppPalette: String, CaseIterable, Identifiable {
         case .midnight: .indigo
         case .forest: .green
         case .rose: .pink
-        case .mocha: .orange
+        case .mocha, .halloween: .orange
         }
     }
 
@@ -67,6 +69,10 @@ enum AppPalette: String, CaseIterable, Identifiable {
             return dark
                 ? [Self.rgb(0x19130F), Self.rgb(0x130E0B)]
                 : [Self.rgb(0xF4ECE4), Self.rgb(0xEDE2D7)]
+        case .halloween:
+            return dark
+                ? [Self.rgb(0x100E17), Self.rgb(0x1B1222)]
+                : [Self.rgb(0xFFF4E6), Self.rgb(0xF3EAF8)]
         }
     }
 
@@ -80,6 +86,7 @@ enum AppPalette: String, CaseIterable, Identifiable {
         case .forest: return dark ? Self.rgb(0x16221B) : Self.rgb(0xFBFFFB)
         case .rose: return dark ? Self.rgb(0x261A20) : Self.rgb(0xFFFAFB)
         case .mocha: return dark ? Self.rgb(0x251C16) : Self.rgb(0xFFF9F2)
+        case .halloween: return dark ? Self.rgb(0x292033) : Self.rgb(0xFFFAF4)
         }
     }
 

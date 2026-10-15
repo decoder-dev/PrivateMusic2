@@ -309,7 +309,8 @@ struct AppearanceSettingsView: View {
 
             Section(L10n.text("palette.section")) {
                 palettePicker
-                Text(L10n.text("palette.footnote"))
+                halloweenPaletteChoice
+                Text(L10n.text(settings.palette == .halloween ? "palette.halloween.footnote" : "palette.footnote"))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -453,20 +454,18 @@ struct AppearanceSettingsView: View {
             columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 140 : 96), spacing: 12)],
             spacing: 14
         ) {
-            ForEach(AppPalette.allCases) { palette in
+            ForEach(AppPalette.allCases.filter { $0 != .halloween }) { palette in
                 Button {
-                    settings.palette = palette
-                    // A palette ships with its accent; the listener can
-                    // still choose another one below.
-                    settings.accentChoice = palette.accent
+                    settings.applyPalette(palette)
                     Haptics.selection()
                 } label: {
                     VStack(spacing: 7) {
                         palettePreview(palette)
                         Text(palette.title)
-                            .font(.caption2)
+                            .font(.caption.weight(.medium))
                             .foregroundStyle(.primary)
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                             .multilineTextAlignment(.center)
                     }
                     .contentShape(Rectangle())
@@ -479,6 +478,39 @@ struct AppearanceSettingsView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var halloweenPaletteChoice: some View {
+        Button {
+            settings.applyPalette(.halloween)
+            Haptics.selection()
+        } label: {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: BubbleSpacing.m))
+                : AnyLayout(HStackLayout(spacing: BubbleSpacing.m))
+            layout {
+                palettePreview(.halloween).frame(width: 88)
+                VStack(alignment: .leading, spacing: BubbleSpacing.xs) {
+                    Text(AppPalette.halloween.title)
+                        .font(.subheadline.weight(.semibold))
+                    Text(L10n.text("palette.halloween.label"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if settings.palette == .halloween {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(settings.accent)
+                        .accessibilityHidden(true)
+                }
+            }
+            .foregroundStyle(.primary)
+            .padding(.vertical, BubbleSpacing.s)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PremiumPressStyle())
+        .accessibilityLabel(AppPalette.halloween.title)
+        .accessibilityAddTraits(settings.palette == .halloween ? .isSelected : [])
     }
 
     /// A miniature page: its gradient, a surface card and the accent.
@@ -505,6 +537,13 @@ struct AppearanceSettingsView: View {
                 }
             }
             .padding(9)
+            if palette == .halloween {
+                Image(systemName: "moon.stars.fill")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(accent)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(9)
+            }
         }
         .frame(height: 66)
         .clipShape(shape)

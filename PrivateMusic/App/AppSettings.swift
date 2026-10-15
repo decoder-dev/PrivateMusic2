@@ -331,6 +331,17 @@ final class AppSettings {
             refreshDerivedColors()
         }
     }
+    /// Apply a complete preset from Appearance. Halloween opens in its
+    /// intended dark appearance; manual appearance controls remain available.
+    func applyPalette(_ palette: AppPalette) {
+        self.palette = palette
+        accentChoice = palette.accent
+        if palette == .halloween {
+            appearance = .dark
+            synchronizeAppearance(with: .dark)
+        }
+    }
+
     // Derived colours are stored, not computed: `accent` is read by hundreds
     // of views per frame, and recomputing it (contrast fitting against the
     // palette) on every read made scrolling stutter. They are refreshed only

@@ -69,6 +69,40 @@ final class AppearanceChoiceTests: XCTestCase {
         }
     }
 
+    func testSelectingHalloweenActivatesDarkAppearanceAndItsAccent() {
+        withDefaults { defaults in
+            let settings = AppSettings(defaults: defaults)
+            settings.appearance = .light
+            settings.synchronizeAppearance(with: .light)
+            settings.applyPalette(.halloween)
+            XCTAssertEqual(settings.palette, .halloween)
+            XCTAssertEqual(settings.appearance, .dark)
+            XCTAssertEqual(settings.theme, .dark)
+            XCTAssertEqual(settings.accentChoice, .orange)
+            let restored = AppSettings(defaults: defaults)
+            XCTAssertEqual(restored.palette, .halloween)
+            XCTAssertEqual(restored.appearance, .dark)
+            restored.synchronizeAppearance(with: .light)
+            XCTAssertEqual(restored.theme, .dark)
+        }
+    }
+
+    func testHalloweenPaletteAndCustomAccentSurviveRelaunchWithoutForcingAppearance() {
+        withDefaults { defaults in
+            let settings = AppSettings(defaults: defaults)
+            settings.appearance = .system
+            settings.palette = .halloween
+            settings.accentChoice = .violet
+            let restored = AppSettings(defaults: defaults)
+            XCTAssertEqual(restored.palette, .halloween)
+            XCTAssertEqual(restored.accentChoice, .violet)
+            XCTAssertEqual(restored.appearance, .system)
+            restored.resetAppearance()
+            XCTAssertEqual(restored.palette, .classic)
+            XCTAssertEqual(restored.accentChoice, .blue)
+        }
+    }
+
     func testSystemAppearanceFollowsChangesAndPersistsItsMode() {
         withDefaults { defaults in
             let settings = AppSettings(defaults: defaults)

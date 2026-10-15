@@ -8,6 +8,8 @@ struct ArtistView: View {
     @Environment(LikedAlbumsStore.self) private var likedAlbumsStore
     @Environment(PlaybackHighlightModel.self) private var highlight
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .subheadline) private var albumCaptionHeight: CGFloat = 60
+    @State private var containerWidth: CGFloat = 390
     let artist: String
     let isPresentedModally: Bool
     private let isDesignPreview: Bool
@@ -15,11 +17,16 @@ struct ArtistView: View {
     @State private var albums: [Album] = []
     @State private var resolvedArtist: VKArtist?
     @State private var isLoading = true
+    @State private var isLoadingAlbums = false
+    @State private var albumLoadError: String?
+    @State private var loadingAlbumID: String?
+    @State private var albumPlaybackTask: Task<Void, Never>?
     @State private var errorMessage: String?
     @State private var selectedAlbum: Album?
     @State private var showsAllTracks = false
     @State private var pendingAlbumIDs = Set<String>()
     @State private var albumActionErrorMessage: String?
+    @State private var albumActionErrorTitle = "could_not_play_album"
     /// Where the next page of tracks starts, or `nil` once VK has no more.
     /// The first load used to throw this away, which is why the artist page
     /// stopped dead at its first 50 tracks.
@@ -28,20 +35,21 @@ struct ArtistView: View {
     @State private var loadMoreTracksTask: Task<Void, Never>?
 
     init(artist: String, isPresentedModally: Bool = false,
-         loadedTracks: [Track]? = nil, loadedAlbums: [Album] = []) {
+         loadedTracks: [Track]? = nil, loadedAlbums: [Album] = [], loadedArtist: VKArtist? = nil) {
         self.artist = artist
         self.isPresentedModally = isPresentedModally
         isDesignPreview = loadedTracks != nil
         _tracks = State(initialValue: loadedTracks ?? [])
         _albums = State(initialValue: loadedAlbums)
+        _resolvedArtist = State(initialValue: loadedArtist)
         _isLoading = State(initialValue: loadedTracks == nil)
     }
 
     var body: some View {
         Group {
-            if isLoading && tracks.isEmpty {
+            if isLoading && tracks.isEmpty && albums.isEmpty {
                 ArtistLoadingView(artist: artist)
-            } else if tracks.isEmpty {
+            } else if tracks.isEmpty && albums.isEmpty && !isLoadingAlbums && albumLoadError == nil {
                 emptyContent
             } else {
                 trackContent
@@ -49,6 +57,9 @@ struct ArtistView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ThemeBackground())
+        .onGeometryChange(for: CGFloat.self) { $0.size.width.rounded() } action: { width in
+            if width > 0, abs(width - containerWidth) >= 1 { containerWidth = width }
+        }
         .clearsMiniPlayer(includingWhenDockReservesSpace: true)
         .navigationTitle(L10n.text("artist"))
         .navigationBarTitleDisplayMode(.inline)
@@ -66,7 +77,7 @@ struct ArtistView: View {
             NavigationStack { AlbumDetailView(album: album) }
         }
         .alert(
-            "could_not_play_album",
+            L10n.text(albumActionErrorTitle),
             isPresented: Binding(
                 get: { albumActionErrorMessage != nil },
                 set: { if !$0 { albumActionErrorMessage = nil } }
@@ -76,16 +87,17 @@ struct ArtistView: View {
         } message: {
             Text(albumActionErrorMessage ?? "")
         }
-        .onDisappear { loadMoreTracksTask?.cancel() }
+        .onDisappear {
+            loadMoreTracksTask?.cancel()
+            albumPlaybackTask?.cancel()
+        }
         .task(id: artist) {
             guard !isDesignPreview else { return }
             resolvedArtist = nil
-            if sessionStore.accessToken != nil {
-                resolvedArtist = try? await resolveArtist(named: artist)
-            }
             // Tracks first so album cards can inherit count/artwork from the
             // same screen instead of painting sparse «0 треков» stubs.
             await load(resetContent: true)
+            guard !Task.isCancelled else { return }
             await loadAlbums()
         }
     }
@@ -104,18 +116,22 @@ struct ArtistView: View {
                     .padding(.bottom, 10)
                 }
 
-                tracksSection
-                    .padding(.top, 10)
+                if !tracks.isEmpty {
+                    tracksSection
+                        .padding(.top, BubbleSpacing.section)
+                }
 
-                if !albums.isEmpty {
+                if !albums.isEmpty || isLoadingAlbums || albumLoadError != nil {
                     albumsSection
-                        .padding(.top, 18)
+                        .padding(.top, BubbleSpacing.section)
                 }
             }
         }
         .scrollIndicators(.hidden)
         .refreshable {
             await load(resetContent: false)
+            guard !Task.isCancelled else { return }
+            await loadAlbums()
         }
         .sheet(isPresented: $showsAllTracks) {
             NavigationStack {
@@ -124,7 +140,9 @@ struct ArtistView: View {
                         index, track in
                         TrackRow(
                             track: track,
-                            queue: tracks
+                            queue: tracks,
+                            source: artistQueueSource,
+                            allowsContinuation: false
                         )
                         .listRowBackground(Color.clear)
                         .onAppear {
@@ -174,7 +192,10 @@ struct ArtistView: View {
 
     private var tracksSection: some View {
         VStack(alignment: .leading, spacing: BubbleSpacing.s) {
-            HStack(alignment: .center, spacing: BubbleSpacing.m) {
+            let headerLayout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: BubbleSpacing.s))
+                : AnyLayout(HStackLayout(alignment: .center, spacing: BubbleSpacing.m))
+            headerLayout {
                 VStack(alignment: .leading, spacing: BubbleSpacing.xs) {
                     Text(L10n.text("artist_tracks"))
                         .font(BubbleType.section)
@@ -183,7 +204,7 @@ struct ArtistView: View {
                     Text(L10n.trackCount(tracks.count))
                         .font(BubbleType.metadata).foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 0)
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
                 if tracks.count > Self.trackPreviewLimit || nextTracksOffset != nil {
                     Button { showsAllTracks = true } label: {
                         Label(L10n.text("see_all"), systemImage: "chevron.right")
@@ -196,7 +217,7 @@ struct ArtistView: View {
                 }
             }
             ForEach(previewTracks) { track in
-                TrackRow(track: track, queue: tracks)
+                TrackRow(track: track, queue: tracks, source: artistQueueSource, allowsContinuation: false)
                     .padding(.vertical, BubbleSpacing.xs)
             }
         }
@@ -204,24 +225,38 @@ struct ArtistView: View {
     }
 
     private var albumCardWidth: CGFloat {
-        dynamicTypeSize.isAccessibilitySize ? 196 : 136
+        LibraryShelfMetrics.artworkSize(for: containerWidth)
     }
 
     private var albumsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: LibraryShelfMetrics.headerSpacing) {
             Text(L10n.text("library.albums"))
-                .font(.headline)
+                .font(BubbleType.section)
+                .accessibilityAddTraits(.isHeader)
                 .padding(.horizontal, PremiumLayout.screenPadding)
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 14) {
-                    ForEach(albums) { album in
-                        artistAlbumCard(album)
-                    }
+            if isLoadingAlbums && albums.isEmpty {
+                LoadingShelf(width: containerWidth, captionHeight: albumCaptionHeight)
+                    .padding(.horizontal, PremiumLayout.screenPadding)
+            } else if !albums.isEmpty, dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: BubbleSpacing.m) {
+                    ForEach(albums) { album in artistAlbumListRow(album) }
                 }
                 .padding(.horizontal, PremiumLayout.screenPadding)
+            } else if !albums.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: LibraryShelfMetrics.cardSpacing) {
+                        ForEach(albums) { album in artistAlbumCard(album) }
+                    }
+                    .padding(.horizontal, PremiumLayout.screenPadding)
+                }
+                .frame(height: albumCardWidth + LibraryShelfMetrics.captionSpacing + albumCaptionHeight)
+            }
+            if let albumLoadError {
+                ArtistInlineError(message: albumLoadError, retry: { Task { await loadAlbums() } })
+                    .padding(.horizontal, PremiumLayout.screenPadding)
             }
         }
-        .padding(.bottom, 4)
+        .padding(.bottom, BubbleSpacing.l)
     }
 
     private func artistAlbumCard(_ album: Album) -> some View {
@@ -240,16 +275,53 @@ struct ArtistView: View {
                     .foregroundStyle(.primary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(height: albumCaptionHeight * 2 / 3, alignment: .topLeading)
                 Text(L10n.trackCount(album.count))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(width: albumCardWidth, alignment: .leading)
+            .frame(width: albumCardWidth,
+                   height: albumCardWidth + LibraryShelfMetrics.captionSpacing + albumCaptionHeight,
+                   alignment: .topLeading)
+            .overlay(alignment: .topTrailing) {
+                if loadingAlbumID == album.compositeID {
+                    ProgressView().padding(BubbleSpacing.s)
+                        .background(settings.surfaceColor, in: Circle())
+                        .padding(BubbleSpacing.s)
+                }
+            }
         }
         .buttonStyle(PremiumPressStyle())
-        .contextMenu {
+        .contextMenu { artistAlbumMenu(album) }
+    }
+
+    private func artistAlbumListRow(_ album: Album) -> some View {
+        Button { selectedAlbum = album } label: {
+            HStack(spacing: BubbleSpacing.m) {
+                AsyncArtwork(url: album.artworkURL, size: 56)
+                VStack(alignment: .leading, spacing: BubbleSpacing.xs) {
+                    Text(artistAlbumPlaybackTitle(album))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(L10n.trackCount(album.count))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PremiumPressStyle())
+        .contextMenu { artistAlbumMenu(album) }
+    }
+
+    @ViewBuilder
+    private func artistAlbumMenu(_ album: Album) -> some View {
+        let playbackAction = artistAlbumPlaybackAction(for: album)
             Button {
                 performArtistAlbumPlaybackAction(
                     artistAlbumPlaybackAction(for: album),
@@ -257,10 +329,11 @@ struct ArtistView: View {
                 )
             } label: {
                 Label(
-                    L10n.text("listen"),
-                    systemImage: "play.fill"
+                    L10n.text(playbackAction == .pause ? "pause" : "listen"),
+                    systemImage: playbackAction.systemImage
                 )
             }
+            .disabled(loadingAlbumID != nil)
             Button {
                 toggleArtistAlbumFollow(album)
             } label: {
@@ -281,7 +354,6 @@ struct ArtistView: View {
                     )
                 }
             }
-        }
     }
 
     private func artistAlbumPlaybackTitle(_ album: Album) -> String {
@@ -317,8 +389,13 @@ struct ArtistView: View {
     }
 
     private func playArtistAlbum(_ album: Album) {
-        guard sessionStore.accessToken != nil else { return }
-        Task {
+        guard sessionStore.accessToken != nil, albumPlaybackTask == nil else { return }
+        loadingAlbumID = album.compositeID
+        albumPlaybackTask = Task {
+            defer {
+                loadingAlbumID = nil
+                albumPlaybackTask = nil
+            }
             do {
                 let page = try await environment.withAuthorizedToken { token in
                     try await environment.musicService.albumTracks(
@@ -328,7 +405,12 @@ struct ArtistView: View {
                         count: 50
                     )
                 }
-                guard let first = page.items.first else { return }
+                try Task.checkCancellation()
+                guard let first = page.items.first else {
+                    albumActionErrorTitle = "could_not_play_album"
+                    albumActionErrorMessage = L10n.text("could_not_load_this_album_s_tracks_try_again_or_find_it_in_search")
+                    return
+                }
                 environment.player.play(
                     first,
                     in: page.items,
@@ -337,6 +419,8 @@ struct ArtistView: View {
             } catch is CancellationError {
                 return
             } catch {
+                guard !Task.isCancelled else { return }
+                albumActionErrorTitle = "could_not_play_album"
                 albumActionErrorMessage = error.localizedDescription
             }
         }
@@ -368,56 +452,61 @@ struct ArtistView: View {
                 )
                 Haptics.success()
             } catch {
+                albumActionErrorTitle = "could_not_update_album"
                 albumActionErrorMessage = error.localizedDescription
                 Haptics.error()
             }
         }
     }
 
-    private var artistHeader: some View {
-        HStack(spacing: 16) {
-            AsyncArtwork(
-                url: resolvedArtist?.photoURL ?? tracks.first?.artworkURL,
-                size: 88
-            )
-            .clipShape(Circle())
+    private var artistQueueSource: QueueSource {
+        .artist(name: artist)
+    }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(artist)
-                    .font(.title2.weight(.bold))
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .minimumScaleFactor(0.82)
-                Text(
-                    resolvedArtist == nil
-                        ? L10n.text("generic.music")
-                        : L10n.text("vk_artist")
-                )
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+    private var artistPlaybackAction: QueueSourcePlaybackAction {
+        QueueSourcePlaybackAction.resolve(target: artistQueueSource, isPlaying: highlight.isPlaying,
+                                         queueSource: highlight.queueSource)
+    }
 
-            Spacer(minLength: 0)
+    private func playArtistTracks() {
+        switch artistPlaybackAction {
+        case .start:
+            guard let first = tracks.first else { return }
+            environment.player.play(first, in: tracks, source: artistQueueSource, allowsContinuation: false)
+        case .resume:
+            environment.player.resume()
+        case .pause:
+            environment.player.pause()
         }
-        .padding(.horizontal, PremiumLayout.screenPadding)
-        .padding(.top, 18)
-        .padding(.bottom, 14)
+    }
+
+    private var artistHeader: some View {
+        ArtistHeaderCard(name: artist, photoURL: ArtistArtworkPolicy.portraitURL(for: resolvedArtist),
+                         subtitle: L10n.text(resolvedArtist == nil ? "artist" : "vk_artist"),
+                         playbackAction: tracks.isEmpty ? nil : artistPlaybackAction,
+                         onPlay: playArtistTracks,
+                         onShuffle: {
+                             environment.player.playShuffled(in: tracks, source: artistQueueSource, allowsContinuation: false)
+                         })
+            .padding(.horizontal, PremiumLayout.screenPadding)
+            .padding(.top, BubbleSpacing.m)
     }
 
     private var emptyContent: some View {
-        ArtistMessageView(
-            title: L10n.text("artist_unavailable"),
-            description: errorMessage
-                ?? L10n.text(
-                    "vk_did_not_return_any_available_tracks_for_this_artist"
-                ),
-            systemImage: errorMessage == nil
-                ? "music.note.list"
-                : "exclamationmark.circle",
-            retry: sessionStore.accessToken == nil
-                ? nil
-                : { Task { await load(resetContent: true) } }
-        )
+        ScrollView {
+            VStack(spacing: BubbleSpacing.section) {
+                artistHeader
+                ArtistMessageView(
+                    title: L10n.text("artist_unavailable"),
+                    description: errorMessage
+                        ?? L10n.text("vk_did_not_return_any_available_tracks_for_this_artist"),
+                    systemImage: errorMessage == nil ? "music.note.list" : "exclamationmark.circle",
+                    retry: sessionStore.accessToken == nil ? nil : { Task { await load(resetContent: true) } }
+                )
+                .frame(minHeight: 240)
+            }
+        }
+        .scrollIndicators(.hidden)
     }
 
     @MainActor
@@ -577,26 +666,21 @@ struct ArtistView: View {
     @MainActor
     private func loadAlbums() async {
         let requestedArtist = artist
-        guard sessionStore.accessToken != nil else { return }
+        guard sessionStore.accessToken != nil, !isLoadingAlbums else { return }
+        isLoadingAlbums = true
+        albumLoadError = nil
+        defer { isLoadingAlbums = false }
         do {
             let matched = resolvedArtist
-            let page: MusicPage<Album>
-            if let matched {
-                page = try await environment.withAuthorizedToken { token in
-                    try await environment.musicService.artistAlbums(
-                        artistID: matched.id,
-                        accessToken: token,
-                        offset: 0,
-                        count: 30
-                    )
-                }
-            } else {
-                page = try await environment.withAuthorizedToken { token in
-                    try await environment.musicService.searchAlbums(
-                        query: requestedArtist,
-                        accessToken: token,
-                        offset: 0,
-                        count: 20
+            let page: MusicPage<Album> = try await withArtistDeadline {
+                try await environment.withAuthorizedToken { token in
+                    if let matched {
+                        return try await environment.musicService.artistAlbums(
+                            artistID: matched.id, accessToken: token, offset: 0, count: 30
+                        )
+                    }
+                    return try await environment.musicService.searchAlbums(
+                        query: requestedArtist, accessToken: token, offset: 0, count: 20
                     )
                 }
             }
@@ -615,8 +699,11 @@ struct ArtistView: View {
                 candidates,
                 using: tracks
             )
-        } catch {
+        } catch is CancellationError {
             return
+        } catch {
+            guard !Task.isCancelled, artist == requestedArtist else { return }
+            albumLoadError = L10n.text("artist.albums.load_error")
         }
     }
 
@@ -775,28 +862,16 @@ enum ArtistTrackFilter {
 
 }
 
-private struct ArtistLoadingView: View {
+struct ArtistLoadingView: View {
     let artist: String
 
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                HStack(spacing: 16) {
-                    SkeletonBlock(width: 88, height: 88,
-                                  cornerRadius: PremiumLayout.artworkRadius(for: 88))
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(artist)
-                            .font(.title3.weight(.bold))
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                        SkeletonBlock(width: 104, height: 12)
-                    }
-
-                    Spacer()
-                }
-                .padding(.horizontal, PremiumLayout.screenPadding)
-                .padding(.vertical, 18)
+                ArtistHeaderCard(name: artist, photoURL: nil, subtitle: L10n.text("loading_artist"), playbackAction: nil)
+                    .padding(.horizontal, PremiumLayout.screenPadding)
+                    .padding(.top, BubbleSpacing.m)
+                    .padding(.bottom, BubbleSpacing.section)
 
                 HStack {
                     Text(L10n.text("loading_artist"))
@@ -855,24 +930,26 @@ private struct ArtistMessageView: View {
     }
 }
 
-private struct ArtistInlineError: View {
+struct ArtistInlineError: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let message: String
     let retry: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.circle")
-                .foregroundStyle(.secondary)
-            Text(message)
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: BubbleSpacing.s))
+            : AnyLayout(HStackLayout(spacing: BubbleSpacing.m))
+        layout {
+            Label(message, systemImage: "exclamationmark.circle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Button(L10n.text("action.retry"), action: retry)
                 .font(.caption.weight(.semibold))
+                .frame(minWidth: PremiumLayout.minimumTapTarget, minHeight: PremiumLayout.minimumTapTarget)
         }
-        .padding(12)
+        .padding(BubbleSpacing.m)
         .premiumCard()
     }
 }

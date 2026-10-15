@@ -1656,7 +1656,7 @@ for required_setting in (
     'iOS: "17.0"',
     'watchOS: "10.0"',
     'SWIFT_VERSION: "5.10"',
-    "CURRENT_PROJECT_VERSION: 190",
+    "CURRENT_PROJECT_VERSION: 191",
     "MARKETING_VERSION: 3.30.16",
     "DEBUG_INFORMATION_FORMAT: dwarf-with-dsym",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2",

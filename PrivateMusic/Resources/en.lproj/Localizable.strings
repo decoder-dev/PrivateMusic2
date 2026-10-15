@@ -1025,3 +1025,8 @@
 "settings.group.connection" = "Connection & services";
 "home.selected_mixes" = "Discover your next mix";
 "home.selected_mixes_subtitle" = "Explore more music and tune your station";
+
+"palette.halloween" = "Halloween";
+"palette.halloween.footnote" = "Pumpkin-orange accents on an ink-dark background with plum surfaces.";
+"artist.albums.load_error" = "Could not load this artist’s albums.";
+"palette.halloween.label" = "Dark seasonal palette";

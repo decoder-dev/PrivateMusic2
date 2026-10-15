@@ -15,6 +15,8 @@ enum QueueContextTitlePolicy {
             return title
         case let .album(title) where QueueSourceTitle.isUsable(title):
             return title
+        case let .artist(name) where QueueSourceTitle.isUsable(name):
+            return name
         case .history:
             return L10n.text("listening_history")
         case .library:
