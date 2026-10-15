@@ -59,6 +59,28 @@ final class BubbleGamutTests: XCTestCase {
 
 @MainActor
 final class BubbleTintCacheTests: XCTestCase {
+    func testSmallColourSamplePreservesLargeCoverColoursAndTransparency() throws {
+        for transparent in [false, true] {
+            let image = UIGraphicsImageRenderer(size: CGSize(width: 512, height: 512)).image { context in
+                if !transparent {
+                    UIColor.red.setFill()
+                    context.fill(CGRect(x: 0, y: 0, width: 256, height: 512))
+                }
+                UIColor.blue.setFill()
+                context.fill(CGRect(x: 256, y: 0, width: 256, height: 512))
+            }
+            let tint = try XCTUnwrap(BubbleArtworkTint.extract(from: image))
+            XCTAssertLessThan(tint.green, 0.05)
+            if transparent {
+                XCTAssertGreaterThan(tint.blue, 0.9)
+                XCTAssertLessThan(tint.red, 0.05)
+            } else {
+                XCTAssertEqual(tint.red, 0.5, accuracy: 0.1)
+                XCTAssertEqual(tint.blue, 0.5, accuracy: 0.1)
+            }
+        }
+    }
+
     func testRecordArtworkPopulatesCachedTint() {
         let cache = BubbleTintCache.shared
         let url = URL(string: "https://example.com/tint-test-\(UUID().uuidString).jpg")!

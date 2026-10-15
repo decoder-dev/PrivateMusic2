@@ -169,7 +169,10 @@ enum BubbleArtworkTint {
     /// colour and cheap enough to stay off the critical path.
     static let sampleEdge = 8
 
-    static func extract(from image: UIImage) -> BubbleColorComponents? {
+    static func extract(
+        from image: UIImage,
+        interpolationQuality: CGInterpolationQuality = .low
+    ) -> BubbleColorComponents? {
         guard let cgImage = image.cgImage else { return nil }
         let edge = sampleEdge
         var buffer = [UInt8](repeating: 0, count: edge * edge * 4)
@@ -186,6 +189,10 @@ enum BubbleArtworkTint {
         ) else {
             return nil
         }
+        // This is a colour sample, not display artwork. Bilinear reduction
+        // avoids the expensive default resampling of a full cover into 8×8.
+        context.interpolationQuality = interpolationQuality
+        context.setBlendMode(.copy)
         context.draw(
             cgImage,
             in: CGRect(x: 0, y: 0, width: edge, height: edge)

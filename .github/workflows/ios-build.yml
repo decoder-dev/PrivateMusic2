@@ -83,21 +83,36 @@ jobs:
       - name: Record focused simulator CPU profile
         if: success()
         continue-on-error: true
+        timeout-minutes: 6
         run: |
           set -o pipefail
           set +e
-          xcrun xctrace record --template 'Time Profiler' --all-processes \
-            --time-limit 60s --output Performance.trace > profiling-trace.log 2>&1 &
-          trace_pid=$!
+          old_app_pid="$(pgrep -n -x PrivateMusic || true)"
           xcodebuild -project PrivateMusic.xcodeproj -scheme PrivateMusic \
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
-            -parallel-testing-enabled NO -enableCodeCoverage NO \
-            -only-testing:PrivateMusicTests/ResourceProfilingTests \
+            -destination-timeout 120 -parallel-testing-enabled NO \
+            -only-testing:PrivateMusicTests/ArtworkTraceWorkloadTests \
             -resultBundlePath PerformanceResults.xcresult \
-            CODE_SIGNING_ALLOWED=NO test-without-building 2>&1 | tee profiling-tests.log
+            CODE_SIGNING_ALLOWED=NO test-without-building > profiling-tests.log 2>&1 &
+          test_pid=$!
+          trace_status=1
+          app_pid=''
+          for attempt in {1..180}; do
+            candidate="$(pgrep -n -x PrivateMusic || true)"
+            if [ -n "$candidate" ] && [ "$candidate" != "$old_app_pid" ]; then
+              app_pid="$candidate"
+              break
+            fi
+            if ! kill -0 "$test_pid" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ -n "$app_pid" ]; then
+            xcrun xctrace record --template 'Time Profiler' --attach "$app_pid" \
+              --time-limit 20s --output Performance.trace > profiling-trace.log 2>&1
+            trace_status=$?
+          fi
+          wait "$test_pid"
           test_status=$?
-          wait "$trace_pid"
-          trace_status=$?
           printf 'performance_test_exit=%s\ntrace_exit=%s\n' "$test_status" "$trace_status" > profiling-status.txt
           if [ "$trace_status" -eq 0 ]; then
             xcrun xctrace export --input Performance.trace --toc --output profiling-toc.xml
