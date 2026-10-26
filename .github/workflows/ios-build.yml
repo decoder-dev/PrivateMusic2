@@ -11,6 +11,10 @@ on:
         description: Publish a release after all verification is complete
         type: boolean
         default: false
+      stable_release:
+        description: Mark an explicitly requested release as stable and Latest
+        type: boolean
+        default: false
 
 # Prefer the latest push/PR head — a backlog of superseded
 # polish commits was starving macOS runners for 50+ minutes.
@@ -258,6 +262,7 @@ jobs:
           (github.event_name == 'workflow_dispatch' && inputs.create_release == true && github.ref == 'refs/heads/main')
         env:
           GH_TOKEN: ${{ github.token }}
+          STABLE_RELEASE: ${{ inputs.stable_release == true }}
         run: |
           # The releases API answers 503 often enough that a single blip
           # otherwise throws away a green archive and costs a full rebuild.
@@ -284,45 +289,15 @@ jobs:
             exit 1
           fi
           NOTES="$(mktemp)"
-          cat > "$NOTES" <<'EOF'
-          # Private Music 3.30.16 (pre-release)
-
-          ## Надёжность и безопасность
-          - Приложение больше не падает, если сервер пришлёт некорректный
-            заголовок Retry-After (например, «nan»): задержка повтора
-            считается безопасно.
-          - Запросы к API привязаны к хосту VK по https и не следуют
-            редиректам на другие хосты, чтобы токен не мог уйти на чужой адрес.
-          - Некорректное время воспроизведения (NaN/бесконечность) больше не
-            может уронить приложение, в том числе при запуске.
-          - Журнал скрывает подписанные ссылки, идентификаторы сессий, секреты
-            и Bearer-значения, так что логи безопаснее отправлять.
-          - Окно Genius открывает только https-страницы.
-
-          ## Тексты песен (Genius)
-          - Исправлен поиск текстов, добавлено видимое восстановление при
-            сбое Genius и проверка настоящих контейнеров текста.
-
-          ## Интерфейс и данные
-          - Подписи в профиле читаются при крупном размере текста, а
-            многострочные строки получили отступы.
-          - Неудачное сохранение статистики прослушивания не теряется, а
-            остановленный импорт плейлиста сообщает об этом.
-
-          ## Установка и проверка
-          IPA не подписан.
-          - **`…-iphone-unsigned.ipa`** — iPhone и виджет, без Watch.
-          - `…-unsigned.ipa` — iPhone, виджет и Watch.
-          - `…-dSYMs.zip` — соответствующие символы отладки.
-          Для обмена данными с виджетом подпись приложения и расширения должна
-          поддерживать App Group `group.com.dec.privatemusic2`.
-          Сборка проверяется в симуляторе на тестовых данных. Живая сессия VK,
-          воспроизведение HLS и работа виджета требуют отдельной проверки
-          на устройстве.
-          EOF
-          # Heredoc is quoted so backticks in the notes stay literal;
-          # patch the version into the title afterwards.
-          sed -i '' "1s|.*|# Private Music $VERSION (pre-release)|" "$NOTES"
+          if [ -f "docs/releases/$VERSION.md" ]; then
+            cp "docs/releases/$VERSION.md" "$NOTES"
+          else
+            printf '# Private Music %s\n\nUnsigned IPA for re-signing. See the README for installation.\n' "$VERSION" > "$NOTES"
+          fi
+          RELEASE_ARGS=(--prerelease --latest=false)
+          if [ "$STABLE_RELEASE" = "true" ]; then
+            RELEASE_ARGS=(--latest)
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "::notice::Release $TAG already exists; preserving its assets, notes and release status. New outputs are available as Actions artifacts. Bump MARKETING_VERSION for a new release."
           else
@@ -331,7 +306,7 @@ jobs:
               --target "$GITHUB_SHA" \
               --title "Private Music $VERSION" \
               --notes-file "$NOTES" \
-              --prerelease
+              "${RELEASE_ARGS[@]}"
           fi
 
       - name: Upload unsigned IPA

@@ -186,6 +186,11 @@ final class DesignSnapshotTests: XCTestCase {
                     environment: environment, settings: settings)
             capture(NavigationStack { FriendsMusicView() }, name: "friends-\(theme.rawValue)",
                     environment: environment, settings: settings)
+            capture(NavigationStack { LocalAudioLibraryView() }, name: "local-audio-\(theme.rawValue)",
+                    environment: environment, settings: settings)
+            capture(NavigationStack { LocalAudioLibraryView().dynamicTypeSize(.accessibility3) },
+                    name: "local-audio-AX-\(theme.rawValue)", width: 320, height: 1000,
+                    environment: environment, settings: settings)
             capture(NavigationStack { OfflineDownloadsView() }, name: "downloads-\(theme.rawValue)",
                     environment: environment, settings: settings)
             capture(NavigationStack { NewReleasesView(albums: [album]) }, name: "new-releases-\(theme.rawValue)",
@@ -467,7 +472,7 @@ final class DesignSnapshotTests: XCTestCase {
                            availability: PlayerActionAvailability(hasSession: true, isUpdatingLibrary: false),
                            equalizerEnabled: .constant(false), spatialAudioEnabled: .constant(false),
                            preferHighQuality: .constant(true), onDismiss: {}, onLibrary: {}, onQueue: {},
-                           onArtist: {}, onPlaylist: {}, onShare: {}, onCopyLink: {}, onOffline: {},
+                           onArtist: {}, onPlaylist: {}, onShare: {}, onCopyLink: {}, onCopyInfo: {}, onOffline: {},
                            onSettings: {}, onProcessingRouteHint: {}, onDislikeTrack: {}, onDislikeArtist: {},
                            onMixFromTrack: {}, onSnippet: {}, showsMixFeedback: true, qualityCaption: "HQ")
     }

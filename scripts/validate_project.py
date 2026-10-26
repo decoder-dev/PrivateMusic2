@@ -582,6 +582,10 @@ for symbol in (
     if symbol not in buffer_health_source:
         fail(f"BufferHealthEstimator must call {symbol[:-1]}")
 project_yml = (ROOT / "project.yml").read_text(encoding="utf-8")
+if not re.search(r"^\s*CURRENT_PROJECT_VERSION:\s*[1-9]\d*\s*$", project_yml, re.MULTILINE):
+    fail("CURRENT_PROJECT_VERSION must be a positive build number")
+if not re.search(r"^\s*MARKETING_VERSION:\s*\d+\.\d+\.\d+\s*$", project_yml, re.MULTILINE):
+    fail("MARKETING_VERSION must contain a three-part version")
 if "SWIFT_OBJC_BRIDGING_HEADER: PrivateMusic/Native/PrivateMusic-Bridging-Header.h" not in project_yml:
     fail("project.yml must set SWIFT_OBJC_BRIDGING_HEADER for the C DSP module")
 queue_view_source = (SOURCE / "Features/Player/QueueView.swift").read_text(
@@ -1656,8 +1660,6 @@ for required_setting in (
     'iOS: "17.0"',
     'watchOS: "10.0"',
     'SWIFT_VERSION: "5.10"',
-    "CURRENT_PROJECT_VERSION: 193",
-    "MARKETING_VERSION: 3.30.16",
     "DEBUG_INFORMATION_FORMAT: dwarf-with-dsym",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2",
     "PRODUCT_BUNDLE_IDENTIFIER: com.dec.privatemusic2.watchkitapp",

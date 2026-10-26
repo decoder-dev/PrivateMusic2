@@ -238,7 +238,7 @@ struct HomeStageView: View {
 
                 nowPlayingTitle(height: height)
 
-                if presentation.showsHeart {
+                if presentation.showsHeart, environment.player.currentTrack?.isLocal != true {
                     BubbleIconButton(
                         systemImage: isInLibrary ? "heart.fill" : "heart",
                         size: height,

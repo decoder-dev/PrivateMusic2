@@ -31,7 +31,7 @@ final class SavedLyricsStore {
         // Signed stream URLs and VK access keys never belong in the lyric index.
         let safe = Track(trackID: track.trackID, ownerID: track.ownerID, title: track.title,
                          artist: track.artist, albumTitle: track.albumTitle, duration: track.duration,
-                         streamURL: nil, artworkURL: track.artworkURL)
+                         streamURL: nil, artworkURL: track.artworkURL, localFileID: track.localFileID)
         cachedSearch = nil
         records.removeAll { $0.id == track.id }
         records.insert(SavedLyricsRecord(track: safe, lyrics: lyrics), at: 0)

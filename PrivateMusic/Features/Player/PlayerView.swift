@@ -16,7 +16,8 @@ struct PlayerView: View {
     @State private var deferredPlayerAction: DeferredPlayerAction?
     @State private var isInLibrary = false
     @State private var isUpdatingLibrary = false
-    @State private var showCopiedToast = false
+    @State private var copiedToastMessage: String?
+    @State private var copiedToastID = UUID()
     @State private var showRouteHint = false
     @State private var routeHintToken = UUID()
     @State private var sharingTrack: Track?
@@ -105,13 +106,18 @@ struct PlayerView: View {
         .onChange(of: libraryStore.signatures) { _ in
             updateLibraryState()
         }
+        .task(id: copiedToastID) {
+            guard copiedToastMessage != nil else { return }
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            copiedToastMessage = nil
+        }
         .overlay(alignment: .bottom) {
             VStack(spacing: 10) {
                 if showRouteHint {
                     AudioProcessingRouteHintBanner()
                 }
-                if showCopiedToast {
-                    Text(L10n.text("link_copied"))
+                if let copiedToastMessage {
+                    Text(copiedToastMessage)
                         .font(.subheadline.weight(.semibold))
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
@@ -305,7 +311,8 @@ struct PlayerView: View {
 
     @ViewBuilder private func playerHeader(_ track: Track, compact: Bool) -> some View {
         if dynamicTypeSize.isAccessibilitySize {
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                playerGlassIconButton(systemImage: "chevron.down", accessibilityLabel: "close_player", action: closePlayer)
                 Text(player.queueContextTitle)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(playerSecondary)
@@ -346,9 +353,12 @@ struct PlayerView: View {
             .accessibilitySortPriority(1)
 
             HStack {
-                Color.clear
-                    .frame(width: PlayerHeaderMetrics.sideClusterWidth)
-                    .accessibilityHidden(true)
+                playerGlassIconButton(
+                    systemImage: "chevron.down",
+                    accessibilityLabel: "close_player",
+                    action: closePlayer
+                )
+                .frame(width: PlayerHeaderMetrics.sideClusterWidth, alignment: .leading)
 
                 Spacer(minLength: 0)
 
@@ -413,18 +423,9 @@ struct PlayerView: View {
                 )
             )
 
-            AsyncArtwork(url: track.artworkURL, size: layout.centerSize)
+            AsyncArtwork(url: track.artworkURL, size: layout.centerSize,
+                         placeholderText: TrackInformationText.artworkInitials(track))
                 .id(track.id)
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: PremiumLayout.artworkRadius(
-                            for: layout.centerSize
-                        ),
-                        style: .continuous
-                    )
-                    .stroke(playerForeground.opacity(0.08), lineWidth: 0.7)
-                }
-                .shadow(color: .black.opacity(0.42), radius: 26, y: 14)
         }
             .frame(width: size, height: size)
             .contentShape(Rectangle())
@@ -449,7 +450,7 @@ struct PlayerView: View {
                 named: L10n.text("previous_track")
             ) {
                 Haptics.trackChange()
-                player.previous()
+                player.previous(restartCurrentIfPlayed: false)
             }
             .accessibilityAction(
                 named: L10n.text("player.queue")
@@ -468,17 +469,11 @@ struct PlayerView: View {
         size: CGFloat,
         role: String
     ) -> some View {
-        AsyncArtwork(url: track.artworkURL, size: size)
+        AsyncArtwork(url: track.artworkURL, size: size,
+                     placeholderText: TrackInformationText.artworkInitials(track))
             .id("\(role)-\(track.id)")
             .saturation(0.82)
             .opacity(0.58)
-            .overlay {
-                RoundedRectangle(
-                    cornerRadius: PremiumLayout.artworkRadius(for: size),
-                    style: .continuous
-                )
-                .stroke(playerForeground.opacity(0.06), lineWidth: 0.6)
-            }
             .accessibilityHidden(true)
     }
 
@@ -523,21 +518,23 @@ struct PlayerView: View {
 
             Spacer(minLength: 10)
 
-            playerGlassIconButton(
-                systemImage: isInLibrary ? "heart.fill" : "heart",
-                font: .system(size: 19, weight: .semibold),
-                tint: isInLibrary
-                    ? playerForeground
-                    : playerForeground.opacity(0.72),
-                accessibilityLabel: isInLibrary
-                    ? "remove_from_library"
-                    : "add_to_library_2",
-                accessibilityValue: isInLibrary
-                    ? "track_is_in_your_library"
-                    : "track_is_not_in_your_library",
-                disabled: isUpdatingLibrary
-            ) {
-                toggleLibrary(track)
+            if !track.isLocal {
+                playerGlassIconButton(
+                    systemImage: isInLibrary ? "heart.fill" : "heart",
+                    font: .system(size: 19, weight: .semibold),
+                    tint: isInLibrary
+                        ? playerForeground
+                        : playerForeground.opacity(0.72),
+                    accessibilityLabel: isInLibrary
+                        ? "remove_from_library"
+                        : "add_to_library_2",
+                    accessibilityValue: isInLibrary
+                        ? "track_is_in_your_library"
+                        : "track_is_not_in_your_library",
+                    disabled: isUpdatingLibrary
+                ) {
+                    toggleLibrary(track)
+                }
             }
         }
     }
@@ -673,7 +670,7 @@ struct PlayerView: View {
     }
 
     private func quickActionButtons(_ track: Track) -> some View {
-        ForEach(PlayerQuickAction.allCases) { item in
+        ForEach(PlayerQuickAction.allCases.filter { !track.isLocal || $0 != .playlist }) { item in
             quickAction(item) {
                 switch item {
                 case .lyrics: present(.lyrics(track))
@@ -886,9 +883,9 @@ struct PlayerView: View {
                 isInLibrary: isInLibrary,
                 offlineState: offlineStore.state(for: track),
                 availability: PlayerActionAvailability(
-                    hasSession: sessionStore.accessToken != nil,
+                    hasSession: !track.isLocal && sessionStore.accessToken != nil,
                     isUpdatingLibrary: isUpdatingLibrary,
-                    showsOfflineControls: OfflineDownloadsFeature.showsControls
+                    showsOfflineControls: !track.isLocal && OfflineDownloadsFeature.showsControls
                         && !environment.isShareSessionActive
                 ),
                 equalizerEnabled: $settings.equalizerEnabled,
@@ -918,6 +915,11 @@ struct PlayerView: View {
                 onCopyLink: {
                     presentedSheet = nil
                     copyTrackLink(track)
+                },
+                onCopyInfo: {
+                    presentedSheet = nil
+                    UIPasteboard.general.string = TrackInformationText.formatted(track)
+                    showCopyConfirmation("track_info_copied")
                 },
                 onOffline: {
                     presentedSheet = nil
@@ -1004,23 +1006,20 @@ struct PlayerView: View {
     private var artworkGesture: some Gesture {
         DragGesture(minimumDistance: 20)
             .onEnded { value in
-                let horizontal = value.translation.width
-                let vertical = value.translation.height
-                if abs(horizontal) > abs(vertical) {
-                    if horizontal < -58 {
-                        Haptics.trackChange()
-                        player.next()
-                    } else if horizontal > 58 {
-                        Haptics.trackChange()
-                        player.previous()
-                    }
-                } else if vertical < -60 {
-                    present(.queue)
-                } else if PlayerDismissGesturePolicy.shouldDismiss(
+                guard presentedSheet == nil, sharingTrack == nil else { return }
+                switch PlayerArtworkGesturePolicy.action(
                     translation: value.translation,
                     predictedEndTranslation: value.predictedEndTranslation
                 ) {
-                    closePlayer()
+                case .next:
+                    Haptics.trackChange()
+                    player.next()
+                case .previous:
+                    Haptics.trackChange()
+                    player.previous(restartCurrentIfPlayed: false)
+                case .queue: present(.queue)
+                case .dismiss: closePlayer()
+                case nil: break
                 }
             }
     }
@@ -1061,17 +1060,13 @@ struct PlayerView: View {
     private func copyTrackLink(_ track: Track) {
         let url = "https://vk.com/audio\(track.ownerID)_\(track.trackID)"
         UIPasteboard.general.string = url
-        Haptics.selection()
-        showCopiedToast = true
+        showCopyConfirmation("link_copied")
+    }
 
-        Task { @MainActor in
-            do {
-                try await Task.sleep(for: .seconds(2))
-            } catch {
-                return
-            }
-            showCopiedToast = false
-        }
+    private func showCopyConfirmation(_ key: String) {
+        Haptics.selection()
+        copiedToastMessage = L10n.text(key)
+        copiedToastID = UUID()
     }
 
     private func handleAirPlayRoutePickerOpened() {
@@ -1606,6 +1601,7 @@ struct PlayerActionsSheet: View {
     let onPlaylist: () -> Void
     let onShare: () -> Void
     let onCopyLink: () -> Void
+    let onCopyInfo: () -> Void
     let onOffline: () -> Void
     let onSettings: () -> Void
     let onProcessingRouteHint: () -> Void
@@ -1638,21 +1634,25 @@ struct PlayerActionsSheet: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        libraryAction
+                        if !track.isLocal { libraryAction }
 
                         sectionTitle("actions.playback")
                         LazyVGrid(columns: columns, spacing: 10) {
                             actionTile("player.queue", systemImage: "text.line.first.and.arrowtriangle.forward",
                                        action: onQueue)
-                            actionTile("mix_from_track", systemImage: "dot.radiowaves.up.forward", action: onMixFromTrack)
+                            if !track.isLocal {
+                                actionTile("mix_from_track", systemImage: "dot.radiowaves.up.forward", action: onMixFromTrack)
+                            }
                             actionTile("snippet", systemImage: "waveform", action: onSnippet)
                         }
 
                         sectionTitle("track_actions")
                         LazyVGrid(columns: columns, spacing: 10) {
                             actionTile("artist", systemImage: "person.wave.2", action: onArtist)
-                            actionTile("add_to_playlist", systemImage: "rectangle.stack.badge.plus",
-                                       enabled: availability.canAddToPlaylist, action: onPlaylist)
+                            if !track.isLocal {
+                                actionTile("add_to_playlist", systemImage: "rectangle.stack.badge.plus",
+                                           enabled: availability.canAddToPlaylist, action: onPlaylist)
+                            }
                             if availability.showsOfflineControls {
                                 actionTile(offlineTitle, systemImage: offlineImage,
                                            enabled: offlineState != .downloading,
@@ -1664,13 +1664,16 @@ struct PlayerActionsSheet: View {
                         LazyVGrid(columns: columns, spacing: 10) {
                             actionTile("share_audio_file", systemImage: "square.and.arrow.up",
                                        enabled: availability.canShare, action: onShare)
-                            actionTile("copy_vk_link", systemImage: "link", action: onCopyLink)
+                            if !track.isLocal {
+                                actionTile("copy_vk_link", systemImage: "link", action: onCopyLink)
+                            }
+                            actionTile("copy_track_info", systemImage: "doc.on.doc", action: onCopyInfo)
                             actionTile("share_card.title", systemImage: "rectangle.portrait.on.rectangle.portrait") {
                                 showsShareCard = true
                             }
                         }
 
-                        if showsMixFeedback {
+                        if showsMixFeedback && !track.isLocal {
                             sectionTitle("actions.mix_feedback")
                             LazyVGrid(columns: columns, spacing: 10) {
                                 actionTile("dislike", systemImage: "hand.thumbsdown",
