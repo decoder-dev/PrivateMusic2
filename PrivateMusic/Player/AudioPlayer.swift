@@ -1239,10 +1239,10 @@ final class AudioPlayer {
         loadCurrentAndPlay()
     }
 
-    func previous() {
+    func previous(restartCurrentIfPlayed: Bool = true) {
         queueUndoID = nil
         cancelCrossfade()
-        if elapsedTime > 4 {
+        if restartCurrentIfPlayed, elapsedTime > 4 {
             seek(to: 0)
             return
         }

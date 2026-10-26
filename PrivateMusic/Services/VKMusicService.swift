@@ -169,6 +169,7 @@ struct VKMusicService: MusicService {
         _ track: Track,
         accessToken: String
     ) async throws -> Track {
+        guard !track.isLocal else { throw APIError.invalidRequest }
         var audioID = track.id
         if let accessKey = track.accessKey, !accessKey.isEmpty {
             audioID += "_\(accessKey)"
@@ -1068,7 +1069,7 @@ struct VKMusicService: MusicService {
         _ track: Track,
         accessToken: String
     ) async throws -> Track {
-        guard track.trackID > 0, track.ownerID != 0 else {
+        guard !track.isLocal, track.trackID > 0, track.ownerID != 0 else {
             throw APIError.invalidRequest
         }
         var parameters = [
@@ -1105,7 +1106,7 @@ struct VKMusicService: MusicService {
         _ track: Track,
         accessToken: String
     ) async throws {
-        guard track.trackID > 0, track.ownerID != 0 else {
+        guard !track.isLocal, track.trackID > 0, track.ownerID != 0 else {
             throw APIError.invalidRequest
         }
         let _: VKResponse<VKIgnored> = try await client.post(
@@ -1209,6 +1210,7 @@ struct VKMusicService: MusicService {
         to playlist: Playlist,
         accessToken: String
     ) async throws {
+        guard !track.isLocal else { throw APIError.invalidRequest }
         let _: VKResponse<VKIgnored> = try await client.post(
             path: "/method/audio.addToPlaylist",
             form: common(accessToken).merging([
@@ -1226,6 +1228,7 @@ struct VKMusicService: MusicService {
         from playlist: Playlist,
         accessToken: String
     ) async throws {
+        guard !track.isLocal else { throw APIError.invalidRequest }
         let _: VKResponse<VKIgnored> = try await client.post(
             path: "/method/audio.removeFromPlaylist",
             form: common(accessToken).merging([

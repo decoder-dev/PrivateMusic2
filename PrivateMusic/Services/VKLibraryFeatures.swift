@@ -97,7 +97,7 @@ extension VKMusicService {
     }
 
     func restoreToLibrary(_ track: Track, accessToken: String) async throws {
-        guard track.trackID > 0, track.ownerID != 0 else {
+        guard !track.isLocal, track.trackID > 0, track.ownerID != 0 else {
             throw APIError.invalidRequest
         }
         let _: VKResponse<JSONValue> = try await client.post(
@@ -112,6 +112,7 @@ extension VKMusicService {
     }
 
     func broadcast(track: Track?, accessToken: String) async throws {
+        guard track?.isLocal != true else { throw APIError.invalidRequest }
         var form = common(accessToken)
         if let track { form["audio"] = track.id }
         let _: VKResponse<JSONValue> = try await client.post(path: "/method/audio.setBroadcast", form: form,

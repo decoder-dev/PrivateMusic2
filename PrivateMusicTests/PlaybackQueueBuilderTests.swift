@@ -289,6 +289,30 @@ final class AudioPlayerTransitionTests: XCTestCase {
         XCTAssertFalse(context.player.isPlayerPresented)
     }
 
+    func testArtworkSwipeGoesToPreviousTrackInsteadOfRestarting() {
+        let context = makePlayer()
+        defer { context.player.stop(); context.defaults.removePersistentDomain(forName: context.suite) }
+        let first = track(id: 1, duration: 180)
+        let second = track(id: 2, duration: 180)
+        context.player.play(second, in: [first, second], allowsContinuation: false)
+        context.player.seek(to: 73)
+        context.player.previous(restartCurrentIfPlayed: false)
+        XCTAssertEqual(context.player.currentTrack?.id, first.id)
+        XCTAssertEqual(context.player.elapsedTime, 0)
+    }
+
+    func testPreviousButtonRetainsRestartBehavior() {
+        let context = makePlayer()
+        defer { context.player.stop(); context.defaults.removePersistentDomain(forName: context.suite) }
+        let first = track(id: 1, duration: 180)
+        let second = track(id: 2, duration: 180)
+        context.player.play(second, in: [first, second], allowsContinuation: false)
+        context.player.seek(to: 73)
+        context.player.previous()
+        XCTAssertEqual(context.player.currentTrack?.id, second.id)
+        XCTAssertEqual(context.player.elapsedTime, 0)
+    }
+
     func testChangingTrackResetsElapsedTimeAndDurationImmediately() {
         let suite = "AudioPlayerTransitionTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

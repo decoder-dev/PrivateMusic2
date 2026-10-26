@@ -186,7 +186,8 @@ extension MusicService {
         accessToken: String,
         shuffle: Bool = true
     ) async throws -> [Track] {
-        try await recommendations(
+        guard !track.isLocal else { throw APIError.invalidRequest }
+        return try await recommendations(
             accessToken: accessToken,
             targetAudio: track.id,
             shuffle: shuffle

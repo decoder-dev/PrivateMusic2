@@ -81,6 +81,14 @@ struct LibraryView: View {
                     if section == .all, normalizedTrackQuery.isEmpty,
                        !environment.isShareSessionActive {
                         OfflineLibrarySummary().librarySectionSpacing()
+                        NavigationLink { LocalAudioLibraryView() } label: {
+                            Label(L10n.text("local_audio.title"), systemImage: "folder")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 12)
+                        }
+                        .buttonStyle(.plain)
+                        .librarySectionSpacing()
                     }
                     if section == .playlists || section == .albums {
                         collectionResults(width: shelfWidth)
@@ -280,6 +288,9 @@ struct LibraryView: View {
                     }
                     .accessibilityLabel(L10n.text("listening_history"))
                     Menu {
+                        NavigationLink { LocalAudioLibraryView() } label: {
+                            Label(L10n.text("local_audio.title"), systemImage: "folder")
+                        }
                         Button { showingEditor = true } label: {
                             Label(L10n.text("new_playlist"), systemImage: "plus")
                         }

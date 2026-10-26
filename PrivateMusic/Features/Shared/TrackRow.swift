@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import UIKit
 
 struct TrackRow: View {
     @Environment(AppEnvironment.self) private var environment
@@ -101,8 +102,8 @@ struct TrackRow: View {
                 Button { destination = .playlist } label: {
                     Label(L10n.text("add_to_playlist"), systemImage: "rectangle.stack.badge.plus")
                 }
-                .disabled(environment.sessionStore.accessToken == nil)
-                if OfflineDownloadsFeature.showsControls, !environment.isShareSessionActive {
+                .disabled(track.isLocal || environment.sessionStore.accessToken == nil)
+                if !track.isLocal, OfflineDownloadsFeature.showsControls, !environment.isShareSessionActive {
                     Button(role: offlineStore.contains(track) ? .destructive : nil) {
                         toggleOffline()
                     } label: {
@@ -113,13 +114,22 @@ struct TrackRow: View {
                 }
             }
             Section {
+                Button {
+                    UIPasteboard.general.string = TrackInformationText.formatted(track)
+                    Haptics.selection()
+                    UIAccessibility.post(notification: .announcement, argument: L10n.text("track_info_copied"))
+                } label: {
+                    Label(L10n.text("copy_track_info"), systemImage: "doc.on.doc")
+                }
                 Button { Haptics.open(); sharingTrack = track } label: {
                     Label(L10n.text("share_audio_file"), systemImage: "square.and.arrow.up")
                 }
             }
             Section {
-                TrackMixActions.menuButtons(for: track, environment: environment,
-                                            includeDislike: !mixFeedbackStore.isBanned(track))
+                if !track.isLocal {
+                    TrackMixActions.menuButtons(for: track, environment: environment,
+                                                includeDislike: !mixFeedbackStore.isBanned(track))
+                }
             }
         }
     }

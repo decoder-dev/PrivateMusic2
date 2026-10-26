@@ -19,6 +19,8 @@ enum QueueContextTitlePolicy {
             return name
         case .history:
             return L10n.text("listening_history")
+        case .localFiles:
+            return L10n.text("local_audio.title")
         case .library:
             return L10n.text("library.your_tracks")
         default:

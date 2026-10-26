@@ -15,6 +15,7 @@ final class AppEnvironment {
     let libraryStore: MusicLibraryStore
     let homeCatalogStore: HomeCatalogStore
     let likedAlbumsStore: LikedAlbumsStore
+    let localAudioLibrary = LocalAudioLibrary()
     let offlineStore: OfflineTrackStore
     let pinnedCollectionsStore = PinnedCollectionsStore()
     let pinnedMixStore: PinnedMixStore
@@ -165,6 +166,7 @@ final class AppEnvironment {
         }
         player.configureStreamRefresh { [weak self, service] track in
             guard let self else { throw CancellationError() }
+            guard !track.isLocal else { throw APIError.invalidRequest }
             return try await self.withAuthorizedToken { token in
                 try await service.refreshedTrack(
                     track,
@@ -174,8 +176,8 @@ final class AppEnvironment {
         }
         player.noteSessionRotated(revision: sessionStore.sessionRevision)
         player.configureOfflinePlayback(
-            lookup: { [weak offlineStore] track in
-                offlineStore?.localURL(for: track)
+            lookup: { [weak offlineStore, weak localAudioLibrary = self.localAudioLibrary] track in
+                localAudioLibrary?.localURL(for: track) ?? offlineStore?.localURL(for: track)
             },
             invalidate: { [weak offlineStore] track in
                 offlineStore?.remove(track)
@@ -364,7 +366,7 @@ final class AppEnvironment {
     /// playback, on Wi-Fi only. Anything else (cellular, a share in
     /// progress, downloads disabled) leaves the like alone.
     private func downloadLikedTrackIfEnabled(_ track: Track) {
-        guard settings.autoDownloadLikes,
+        guard !track.isLocal, settings.autoDownloadLikes,
               OfflineDownloadsFeature.isEnabled,
               !isShareSessionActive,
               networkMonitor.transport == .wifi,
@@ -616,7 +618,7 @@ final class AppEnvironment {
         try Task.checkCancellation()
 
         let payload: TrackSharePayload
-        if let localURL = offlineStore.localURL(for: track) {
+        if let localURL = localAudioLibrary.localURL(for: track) ?? offlineStore.localURL(for: track) {
             payload = try await trackShareService.payloadFromLocalFile(
                 localURL,
                 track: track,
@@ -675,6 +677,7 @@ final class AppEnvironment {
         _ track: Track,
         retention: OfflineTrackRetention = .manual
     ) async throws {
+        guard !track.isLocal else { throw APIError.invalidRequest }
         guard OfflineDownloadsFeature.isEnabled else {
             throw APIError.server(
                 code: 503,
@@ -717,7 +720,7 @@ final class AppEnvironment {
         // A skip replaces speculative work. Current and next track share one
         // worker instead of competing with playback through two download loops.
         cancelAutomaticCache()
-        guard allowsAutomaticCache else { return }
+        guard !track.isLocal, allowsAutomaticCache else { return }
         let request = automaticCacheID
         let revision = sessionStore.sessionRevision
         automaticCacheTrackID = track.id

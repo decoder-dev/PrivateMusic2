@@ -15,8 +15,11 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
     /// VK `is_hq` flag when present — progressive HQ / preferred encode.
     let isHQ: Bool
     let trackCode: String?
+    let localFileID: UUID?
 
-    var id: String { "\(ownerID)_\(trackID)" }
+    var isLocal: Bool { localFileID != nil }
+
+    var id: String { localFileID.map { "local:" + $0.uuidString.lowercased() } ?? "\(ownerID)_\(trackID)" }
 
     init(
         trackID: Int,
@@ -31,7 +34,8 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         lyricsID: Int? = nil,
         albumReference: AlbumReference? = nil,
         isHQ: Bool = false,
-        trackCode: String? = nil
+        trackCode: String? = nil,
+        localFileID: UUID? = nil
     ) {
         self.trackID = trackID
         self.ownerID = ownerID
@@ -39,13 +43,14 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         self.artist = artist
         self.albumTitle = albumTitle
         self.duration = duration
-        self.streamURL = streamURL
+        self.streamURL = localFileID == nil ? streamURL : nil
         self.artworkURL = artworkURL
         self.accessKey = accessKey
         self.lyricsID = lyricsID
         self.albumReference = albumReference
         self.isHQ = isHQ
         self.trackCode = trackCode
+        self.localFileID = localFileID
     }
 
     enum CodingKeys: String, CodingKey {
@@ -65,6 +70,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         /// Stream-mix tracks often carry their cover only here, with no
         /// `album` object at all.
         case thumb
+        case localFileID
     }
 
     enum AlbumKeys: String, CodingKey {
@@ -85,7 +91,8 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         trackID = try container.decode(Int.self, forKey: .id)
         ownerID = try container.decode(Int.self, forKey: .ownerID)
-        guard trackID > 0, ownerID != 0 else {
+        localFileID = try container.decodeIfPresent(UUID.self, forKey: .localFileID)
+        guard localFileID != nil ? (trackID == 0 && ownerID == 0) : (trackID > 0 && ownerID != 0) else {
             throw DecodingError.dataCorruptedError(
                 forKey: .id,
                 in: container,
@@ -105,7 +112,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
             try container.decodeIfPresent(Int.self, forKey: .duration) ?? 0
         )
         let stream = try container.decodeIfPresent(String.self, forKey: .url)
-        streamURL = stream.flatMap(URL.secureRemoteURL)
+        streamURL = localFileID == nil ? stream.flatMap(URL.secureRemoteURL) : nil
         accessKey = try container.decodeIfPresent(String.self, forKey: .accessKey)
         lyricsID = try container.decodeIfPresent(Int.self, forKey: .lyricsID)
         trackCode = try container.decodeIfPresent(String.self, forKey: .trackCode)
@@ -187,7 +194,11 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
                 )
             }
         }
-        artworkURL = raw.flatMap(URL.secureRemoteURL)
+        if let localFileID, raw != nil {
+            artworkURL = LocalAudioPaths.artworkURL(for: localFileID)
+        } else {
+            artworkURL = raw.flatMap(URL.secureRemoteURL)
+        }
         let nestedAlbum = try? container.nestedContainer(
             keyedBy: AlbumKeys.self,
             forKey: .album
@@ -220,6 +231,7 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(localFileID, forKey: .localFileID)
         try container.encode(trackID, forKey: .id)
         try container.encode(ownerID, forKey: .ownerID)
         try container.encode(title, forKey: .title)
@@ -282,7 +294,8 @@ struct Track: Codable, Hashable, Identifiable, Sendable {
             lyricsID: lyricsID,
             albumReference: albumReference,
             isHQ: isHQ,
-            trackCode: trackCode
+            trackCode: trackCode,
+            localFileID: localFileID
         )
     }
 }

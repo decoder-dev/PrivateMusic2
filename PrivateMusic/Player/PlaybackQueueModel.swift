@@ -45,6 +45,7 @@ enum QueueSource: Equatable, Codable {
     /// A finite artist collection; mix filtering and radio ranking do not apply.
     case artist(name: String)
     case history
+    case localFiles
     /// The Медиатека track list. It has no title of its own, and without a
     /// case for it the player captioned a library queue as a mix seeded by
     /// the tapped track — which is not what is playing.

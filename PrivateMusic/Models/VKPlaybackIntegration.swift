@@ -94,7 +94,8 @@ final class VKPlaybackIntegration {
             commands.removeAll { if case .events = $0 { return true }; return false }
         }
         // Opted-out integrations must not subscribe to every playback change.
-        let track = broadcastEnabled || reportingEnabled ? player.currentTrack : nil
+        let candidate = broadcastEnabled || reportingEnabled ? player.currentTrack : nil
+        let track = candidate?.isLocal == false ? candidate : nil
         let playing = (broadcastEnabled || reportingEnabled)
             && player.isPlaying && !player.isBuffering && !environment.isShareSessionActive
         let desiredTrack = broadcastEnabled && playing ? track : nil
