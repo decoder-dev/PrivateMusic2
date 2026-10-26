@@ -2,8 +2,15 @@ name: Build unsigned IPA
 
 on:
   push:
+    branches: ["main"]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      create_release:
+        description: Publish a release after all verification is complete
+        type: boolean
+        default: false
 
 # Prefer the latest push/PR head — a backlog of superseded
 # polish commits was starving macOS runners for 50+ minutes.
@@ -19,7 +26,7 @@ jobs:
     name: SwiftLint
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install SwiftLint
         run: brew install swiftlint
@@ -31,7 +38,7 @@ jobs:
     name: Rust native core
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Compiles the original C reference and checks the Rust implementation
       # against it bit for bit, then runs the crate's own tests.
@@ -42,7 +49,7 @@ jobs:
     name: Unit tests (Xcode 26.5)
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select Xcode 26.5
         run: sudo xcode-select -s /Applications/Xcode_26.5.app
@@ -84,7 +91,7 @@ jobs:
 
       - name: Upload profiling evidence
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: PrivateMusic-performance-evidence
           path: profiling-metrics.log
@@ -102,7 +109,7 @@ jobs:
 
       - name: Upload test and design evidence
         if: success() || failure()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: PrivateMusic-test-evidence
           path: |
@@ -152,7 +159,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select Xcode 27
         run: |
@@ -243,18 +250,12 @@ jobs:
             "$APP_PATH" \
             "$PWD/artifacts/PrivateMusic-$VERSION-iphone-unsigned.ipa"
 
-      # Publishes straight off main once tests + archive pass: the tag is
-      # created by `gh release create` on this commit, so no separate tag
-      # push is needed. Published versions are immutable: a rerun must not
-      # replace IPA/dSYM files or demote a stable release to pre-release.
-      # Bump MARKETING_VERSION to publish different application binaries.
-      # An Actions artifact is a zip
-      # that only a signed-in browser can fetch; a pre-release hands over
-      # the .ipa directly.
+      # Verification builds only upload artifacts. Publishing is an explicit final step.
+      # Published versions are immutable: reruns preserve existing binaries and release status.
       - name: Publish GitHub release
         if: >-
-          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-          (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+          (github.event_name == 'workflow_dispatch' && inputs.create_release == true && github.ref == 'refs/heads/main')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -335,7 +336,7 @@ jobs:
 
       - name: Upload unsigned IPA
         if: success() || failure()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: PrivateMusic-${{ env.VERSION }}-unsigned
           path: |
