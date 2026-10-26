@@ -423,18 +423,9 @@ struct PlayerView: View {
                 )
             )
 
-            AsyncArtwork(url: track.artworkURL, size: layout.centerSize)
+            AsyncArtwork(url: track.artworkURL, size: layout.centerSize,
+                         placeholderText: TrackInformationText.artworkInitials(track))
                 .id(track.id)
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: PremiumLayout.artworkRadius(
-                            for: layout.centerSize
-                        ),
-                        style: .continuous
-                    )
-                    .stroke(playerForeground.opacity(0.08), lineWidth: 0.7)
-                }
-                .shadow(color: .black.opacity(0.42), radius: 26, y: 14)
         }
             .frame(width: size, height: size)
             .contentShape(Rectangle())
@@ -478,17 +469,11 @@ struct PlayerView: View {
         size: CGFloat,
         role: String
     ) -> some View {
-        AsyncArtwork(url: track.artworkURL, size: size)
+        AsyncArtwork(url: track.artworkURL, size: size,
+                     placeholderText: TrackInformationText.artworkInitials(track))
             .id("\(role)-\(track.id)")
             .saturation(0.82)
             .opacity(0.58)
-            .overlay {
-                RoundedRectangle(
-                    cornerRadius: PremiumLayout.artworkRadius(for: size),
-                    style: .continuous
-                )
-                .stroke(playerForeground.opacity(0.06), lineWidth: 0.6)
-            }
             .accessibilityHidden(true)
     }
 

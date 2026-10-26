@@ -62,6 +62,7 @@ struct LocalAudioLibraryView: View {
         .scrollContentBackground(.hidden)
         .background(ThemeBackground())
         .navigationTitle(L10n.text("local_audio.title"))
+        .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, prompt: L10n.text("track_or_artist"))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
