@@ -311,7 +311,8 @@ struct PlayerView: View {
 
     @ViewBuilder private func playerHeader(_ track: Track, compact: Bool) -> some View {
         if dynamicTypeSize.isAccessibilitySize {
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                playerGlassIconButton(systemImage: "chevron.down", accessibilityLabel: "close_player", action: closePlayer)
                 Text(player.queueContextTitle)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(playerSecondary)
@@ -533,22 +534,22 @@ struct PlayerView: View {
             Spacer(minLength: 10)
 
             if !track.isLocal {
-            playerGlassIconButton(
-                systemImage: isInLibrary ? "heart.fill" : "heart",
-                font: .system(size: 19, weight: .semibold),
-                tint: isInLibrary
-                    ? playerForeground
-                    : playerForeground.opacity(0.72),
-                accessibilityLabel: isInLibrary
-                    ? "remove_from_library"
-                    : "add_to_library_2",
-                accessibilityValue: isInLibrary
-                    ? "track_is_in_your_library"
-                    : "track_is_not_in_your_library",
-                disabled: isUpdatingLibrary
-            ) {
-                toggleLibrary(track)
-            }
+                playerGlassIconButton(
+                    systemImage: isInLibrary ? "heart.fill" : "heart",
+                    font: .system(size: 19, weight: .semibold),
+                    tint: isInLibrary
+                        ? playerForeground
+                        : playerForeground.opacity(0.72),
+                    accessibilityLabel: isInLibrary
+                        ? "remove_from_library"
+                        : "add_to_library_2",
+                    accessibilityValue: isInLibrary
+                        ? "track_is_in_your_library"
+                        : "track_is_not_in_your_library",
+                    disabled: isUpdatingLibrary
+                ) {
+                    toggleLibrary(track)
+                }
             }
         }
     }

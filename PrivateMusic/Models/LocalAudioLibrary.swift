@@ -172,6 +172,9 @@ private actor LocalAudioImporter {
         guard copiedSize > 0, copiedSize <= LocalAudioImportPolicy.maximumBytes else { throw LocalAudioError.invalidSize }
         let asset = AVURLAsset(url: staged)
         let duration = try await asset.load(.duration).seconds
+        guard try await asset.load(.isPlayable), !(try await asset.load(.hasProtectedContent)) else {
+            throw LocalAudioError.unplayable
+        }
         guard duration.isFinite, duration > 0, !(try await asset.loadTracks(withMediaType: .audio)).isEmpty else {
             throw LocalAudioError.unplayable
         }
