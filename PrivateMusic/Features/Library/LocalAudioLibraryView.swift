@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct LocalAudioLibraryView: View {
     @Environment(AppEnvironment.self) private var environment
+    @Environment(AppSettings.self) private var settings
     @State private var query = ""
     @State private var choosing = false
     @State private var importTask: Task<Void, Never>?
@@ -30,6 +31,7 @@ struct LocalAudioLibraryView: View {
                     Text(error).font(.footnote).foregroundStyle(.secondary)
                 }
             }
+            .listRowBackground(settings.surfaceColor)
             if library.entries.isEmpty, !library.isImporting {
                 Section {
                     EmptyStateView(title: "local_audio.empty", systemImage: "music.note",
@@ -37,6 +39,7 @@ struct LocalAudioLibraryView: View {
                     Button(L10n.text("local_audio.import")) { choosing = true }
                         .buttonStyle(PremiumProminentButtonStyle())
                 }
+                .listRowBackground(settings.surfaceColor)
             } else {
                 Section(L10n.trackCount(displayed.count)) {
                     ForEach(displayed) { entry in
@@ -50,6 +53,7 @@ struct LocalAudioLibraryView: View {
                             }
                     }
                 }
+                .listRowBackground(settings.surfaceColor)
                 if displayed.isEmpty {
                     Text(L10n.text("no_results")).foregroundStyle(.secondary)
                 }

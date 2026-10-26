@@ -132,7 +132,7 @@ final class LocalAudioLibrary {
     }
 
     private func persist(_ updated: [LocalAudioEntry]) throws {
-        try JSONEncoder().encode(updated).write(to: directory.appendingPathComponent("index.json"), options: .atomic)
+        try JSONEncoder().encode(updated).write(to: directory.appendingPathComponent("index.json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 }
 
@@ -194,6 +194,12 @@ private actor LocalAudioImporter {
         let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
         try Task.checkCancellation()
         try FileManager.default.moveItem(at: staged, to: destination)
+        try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                                             ofItemAtPath: destination.path)
+        if hasArtwork {
+            try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                                                 ofItemAtPath: artworkURL.path)
+        }
         committed = true
         return LocalAudioEntry(id: id, filename: destination.lastPathComponent, title: title, artist: artist,
                                album: album, duration: duration, digest: digest, hasArtwork: hasArtwork, importedAt: Date())
@@ -209,7 +215,7 @@ private actor LocalAudioImporter {
         guard let item = AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: identifier).first,
               let value = try? await item.load(.stringValue) else { return nil }
         let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return clean.isEmpty ? nil : clean
+        return clean.isEmpty ? nil : String(clean.prefix(500))
     }
 
     private func saveArtwork(_ metadata: [AVMetadataItem], to url: URL) async -> Bool {

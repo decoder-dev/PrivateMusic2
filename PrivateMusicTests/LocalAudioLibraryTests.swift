@@ -92,6 +92,21 @@ final class LocalAudioLibraryTests: XCTestCase {
         } catch { XCTAssertEqual(error as? APIError, .invalidRequest) }
     }
 
+    func testSavedLyricsKeepLocalIdentityAfterRelaunch() throws {
+        let suite = "LocalLyrics-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let track = Track(trackID: 0, ownerID: 0, title: "Local", artist: "Artist", duration: 30,
+                          streamURL: nil, artworkURL: nil, localFileID: UUID())
+        let store = SavedLyricsStore(defaults: defaults)
+        store.configure(accountID: 1)
+        store.save(Lyrics(text: "Saved words", source: "Test"), for: track)
+        let restored = SavedLyricsStore(defaults: defaults)
+        restored.configure(accountID: 1)
+        XCTAssertEqual(restored.lyrics(for: track)?.text, "Saved words")
+        XCTAssertEqual(restored.records.first?.track.localFileID, track.localFileID)
+    }
+
     private func wav() -> Data {
         let samples: UInt32 = 8_000
         var data = Data("RIFF".utf8)

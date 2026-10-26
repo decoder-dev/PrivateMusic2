@@ -89,6 +89,7 @@ struct ListeningHistoryView: View {
                                         systemImage: "rectangle.stack.badge.plus"
                                     )
                                 }
+                                .disabled(entry.track.isLocal)
                                 // Swipe actions only work inside a List; this
                                 // screen is a ScrollView, so removal lives here.
                                 Button(role: .destructive) {
